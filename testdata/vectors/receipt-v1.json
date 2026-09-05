@@ -1,0 +1,15 @@
+{
+  "public_key": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+  "domain": "AACR/Receipt/v1",
+  "expected_payload_sha256": "3a99cd5094ad6194e90f3c8b72aaf6cdf54e140ffbde9c13dc1cc8725b9860a3",
+  "envelope": {
+    "type": "Receipt",
+    "payload": {
+      "receipt_version": 1,
+      "execution_id": "exec-001",
+      "status": "COMMITTED"
+    },
+    "signer_id": "test-vector-signer",
+    "signature": "d99ae5445bd82b1be789be07c2c585f8f5578dd4f96517a26f8f63bccfe1ad22c6815a20f714ba4badeabb73c2d3ff75d551142b70343a3a16e2ba508b0ec805"
+  }
+}
