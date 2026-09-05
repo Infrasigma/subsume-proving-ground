@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
@@ -8,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/Infrasigma/subsume-proving-ground/internal/c14n"
@@ -32,26 +34,22 @@ var (
 // second, independently mutable copy inside the capability.
 type Capability struct {
 	CapabilityVersion int    `json:"capability_version"`
-	CapabilityID     string `json:"capability_id"`
-	ExecutionID      string `json:"execution_id"`
-	ContractHash     string `json:"contract_hash"`
-	BrokerID         string `json:"broker_id"`
-	Audience         string `json:"audience"`
-	BoundaryBinding  string `json:"boundary_binding"`
-	Nonce            string `json:"nonce"`
-	SingleUse        bool   `json:"single_use"`
-	IssuedAt         string `json:"issued_at"`
-	NotBefore        string `json:"not_before"`
-	ExpiresAt        string `json:"expires_at"`
+	CapabilityID      string `json:"capability_id"`
+	ExecutionID       string `json:"execution_id"`
+	ContractHash      string `json:"contract_hash"`
+	BrokerID          string `json:"broker_id"`
+	Audience          string `json:"audience"`
+	BoundaryBinding   string `json:"boundary_binding"`
+	Nonce             string `json:"nonce"`
+	SingleUse         bool   `json:"single_use"`
+	IssuedAt          string `json:"issued_at"`
+	NotBefore         string `json:"not_before"`
+	ExpiresAt         string `json:"expires_at"`
 }
 
-// CapabilityEnvelope is a signed Envelope whose payload is a Capability.
-// The signature is produced by the broker identity, not the agent identity.
-type CapabilityEnvelope = Envelope
-
 // MintCapability hashes the canonical ActionContract and signs a capability
-// that is bound to exactly one execution attempt. No contract intent is copied
-// into the capability payload.
+// bound to exactly one execution attempt. No contract intent is copied into
+// the capability payload.
 func MintCapability(contract provider.ActionContract, executionID, brokerID, audience, boundaryBinding string, now time.Time, privateKey ed25519.PrivateKey) (Envelope, Capability, error) {
 	if err := contract.ValidateForMutation(); err != nil {
 		return Envelope{}, Capability{}, fmt.Errorf("validate contract: %w", err)
@@ -59,32 +57,16 @@ func MintCapability(contract provider.ActionContract, executionID, brokerID, aud
 	if executionID == "" {
 		return Envelope{}, Capability{}, ErrCapabilityNotBoundToExecution
 	}
-	if brokerID == "" {
-		return Envelope{}, Capability{}, errors.New("broker_id is required")
-	}
-	if audience == "" {
-		return Envelope{}, Capability{}, errors.New("audience is required")
-	}
-	if boundaryBinding == "" {
-		return Envelope{}, Capability{}, errors.New("boundary_binding is required")
+	if brokerID == "" || audience == "" || boundaryBinding == "" {
+		return Envelope{}, Capability{}, errors.New("broker_id, audience, and boundary_binding are required")
 	}
 	if len(privateKey) != ed25519.PrivateKeySize {
 		return Envelope{}, Capability{}, errors.New("invalid broker private key")
 	}
 
-	contractJSON, err := json.Marshal(contract)
+	canonicalContract, err := canonicalContract(contract)
 	if err != nil {
-		return Envelope{}, Capability{}, fmt.Errorf("marshal action contract: %w", err)
-	}
-	var contractValue any
-	dec := json.NewDecoder(bytesReader(contractJSON))
-	dec.UseNumber()
-	if err := dec.Decode(&contractValue); err != nil {
-		return Envelope{}, Capability{}, fmt.Errorf("decode action contract: %w", err)
-	}
-	canonicalContract, err := c14n.Canonicalize(contractValue)
-	if err != nil {
-		return Envelope{}, Capability{}, fmt.Errorf("canonicalize action contract: %w", err)
+		return Envelope{}, Capability{}, err
 	}
 	contractSum := sha256.Sum256(canonicalContract)
 
@@ -93,28 +75,25 @@ func MintCapability(contract provider.ActionContract, executionID, brokerID, aud
 	if err != nil {
 		return Envelope{}, Capability{}, fmt.Errorf("parse contract expires_at: %w", err)
 	}
-	maxExpiry := now.Add(MaxCapabilityTTL)
-	expires := contractExpiry
-	if maxExpiry.Before(expires) {
-		expires = maxExpiry
-	}
-	if !expires.After(now) {
+	if !contractExpiry.After(now) {
 		return Envelope{}, Capability{}, ErrCapabilityExpiryWidened
 	}
+
+	notBefore := now
 	if contract.NotBefore != "" {
 		contractNotBefore, err := time.Parse(time.RFC3339Nano, contract.NotBefore)
 		if err != nil {
 			return Envelope{}, Capability{}, fmt.Errorf("parse contract not_before: %w", err)
 		}
-		if now.Before(contractNotBefore) {
-			now = contractNotBefore
-			expires = now.Add(MaxCapabilityTTL)
-			if contractExpiry.Before(expires) {
-				expires = contractExpiry
-			}
+		if contractNotBefore.After(notBefore) {
+			notBefore = contractNotBefore
 		}
 	}
-	if !expires.After(now) {
+	expires := contractExpiry
+	if ttlExpiry := now.Add(MaxCapabilityTTL); ttlExpiry.Before(expires) {
+		expires = ttlExpiry
+	}
+	if !expires.After(notBefore) {
 		return Envelope{}, Capability{}, ErrCapabilityExpiryWidened
 	}
 
@@ -138,8 +117,8 @@ func MintCapability(contract provider.ActionContract, executionID, brokerID, aud
 		Nonce:             nonce,
 		SingleUse:         true,
 		IssuedAt:          now.Format(time.RFC3339Nano),
-		NotBefore:         now.Format(time.RFC3339Nano),
-		ExpiresAt:         expires.UTC().Format(time.RFC3339Nano),
+		NotBefore:         notBefore.Format(time.RFC3339Nano),
+		ExpiresAt:         expires.Format(time.RFC3339Nano),
 	}
 
 	env, err := signPayload("Capability", capability, brokerID, privateKey)
@@ -151,13 +130,19 @@ func MintCapability(contract provider.ActionContract, executionID, brokerID, aud
 
 // VerifyCapability verifies the broker signature and re-computes the exact
 // contract hash. It also proves that the grant cannot outlive the contract or
-// the broker's maximum TTL.
-func VerifyCapability(env Envelope, contract provider.ActionContract, executionID, brokerID string, now time.Time) (Capability, error) {
+// the broker's maximum TTL. Replay/nonce consumption belongs to the ledger.
+func VerifyCapability(env Envelope, publicKey ed25519.PublicKey, contract provider.ActionContract, executionID, brokerID string, now time.Time) (Capability, error) {
 	if env.Type != "Capability" {
 		return Capability{}, fmt.Errorf("unexpected envelope type %q", env.Type)
 	}
 	if env.SignerID != brokerID {
 		return Capability{}, errors.New("capability signer does not match broker identity")
+	}
+	if len(publicKey) != ed25519.PublicKeySize {
+		return Capability{}, errors.New("invalid broker public key")
+	}
+	if err := verifyEnvelopeSignature(publicKey, env); err != nil {
+		return Capability{}, err
 	}
 	var cap Capability
 	if err := decodePayload(env.Payload, &cap); err != nil {
@@ -176,11 +161,11 @@ func VerifyCapability(env Envelope, contract provider.ActionContract, executionI
 		return Capability{}, errors.New("invalid capability bindings")
 	}
 
-	canonicalContract, err := canonicalContract(contract)
+	canonical, err := canonicalContract(contract)
 	if err != nil {
 		return Capability{}, err
 	}
-	sum := sha256.Sum256(canonicalContract)
+	sum := sha256.Sum256(canonical)
 	if cap.ContractHash != hex.EncodeToString(sum[:]) {
 		return Capability{}, ErrCapabilityContractHashMismatch
 	}
@@ -217,7 +202,7 @@ func canonicalContract(contract provider.ActionContract) ([]byte, error) {
 		return nil, fmt.Errorf("marshal action contract: %w", err)
 	}
 	var v any
-	dec := json.NewDecoder(bytesReader(b))
+	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.UseNumber()
 	if err := dec.Decode(&v); err != nil {
 		return nil, fmt.Errorf("decode action contract: %w", err)
@@ -230,7 +215,13 @@ func signPayload(typ string, payload any, signerID string, privateKey ed25519.Pr
 	if err != nil {
 		return Envelope{}, fmt.Errorf("marshal %s payload: %w", typ, err)
 	}
-	canonical, err := c14n.CanonicalizeJSON(b)
+	var value any
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	if err := dec.Decode(&value); err != nil {
+		return Envelope{}, fmt.Errorf("decode %s payload: %w", typ, err)
+	}
+	canonical, err := c14n.Canonicalize(value)
 	if err != nil {
 		return Envelope{}, fmt.Errorf("canonicalize %s payload: %w", typ, err)
 	}
@@ -244,14 +235,57 @@ func signPayload(typ string, payload any, signerID string, privateKey ed25519.Pr
 	return Envelope{Type: typ, Payload: canonical, SignerID: signerID, Signature: hex.EncodeToString(sig)}, nil
 }
 
+func verifyEnvelopeSignature(publicKey ed25519.PublicKey, env Envelope) error {
+	sig, err := SignatureBytes(env)
+	if err != nil {
+		return err
+	}
+	canonical, err := canonicalPayload(env.Payload)
+	if err != nil {
+		return err
+	}
+	hash := sha256.Sum256(canonical)
+	domain, err := DomainForType(env.Type)
+	if err != nil {
+		return err
+	}
+	if !ed25519.Verify(publicKey, DomainMessage(domain, hash[:], env.SignerID), sig) {
+		return errors.New("invalid capability signature")
+	}
+	return nil
+}
+
+func canonicalPayload(payload []byte) ([]byte, error) {
+	var v any
+	dec := json.NewDecoder(bytes.NewReader(payload))
+	dec.UseNumber()
+	if err := dec.Decode(&v); err != nil {
+		return nil, err
+	}
+	if err := ensureEOF(dec); err != nil {
+		return nil, err
+	}
+	return c14n.Canonicalize(v)
+}
+
 func decodePayload(payload json.RawMessage, out any) error {
-	dec := json.NewDecoder(bytesReader(payload))
+	dec := json.NewDecoder(bytes.NewReader(payload))
 	if err := dec.Decode(out); err != nil {
 		return fmt.Errorf("decode capability payload: %w", err)
 	}
+	if err := ensureEOF(dec); err != nil {
+		return fmt.Errorf("decode capability payload: %w", err)
+	}
+	return nil
+}
+
+func ensureEOF(dec *json.Decoder) error {
 	var extra any
-	if err := dec.Decode(&extra); err == nil {
-		return errors.New("capability payload has trailing JSON")
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("payload has trailing JSON")
+		}
+		return fmt.Errorf("payload has trailing data: %w", err)
 	}
 	return nil
 }
@@ -262,11 +296,4 @@ func randomID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
-}
-
-type byteReader struct { b []byte; off int }
-func bytesReader(b []byte) *byteReader { return &byteReader{b: b} }
-func (r *byteReader) Read(p []byte) (int, error) {
-	if r.off >= len(r.b) { return 0, errors.New("EOF") }
-	n := copy(p, r.b[r.off:]); r.off += n; return n, nil
 }
