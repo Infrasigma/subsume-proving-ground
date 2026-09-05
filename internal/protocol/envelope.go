@@ -1,0 +1,72 @@
+package protocol
+
+import (
+    "bytes"
+    "crypto/ed25519"
+    "crypto/sha256"
+    "encoding/hex"
+    "encoding/json"
+    "fmt"
+    "os"
+)
+
+type Envelope struct {
+    Type      string          `json:"type"`
+    Payload   json.RawMessage `json:"payload"`
+    SignerID  string          `json:"signer_id"`
+    Signature string          `json:"signature"`
+}
+
+func Load(path string) (Envelope, error) {
+    data, err := os.ReadFile(path)
+    if err != nil { return Envelope{}, err }
+    var env Envelope
+    if err := json.NewDecoder(bytes.NewReader(data)).Decode(&env); err != nil {
+        return Envelope{}, fmt.Errorf("decode envelope: %w", err)
+    }
+    if env.Type == "" || len(env.Payload) == 0 || env.SignerID == "" || env.Signature == "" {
+        return Envelope{}, fmt.Errorf("invalid envelope: type, payload, signer_id and signature are required")
+    }
+    return env, nil
+}
+
+func PayloadValue(env Envelope) (any, error) {
+    dec := json.NewDecoder(bytes.NewReader(env.Payload))
+    dec.UseNumber()
+    var v any
+    if err := dec.Decode(&v); err != nil { return nil, fmt.Errorf("decode payload: %w", err) }
+    return v, nil
+}
+
+func SignatureBytes(env Envelope) ([]byte, error) {
+    b, err := hex.DecodeString(env.Signature)
+    if err != nil { return nil, fmt.Errorf("signature is not hex: %w", err) }
+    if len(b) != ed25519.SignatureSize { return nil, fmt.Errorf("signature length %d, want %d", len(b), ed25519.SignatureSize) }
+    return b, nil
+}
+
+func DomainMessage(domain string, payloadHash [32]byte, signerID string) []byte {
+    var out []byte
+    appendLen := func(v []byte) {
+        n := uint32(len(v))
+        out = append(out, byte(n>>24), byte(n>>16), byte(n>>8), byte(n))
+        out = append(out, v...)
+    }
+    appendLen([]byte(domain))
+    appendLen(payloadHash[:])
+    appendLen([]byte(signerID))
+    return out
+}
+
+func PayloadHash(canonical []byte) [32]byte { return sha256.Sum256(canonical) }
+
+func Verify(publicKeyHex, domain string, env Envelope, canonical []byte) error {
+    pk, err := hex.DecodeString(publicKeyHex)
+    if err != nil { return fmt.Errorf("public key is not hex: %w", err) }
+    if len(pk) != ed25519.PublicKeySize { return fmt.Errorf("public key length %d, want %d", len(pk), ed25519.PublicKeySize) }
+    sig, err := SignatureBytes(env)
+    if err != nil { return err }
+    msg := DomainMessage(domain, PayloadHash(canonical), env.SignerID)
+    if !ed25519.Verify(ed25519.PublicKey(pk), msg, sig) { return fmt.Errorf("signature verification failed") }
+    return nil
+}
