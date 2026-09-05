@@ -38,14 +38,19 @@ func TestHappyPathAndChainVerification(t *testing.T) {
 	l := testLedger(t)
 	execID := "exec-happy"
 	expires := time.Now().UTC().Add(10 * time.Minute)
-	appendTest(t, l, "e1", execID, StateAuthorized, map[string]any{"actor": "agent-1"})
+	authorized := appendTest(t, l, "e1", execID, StateAuthorized, map[string]any{"actor": "agent-1"})
 	dispatched := appendTest(t, l, "e2", execID, StateDispatched, dispatchedPayload(expires))
 	appendTest(t, l, "e3", execID, StateEffectObserved, map[string]any{"provider": "ok"})
 	appendTest(t, l, "e4", execID, StateVerified, map[string]any{"effect": "verified"})
 	appendTest(t, l, "e5", execID, StateCommitted, map[string]any{"receipt": "ready"})
 
-	if dispatched.PreviousEventHash != GenesisHash {
-		t.Fatalf("got previous hash %s want genesis %s", dispatched.PreviousEventHash, GenesisHash)
+	// The genesis anchor belongs to sequence 1. Every subsequent event must
+	// point to the hash of its immediately preceding event.
+	if authorized.Sequence != 1 || authorized.PreviousEventHash != GenesisHash {
+		t.Fatalf("sequence 1 previous hash = %s, want genesis %s", authorized.PreviousEventHash, GenesisHash)
+	}
+	if dispatched.PreviousEventHash != authorized.EventHash {
+		t.Fatalf("sequence 2 previous hash = %s, want sequence 1 hash %s", dispatched.PreviousEventHash, authorized.EventHash)
 	}
 	events, err := l.Events(context.Background(), execID)
 	if err != nil {
