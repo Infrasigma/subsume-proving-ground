@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -26,7 +27,6 @@ import (
 	"github.com/Infrasigma/subsume-proving-ground/internal/ledger"
 	"github.com/Infrasigma/subsume-proving-ground/internal/protocol"
 	"github.com/Infrasigma/subsume-proving-ground/internal/provider"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -47,20 +47,20 @@ func (v liveVerifier) Verify(raw []byte) (provider.ActionContract, error) {
 	domain, err := protocol.DomainForType(env.Type)
 	if err != nil { return provider.ActionContract{}, err }
 	if err := protocol.Verify(hex.EncodeToString(v.publicKey), domain, env, canonical); err != nil { return provider.ActionContract{}, err }
-	payloadBytes, err := json.Marshal(value)
+	payload, err := json.Marshal(value)
 	if err != nil { return provider.ActionContract{}, err }
 	var contract provider.ActionContract
-	payloadDec := json.NewDecoder(bytes.NewReader(payloadBytes))
-	payloadDec.UseNumber()
-	payloadDec.DisallowUnknownFields()
-	if err := payloadDec.Decode(&contract); err != nil { return provider.ActionContract{}, fmt.Errorf("decode action contract: %w", err) }
+	pd := json.NewDecoder(bytes.NewReader(payload))
+	pd.UseNumber()
+	pd.DisallowUnknownFields()
+	if err := pd.Decode(&contract); err != nil { return provider.ActionContract{}, fmt.Errorf("decode action contract: %w", err) }
 	if err := contract.ValidateForMutation(); err != nil { return provider.ActionContract{}, err }
 	return contract, nil
 }
 
 type liveProviderResult struct {
 	executionID string
-	mutation    provider.MutationResult
+	mutation provider.MutationResult
 }
 
 type liveProvider struct{ postgres *provider.PostgresProvider }
@@ -110,26 +110,37 @@ func canonicalHash(v any) ([32]byte, error) {
 	return protocol.PayloadHash(canonical), nil
 }
 
-func startEphemeralPostgres(t *testing.T) *pgxpool.Pool {
-	t.Helper()
-	if runtime.GOOS != "linux" { t.Skip("M6 live-fire requires Linux namespaces and local PostgreSQL") }
-	initdb, err := exec.LookPath("initdb")
-	if err != nil { t.Fatalf("initdb is required for live-fire CI: %v", err) }
-	pgctl, err := exec.LookPath("pg_ctl")
-	if err != nil { t.Fatalf("pg_ctl is required for live-fire CI: %v", err) }
-	dataDir := filepath.Join(t.TempDir(), "postgres")
-	socketDir := filepath.Join(t.TempDir(), "pgsocket")
-	if err := os.MkdirAll(socketDir, 0700); err != nil { t.Fatal(err) }
-	if err := runCommand(initdb, "-D", dataDir, "-U", "aacr_e2e", "--auth=trust", "--no-locale"); err != nil { t.Fatalf("initdb: %v", err) }
-	port := reserveTCPPort(t)
-	options := fmt.Sprintf("-p %d -h 127.0.0.1 -k %s", port, socketDir)
-	if err := runCommand(pgctl, "-D", dataDir, "-o", options, "-w", "start"); err != nil { t.Fatalf("start postgres: %v", err) }
-	t.Cleanup(func() { _ = runCommand(pgctl, "-D", dataDir, "-m", "immediate", "stop") })
+type postgresHarness struct {
+	pool *pgxpool.Pool
+	address string
+	stop func()
+}
 
-	dsn := fmt.Sprintf("postgres://aacr_e2e@127.0.0.1:%d/postgres?sslmode=disable", port)
+func startEphemeralPostgres(t *testing.T) postgresHarness {
+	t.Helper()
+	if runtime.GOOS != "linux" { t.Fatal("M6 live-fire requires Linux") }
+	initdb := commandPath(t, "initdb")
+	pgctl := commandPath(t, "pg_ctl")
+	root := t.TempDir()
+	dataDir := filepath.Join(root, "postgres")
+	socketDir := filepath.Join(root, "socket")
+	if err := os.MkdirAll(socketDir, 0700); err != nil { t.Fatal(err) }
+	if err := runTimed(30*time.Second, initdb, "-D", dataDir, "-U", "aacr_e2e", "--auth=trust", "--no-locale"); err != nil { t.Fatalf("initdb: %v", err) }
+	port := reserveTCPPort(t)
+	address := fmt.Sprintf("127.0.0.1:%d", port)
+	logPath := filepath.Join(root, "postgres.log")
+	options := fmt.Sprintf("-p %d -h 127.0.0.1 -k %s", port, socketDir)
+	if err := runTimed(30*time.Second, pgctl, "-D", dataDir, "-l", logPath, "-o", options, "-w", "-t", "20", "start"); err != nil {
+		log, _ := os.ReadFile(logPath)
+		t.Fatalf("start postgres: %v\n%s", err, log)
+	}
+	stop := func() { _ = runTimed(15*time.Second, pgctl, "-D", dataDir, "-m", "immediate", "stop") }
+	t.Cleanup(stop)
+	dsn := fmt.Sprintf("postgres://aacr_e2e@%s/postgres?sslmode=disable", address)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	var pool *pgxpool.Pool
+	var err error
 	for {
 		pool, err = pgxpool.New(ctx, dsn)
 		if err == nil && pool.Ping(ctx) == nil { break }
@@ -140,11 +151,29 @@ func startEphemeralPostgres(t *testing.T) *pgxpool.Pool {
 		}
 	}
 	t.Cleanup(pool.Close)
-	_, err = pool.Exec(ctx, `CREATE TABLE users (id BIGINT PRIMARY KEY, version BIGINT NOT NULL, active BOOLEAN NOT NULL)`)
-	if err != nil { t.Fatal(err) }
-	_, err = pool.Exec(ctx, `INSERT INTO users(id, version, active) VALUES (1842, 42, true), (1843, 42, true)`)
-	if err != nil { t.Fatal(err) }
-	return pool
+	if _, err := pool.Exec(ctx, `CREATE TABLE users (id BIGINT PRIMARY KEY, version BIGINT NOT NULL, active BOOLEAN NOT NULL)`); err != nil { t.Fatal(err) }
+	if _, err := pool.Exec(ctx, `INSERT INTO users(id, version, active) VALUES (1842, 42, true), (1843, 42, true)`); err != nil { t.Fatal(err) }
+	return postgresHarness{pool: pool, address: address, stop: stop}
+}
+
+func commandPath(t *testing.T, name string) string {
+	t.Helper()
+	path, err := exec.LookPath(name)
+	if err != nil { t.Fatalf("%s is required for M6 live-fire: %v", name, err) }
+	return path
+}
+
+func runTimed(timeout time.Duration, name string, args ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	err := cmd.Run()
+	if ctx.Err() != nil { return fmt.Errorf("%w: %s", ctx.Err(), output.String()) }
+	if err != nil { return fmt.Errorf("%w: %s", err, output.String()) }
+	return nil
 }
 
 func reserveTCPPort(t *testing.T) int {
@@ -154,13 +183,6 @@ func reserveTCPPort(t *testing.T) int {
 	port := ln.Addr().(*net.TCPAddr).Port
 	_ = ln.Close()
 	return port
-}
-
-func runCommand(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	return cmd.Run()
 }
 
 func buildLiveAgent(t *testing.T) string {
@@ -177,6 +199,19 @@ func buildLiveAgent(t *testing.T) string {
 	return binary
 }
 
+func mountBrokerTmpfs(t *testing.T) (string, func()) {
+	t.Helper()
+	mountPoint := filepath.Join(t.TempDir(), "broker-tmpfs")
+	if err := os.Mkdir(mountPoint, 0700); err != nil { t.Fatal(err) }
+	uid, gid := strconv.Itoa(os.Geteuid()), strconv.Itoa(os.Getegid())
+	if err := runTimed(10*time.Second, "sudo", "mount", "-t", "tmpfs", "-o", "size=16m,uid="+uid+",gid="+gid+",mode=0700", "tmpfs", mountPoint); err != nil {
+		t.Fatalf("mount broker tmpfs: %v", err)
+	}
+	cleanup := func() { _ = runTimed(10*time.Second, "sudo", "umount", mountPoint) }
+	t.Cleanup(cleanup)
+	return mountPoint, cleanup
+}
+
 func signContract(t *testing.T, contract provider.ActionContract, privateKey ed25519.PrivateKey) []byte {
 	t.Helper()
 	env, err := protocol.SignPayload("ActionContract", contract, "agent-live", privateKey)
@@ -189,83 +224,57 @@ func signContract(t *testing.T, contract provider.ActionContract, privateKey ed2
 func liveContract(id string, expectedVersion int64, expectedActive bool, nonce string) provider.ActionContract {
 	now := time.Now().UTC().Round(0)
 	return provider.ActionContract{
-		ContractVersion: "1.0",
-		ActionID: "m6-live-fire-" + id,
-		ExecutionClass: "MUTATION",
-		Actor: provider.Actor{ID: "agent-live", WorkloadIdentity: "bubblewrap-live"},
-		Provider: "postgresql",
-		Resource: provider.ResourceRef{Type: "users", ID: id},
-		Operation: "deactivate_user",
+		ContractVersion: "1.0", ActionID: "m6-live-fire-" + id, ExecutionClass: "MUTATION",
+		Actor: provider.Actor{ID: "agent-live", WorkloadIdentity: "bubblewrap-live"}, Provider: "postgresql",
+		Resource: provider.ResourceRef{Type: "users", ID: id}, Operation: "deactivate_user",
 		Arguments: map[string]any{"user_id": mustInt64(id), "expected_version": int64(42)},
 		Precondition: map[string]any{"version": int64(42), "active": true},
 		ExpectedEffect: provider.ExpectedEffect{Resource: "users", ID: id, Fields: map[string]any{"id": mustInt64(id), "version": expectedVersion, "active": expectedActive}},
-		MutationScope: provider.MutationScope{MaxAffectedObjects: 1},
-		ReadScope: provider.ReadScope{MaxRecords: 1, MaxBytes: 4096},
-		DataEgressScope: provider.DataEgressScope{Allowed: false},
-		RecoveryMode: "RECONCILE",
-		PolicyReference: provider.PolicyReference{PolicyID: "m6-live", Version: "1", Hash: "m6-live-policy"},
-		AssuranceRequirement: "SIGNED_RECEIPT",
-		IssuedAt: now.Format(time.RFC3339Nano),
-		ExpiresAt: now.Add(2 * time.Minute).Format(time.RFC3339Nano),
-		Nonce: nonce,
+		MutationScope: provider.MutationScope{MaxAffectedObjects: 1}, ReadScope: provider.ReadScope{MaxRecords: 1, MaxBytes: 4096},
+		DataEgressScope: provider.DataEgressScope{Allowed: false}, RecoveryMode: "RECONCILE",
+		PolicyReference: provider.PolicyReference{PolicyID: "m6-live", Version: "1", Hash: "m6-live-policy"}, AssuranceRequirement: "SIGNED_RECEIPT",
+		IssuedAt: now.Format(time.RFC3339Nano), ExpiresAt: now.Add(2*time.Minute).Format(time.RFC3339Nano), Nonce: nonce,
 	}
 }
 
 func mustInt64(s string) int64 { n, _ := strconv.ParseInt(s, 10, 64); return n }
 
-func startBroker(t *testing.T, b *broker.Broker) (string, func()) {
+func startBroker(t *testing.T, b *broker.Broker, brokerDir string) string {
 	t.Helper()
-	brokerDir, err := os.MkdirTemp("/dev/shm", "aacr-broker-")
-	if err != nil { t.Fatalf("create tmpfs broker dir: %v", err) }
-	if err := os.Chmod(brokerDir, 0700); err != nil { t.Fatal(err) }
 	socketPath := filepath.Join(brokerDir, "broker.sock")
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil { t.Fatalf("listen unix socket: %v", err) }
 	if err := os.Chmod(socketPath, 0600); err != nil { t.Fatal(err) }
-	done := make(chan struct{})
-	go func() {
-		_ = b.Serve(listener)
-		close(done)
-	}()
-	cleanup := func() {
-		_ = listener.Close()
-		select { case <-done: case <-time.After(2 * time.Second): t.Log("broker accept loop did not stop within cleanup window") }
-		_ = os.RemoveAll(brokerDir)
-	}
-	return socketPath, cleanup
+	go func() { _ = b.Serve(listener) }()
+	t.Cleanup(func() { _ = listener.Close() })
+	return socketPath
 }
 
-func runSandboxAgent(t *testing.T, binary, socket string, raw []byte) []byte {
+func runSandboxAgent(t *testing.T, binary, socket string, raw []byte, args ...string) []byte {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	backend := boundary.BubblewrapBackend{}
-	cmd, err := backend.Start(ctx, boundary.StartOptions{
-		Executable: binary,
-		BrokerDir: filepath.Dir(socket),
-		BrokerPath: socket,
-		Environment: []string{"AACR_ENVELOPE_B64=" + encodeB64(raw)},
+	agentArgs := append([]string{}, args...)
+	if len(agentArgs) == 0 { agentArgs = []string{socket} }
+	cmd, err := (boundary.BubblewrapBackend{}).Start(ctx, boundary.StartOptions{
+		Executable: binary, BrokerDir: filepath.Dir(socket), BrokerPath: socket, Args: agentArgs,
+		Environment: []string{"AACR_ENVELOPE_B64=" + base64.StdEncoding.EncodeToString(raw)},
 	})
-	if err != nil { t.Fatalf("start bubblewrap live agent: %v", err) }
+	if err != nil { t.Fatalf("start Bubblewrap agent: %v", err) }
 	output, err := cmd.CombinedOutput()
 	if err != nil { t.Fatalf("live agent failed: %v\n%s", err, output) }
 	return output
 }
 
-func encodeB64(b []byte) string { return strings.TrimSpace(base64Encode(b)) }
-
-func base64Encode(b []byte) string {
-	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-	var out strings.Builder
-	for i := 0; i < len(b); i += 3 {
-		var n uint32 = uint32(b[i]) << 16
-		if i+1 < len(b) { n |= uint32(b[i+1]) << 8 }
-		if i+2 < len(b) { n |= uint32(b[i+2]) }
-		out.WriteByte(alphabet[(n>>18)&63]); out.WriteByte(alphabet[(n>>12)&63])
-		if i+1 < len(b) { out.WriteByte(alphabet[(n>>6)&63]) } else { out.WriteByte('=') }
-		if i+2 < len(b) { out.WriteByte(alphabet[n&63]) } else { out.WriteByte('=') }
-	}
-	return out.String()
+func verifyReceipt(t *testing.T, receipt protocol.Receipt, publicKey ed25519.PublicKey) map[string]any {
+	t.Helper()
+	if receipt.Type != "Receipt" { t.Fatalf("receipt type = %q", receipt.Type) }
+	if err := protocol.Verify(hex.EncodeToString(publicKey), "AACR/Receipt/v1", receipt, receipt.Payload); err != nil { t.Fatalf("independent receipt verification: %v", err) }
+	value, err := protocol.PayloadValue(receipt)
+	if err != nil { t.Fatal(err) }
+	payload, ok := value.(map[string]any)
+	if !ok { t.Fatal("receipt payload is not an object") }
+	return payload
 }
 
 func decodeReceipt(t *testing.T, output []byte) protocol.Receipt {
@@ -275,93 +284,54 @@ func decodeReceipt(t *testing.T, output []byte) protocol.Receipt {
 	return receipt
 }
 
-func verifyReceipt(t *testing.T, receipt protocol.Receipt, publicKey ed25519.PublicKey) map[string]any {
-	t.Helper()
-	if receipt.Type != "Receipt" { t.Fatalf("receipt type = %q", receipt.Type) }
-	canonical := receipt.Payload
-	if err := protocol.Verify(hex.EncodeToString(publicKey), "AACR/Receipt/v1", receipt, canonical); err != nil { t.Fatalf("independent receipt verification: %v", err) }
-	value, err := protocol.PayloadValue(receipt)
-	if err != nil { t.Fatal(err) }
-	payload, ok := value.(map[string]any)
-	if !ok { t.Fatal("receipt payload is not an object") }
-	return payload
-}
-
 func TestM6LiveFire(t *testing.T) {
-	if os.Geteuid() == 0 { t.Skip("live-fire must run as an unprivileged user for Bubblewrap") }
-	pool := startEphemeralPostgres(t)
+	if os.Geteuid() == 0 { t.Skip("M6 live-fire requires an unprivileged runner for Bubblewrap") }
+	pg := startEphemeralPostgres(t)
 	registry, err := provider.NewOperationRegistry(provider.PostgresDeactivateUserHandler{})
 	if err != nil { t.Fatal(err) }
-	postgres, err := provider.NewPostgresProvider(pool, registry)
+	postgres, err := provider.NewPostgresProvider(pg.pool, registry)
 	if err != nil { t.Fatal(err) }
-	ledgerPath := filepath.Join(t.TempDir(), "ledger.db")
-	l, err := ledger.Open(ledgerPath)
+	l, err := ledger.Open(filepath.Join(t.TempDir(), "ledger.db"))
 	if err != nil { t.Fatal(err) }
 	t.Cleanup(func() { _ = l.Close() })
 	agentPublic, agentPrivate, err := ed25519.GenerateKey(nil)
 	if err != nil { t.Fatal(err) }
 	brokerPublic, brokerPrivate, err := ed25519.GenerateKey(nil)
 	if err != nil { t.Fatal(err) }
-	b, err := broker.New(liveVerifier{publicKey: agentPublic}, l, liveProvider{postgres: postgres}, liveEvidence{pool: pool}, "broker-live", "postgresql", "bubblewrap-live", brokerPrivate)
+	b, err := broker.New(liveVerifier{publicKey: agentPublic}, l, liveProvider{postgres: postgres}, liveEvidence{pool: pg.pool}, "broker-live", "postgresql", "bubblewrap-live", brokerPrivate)
 	if err != nil { t.Fatal(err) }
-	socket, stopBroker := startBroker(t, b)
-	t.Cleanup(stopBroker)
+	brokerDir, _ := mountBrokerTmpfs(t)
+	socket := startBroker(t, b, brokerDir)
 	binary := buildLiveAgent(t)
 
-	// HAPPY PATH: real static ELF -> real Bubblewrap -> real UNIX socket ->
-	// real broker -> real capability -> real SQLite WAL -> real PostgreSQL
-	// transaction -> independent post-commit observation -> signed receipt.
 	raw := signContract(t, liveContract("1842", 43, false, "nonce-live-1842"), agentPrivate)
 	output := runSandboxAgent(t, binary, socket, raw)
-	receipt := decodeReceipt(t, output)
-	payload := verifyReceipt(t, receipt, brokerPublic)
-	if payload["status"] != ledger.StateCommitted { t.Fatalf("happy-path status = %v, want COMMITTED", payload["status"]) }
+	payload := verifyReceipt(t, decodeReceipt(t, output), brokerPublic)
+	if payload["status"] != ledger.StateCommitted { t.Fatalf("happy-path status = %v", payload["status"]) }
 	execID, ok := payload["execution_id"].(string)
 	if !ok || execID == "" { t.Fatal("happy-path execution_id missing") }
 	events, err := l.Events(context.Background(), execID)
 	if err != nil { t.Fatal(err) }
 	if err := ledger.VerifyChain(events); err != nil { t.Fatalf("ledger chain verification: %v", err) }
 	if len(events) != 3 || events[0].EventType != ledger.StateAuthorized || events[1].EventType != ledger.StateDispatched || events[2].EventType != ledger.StateCommitted { t.Fatalf("unexpected lifecycle: %+v", events) }
-	var active bool
 	var version int64
-	if err := pool.QueryRow(context.Background(), `SELECT version, active FROM users WHERE id=1842`).Scan(&version, &active); err != nil { t.Fatal(err) }
-	if version != 43 || active { t.Fatalf("committed postgres state = version %d active %v", version, active) }
+	var active bool
+	if err := pg.pool.QueryRow(context.Background(), `SELECT version, active FROM users WHERE id=1842`).Scan(&version, &active); err != nil { t.Fatal(err) }
+	if version != 43 || active { t.Fatalf("committed state = version %d active %v", version, active) }
 
-	// BYPASS ATTACK: the same static agent is independently started inside the
-	// same Bubblewrap boundary and attempts the real database port. There is no
-	// route in the namespace, so the kernel must reject the connection.
-	probeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	probe, err := (boundary.BubblewrapBackend{}).Start(probeCtx, boundary.StartOptions{
-		Executable: binary,
-		BrokerDir: filepath.Dir(socket),
-		BrokerPath: socket,
-		Args: []string{socket},
-		Environment: []string{"AACR_ENVELOPE_B64=" + encodeB64(raw)},
-	})
-	if err != nil { t.Fatal(err) }
-	probeOutput, probeErr := probe.CombinedOutput()
-	if probeErr == nil { t.Fatal("network bypass probe unexpectedly succeeded") }
-	if !bytes.Contains(probeOutput, []byte("network")) && !bytes.Contains(probeOutput, []byte("unreachable")) { t.Logf("bypass probe output: %s", probeOutput) }
+	probe := runSandboxAgent(t, binary, socket, raw, "network-probe", pg.address)
+	if !strings.Contains(string(probe), "network is unreachable") { t.Fatalf("network bypass did not prove ENETUNREACH: %s", probe) }
 
-	// REPLAY ATTACK: the exact same signed envelope is submitted again. The
-	// SQLite primary-key nonce constraint must reject it before AUTHORIZED, so
-	// no second provider call or lifecycle event is created.
-	replayOutput := runSandboxAgent(t, binary, socket, raw)
+	replay := runSandboxAgent(t, binary, socket, raw)
 	var replayReceipt protocol.Receipt
-	if err := json.Unmarshal(replayOutput, &replayReceipt); err != nil { t.Fatal(err) }
-	if replayReceipt.Type != "" { t.Fatalf("replay unexpectedly returned a receipt: %+v", replayReceipt) }
-	var nonceCount int
-	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM users WHERE id=1842 AND version=43 AND active=false`).Scan(&nonceCount); err != nil { t.Fatal(err) }
-	if nonceCount != 1 { t.Fatalf("replay changed committed row count: %d", nonceCount) }
+	if err := json.Unmarshal(replay, &replayReceipt); err != nil { t.Fatal(err) }
+	if replayReceipt.Type != "" || len(replayReceipt.Payload) != 0 { t.Fatalf("replay unexpectedly returned a receipt: %s", replay) }
+	var unchanged int
+	if err := pg.pool.QueryRow(context.Background(), `SELECT count(*) FROM users WHERE id=1842 AND version=43 AND active=false`).Scan(&unchanged); err != nil { t.Fatal(err) }
+	if unchanged != 1 { t.Fatalf("replay changed database state: %d", unchanged) }
 
-	// FORGERY ATTACK: signature is valid for the mutated contract, but the
-	// expected effect claims active=true. The real provider mutates inside its
-	// transaction, detects the mismatch before commit, and rolls the mutation
-	// back. Broker must issue ABORTED, never COMMITTED.
 	forged := signContract(t, liveContract("1843", 43, true, "nonce-forged-1843"), agentPrivate)
-	forgedOutput := runSandboxAgent(t, binary, socket, forged)
-	forgedReceipt := decodeReceipt(t, forgedOutput)
+	forgedReceipt := decodeReceipt(t, runSandboxAgent(t, binary, socket, forged))
 	forgedPayload := verifyReceipt(t, forgedReceipt, brokerPublic)
 	if forgedPayload["status"] != ledger.StateAborted { t.Fatalf("forged status = %v, want ABORTED", forgedPayload["status"]) }
 	forgedExec, ok := forgedPayload["execution_id"].(string)
@@ -369,11 +339,9 @@ func TestM6LiveFire(t *testing.T) {
 	forgedEvents, err := l.Events(context.Background(), forgedExec)
 	if err != nil { t.Fatal(err) }
 	if err := ledger.VerifyChain(forgedEvents); err != nil { t.Fatalf("forged ledger chain verification: %v", err) }
-	if len(forgedEvents) != 3 || forgedEvents[2].EventType != ledger.StateAborted { t.Fatalf("forged lifecycle = %+v", forgedEvents) }
-	if err := pool.QueryRow(context.Background(), `SELECT version, active FROM users WHERE id=1843`).Scan(&version, &active); err != nil { t.Fatal(err) }
+	if len(forgedEvents) != 3 || forgedEvents[2].EventType != ledger.StateAborted { t.Fatalf("forged lifecycle: %+v", forgedEvents) }
+	if err := pg.pool.QueryRow(context.Background(), `SELECT version, active FROM users WHERE id=1843`).Scan(&version, &active); err != nil { t.Fatal(err) }
 	if version != 42 || !active { t.Fatalf("forged mutation was committed: version %d active %v", version, active) }
 
-	t.Logf("M6 LIVE FIRE PASS: receipt=%s ledger=%s postgres=committed replay=blocked forgery=aborted", execID, ledgerPath)
+	t.Logf("M6 LIVE FIRE PASS: execution=%s postgres=%s replay=blocked forgery=aborted", execID, pg.address)
 }
-
-var _ = pgx.ErrNoRows
