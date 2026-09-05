@@ -40,9 +40,10 @@ func (l *Ledger) InitReconciliationQueue(ctx context.Context) error {
 }
 
 // QueueReconciliationEvidence durably records a late/provider response without
-// appending it to the execution lifecycle. This is the required landing zone
-// once an execution has reached INDETERMINATE or RECONCILIATION_REQUIRED.
+// appending it to the execution lifecycle. It is the landing zone for evidence
+// received after an execution has crossed the reconciliation barrier.
 func (l *Ledger) QueueReconciliationEvidence(ctx context.Context, executionID, providerRequestID, idempotencyKey string, evidence any) (ReconciliationItem, error) {
+	if err := l.InitReconciliationQueue(ctx); err != nil { return ReconciliationItem{}, err }
 	if executionID == "" || (providerRequestID == "") == (idempotencyKey == "") {
 		return ReconciliationItem{}, fmt.Errorf("exactly one provider request id or idempotency key is required")
 	}
@@ -56,16 +57,12 @@ func (l *Ledger) QueueReconciliationEvidence(ctx context.Context, executionID, p
 }
 
 func (l *Ledger) ReconciliationQueue(ctx context.Context, executionID string) ([]ReconciliationItem, error) {
+	if err := l.InitReconciliationQueue(ctx); err != nil { return nil, err }
 	rows, err := l.db.QueryContext(ctx, `SELECT reconciliation_id, execution_id, COALESCE(provider_request_id,''), COALESCE(idempotency_key,''), evidence_payload, received_at, status FROM reconciliation_queue WHERE execution_id = ? ORDER BY received_at ASC, reconciliation_id ASC`, executionID)
 	if err != nil { return nil, err }
 	defer rows.Close()
 	var out []ReconciliationItem
-	for rows.Next() {
-		var item ReconciliationItem; var received string
-		if err := rows.Scan(&item.ReconciliationID,&item.ExecutionID,&item.ProviderRequestID,&item.IdempotencyKey,&item.EvidencePayload,&received,&item.Status); err != nil { return nil, err }
-		item.ReceivedAt, err = time.Parse(time.RFC3339Nano, received); if err != nil { return nil, err }
-		out = append(out,item)
-	}
+	for rows.Next() { var item ReconciliationItem; var received string; if err := rows.Scan(&item.ReconciliationID,&item.ExecutionID,&item.ProviderRequestID,&item.IdempotencyKey,&item.EvidencePayload,&received,&item.Status); err != nil { return nil, err }; item.ReceivedAt,err=time.Parse(time.RFC3339Nano,received); if err != nil{return nil,err}; out=append(out,item) }
 	return out, rows.Err()
 }
 
