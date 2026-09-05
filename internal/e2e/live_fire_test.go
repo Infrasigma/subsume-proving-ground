@@ -35,7 +35,7 @@ func startEphemeralPostgres(t *testing.T) postgresHarness {
 	dataDir := filepath.Join(root, "pgdata")
 	socketDir := filepath.Join(root, "pgsocket")
 
-	if out, err := exec.Command("initdb", "-D", dataDir, "--no-locale", "--encoding=UTF8", "--auth=trust").CombinedOutput(); err != nil {
+	if out, err := exec.Command("initdb", "-U", "postgres", "-D", dataDir, "--no-locale", "--encoding=UTF8", "--auth=trust").CombinedOutput(); err != nil {
 		t.Fatalf("initdb: %v\n%s", err, out)
 	}
 	if err := os.MkdirAll(socketDir, 0700); err != nil {
@@ -88,20 +88,3 @@ func startEphemeralPostgres(t *testing.T) postgresHarness {
 	}
 	if _, err := pool.Exec(ctx, `CREATE TABLE users (id BIGINT PRIMARY KEY, version BIGINT NOT NULL, active BOOLEAN NOT NULL)`); err != nil { t.Fatal(err) }
 	if _, err := pool.Exec(ctx, `INSERT INTO users(id, version, active) VALUES (1842,42,true),(1843,42,true)`); err != nil { t.Fatal(err) }
-	return postgresHarness{pool: pool, address: address, stop: stop}
-}
-
-func freeTCPPort(t *testing.T) int { t.Helper(); l, err := net.Listen("tcp", "127.0.0.1:0"); if err != nil { t.Fatal(err) }; defer l.Close(); return l.Addr().(*net.TCPAddr).Port }
-func (h postgresHarness) HostPort() string { return h.address }
-
-func buildLiveAgent(t *testing.T) string {
-	t.Helper(); binary := filepath.Join(t.TempDir(), "aacr-live-agent")
-	cmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", binary, "./cmd/aacr-live-agent"); cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
-	if out, err := cmd.CombinedOutput(); err != nil { t.Fatalf("build live agent: %v\n%s", err, out) }; return binary
-}
-func mountBrokerTmpfs(t *testing.T) (string, func()) { t.Helper(); brokerDir, err := os.MkdirTemp("/dev/shm", "aacr-broker-tmpfs-"); if err != nil { t.Fatal(err) }; if err := os.Chmod(brokerDir, 0700); err != nil { t.Fatal(err) }; cleanup := func() { _ = os.RemoveAll(brokerDir) }; t.Cleanup(cleanup); return brokerDir, cleanup }
-func signContract(t *testing.T, contract provider.ActionContract, privateKey ed25519.PrivateKey) []byte { t.Helper(); env, err := protocol.SignPayload("ActionContract", contract, "agent-live", privateKey); if err != nil { t.Fatal(err) }; raw, err := json.Marshal(env); if err != nil { t.Fatal(err) }; return raw }
-func liveContract(id string, expectedVersion int64, expectedActive bool, nonce string) provider.ActionContract { now := time.Now().UTC().Round(0); return provider.ActionContract{ContractVersion:"1.0",ActionID:"m6-live-fire-"+id,ExecutionClass:"MUTATION",Actor:provider.Actor{ID:"agent-live",WorkloadIdentity:"bubblewrap-live"},Provider:"postgresql",Resource:provider.ResourceRef{Type:"users",ID:id},Operation:"deactivate_user",Arguments:map[string]any{"user_id":mustInt64(id),"expected_version":int64(42)},Precondition:map[string]any{"version":int64(42),"active":true},ExpectedEffect:provider.ExpectedEffect{Resource:"users",ID:id,Fields:map[string]any{"id":mustInt64(id),"version":expectedVersion,"active":expectedActive}},MutationScope:provider.MutationScope{MaxAffectedObjects:1},ReadScope:provider.ReadScope{MaxRecords:1,MaxBytes:4096},DataEgressScope:provider.DataEgressScope{Allowed:false},RecoveryMode:"RECONCILE",PolicyReference:provider.PolicyReference{PolicyID:"m6-live",Version:"1",Hash:"m6-live-policy"},AssuranceRequirement:"SIGNED_RECEIPT",IssuedAt:now.Format(time.RFC3339Nano),ExpiresAt:now.Add(2*time.Minute).Format(time.RFC3339Nano),Nonce:nonce} }
-func mustInt64(s string) int64 { n, _ := strconv.ParseInt(s,10,64); return n }
-func startBroker(t *testing.T, b *broker.Broker, brokerDir string) string { t.Helper(); socketPath := filepath.Join(brokerDir,"broker.sock"); listener, err := net.Listen("unix",socketPath); if err != nil { t.Fatalf("listen unix socket: %v",err) }; if err := os.Chmod(socketPath,0600); err != nil { t.Fatal(err) }; go func(){ _ = b.Serve(listener) }(); t.Cleanup(func(){ _ = listener.Close() }); return socketPath }
-func runSandboxAgent(t *testing.T,binary,socket string,raw []byte,args ...string) []byte { t.Helper(); ctx,cancel:=context.WithTimeout(context.Background(),20*time.Second); defer cancel(); agentArgs:=append([]string{},args...); if len(agentArgs)==0 { agentArgs=[]string{"/run/aacr/broker.sock"} }; cmd,err:=(boundary.BubblewrapBackend{}).Start(ctx,boundary.StartOptions{Executable:binary,BrokerDir:filepath.Dir(socket),BrokerPath:socket,Args:agentArgs,Environment:[]string{"AACR_ENVELOPE_B64="+base64.StdEncoding.EncodeToString(raw)}}); if err != nil { t.Fatalf("start Bubblewrap agent: %v",err) }; output,err:=cmd.CombinedOutput(); if err != nil { t.Fatalf("live agent failed: %v\n%s",err,output) }; return output }
