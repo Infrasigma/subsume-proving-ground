@@ -3,10 +3,7 @@ package e2e
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/rand"
-	"database/sql"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -14,16 +11,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/Infrasigma/subsume-proving-ground/internal/boundary"
 	"github.com/Infrasigma/subsume-proving-ground/internal/broker"
-	"github.com/Infrasigma/subsume-proving-ground/internal/ledger"
 	"github.com/Infrasigma/subsume-proving-ground/internal/protocol"
 	"github.com/Infrasigma/subsume-proving-ground/internal/provider"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
