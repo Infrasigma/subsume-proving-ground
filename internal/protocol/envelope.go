@@ -7,6 +7,7 @@ import (
     "encoding/hex"
     "encoding/json"
     "fmt"
+    "io"
     "os"
 )
 
@@ -21,8 +22,15 @@ func Load(path string) (Envelope, error) {
     data, err := os.ReadFile(path)
     if err != nil { return Envelope{}, err }
     var env Envelope
-    if err := json.NewDecoder(bytes.NewReader(data)).Decode(&env); err != nil {
+    dec := json.NewDecoder(bytes.NewReader(data))
+    dec.DisallowUnknownFields()
+    if err := dec.Decode(&env); err != nil {
         return Envelope{}, fmt.Errorf("decode envelope: %w", err)
+    }
+    var extra any
+    if err := dec.Decode(&extra); err != io.EOF {
+        if err == nil { return Envelope{}, fmt.Errorf("invalid envelope: trailing JSON data") }
+        return Envelope{}, fmt.Errorf("invalid envelope: trailing data: %w", err)
     }
     if env.Type == "" || len(env.Payload) == 0 || env.SignerID == "" || env.Signature == "" {
         return Envelope{}, fmt.Errorf("invalid envelope: type, payload, signer_id and signature are required")
@@ -35,6 +43,11 @@ func PayloadValue(env Envelope) (any, error) {
     dec.UseNumber()
     var v any
     if err := dec.Decode(&v); err != nil { return nil, fmt.Errorf("decode payload: %w", err) }
+    var extra any
+    if err := dec.Decode(&extra); err != io.EOF {
+        if err == nil { return nil, fmt.Errorf("decode payload: trailing JSON data") }
+        return nil, fmt.Errorf("decode payload: trailing data: %w", err)
+    }
     return v, nil
 }
 
