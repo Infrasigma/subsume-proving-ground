@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,13 +12,13 @@ import (
 )
 
 const (
-	MaxTransportFrame   = 4 << 20
-	MaxTransportWindow  = 5 * time.Second
+	MaxTransportFrame  = 4 << 20
+	MaxTransportWindow = 5 * time.Second
 )
 
 var (
 	ErrTransportFrameTooLarge = errors.New("transport frame exceeds 4 MiB limit")
-	ErrTransportTrailingData  = errors.New("transport request contains trailing data")
+	ErrTransportTrailingData = errors.New("transport request contains trailing data")
 )
 
 // HandleConnection is the untrusted transport edge. It owns only bytes,
@@ -34,31 +35,33 @@ func (b *Broker) HandleConnection(conn net.Conn) error {
 	}
 
 	limited := io.LimitReader(conn, MaxTransportFrame+1)
-	request, err := io.ReadAll(limited)
-	if err != nil {
-		return fmt.Errorf("read transport request: %w", err)
-	}
-	if len(request) > MaxTransportFrame {
-		return ErrTransportFrameTooLarge
-	}
-	if len(request) == 0 {
-		return errors.New("empty transport request")
-	}
-
+	reader := bufio.NewReaderSize(limited, 64<<10)
 	var envelope json.RawMessage
-	dec := json.NewDecoder(bytesReader(request))
+	dec := json.NewDecoder(reader)
 	if err := dec.Decode(&envelope); err != nil {
+		if reader.Buffered() >= MaxTransportFrame || errors.Is(err, io.ErrUnexpectedEOF) {
+			return ErrTransportFrameTooLarge
+		}
 		return fmt.Errorf("invalid transport JSON: %w", err)
 	}
-	var extra any
-	if err := dec.Decode(&extra); err != io.EOF {
-		if err == nil {
+
+	// Reject a second JSON value if it is already buffered. A request is one
+	// JSON envelope; the transport never dispatches a second value implicitly.
+	if reader.Buffered() > 0 {
+		var extra any
+		if err := dec.Decode(&extra); err == nil {
 			return ErrTransportTrailingData
 		}
-		return fmt.Errorf("invalid trailing transport data: %w", err)
+	}
+
+	select {
+	case <-time.After(0):
 	}
 
 	receipt, execErr := b.Execute(context.Background(), envelope)
+	if err := conn.SetWriteDeadline(time.Now().Add(MaxTransportWindow)); err != nil {
+		return fmt.Errorf("set transport write deadline: %w", err)
+	}
 	response, err := json.Marshal(receipt)
 	if err != nil {
 		return fmt.Errorf("encode receipt: %w", err)
@@ -87,24 +90,4 @@ func (b *Broker) Serve(l net.Listener) error {
 			_ = b.HandleConnection(conn)
 		}()
 	}
-}
-
-// bytesReader is deliberately tiny so the transport remains dependent only on
-// standard-library byte/JSON primitives.
-func bytesReader(p []byte) io.Reader {
-	return &sliceReader{p: p}
-}
-
-type sliceReader struct {
-	p []byte
-	i int
-}
-
-func (r *sliceReader) Read(p []byte) (int, error) {
-	if r.i >= len(r.p) {
-		return 0, io.EOF
-	}
-	n := copy(p, r.p[r.i:])
-	r.i += n
-	return n, nil
 }
