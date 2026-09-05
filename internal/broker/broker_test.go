@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Infrasigma/subsume-proving-ground/internal/ledger"
+	"github.com/Infrasigma/subsume-proving-ground/internal/protocol"
 	"github.com/Infrasigma/subsume-proving-ground/internal/provider"
 )
 
@@ -20,7 +21,7 @@ type fakeProvider struct {
 	panicValue any
 	called bool
 }
-func (f *fakeProvider) Execute(context.Context, provider.ActionContract, any) (any, error) {
+func (f *fakeProvider) Execute(context.Context, provider.ActionContract, protocol.Envelope) (any, error) {
 	f.called = true
 	if f.panicValue != nil { panic(f.panicValue) }
 	return f.result, f.err
@@ -74,6 +75,14 @@ func latestStatus(t *testing.T, l *ledger.Ledger, execID string) string {
 	e, err := l.Latest(context.Background(), execID)
 	if err != nil { t.Fatal(err) }
 	return e.EventType
+}
+
+func receiptPayload(r protocol.Receipt) (map[string]any, error) {
+	v, err := protocol.PayloadValue(r)
+	if err != nil { return nil, err }
+	m, ok := v.(map[string]any)
+	if !ok { return nil, errors.New("receipt payload is not an object") }
+	return m, nil
 }
 
 func executionIDFromReceipt(t *testing.T, receipt map[string]any) string {
