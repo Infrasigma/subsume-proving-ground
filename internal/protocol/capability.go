@@ -230,7 +230,7 @@ func signPayload(typ string, payload any, signerID string, privateKey ed25519.Pr
 	if err != nil {
 		return Envelope{}, err
 	}
-	msg := DomainMessage(domain, hash[:], signerID)
+	msg := DomainMessage(domain, hash, signerID)
 	sig := ed25519.Sign(privateKey, msg)
 	return Envelope{Type: typ, Payload: canonical, SignerID: signerID, Signature: hex.EncodeToString(sig)}, nil
 }
@@ -249,7 +249,7 @@ func verifyEnvelopeSignature(publicKey ed25519.PublicKey, env Envelope) error {
 	if err != nil {
 		return err
 	}
-	if !ed25519.Verify(publicKey, DomainMessage(domain, hash[:], env.SignerID), sig) {
+	if !ed25519.Verify(publicKey, DomainMessage(domain, hash, env.SignerID), sig) {
 		return errors.New("invalid capability signature")
 	}
 	return nil
