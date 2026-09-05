@@ -1,8 +1,11 @@
 package boundary
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -77,4 +80,38 @@ func TestListenUnixIsPrivate(t *testing.T) {
 func TestStartRejectsRelativePaths(t *testing.T) {
 	_, err := (BubblewrapBackend{BwrapPath: "/bin/false"}).Start(context.Background(), StartOptions{Executable: "probe", BrokerDir: "/tmp", BrokerPath: "/tmp/broker.sock"})
 	if err == nil { t.Fatal("expected relative executable to be rejected") }
+}
+
+func TestBrokerRejectsOversizedUnterminatedFrame(t *testing.T) {
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	max := 4 << 20
+	done := make(chan error, 1)
+	go func() {
+		done <- serveConn(context.Background(), server, func(context.Context, json.RawMessage) (json.RawMessage, error) {
+			return nil, fmt.Errorf("handler must not be reached")
+		}, max)
+	}()
+
+	w := bufio.NewWriter(client)
+	chunk := strings.Repeat("x", 64<<10)
+	written := 0
+	for written <= max {
+		n, err := w.WriteString(chunk)
+		if err != nil { t.Fatal(err) }
+		written += n
+		if written > max { break }
+	}
+	if err := w.Flush(); err != nil { t.Fatal(err) }
+
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "exceeds maximum size") {
+			t.Fatalf("unexpected oversized-frame result: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("oversized frame was not rejected promptly")
+	}
 }
