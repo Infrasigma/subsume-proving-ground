@@ -19,7 +19,7 @@ func TestBubblewrapMediatedChannelAndNetworkIsolation(t *testing.T) {
 	if err != nil {
 		t.Skip("bubblewrap is not installed")
 	}
-	probe := filepath.Join(t.TempDir(), "probe")
+	probe := "/tmp/aacr-boundary-probe"
 	build := exec.Command("go", "build", "-o", probe, "./cmd/aacr-boundary-probe")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build probe: %v\n%s", err, out)
