@@ -201,15 +201,15 @@ func buildLiveAgent(t *testing.T) string {
 
 func mountBrokerTmpfs(t *testing.T) (string, func()) {
 	t.Helper()
-	mountPoint := filepath.Join(t.TempDir(), "broker-tmpfs")
-	if err := os.Mkdir(mountPoint, 0700); err != nil { t.Fatal(err) }
-	uid, gid := strconv.Itoa(os.Geteuid()), strconv.Itoa(os.Getegid())
-	if err := runTimed(10*time.Second, "sudo", "mount", "-t", "tmpfs", "-o", "size=16m,uid="+uid+",gid="+gid+",mode=0700", "tmpfs", mountPoint); err != nil {
-		t.Fatalf("mount broker tmpfs: %v", err)
-	}
-	cleanup := func() { _ = runTimed(10*time.Second, "sudo", "umount", mountPoint) }
+	// Keep the host-side socket directory under /dev/shm. Bubblewrap creates a
+	// fresh /tmp inside the guest, so using a /tmp source path would make the
+	// bind source vulnerable to that namespace's /tmp mount ordering.
+	brokerDir, err := os.MkdirTemp("/dev/shm", "aacr-broker-tmpfs-")
+	if err != nil { t.Fatal(err) }
+	if err := os.Chmod(brokerDir, 0700); err != nil { t.Fatal(err) }
+	cleanup := func() { _ = os.RemoveAll(brokerDir) }
 	t.Cleanup(cleanup)
-	return mountPoint, cleanup
+	return brokerDir, cleanup
 }
 
 func signContract(t *testing.T, contract provider.ActionContract, privateKey ed25519.PrivateKey) []byte {
@@ -256,8 +256,8 @@ func runSandboxAgent(t *testing.T, binary, socket string, raw []byte, args ...st
 	defer cancel()
 	agentArgs := append([]string{}, args...)
 	if len(agentArgs) == 0 {
-		// socket is mounted at /run/aacr inside Bubblewrap; never leak the host
-		// mount path into the sandboxed process.
+		// The host broker directory is explicitly bound by Bubblewrap to this
+		// guest path. Never leak the host path into the sandboxed process.
 		agentArgs = []string{"/run/aacr/broker.sock"}
 	}
 	cmd, err := (boundary.BubblewrapBackend{}).Start(ctx, boundary.StartOptions{
