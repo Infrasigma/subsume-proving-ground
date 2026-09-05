@@ -20,5 +20,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y bubblewrap
       - name: Build boundary probe
         run: mkdir -p .tmp && go build -o .tmp/aacr-boundary-probe ./cmd/aacr-boundary-probe
+      - name: Disable AppArmor unprivileged userns restriction for bwrap
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: go test -mod=mod ./...
       - run: go vet -mod=mod ./...
