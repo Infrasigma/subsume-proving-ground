@@ -1,0 +1,26 @@
+name: Go CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: false
+      - name: Install Bubblewrap
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - name: Build boundary probe
+        run: CGO_ENABLED=0 go build -a -installsuffix cgo -o /tmp/aacr-boundary-probe ./cmd/aacr-boundary-probe
+      - name: Disable AppArmor unprivileged userns restriction for bwrap
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - run: go test -v -mod=mod ./...
+      - run: go vet -mod=mod ./...
