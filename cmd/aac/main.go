@@ -12,14 +12,23 @@ import (
 )
 
 func main() {
-    evidence := flag.String("evidence", "", "L2 evidence directory or file (semantic re-evaluation is reserved for M2)")
-    contract := flag.String("contract", "", "contract artifact for L2 verification")
-    publicKey := flag.String("public-key", "", "Ed25519 public key as lowercase hex (required)")
-    domain := flag.String("domain", "AACR/Receipt/v1", "domain used for signature verification")
-    flag.Parse()
+    if len(os.Args) < 2 || os.Args[1] != "verify" {
+        fmt.Fprintln(os.Stderr, "usage: aac verify [--public-key HEX] [--domain DOMAIN] [--evidence PATH] [--contract PATH] receipt.json")
+        os.Exit(2)
+    }
 
-    if flag.NArg() != 1 {
-        fmt.Fprintln(os.Stderr, "usage: aac verify [--public-key HEX] [--domain DOMAIN] receipt.json")
+    fs := flag.NewFlagSet("verify", flag.ContinueOnError)
+    fs.SetOutput(os.Stderr)
+    evidence := fs.String("evidence", "", "L2 evidence directory or file (semantic re-evaluation is reserved for M2)")
+    contract := fs.String("contract", "", "contract artifact for L2 verification")
+    publicKey := fs.String("public-key", "", "Ed25519 public key as lowercase hex (required)")
+    domain := fs.String("domain", "AACR/Receipt/v1", "domain used for signature verification")
+    if err := fs.Parse(os.Args[2:]); err != nil {
+        os.Exit(2)
+    }
+
+    if fs.NArg() != 1 {
+        fmt.Fprintln(os.Stderr, "usage: aac verify [--public-key HEX] [--domain DOMAIN] [--evidence PATH] [--contract PATH] receipt.json")
         os.Exit(2)
     }
     if *publicKey == "" {
@@ -30,7 +39,7 @@ func main() {
         fmt.Fprintln(os.Stderr, "note: --evidence/--contract are accepted as the M1.5 UX surface; CEL evidence re-evaluation lands in M2")
     }
 
-    env, err := protocol.Load(flag.Arg(0))
+    env, err := protocol.Load(fs.Arg(0))
     if err != nil { fail(err) }
     value, err := protocol.PayloadValue(env)
     if err != nil { fail(err) }
