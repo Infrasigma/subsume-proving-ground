@@ -12,10 +12,69 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          clean: true
+          fetch-depth: 0
+      - name: Verify CI checkout provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          echo "GITHUB_HEAD_SHA=${GITHUB_HEAD_SHA:-}"
+          echo "GITHUB_BASE_REF=${GITHUB_BASE_REF:-}"
+          echo "GITHUB_REF=$GITHUB_REF"
+          echo "GITHUB_EVENT_NAME=$GITHUB_EVENT_NAME"
+          actual_sha="$(git rev-parse HEAD)"
+          verified_sha="$(git rev-parse --verify HEAD)"
+          echo "git rev-parse HEAD=$actual_sha"
+          echo "git rev-parse --verify HEAD=$verified_sha"
+          git status --porcelain
+          git show -s --format='%H %P %D' HEAD
+          test "$actual_sha" = "$GITHUB_SHA" || {
+            echo "FATAL: CI checkout mismatch"
+            echo "expected=$GITHUB_SHA"
+            echo "actual=$actual_sha"
+            exit 1
+          }
+          test "$verified_sha" = "$actual_sha"
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            test -n "${GITHUB_HEAD_SHA:-}"
+            echo "PR head commit=$GITHUB_HEAD_SHA"
+            git cat-file -e "$GITHUB_HEAD_SHA^{commit}"
+          fi
+      - name: Verify checked source and fingerprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '--- internal/protocol/receipt.go ---'
+          git show "HEAD:internal/protocol/receipt.go"
+          echo '--- internal/e2e/live_fire_test.go instrumentation ---'
+          grep -n -E 'receipt\.Type|reflect|COMPILED STRUCT|TYPE FIELD EXACT TAG' internal/e2e/live_fire_test.go
+          echo '--- source tree fingerprint ---'
+          git ls-files -z | sort -z | xargs -0 sha256sum | sha256sum
+          echo '--- git tree ---'
+          git rev-parse HEAD^{tree}
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25.x'
           cache: false
+      - name: Capture Go build provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          go version
+          go env GOMOD GOPATH GOCACHE GOMODCACHE GOOS GOARCH GOFLAGS GOWORK GOTOOLCHAIN
+          echo '--- module ---'
+          go list -m -json
+          echo '--- e2e package ---'
+          go list -json ./internal/e2e
+          echo '--- dependency package resolution ---'
+          go list -deps ./internal/e2e | grep '^github.com/Infrasigma/subsume-proving-ground/'
+      - name: Clean Go caches for forensic run
+        shell: bash
+        run: |
+          set -euo pipefail
+          go clean -cache -testcache
       - name: Install Bubblewrap and PostgreSQL
         run: |
           sudo apt-get update
@@ -25,5 +84,11 @@ jobs:
         run: CGO_ENABLED=0 go build -a -installsuffix cgo -o /tmp/aacr-boundary-probe ./cmd/aacr-boundary-probe
       - name: Disable AppArmor unprivileged userns restriction for bwrap
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-      - run: go test -v -mod=mod ./...
+      - name: Prove e2e compiler inputs
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -x -run '^$' ./internal/e2e 2>&1 | tee /tmp/go-test-e2e-x.log
+      - name: Run tests from clean cache
+        run: go test -v -count=1 -mod=mod ./...
       - run: go vet -mod=mod ./...
