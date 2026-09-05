@@ -2,7 +2,6 @@ package broker
 
 import (
 	"bytes"
-	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
@@ -183,7 +182,4 @@ func TestHandleConnectionClosesConnectionOnReject(t *testing.T) {
 	}
 	_ = client.Close()
 	<-done
-
-	// The server side is guaranteed to close by HandleConnection's first defer.
-	_ = context.Background()
 }
