@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,7 +39,7 @@ func TestM6LiveFireNetworkBypass(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	output, err := cmd.CombinedOutput()
 	if err != nil { t.Fatalf("network bypass probe failed: %v\n%s", err, output) }
-	if got := string(output); got == "" || !containsNetworkUnreachable(got) {
+	if got := string(output); got == "" || !strings.Contains(got, "network is unreachable") {
 		t.Fatalf("expected ENETUNREACH from sandbox to PostgreSQL %s, got %q", target, got)
 	}
 	t.Logf("M6 network fence PASS: sandbox -> %s rejected with ENETUNREACH", target)
