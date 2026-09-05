@@ -10,7 +10,7 @@ import (
 
 func main() {
 	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: aacr-boundary-probe /aacr/run/broker.sock")
+		fmt.Fprintln(os.Stderr, "usage: aacr-boundary-probe /run/aacr/broker.sock")
 		os.Exit(2)
 	}
 	socket := os.Args[1]
@@ -34,6 +34,11 @@ func main() {
 	if _, err := net.DialTimeout("tcp", "127.0.0.1:9", 200*time.Millisecond); err == nil {
 		fmt.Fprintln(os.Stderr, "network unexpectedly reachable")
 		os.Exit(6)
+	} else {
+		// Preserve the kernel/network-stack error verbatim so the CI artifact
+		// proves the attempted network connection was rejected inside the
+		// isolated namespace, rather than merely reporting a boolean.
+		fmt.Fprintln(os.Stderr, err)
 	}
 	fmt.Println(`{"network":"blocked"}`)
 }
