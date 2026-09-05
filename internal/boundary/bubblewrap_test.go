@@ -71,8 +71,15 @@ func TestBubblewrapMediatedChannelAndNetworkIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sandbox probe failed: %v\n%s", err, output)
 	}
+
+	// Preserve the physical sandbox receipts in CI logs. CombinedOutput captures
+	// both stdout and stderr, including the kernel-derived network refusal.
+	t.Logf("sandbox stdout/stderr:\n%s", text)
 	if !strings.Contains(text, `{"accepted":true}`) {
 		t.Fatalf("mediated channel was not reachable: %s", text)
+	}
+	if !strings.Contains(text, "network is unreachable") {
+		t.Fatalf("sandbox did not expose the expected network-unreachable error: %s", text)
 	}
 	if !strings.Contains(text, `{"network":"blocked"}`) {
 		t.Fatalf("sandbox did not prove network isolation: %s", text)
