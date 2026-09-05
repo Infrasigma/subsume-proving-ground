@@ -34,28 +34,24 @@ func (b *Broker) HandleConnection(conn net.Conn) error {
 		return fmt.Errorf("set transport deadline: %w", err)
 	}
 
-	limited := io.LimitReader(conn, MaxTransportFrame+1)
+	limited := &countingReader{Reader: io.LimitReader(conn, MaxTransportFrame+1)}
 	reader := bufio.NewReaderSize(limited, 64<<10)
 	var envelope json.RawMessage
 	dec := json.NewDecoder(reader)
 	if err := dec.Decode(&envelope); err != nil {
-		if reader.Buffered() >= MaxTransportFrame || errors.Is(err, io.ErrUnexpectedEOF) {
+		if limited.n > MaxTransportFrame {
 			return ErrTransportFrameTooLarge
 		}
 		return fmt.Errorf("invalid transport JSON: %w", err)
 	}
 
-	// Reject a second JSON value if it is already buffered. A request is one
-	// JSON envelope; the transport never dispatches a second value implicitly.
+	// A request is exactly one JSON envelope. If another complete value is
+	// already buffered, reject it before any authority-bearing code runs.
 	if reader.Buffered() > 0 {
 		var extra any
 		if err := dec.Decode(&extra); err == nil {
 			return ErrTransportTrailingData
 		}
-	}
-
-	select {
-	case <-time.After(0):
 	}
 
 	receipt, execErr := b.Execute(context.Background(), envelope)
@@ -90,4 +86,15 @@ func (b *Broker) Serve(l net.Listener) error {
 			_ = b.HandleConnection(conn)
 		}()
 	}
+}
+
+type countingReader struct {
+	io.Reader
+	n int
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	r.n += n
+	return n, err
 }
