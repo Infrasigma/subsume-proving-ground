@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/Infrasigma/subsume-proving-ground/internal/c14n"
-	"github.com/Infrasigma/subsume-proving-ground/internal/provider"
 )
 
 const (
@@ -28,10 +27,6 @@ var (
 	ErrCapabilityReplayable           = errors.New("capability must be single-use")
 )
 
-// Capability is a minimum-authority execution grant. It deliberately contains
-// references and bindings, not a copy of ActionContract intent. The contract
-// hash is the split-brain defense: changing the contract cannot leave a
-// second, independently mutable copy inside the capability.
 type Capability struct {
 	CapabilityVersion int    `json:"capability_version"`
 	CapabilityID      string `json:"capability_id"`
@@ -47,10 +42,7 @@ type Capability struct {
 	ExpiresAt         string `json:"expires_at"`
 }
 
-// MintCapability hashes the canonical ActionContract and signs a capability
-// bound to exactly one execution attempt. No contract intent is copied into
-// the capability payload.
-func MintCapability(contract provider.ActionContract, executionID, brokerID, audience, boundaryBinding string, now time.Time, privateKey ed25519.PrivateKey) (Envelope, Capability, error) {
+func MintCapability(contract ActionContract, executionID, brokerID, audience, boundaryBinding string, now time.Time, privateKey ed25519.PrivateKey) (Envelope, Capability, error) {
 	if err := contract.ValidateForMutation(); err != nil {
 		return Envelope{}, Capability{}, fmt.Errorf("validate contract: %w", err)
 	}
@@ -108,17 +100,17 @@ func MintCapability(contract provider.ActionContract, executionID, brokerID, aud
 
 	capability := Capability{
 		CapabilityVersion: CapabilityVersion,
-		CapabilityID:      capabilityID,
-		ExecutionID:       executionID,
-		ContractHash:      hex.EncodeToString(contractSum[:]),
-		BrokerID:          brokerID,
-		Audience:          audience,
-		BoundaryBinding:   boundaryBinding,
-		Nonce:             nonce,
-		SingleUse:         true,
-		IssuedAt:          now.Format(time.RFC3339Nano),
-		NotBefore:         notBefore.Format(time.RFC3339Nano),
-		ExpiresAt:         expires.Format(time.RFC3339Nano),
+		CapabilityID: capabilityID,
+		ExecutionID: executionID,
+		ContractHash: hex.EncodeToString(contractSum[:]),
+		BrokerID: brokerID,
+		Audience: audience,
+		BoundaryBinding: boundaryBinding,
+		Nonce: nonce,
+		SingleUse: true,
+		IssuedAt: now.Format(time.RFC3339Nano),
+		NotBefore: notBefore.Format(time.RFC3339Nano),
+		ExpiresAt: expires.Format(time.RFC3339Nano),
 	}
 
 	env, err := signPayload("Capability", capability, brokerID, privateKey)
@@ -128,10 +120,7 @@ func MintCapability(contract provider.ActionContract, executionID, brokerID, aud
 	return env, capability, nil
 }
 
-// VerifyCapability verifies the broker signature and re-computes the exact
-// contract hash. It also proves that the grant cannot outlive the contract or
-// the broker's maximum TTL. Replay/nonce consumption belongs to the ledger.
-func VerifyCapability(env Envelope, publicKey ed25519.PublicKey, contract provider.ActionContract, executionID, brokerID string, now time.Time) (Capability, error) {
+func VerifyCapability(env Envelope, publicKey ed25519.PublicKey, contract ActionContract, executionID, brokerID string, now time.Time) (Capability, error) {
 	if env.Type != "Capability" {
 		return Capability{}, fmt.Errorf("unexpected envelope type %q", env.Type)
 	}
@@ -196,7 +185,7 @@ func VerifyCapability(env Envelope, publicKey ed25519.PublicKey, contract provid
 	return cap, nil
 }
 
-func canonicalContract(contract provider.ActionContract) ([]byte, error) {
+func canonicalContract(contract ActionContract) ([]byte, error) {
 	b, err := json.Marshal(contract)
 	if err != nil {
 		return nil, fmt.Errorf("marshal action contract: %w", err)
