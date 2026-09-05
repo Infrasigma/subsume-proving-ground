@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -109,9 +110,20 @@ func freeTCPPort(t *testing.T) int { t.Helper(); l, err := net.Listen("tcp", "12
 func (h postgresHarness) HostPort() string { return h.address }
 
 func buildLiveAgent(t *testing.T) string {
-	t.Helper(); binary := filepath.Join(t.TempDir(), "aacr-live-agent")
-	cmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", binary, "./cmd/aacr-live-agent"); cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
-	if out, err := cmd.CombinedOutput(); err != nil { t.Fatalf("build live agent: %v\n%s", err, out) }; return binary
+	t.Helper()
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to resolve runtime.Caller for source anchoring")
+	}
+	repoRoot := filepath.Join(filepath.Dir(filename), "..", "..")
+	binary := filepath.Join(t.TempDir(), "aacr-live-agent")
+	cmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", binary, "./cmd/aacr-live-agent")
+	cmd.Dir = repoRoot
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build live agent: %v\n%s", err, out)
+	}
+	return binary
 }
 func mountBrokerTmpfs(t *testing.T) (string, func()) { t.Helper(); brokerDir, err := os.MkdirTemp("/dev/shm", "aacr-broker-tmpfs-"); if err != nil { t.Fatal(err) }; if err := os.Chmod(brokerDir, 0700); err != nil { t.Fatal(err) }; cleanup := func() { _ = os.RemoveAll(brokerDir) }; t.Cleanup(cleanup); return brokerDir, cleanup }
 func signContract(t *testing.T, contract provider.ActionContract, privateKey ed25519.PrivateKey) []byte { t.Helper(); env, err := protocol.SignPayload("ActionContract", contract, "agent-live", privateKey); if err != nil { t.Fatal(err) }; raw, err := json.Marshal(env); if err != nil { t.Fatal(err) }; return raw }
