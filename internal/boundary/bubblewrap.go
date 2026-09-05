@@ -15,9 +15,10 @@ import (
 
 var ErrBubblewrapUnavailable = errors.New("bubblewrap is unavailable")
 
-// BubblewrapBackend runs an agent with no network namespace and only the
-// explicitly mounted executable and broker directory visible. The broker
-// remains outside the sandbox and owns all provider credentials/connections.
+// BubblewrapBackend runs an agent with no network, PID, IPC, UTS, or cgroup
+// namespace sharing and only the explicitly mounted executable and broker
+// directory visible. The broker remains outside the sandbox and owns all
+// provider credentials/connections.
 type BubblewrapBackend struct {
 	BwrapPath string
 }
@@ -46,6 +47,9 @@ func (b BubblewrapBackend) Start(ctx context.Context, opts StartOptions) (*exec.
 	if err := validatePath(opts.BrokerPath); err != nil {
 		return nil, fmt.Errorf("broker path: %w", err)
 	}
+	if filepath.Dir(opts.BrokerPath) != opts.BrokerDir {
+		return nil, fmt.Errorf("broker socket must be directly inside broker directory")
+	}
 
 	bwrap := b.BwrapPath
 	if bwrap == "" {
@@ -58,13 +62,16 @@ func (b BubblewrapBackend) Start(ctx context.Context, opts StartOptions) (*exec.
 
 	guestBrokerDir := "/aacr/run"
 	guestExecutable := "/aacr/bin/agent"
-	guestSocket := filepath.Join(guestBrokerDir, filepath.Base(opts.BrokerPath))
 
 	args := []string{
 		"--die-with-parent",
 		"--new-session",
 		"--clearenv",
 		"--unshare-net",
+		"--unshare-pid",
+		"--unshare-ipc",
+		"--unshare-uts",
+		"--unshare-cgroup",
 		"--dev", "/dev",
 		"--proc", "/proc",
 		"--tmpfs", "/tmp",
@@ -77,7 +84,6 @@ func (b BubblewrapBackend) Start(ctx context.Context, opts StartOptions) (*exec.
 	cmd := exec.CommandContext(ctx, bwrap, args...)
 	cmd.Env = append([]string{}, opts.Environment...)
 	cmd.Dir = "/"
-	_ = guestSocket
 	return cmd, nil
 }
 
@@ -93,7 +99,7 @@ func validatePath(p string) error {
 
 // Broker is the host-side channel exposed to a sandboxed agent. It has no
 // provider access itself; the supplied handler decides what a protocol request
-// may do. Frames are newline-delimited JSON with a bounded size.
+// may do. Frames are newline-delimited JSON with a hard byte limit.
 type Broker struct {
 	Listener net.Listener
 	Handler  func(context.Context, json.RawMessage) (json.RawMessage, error)
@@ -112,7 +118,7 @@ func (b *Broker) Serve(ctx context.Context) error {
 	}
 	max := b.MaxFrame
 	if max <= 0 {
-		max = 1 << 20
+		max = 4 << 20
 	}
 
 	var wg sync.WaitGroup
@@ -137,13 +143,10 @@ func (b *Broker) Serve(ctx context.Context) error {
 
 func serveConn(ctx context.Context, conn net.Conn, handler func(context.Context, json.RawMessage) (json.RawMessage, error), max int) error {
 	defer conn.Close()
-	reader := bufio.NewReaderSize(conn, max+1)
-	line, err := reader.ReadBytes('\n')
+	reader := bufio.NewReaderSize(conn, min(max, 64<<10))
+	line, err := readBoundedLine(reader, max)
 	if err != nil {
 		return err
-	}
-	if len(line) > max {
-		return fmt.Errorf("broker frame exceeds maximum size of %d bytes", max)
 	}
 	var payload json.RawMessage
 	if err := json.Unmarshal(line, &payload); err != nil {
@@ -167,4 +170,33 @@ func serveConn(ctx context.Context, conn net.Conn, handler func(context.Context,
 	enc = append(enc, '\n')
 	_, err = conn.Write(enc)
 	return err
+}
+
+func readBoundedLine(reader *bufio.Reader, max int) ([]byte, error) {
+	if max <= 0 {
+		return nil, fmt.Errorf("maximum frame size must be positive")
+	}
+	buf := make([]byte, 0, min(max, 64<<10))
+	for {
+		part, err := reader.ReadSlice('\n')
+		if len(part) > 0 {
+			if len(buf)+len(part) > max {
+				return nil, fmt.Errorf("broker frame exceeds maximum size of %d bytes", max)
+			}
+			buf = append(buf, part...)
+		}
+		if err == nil {
+			return buf, nil
+		}
+		if err != bufio.ErrBufferFull {
+			return nil, err
+		}
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
