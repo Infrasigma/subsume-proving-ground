@@ -60,7 +60,7 @@ func (b BubblewrapBackend) Start(ctx context.Context, opts StartOptions) (*exec.
 		}
 	}
 
-	guestBrokerDir := "/aacr/run"
+	guestBrokerDir := "/run/aacr"
 	guestExecutable := "/aacr/bin/agent"
 
 	args := []string{
@@ -72,11 +72,15 @@ func (b BubblewrapBackend) Start(ctx context.Context, opts StartOptions) (*exec.
 		"--unshare-ipc",
 		"--unshare-uts",
 		"--unshare-cgroup",
+		"--dir", "/aacr",
+		"--dir", "/aacr/bin",
+		"--dir", "/run",
+		"--dir", guestBrokerDir,
 		"--dev", "/dev",
 		"--proc", "/proc",
 		"--tmpfs", "/tmp",
 		"--ro-bind", opts.Executable, guestExecutable,
-		"--ro-bind", opts.BrokerDir, guestBrokerDir,
+		"--bind", opts.BrokerDir, guestBrokerDir,
 		guestExecutable,
 	}
 	args = append(args, opts.Args...)
