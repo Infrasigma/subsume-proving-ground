@@ -131,7 +131,7 @@ BEGIN
         WHEN NEW.sequence > 1 AND EXISTS (
             SELECT 1 FROM executions WHERE execution_id = NEW.execution_id AND (
                 (latest_state = 'AUTHORIZED' AND NEW.event_type != 'DISPATCHED') OR
-                (latest_state = 'DISPATCHED' AND NEW.event_type NOT IN ('RECOVERY_DETECTED','EFFECT_OBSERVED','ABORTED','INDETERMINATE')) OR
+                (latest_state = 'DISPATCHED' AND NEW.event_type NOT IN ('RECOVERY_DETECTED','EFFECT_OBSERVED','COMMITTED','ABORTED','INDETERMINATE')) OR
                 (latest_state = 'EFFECT_OBSERVED' AND NEW.event_type NOT IN ('VERIFIED','INDETERMINATE','QUARANTINED')) OR
                 (latest_state = 'VERIFIED' AND NEW.event_type NOT IN ('COMMITTED','ABORTED','COMPENSATED')) OR
                 (latest_state = 'INDETERMINATE' AND NEW.event_type != 'RECONCILIATION_REQUIRED') OR
@@ -228,7 +228,7 @@ func VerifyChain(events []Event) error {
 	return nil
 }
 
-func allowed(state,event string) bool { switch state { case StateAuthorized:return event==StateDispatched; case StateDispatched:return event==EventRecoveryDetected||event==StateEffectObserved||event==StateAborted||event==StateIndeterminate; case StateEffectObserved:return event==StateVerified||event==StateIndeterminate||event==StateQuarantined; case StateVerified:return event==StateCommitted||event==StateAborted||event==StateCompensated; case StateIndeterminate:return event==StateReconciliationRequired; case StateReconciliationRequired:return event==StateVerified||event==StateAborted||event==StateCompensated||event==StateQuarantined; default:return false } }
+func allowed(state,event string) bool { switch state { case StateAuthorized:return event==StateDispatched; case StateDispatched:return event==EventRecoveryDetected||event==StateEffectObserved||event==StateCommitted||event==StateAborted||event==StateIndeterminate; case StateEffectObserved:return event==StateVerified||event==StateIndeterminate||event==StateQuarantined; case StateVerified:return event==StateCommitted||event==StateAborted||event==StateCompensated; case StateIndeterminate:return event==StateReconciliationRequired; case StateReconciliationRequired:return event==StateVerified||event==StateAborted||event==StateCompensated||event==StateQuarantined; default:return false } }
 func isTerminal(state string) bool { return state==StateCommitted||state==StateAborted||state==StateCompensated||state==StateQuarantined }
 
 func validateDispatchPayload(payload []byte, dispatchedAt time.Time) error {
