@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 
 	"github.com/Infrasigma/subsume-proving-ground/internal/c14n"
 )
@@ -26,66 +28,31 @@ type StateDeltaRow struct {
 }
 
 func NewDeactivateUser(executionID string, resultRows int64, row map[string]any) (DeactivateUserEvidence, error) {
-	if executionID == "" {
-		return DeactivateUserEvidence{}, fmt.Errorf("execution_id is required")
-	}
-	if resultRows != 1 {
-		return DeactivateUserEvidence{}, fmt.Errorf("deactivate_user evidence requires exactly one affected row")
-	}
-	id, ok := integerValue(row["id"])
-	if !ok {
-		return DeactivateUserEvidence{}, fmt.Errorf("state_delta.id must be an integer")
-	}
-	version, ok := integerValue(row["version"])
-	if !ok {
-		return DeactivateUserEvidence{}, fmt.Errorf("state_delta.version must be an integer")
-	}
-	active, ok := row["active"].(bool)
-	if !ok {
-		return DeactivateUserEvidence{}, fmt.Errorf("state_delta.active must be boolean")
-	}
-	return DeactivateUserEvidence{
-		ExecutionID: executionID,
-		Provider: "postgresql",
-		Operation: "deactivate_user",
-		Status: "COMMITTED",
-		AffectedRows: 1,
-		StateDelta: []StateDeltaRow{{ID: id, Version: version, Active: active}},
-	}, nil
+	if executionID == "" { return DeactivateUserEvidence{}, fmt.Errorf("execution_id is required") }
+	if resultRows != 1 { return DeactivateUserEvidence{}, fmt.Errorf("deactivate_user evidence requires exactly one affected row") }
+	id, ok := integerValue(row["id"]); if !ok { return DeactivateUserEvidence{}, fmt.Errorf("state_delta.id must be an integer") }
+	version, ok := integerValue(row["version"]); if !ok { return DeactivateUserEvidence{}, fmt.Errorf("state_delta.version must be an integer") }
+	active, ok := row["active"].(bool); if !ok { return DeactivateUserEvidence{}, fmt.Errorf("state_delta.active must be boolean") }
+	return DeactivateUserEvidence{ExecutionID: executionID, Provider: "postgresql", Operation: "deactivate_user", Status: "COMMITTED", AffectedRows: 1, StateDelta: []StateDeltaRow{{ID: id, Version: version, Active: active}}}, nil
 }
 
 func Canonical(v any) ([]byte, error) {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return nil, fmt.Errorf("marshal evidence: %w", err)
-	}
+	b, err := json.Marshal(v); if err != nil { return nil, fmt.Errorf("marshal evidence: %w", err) }
 	var decoded any
-	d := json.NewDecoder(bytes.NewReader(b))
-	d.UseNumber()
-	if err := d.Decode(&decoded); err != nil {
-		return nil, fmt.Errorf("decode evidence JSON: %w", err)
-	}
+	d := json.NewDecoder(bytes.NewReader(b)); d.UseNumber()
+	if err := d.Decode(&decoded); err != nil { return nil, fmt.Errorf("decode evidence JSON: %w", err) }
 	var extra any
-	if err := d.Decode(&extra); err == nil {
-		return nil, fmt.Errorf("trailing evidence JSON")
-	}
+	if err := d.Decode(&extra); !errors.Is(err, io.EOF) { if err == nil { return nil, fmt.Errorf("trailing evidence JSON") }; return nil, fmt.Errorf("decode trailing evidence JSON: %w", err) }
 	return c14n.Canonicalize(decoded)
 }
 
 func Hash(v any) ([32]byte, []byte, error) {
-	canonical, err := Canonical(v)
-	if err != nil {
-		return [32]byte{}, nil, err
-	}
+	canonical, err := Canonical(v); if err != nil { return [32]byte{}, nil, err }
 	return sha256.Sum256(canonical), canonical, nil
 }
 
 func HashHex(v any) (string, error) {
-	h, _, err := Hash(v)
-	if err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h[:]), nil
+	h, _, err := Hash(v); if err != nil { return "", err }; return hex.EncodeToString(h[:]), nil
 }
 
 func integerValue(v any) (int64, bool) {
