@@ -2,17 +2,25 @@ package c14n
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
+	"strings"
 	"testing"
 )
 
-func TestCanonicalizeDeterministic(t *testing.T) {
+func decodeNumber(t *testing.T, input string) any {
+	t.Helper()
 	var v any
-	dec := json.NewDecoder(stringsReader(`{"b":2,"a":1,"arr":[true,null,"x"]}`))
+	dec := json.NewDecoder(strings.NewReader(input))
 	dec.UseNumber()
 	if err := dec.Decode(&v); err != nil {
 		t.Fatal(err)
 	}
+	return v
+}
+
+func TestCanonicalizeDeterministic(t *testing.T) {
+	v := decodeNumber(t, `{"b":2,"a":1,"arr":[true,null,"x"]}`)
 	got, err := Canonicalize(v)
 	if err != nil {
 		t.Fatal(err)
@@ -24,57 +32,66 @@ func TestCanonicalizeDeterministic(t *testing.T) {
 }
 
 func TestCanonicalizeUnicodeKeyOrder(t *testing.T) {
-	var v any
-	dec := json.NewDecoder(stringsReader(`{"z":1,"é":2,"😀":3,"a":4}`))
-	dec.UseNumber()
-	if err := dec.Decode(&v); err != nil {
-		t.Fatal(err)
-	}
+	v := decodeNumber(t, `{"z":1,"é":2,"a":4}`)
 	got, err := Canonicalize(v)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"a":4,"z":1,"é":2,"😀":3}`
+	want := `{"a":4,"z":1,"é":2}`
 	if string(got) != want {
 		t.Fatalf("got %s want %s", got, want)
 	}
 }
 
+func TestRejectSupplementaryUnicodeObjectKey(t *testing.T) {
+	v := decodeNumber(t, `{"😀":1}`)
+	if _, err := Canonicalize(v); err == nil {
+		t.Fatal("expected supplementary Unicode object key rejection")
+	}
+}
+
 func TestAcceptSignedInt64Bounds(t *testing.T) {
 	for _, input := range []string{`-9223372036854775808`, `9223372036854775807`} {
-		var v any
-		dec := json.NewDecoder(stringsReader(input))
-		dec.UseNumber()
-		if err := dec.Decode(&v); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := Canonicalize(v); err != nil {
+		if _, err := Canonicalize(decodeNumber(t, input)); err != nil {
 			t.Fatalf("%s rejected: %v", input, err)
 		}
 	}
 }
 
-func TestRejectIntegerOverflow(t *testing.T) {
-	var v any
-	dec := json.NewDecoder(stringsReader(`9223372036854775808`))
-	dec.UseNumber()
-	if err := dec.Decode(&v); err != nil {
+func TestNormalizeNegativeZero(t *testing.T) {
+	got, err := Canonicalize(decodeNumber(t, `-0`))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Canonicalize(v); err == nil {
+	if string(got) != `0` {
+		t.Fatalf("got %s want 0", got)
+	}
+}
+
+func TestRejectIntegerOverflow(t *testing.T) {
+	if _, err := Canonicalize(decodeNumber(t, `9223372036854775808`)); err == nil {
 		t.Fatal("expected int64 overflow rejection")
 	}
 }
 
 func TestRejectFloat(t *testing.T) {
-	var v any
-	dec := json.NewDecoder(stringsReader(`{"n":1.5}`))
-	dec.UseNumber()
-	if err := dec.Decode(&v); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Canonicalize(v); err == nil {
+	if _, err := Canonicalize(decodeNumber(t, `{"n":1.5}`)); err == nil {
 		t.Fatal("expected float rejection")
+	}
+}
+
+func TestRejectDeepNesting(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < maxDepth+1; i++ {
+		b.WriteByte('[')
+	}
+	b.WriteString(`0`)
+	for i := 0; i < maxDepth+1; i++ {
+		b.WriteByte(']')
+	}
+
+	if _, err := Canonicalize(decodeNumber(t, b.String())); !errors.Is(err, ErrExceededMaxDepth) {
+		t.Fatalf("got %v want %v", err, ErrExceededMaxDepth)
 	}
 }
 
@@ -91,5 +108,3 @@ func (r *strReader) Read(p []byte) (int, error) {
 	r.i += n
 	return n, nil
 }
-
-func stringsReader(s string) *strReader { return &strReader{s: s} }
