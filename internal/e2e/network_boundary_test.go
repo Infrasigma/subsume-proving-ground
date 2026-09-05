@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -27,7 +26,7 @@ func TestM6LiveFireNetworkBypass(t *testing.T) {
 	defer listener.Close()
 	if err := os.Chmod(socket, 0600); err != nil { t.Fatal(err) }
 
-	target := fmt.Sprintf("127.0.0.1:%d", pool.Config().ConnConfig.Port)
+	target := pool.HostPort()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	cmd, err := (boundary.BubblewrapBackend{}).Start(ctx, boundary.StartOptions{
