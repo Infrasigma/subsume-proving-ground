@@ -10,6 +10,8 @@ import (
 	"io"
 	"net"
 	"time"
+
+	"github.com/Infrasigma/subsume-proving-ground/internal/ledger"
 )
 
 const (
@@ -21,6 +23,10 @@ var (
 	ErrTransportFrameTooLarge = errors.New("transport frame exceeds 4 MiB limit")
 	ErrTransportTrailingData = errors.New("transport request contains trailing data")
 )
+
+type transportError struct {
+	Error string `json:"error"`
+}
 
 // HandleConnection is the untrusted transport edge. It owns only bytes,
 // framing, deadlines, JSON syntax, and connection teardown. All action
@@ -59,12 +65,23 @@ func (b *Broker) HandleConnection(conn net.Conn) error {
 	if err := conn.SetWriteDeadline(time.Now().Add(MaxTransportWindow)); err != nil {
 		return fmt.Errorf("set transport write deadline: %w", err)
 	}
-	response, err := json.Marshal(receipt)
-	if err != nil {
-		return fmt.Errorf("encode receipt: %w", err)
+
+	var response []byte
+	if execErr != nil {
+		code := "execution_rejected"
+		if errors.Is(execErr, ledger.ErrContractNonceReplay) {
+			code = "duplicate_nonce"
+		}
+		response, _ = json.Marshal(transportError{Error: code})
+	} else {
+		var err error
+		response, err = json.Marshal(receipt)
+		if err != nil {
+			return fmt.Errorf("encode receipt: %w", err)
+		}
 	}
 	if _, err := conn.Write(response); err != nil {
-		return fmt.Errorf("write receipt: %w", err)
+		return fmt.Errorf("write response: %w", err)
 	}
 	if execErr != nil {
 		return execErr
