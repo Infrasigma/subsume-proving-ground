@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aacr.dev/schema/capability/v1",
+  "title": "AACR Capability v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "capability_version",
+    "capability_id",
+    "execution_id",
+    "contract_hash",
+    "broker_id",
+    "audience",
+    "boundary_binding",
+    "nonce",
+    "single_use",
+    "issued_at",
+    "not_before",
+    "expires_at"
+  ],
+  "properties": {
+    "capability_version": { "const": 1 },
+    "capability_id": { "type": "string", "minLength": 1 },
+    "execution_id": { "type": "string", "minLength": 1 },
+    "contract_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "broker_id": { "type": "string", "minLength": 1 },
+    "audience": { "type": "string", "minLength": 1 },
+    "boundary_binding": { "type": "string", "minLength": 1 },
+    "nonce": { "type": "string", "minLength": 1 },
+    "single_use": { "const": true },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "not_before": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" }
+  }
+}
