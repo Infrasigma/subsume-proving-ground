@@ -21,7 +21,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// postgresHarness owns a completely isolated ephemeral PostgreSQL instance.
 type postgresHarness struct {
 	pool    *pgxpool.Pool
 	address string
@@ -36,21 +35,15 @@ func startEphemeralPostgres(t *testing.T) postgresHarness {
 	dataDir := filepath.Join(root, "pgdata")
 	socketDir := filepath.Join(root, "pgsocket")
 
-	// initdb must receive a genuinely empty path and create the cluster itself.
 	if out, err := exec.Command("initdb", "-D", dataDir, "--no-locale", "--encoding=UTF8", "--auth=trust").CombinedOutput(); err != nil {
 		t.Fatalf("initdb: %v\n%s", err, out)
 	}
-	// Keep the Unix socket outside PGDATA so harness setup can never make the
-	// initdb target non-empty. It is created only after initdb succeeds.
 	if err := os.MkdirAll(socketDir, 0700); err != nil {
 		t.Fatalf("create postgres socket dir: %v", err)
 	}
 	address := fmt.Sprintf("127.0.0.1:%d", port)
 	pgOptions := fmt.Sprintf("-p %d -h 127.0.0.1 -k %s", port, socketDir)
 
-	// pg_ctl backgrounds postgres. Never attach Go-owned pipes to pg_ctl's
-	// stdout/stderr: the daemon inherits those descriptors and can keep them
-	// open after pg_ctl exits, making Cmd.Wait block waiting for EOF forever.
 	pgLogPath := filepath.Join(root, "postgres.log")
 	pgLog, err := os.OpenFile(pgLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
@@ -78,9 +71,19 @@ func startEphemeralPostgres(t *testing.T) postgresHarness {
 	if err != nil { t.Fatal(err) }
 	t.Cleanup(pool.Close)
 	deadline := time.Now().Add(10 * time.Second)
+	var lastPingErr error
 	for {
-		if err := pool.Ping(ctx); err == nil { break }
-		if time.Now().After(deadline) { t.Fatalf("postgres readiness timeout: %v", err) }
+		lastPingErr = pool.Ping(ctx)
+		if lastPingErr == nil { break }
+		if time.Now().After(deadline) {
+			logData, readErr := os.ReadFile(pgLogPath)
+			if readErr != nil {
+				t.Logf("PostgreSQL Daemon Log: <unable to read %s: %v>", pgLogPath, readErr)
+			} else {
+				t.Logf("PostgreSQL Daemon Log:\n%s", logData)
+			}
+			t.Fatalf("postgres readiness timeout dialing %s: %v", address, lastPingErr)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if _, err := pool.Exec(ctx, `CREATE TABLE users (id BIGINT PRIMARY KEY, version BIGINT NOT NULL, active BOOLEAN NOT NULL)`); err != nil { t.Fatal(err) }
