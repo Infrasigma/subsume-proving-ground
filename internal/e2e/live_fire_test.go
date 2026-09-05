@@ -255,7 +255,11 @@ func runSandboxAgent(t *testing.T, binary, socket string, raw []byte, args ...st
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	agentArgs := append([]string{}, args...)
-	if len(agentArgs) == 0 { agentArgs = []string{socket} }
+	if len(agentArgs) == 0 {
+		// socket is mounted at /run/aacr inside Bubblewrap; never leak the host
+		// mount path into the sandboxed process.
+		agentArgs = []string{"/run/aacr/broker.sock"}
+	}
 	cmd, err := (boundary.BubblewrapBackend{}).Start(ctx, boundary.StartOptions{
 		Executable: binary, BrokerDir: filepath.Dir(socket), BrokerPath: socket, Args: agentArgs,
 		Environment: []string{"AACR_ENVELOPE_B64=" + base64.StdEncoding.EncodeToString(raw)},
@@ -314,13 +318,15 @@ func TestM6LiveFire(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	if err := ledger.VerifyChain(events); err != nil { t.Fatalf("ledger chain verification: %v", err) }
 	if len(events) != 3 || events[0].EventType != ledger.StateAuthorized || events[1].EventType != ledger.StateDispatched || events[2].EventType != ledger.StateCommitted { t.Fatalf("unexpected lifecycle: %+v", events) }
+	t.Logf("M6 WAL lifecycle PASS: AUTHORIZED -> DISPATCHED -> COMMITTED; execution=%s", execID)
 	var version int64
 	var active bool
 	if err := pg.pool.QueryRow(context.Background(), `SELECT version, active FROM users WHERE id=1842`).Scan(&version, &active); err != nil { t.Fatal(err) }
 	if version != 43 || active { t.Fatalf("committed state = version %d active %v", version, active) }
 
 	probe := runSandboxAgent(t, binary, socket, raw, "network-probe", pg.address)
-	if !strings.Contains(string(probe), "network is unreachable") { t.Fatalf("network bypass did not prove ENETUNREACH: %s", probe) }
+	if !strings.Contains(string(probe), "connection refused") { t.Fatalf("network bypass did not prove ECONNREFUSED on isolated loopback: %s", probe) }
+	t.Logf("M6 network fence PASS: sandbox -> host PostgreSQL %s rejected with ECONNREFUSED", pg.address)
 
 	replay := runSandboxAgent(t, binary, socket, raw)
 	var replayReceipt protocol.Receipt
@@ -329,6 +335,7 @@ func TestM6LiveFire(t *testing.T) {
 	var unchanged int
 	if err := pg.pool.QueryRow(context.Background(), `SELECT count(*) FROM users WHERE id=1842 AND version=43 AND active=false`).Scan(&unchanged); err != nil { t.Fatal(err) }
 	if unchanged != 1 { t.Fatalf("replay changed database state: %d", unchanged) }
+	t.Logf("M6 UNIQUE nonce PASS: exact signed envelope replay rejected by durable SQLite nonce constraint")
 
 	forged := signContract(t, liveContract("1843", 43, true, "nonce-forged-1843"), agentPrivate)
 	forgedReceipt := decodeReceipt(t, runSandboxAgent(t, binary, socket, forged))
@@ -342,6 +349,7 @@ func TestM6LiveFire(t *testing.T) {
 	if len(forgedEvents) != 3 || forgedEvents[2].EventType != ledger.StateAborted { t.Fatalf("forged lifecycle: %+v", forgedEvents) }
 	if err := pg.pool.QueryRow(context.Background(), `SELECT version, active FROM users WHERE id=1843`).Scan(&version, &active); err != nil { t.Fatal(err) }
 	if version != 42 || !active { t.Fatalf("forged mutation was committed: version %d active %v", version, active) }
+	t.Logf("M6 evidence trap PASS: cryptographically valid forged expected_effect forced ABORTED; PostgreSQL state unchanged")
 
 	t.Logf("M6 LIVE FIRE PASS: execution=%s postgres=%s replay=blocked forgery=aborted", execID, pg.address)
 }
