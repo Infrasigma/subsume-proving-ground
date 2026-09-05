@@ -14,7 +14,7 @@ func TestDeactivateUserCanonicalEvidence(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	canonical, err := Canonical(artifact)
 	if err != nil { t.Fatal(err) }
-	want := `{"execution_id":"exec-001","provider":"postgresql","operation":"deactivate_user","status":"COMMITTED","affected_rows":1,"state_delta":[{"id":1842,"version":43,"active":false}]}`
+	want := `{"affected_rows":1,"execution_id":"exec-001","operation":"deactivate_user","provider":"postgresql","state_delta":[{"active":false,"id":1842,"version":43}],"status":"COMMITTED"}`
 	if string(canonical) != want { t.Fatalf("canonical evidence = %s, want %s", canonical, want) }
 	if _, err := HashHex(artifact); err != nil { t.Fatal(err) }
 }
