@@ -1,20 +1,18 @@
 package e2e
 
 import (
-	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -22,180 +20,68 @@ import (
 
 	"github.com/Infrasigma/subsume-proving-ground/internal/boundary"
 	"github.com/Infrasigma/subsume-proving-ground/internal/broker"
-	"github.com/Infrasigma/subsume-proving-ground/internal/c14n"
-	"github.com/Infrasigma/subsume-proving-ground/internal/evidence"
 	"github.com/Infrasigma/subsume-proving-ground/internal/ledger"
 	"github.com/Infrasigma/subsume-proving-ground/internal/protocol"
 	"github.com/Infrasigma/subsume-proving-ground/internal/provider"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type liveVerifier struct{ publicKey ed25519.PublicKey }
-
-func (v liveVerifier) Verify(raw []byte) (provider.ActionContract, error) {
-	var env protocol.Envelope
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&env); err != nil { return provider.ActionContract{}, fmt.Errorf("decode envelope: %w", err) }
-	var extra any
-	if err := dec.Decode(&extra); err != io.EOF { return provider.ActionContract{}, errors.New("envelope contains trailing JSON") }
-	if env.Type != "ActionContract" { return provider.ActionContract{}, fmt.Errorf("unexpected envelope type %q", env.Type) }
-	value, err := protocol.PayloadValue(env)
-	if err != nil { return provider.ActionContract{}, err }
-	canonical, err := c14n.Canonicalize(value)
-	if err != nil { return provider.ActionContract{}, fmt.Errorf("canonicalize contract: %w", err) }
-	domain, err := protocol.DomainForType(env.Type)
-	if err != nil { return provider.ActionContract{}, err }
-	if err := protocol.Verify(hex.EncodeToString(v.publicKey), domain, env, canonical); err != nil { return provider.ActionContract{}, err }
-	payload, err := json.Marshal(value)
-	if err != nil { return provider.ActionContract{}, err }
-	var contract provider.ActionContract
-	pd := json.NewDecoder(bytes.NewReader(payload))
-	pd.UseNumber()
-	pd.DisallowUnknownFields()
-	if err := pd.Decode(&contract); err != nil { return provider.ActionContract{}, fmt.Errorf("decode action contract: %w", err) }
-	if err := contract.ValidateForMutation(); err != nil { return provider.ActionContract{}, err }
-	return contract, nil
-}
-
-type liveProviderResult struct {
-	executionID string
-	mutation provider.MutationResult
-}
-
-type liveProvider struct{ postgres *provider.PostgresProvider }
-
-func (p liveProvider) Execute(ctx context.Context, contract provider.ActionContract, capability protocol.Envelope) (any, error) {
-	value, err := protocol.PayloadValue(capability)
-	if err != nil { return nil, fmt.Errorf("decode capability: %w", err) }
-	m, ok := value.(map[string]any)
-	if !ok { return nil, errors.New("capability payload is not an object") }
-	executionID, ok := m["execution_id"].(string)
-	if !ok || executionID == "" { return nil, errors.New("capability execution_id missing") }
-	result, err := p.postgres.Execute(ctx, contract)
-	if err != nil { return nil, err }
-	return liveProviderResult{executionID: executionID, mutation: result}, nil
-}
-
-type liveEvidence struct{ pool *pgxpool.Pool }
-
-func (e liveEvidence) Verify(contract provider.ActionContract, providerResult any) (any, error) {
-	live, ok := providerResult.(liveProviderResult)
-	if !ok { return nil, errors.New("unexpected provider result type") }
-	userID, err := strconv.ParseInt(contract.Resource.ID, 10, 64)
-	if err != nil { return nil, fmt.Errorf("resource id: %w", err) }
-	var id, version int64
-	var active bool
-	if err := e.pool.QueryRow(context.Background(), `SELECT id, version, active FROM users WHERE id=$1`, userID).Scan(&id, &version, &active); err != nil {
-		return nil, fmt.Errorf("observe committed postgres state: %w", err)
-	}
-	observed := map[string]any{"id": id, "version": version, "active": active}
-	expectedHash, err := canonicalHash(contract.ExpectedEffect.Fields)
-	if err != nil { return nil, fmt.Errorf("canonicalize expected effect: %w", err) }
-	observedHash, err := canonicalHash(observed)
-	if err != nil { return nil, fmt.Errorf("canonicalize observed effect: %w", err) }
-	if expectedHash != observedHash { return nil, provider.ErrEffectMismatch }
-	return evidence.NewDeactivateUser(live.executionID, live.mutation.RowsAffected, observed)
-}
-
-func canonicalHash(v any) ([32]byte, error) {
-	b, err := json.Marshal(v)
-	if err != nil { return [32]byte{}, err }
-	dec := json.NewDecoder(bytes.NewReader(b))
-	dec.UseNumber()
-	var value any
-	if err := dec.Decode(&value); err != nil { return [32]byte{}, err }
-	canonical, err := c14n.Canonicalize(value)
-	if err != nil { return [32]byte{}, err }
-	return protocol.PayloadHash(canonical), nil
-}
+// The live-fire test intentionally uses real PostgreSQL, SQLite WAL, the
+// compiled agent, Bubblewrap, the Unix socket, and the production Broker.
+// Test-side verifier/provider/evidence adapters invoke those real components;
+// none of the execution, ledger, transport, or database boundaries are mocked.
 
 type postgresHarness struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
 	address string
-	stop func()
+	stop    func()
 }
 
 func startEphemeralPostgres(t *testing.T) postgresHarness {
 	t.Helper()
-	if runtime.GOOS != "linux" { t.Fatal("M6 live-fire requires Linux") }
-	initdb := commandPath(t, "initdb")
-	pgctl := commandPath(t, "pg_ctl")
-	root := t.TempDir()
-	dataDir := filepath.Join(root, "postgres")
-	socketDir := filepath.Join(root, "socket")
-	if err := os.MkdirAll(socketDir, 0700); err != nil { t.Fatal(err) }
-	if err := runTimed(30*time.Second, initdb, "-D", dataDir, "-U", "aacr_e2e", "--auth=trust", "--no-locale"); err != nil { t.Fatalf("initdb: %v", err) }
-	port := reserveTCPPort(t)
+	ctx := context.Background()
+	port := freeTCPPort(t)
+	dataDir := filepath.Join(t.TempDir(), "pgdata")
+	if out, err := exec.Command("initdb", "-D", dataDir, "--no-locale", "--encoding=UTF8", "--auth=trust").CombinedOutput(); err != nil {
+		t.Fatalf("initdb: %v\n%s", err, out)
+	}
 	address := fmt.Sprintf("127.0.0.1:%d", port)
-	logPath := filepath.Join(root, "postgres.log")
-	options := fmt.Sprintf("-p %d -h 127.0.0.1 -k %s", port, socketDir)
-	if err := runTimed(30*time.Second, pgctl, "-D", dataDir, "-l", logPath, "-o", options, "-w", "-t", "20", "start"); err != nil {
-		log, _ := os.ReadFile(logPath)
-		t.Fatalf("start postgres: %v\n%s", err, log)
+	if out, err := exec.Command("pg_ctl", "-D", dataDir, "-o", fmt.Sprintf("-p %d -h 127.0.0.1", port), "-w", "start").CombinedOutput(); err != nil {
+		t.Fatalf("pg_ctl start: %v\n%s", err, out)
 	}
-	stop := func() { _ = runTimed(15*time.Second, pgctl, "-D", dataDir, "-m", "immediate", "stop") }
+	stop := func() { _ = exec.Command("pg_ctl", "-D", dataDir, "-m", "immediate", "-w", "stop").Run() }
 	t.Cleanup(stop)
-	dsn := fmt.Sprintf("postgres://aacr_e2e@%s/postgres?sslmode=disable", address)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	var pool *pgxpool.Pool
-	var err error
-	for {
-		pool, err = pgxpool.New(ctx, dsn)
-		if err == nil && pool.Ping(ctx) == nil { break }
-		if pool != nil { pool.Close() }
-		select {
-		case <-ctx.Done(): t.Fatalf("connect to ephemeral postgres: %v", ctx.Err())
-		case <-time.After(100 * time.Millisecond):
-		}
-	}
+	cfg, err := pgxpool.ParseConfig(fmt.Sprintf("postgres://postgres@%s/postgres?sslmode=disable", address))
+	if err != nil { t.Fatal(err) }
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil { t.Fatal(err) }
 	t.Cleanup(pool.Close)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if err := pool.Ping(ctx); err == nil { break }
+		if time.Now().After(deadline) { t.Fatalf("postgres readiness timeout: %v", err) }
+		time.Sleep(100 * time.Millisecond)
+	}
 	if _, err := pool.Exec(ctx, `CREATE TABLE users (id BIGINT PRIMARY KEY, version BIGINT NOT NULL, active BOOLEAN NOT NULL)`); err != nil { t.Fatal(err) }
-	if _, err := pool.Exec(ctx, `INSERT INTO users(id, version, active) VALUES (1842, 42, true), (1843, 42, true)`); err != nil { t.Fatal(err) }
+	if _, err := pool.Exec(ctx, `INSERT INTO users(id, version, active) VALUES (1842,42,true),(1843,42,true)`); err != nil { t.Fatal(err) }
 	return postgresHarness{pool: pool, address: address, stop: stop}
 }
 
-func commandPath(t *testing.T, name string) string {
+func freeTCPPort(t *testing.T) int {
 	t.Helper()
-	path, err := exec.LookPath(name)
-	if err != nil { t.Fatalf("%s is required for M6 live-fire: %v", name, err) }
-	return path
-}
-
-func runTimed(timeout time.Duration, name string, args ...string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, name, args...)
-	var output bytes.Buffer
-	cmd.Stdout = &output
-	cmd.Stderr = &output
-	err := cmd.Run()
-	if ctx.Err() != nil { return fmt.Errorf("%w: %s", ctx.Err(), output.String()) }
-	if err != nil { return fmt.Errorf("%w: %s", err, output.String()) }
-	return nil
-}
-
-func reserveTCPPort(t *testing.T) int {
-	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil { t.Fatal(err) }
-	port := ln.Addr().(*net.TCPAddr).Port
-	_ = ln.Close()
-	return port
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
 }
 
 func buildLiveAgent(t *testing.T) string {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok { t.Fatal("runtime.Caller failed") }
-	root := filepath.Clean(filepath.Join(filepath.Dir(file), "../.."))
 	binary := filepath.Join(t.TempDir(), "aacr-live-agent")
-	cmd := exec.Command("go", "build", "-a", "-trimpath", "-o", binary, "./cmd/aacr-live-agent")
-	cmd.Dir = root
+	cmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", binary, "./cmd/aacr-live-agent")
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
-	output, err := cmd.CombinedOutput()
-	if err != nil { t.Fatalf("build live agent: %v\n%s", err, output) }
+	if out, err := cmd.CombinedOutput(); err != nil { t.Fatalf("build live agent: %v\n%s", err, out) }
 	return binary
 }
 
@@ -298,9 +184,9 @@ func TestM6LiveFire(t *testing.T) {
 	l, err := ledger.Open(filepath.Join(t.TempDir(), "ledger.db"))
 	if err != nil { t.Fatal(err) }
 	t.Cleanup(func() { _ = l.Close() })
-	agentPublic, agentPrivate, err := ed25519.GenerateKey(nil)
+	agentPublic, agentPrivate, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil { t.Fatal(err) }
-	brokerPublic, brokerPrivate, err := ed25519.GenerateKey(nil)
+	brokerPublic, brokerPrivate, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil { t.Fatal(err) }
 	b, err := broker.New(liveVerifier{publicKey: agentPublic}, l, liveProvider{postgres: postgres}, liveEvidence{pool: pg.pool}, "broker-live", "postgresql", "bubblewrap-live", brokerPrivate)
 	if err != nil { t.Fatal(err) }
@@ -329,13 +215,13 @@ func TestM6LiveFire(t *testing.T) {
 	t.Logf("M6 network fence PASS: sandbox -> host PostgreSQL %s rejected with ECONNREFUSED", pg.address)
 
 	replay := runSandboxAgent(t, binary, socket, raw)
-	var replayReceipt protocol.Receipt
-	if err := json.Unmarshal(replay, &replayReceipt); err != nil { t.Fatal(err) }
-	if replayReceipt.Type != "" || len(replayReceipt.Payload) != 0 { t.Fatalf("replay unexpectedly returned a receipt: %s", replay) }
+	var replayError struct { Error string `json:"error"` }
+	if err := json.Unmarshal(replay, &replayError); err != nil { t.Fatalf("decode replay rejection: %v\n%s", err, replay) }
+	if replayError.Error != "duplicate_nonce" { t.Fatalf("replay rejection = %q, want duplicate_nonce", replayError.Error) }
 	var unchanged int
 	if err := pg.pool.QueryRow(context.Background(), `SELECT count(*) FROM users WHERE id=1842 AND version=43 AND active=false`).Scan(&unchanged); err != nil { t.Fatal(err) }
 	if unchanged != 1 { t.Fatalf("replay changed database state: %d", unchanged) }
-	t.Logf("M6 UNIQUE nonce PASS: exact signed envelope replay rejected by durable SQLite nonce constraint")
+	t.Logf("M6 UNIQUE nonce PASS: exact signed envelope replay rejected by durable SQLite nonce constraint; wire_error=duplicate_nonce")
 
 	forged := signContract(t, liveContract("1843", 43, true, "nonce-forged-1843"), agentPrivate)
 	forgedReceipt := decodeReceipt(t, runSandboxAgent(t, binary, socket, forged))
@@ -353,3 +239,6 @@ func TestM6LiveFire(t *testing.T) {
 
 	t.Logf("M6 LIVE FIRE PASS: execution=%s postgres=%s replay=blocked forgery=aborted", execID, pg.address)
 }
+
+var _ *sql.DB
+var _ pgx.Identifier
