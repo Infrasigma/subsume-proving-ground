@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -132,7 +133,7 @@ func mustInt64(s string) int64 { n, _ := strconv.ParseInt(s,10,64); return n }
 func startBroker(t *testing.T, b *broker.Broker, brokerDir string) string { t.Helper(); socketPath := filepath.Join(brokerDir,"broker.sock"); listener, err := net.Listen("unix",socketPath); if err != nil { t.Fatalf("listen unix socket: %v",err) }; if err := os.Chmod(socketPath,0600); err != nil { t.Fatal(err) }; go func(){ _ = b.Serve(listener) }(); t.Cleanup(func(){ _ = listener.Close() }); return socketPath }
 func runSandboxAgent(t *testing.T,binary,socket string,raw []byte,args ...string) []byte { t.Helper(); ctx,cancel:=context.WithTimeout(context.Background(),20*time.Second); defer cancel(); agentArgs:=append([]string{},args...); if len(agentArgs)==0 { agentArgs=[]string{"/run/aacr/broker.sock"} }; cmd,err:=(boundary.BubblewrapBackend{}).Start(ctx,boundary.StartOptions{Executable:binary,BrokerDir:filepath.Dir(socket),BrokerPath:socket,Args:agentArgs,Environment:[]string{"AACR_ENVELOPE_B64="+base64.StdEncoding.EncodeToString(raw)}}); if err != nil { t.Fatalf("start Bubblewrap agent: %v",err) }; output,err:=cmd.CombinedOutput(); if err != nil { t.Fatalf("live agent failed: %v\n%s",err,output) }; return output }
 func verifyReceipt(t *testing.T,receipt protocol.Receipt,publicKey ed25519.PublicKey) map[string]any { t.Helper(); if receipt.Type!="Receipt" { t.Fatalf("receipt type = %q",receipt.Type) }; if err:=protocol.Verify(hex.EncodeToString(publicKey),"AACR/Receipt/v1",receipt,receipt.Payload); err!=nil { t.Fatalf("independent receipt verification: %v",err) }; value,err:=protocol.PayloadValue(receipt); if err!=nil { t.Fatal(err) }; payload,ok:=value.(map[string]any); if !ok { t.Fatal("receipt payload is not an object") }; return payload }
-func decodeReceipt(t *testing.T,output []byte) protocol.Receipt { t.Helper(); var receipt protocol.Receipt; if err:=json.Unmarshal(output,&receipt); err!=nil { t.Fatalf("decode receipt: %v\n%s",err,output) }; return receipt }
+func decodeReceipt(t *testing.T,output []byte) protocol.Receipt { t.Helper(); var receipt protocol.Receipt; if err:=json.Unmarshal(output,&receipt); err!=nil { t.Fatalf("decode receipt: %v\n%s",err,output) }; _ = receipt.Type; t.Logf("COMPILED STRUCT TYPE: %T", receipt); t.Logf("COMPILED STRUCT REFLECT: %+v", reflect.TypeOf(receipt)); if tField, ok := reflect.TypeOf(receipt).FieldByName("Type"); ok { t.Logf("TYPE FIELD EXACT TAG: `%s`", tField.Tag.Get("json")) } else { t.Logf("TYPE FIELD MISSING IN COMPILED STRUCT") }; return receipt }
 
 func TestM6LiveFire(t *testing.T) {
 	if os.Geteuid()==0 { t.Skip("M6 live-fire requires an unprivileged runner for Bubblewrap") }
