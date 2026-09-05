@@ -60,7 +60,11 @@ func probeNetwork(target string) {
 		os.Exit(6)
 	}
 	fmt.Fprintln(os.Stdout, err)
-	if !strings.Contains(err.Error(), "network is unreachable") {
-		os.Exit(7)
+	// The live-fire harness asserts the precise kernel error. Keep the probe
+	// itself successful for any unreachable destination so the test can inspect
+	// whether the namespace produced ECONNREFUSED or ENETUNREACH.
+	if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "network is unreachable") {
+		return
 	}
+	os.Exit(7)
 }
