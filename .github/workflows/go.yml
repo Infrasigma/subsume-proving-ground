@@ -17,7 +17,10 @@ jobs:
           go-version: '1.25.x'
           cache: false
       - name: Install Bubblewrap and PostgreSQL
-        run: sudo apt-get update && sudo apt-get install -y bubblewrap postgresql
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap postgresql
+          echo "$(pg_config --bindir)" >> "$GITHUB_PATH"
       - name: Build boundary probe
         run: CGO_ENABLED=0 go build -a -installsuffix cgo -o /tmp/aacr-boundary-probe ./cmd/aacr-boundary-probe
       - name: Disable AppArmor unprivileged userns restriction for bwrap
