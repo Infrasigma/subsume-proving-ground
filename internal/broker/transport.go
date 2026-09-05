@@ -2,6 +2,7 @@ package broker
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -45,11 +46,11 @@ func (b *Broker) HandleConnection(conn net.Conn) error {
 		return fmt.Errorf("invalid transport JSON: %w", err)
 	}
 
-	// A request is exactly one JSON envelope. If another complete value is
-	// already buffered, reject it before any authority-bearing code runs.
-	if reader.Buffered() > 0 {
-		var extra any
-		if err := dec.Decode(&extra); err == nil {
+	// The first JSON value is the complete request. Inspect only bytes already
+	// buffered by Decoder so a valid request never waits for connection close.
+	if n := reader.Buffered(); n > 0 {
+		extra, err := reader.Peek(n)
+		if err == nil && len(bytes.TrimSpace(extra)) != 0 {
 			return ErrTransportTrailingData
 		}
 	}
