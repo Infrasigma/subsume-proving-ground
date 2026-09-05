@@ -6,12 +6,17 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
 	"time"
 )
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "network-probe" {
+		probeNetwork(os.Args[2])
+		return
+	}
 	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: aacr-live-agent /run/aacr/broker.sock")
+		fmt.Fprintln(os.Stderr, "usage: aacr-live-agent /run/aacr/broker.sock | network-probe host:port")
 		os.Exit(2)
 	}
 	rawB64 := os.Getenv("AACR_ENVELOPE_B64")
@@ -45,4 +50,17 @@ func main() {
 		os.Exit(5)
 	}
 	_, _ = os.Stdout.Write(response)
+}
+
+func probeNetwork(target string) {
+	conn, err := net.DialTimeout("tcp", target, 500*time.Millisecond)
+	if err == nil {
+		_ = conn.Close()
+		fmt.Fprintln(os.Stderr, "network unexpectedly reachable")
+		os.Exit(6)
+	}
+	fmt.Fprintln(os.Stdout, err)
+	if !strings.Contains(err.Error(), "network is unreachable") {
+		os.Exit(7)
+	}
 }
