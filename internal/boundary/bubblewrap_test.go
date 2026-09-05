@@ -20,7 +20,9 @@ func TestBubblewrapMediatedChannelAndNetworkIsolation(t *testing.T) {
 		t.Skip("bubblewrap is not installed")
 	}
 	probe := "/tmp/aacr-boundary-probe"
-	build := exec.Command("go", "build", "-o", probe, "./cmd/aacr-boundary-probe")
+	// go test runs this package with internal/boundary as cwd, so the probe
+	// package must be addressed relative to that directory, not the repo root.
+	build := exec.Command("go", "build", "-o", probe, "../../cmd/aacr-boundary-probe")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build probe: %v\n%s", err, out)
 	}
