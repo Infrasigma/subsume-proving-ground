@@ -1,6 +1,7 @@
 package evidence
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -9,16 +10,13 @@ import (
 	"github.com/Infrasigma/subsume-proving-ground/internal/c14n"
 )
 
-// DeactivateUserEvidence is the canonical evidence artifact for the reference
-// PostgreSQL mutation. StateDelta is intentionally data-only: it contains the
-// observed post-mutation state and never SQL or provider credentials.
 type DeactivateUserEvidence struct {
-	ExecutionID string `json:"execution_id"`
-	Provider    string `json:"provider"`
-	Operation   string `json:"operation"`
-	Status      string `json:"status"`
-	AffectedRows int64 `json:"affected_rows"`
-	StateDelta  []StateDeltaRow `json:"state_delta"`
+	ExecutionID  string          `json:"execution_id"`
+	Provider     string          `json:"provider"`
+	Operation    string          `json:"operation"`
+	Status       string          `json:"status"`
+	AffectedRows int64           `json:"affected_rows"`
+	StateDelta   []StateDeltaRow `json:"state_delta"`
 }
 
 type StateDeltaRow struct {
@@ -31,6 +29,9 @@ func NewDeactivateUser(executionID string, resultRows int64, row map[string]any)
 	if executionID == "" {
 		return DeactivateUserEvidence{}, fmt.Errorf("execution_id is required")
 	}
+	if resultRows != 1 {
+		return DeactivateUserEvidence{}, fmt.Errorf("deactivate_user evidence requires exactly one affected row")
+	}
 	id, ok := integerValue(row["id"])
 	if !ok {
 		return DeactivateUserEvidence{}, fmt.Errorf("state_delta.id must be an integer")
@@ -42,9 +43,6 @@ func NewDeactivateUser(executionID string, resultRows int64, row map[string]any)
 	active, ok := row["active"].(bool)
 	if !ok {
 		return DeactivateUserEvidence{}, fmt.Errorf("state_delta.active must be boolean")
-	}
-	if resultRows != 1 {
-		return DeactivateUserEvidence{}, fmt.Errorf("deactivate_user evidence requires exactly one affected row")
 	}
 	return DeactivateUserEvidence{
 		ExecutionID: executionID,
@@ -62,12 +60,13 @@ func Canonical(v any) ([]byte, error) {
 		return nil, fmt.Errorf("marshal evidence: %w", err)
 	}
 	var decoded any
-	d := json.NewDecoder(bytesReader(b))
+	d := json.NewDecoder(bytes.NewReader(b))
 	d.UseNumber()
 	if err := d.Decode(&decoded); err != nil {
 		return nil, fmt.Errorf("decode evidence JSON: %w", err)
 	}
-	if d.More() {
+	var extra any
+	if err := d.Decode(&extra); err == nil {
 		return nil, fmt.Errorf("trailing evidence JSON")
 	}
 	return c14n.Canonicalize(decoded)
@@ -99,17 +98,8 @@ func integerValue(v any) (int64, bool) {
 	case uint: if uint64(n) > uint64(^uint64(0)>>1) { return 0, false }; return int64(n), true
 	case uint8: return int64(n), true
 	case uint16: return int64(n), true
-	case uint32: return int64(n), true
 	case uint64: if n > uint64(^uint64(0)>>1) { return 0, false }; return int64(n), true
 	case json.Number: i, err := n.Int64(); return i, err == nil
 	default: return 0, false
 	}
-}
-
-// bytesReader keeps this package independent of any non-standard JSON stack.
-func bytesReader(b []byte) *jsonByteReader { return &jsonByteReader{b: b} }
-type jsonByteReader struct { b []byte; i int }
-func (r *jsonByteReader) Read(p []byte) (int, error) {
-	if r.i >= len(r.b) { return 0, fmt.Errorf("EOF") }
-	n := copy(p, r.b[r.i:]); r.i += n; return n, nil
 }
