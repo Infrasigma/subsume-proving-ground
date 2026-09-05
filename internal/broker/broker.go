@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Infrasigma/subsume-proving-ground/internal/ledger"
 	"github.com/Infrasigma/subsume-proving-ground/internal/protocol"
@@ -14,37 +15,25 @@ import (
 )
 
 const (
-	StatusCommitted    = ledger.StateCommitted
-	StatusAborted      = ledger.StateAborted
+	StatusCommitted     = ledger.StateCommitted
+	StatusAborted       = ledger.StateAborted
 	StatusIndeterminate = ledger.StateIndeterminate
 )
 
-var (
-	ErrDispatchLedgerFailure = errors.New("DISPATCHED was not durably recorded; provider execution was not attempted")
-)
+var ErrDispatchLedgerFailure = errors.New("DISPATCHED was not durably recorded; provider execution was not attempted")
 
-// Verifier owns pure ingress validation: envelope parsing, agent signature
-// verification and ActionContract validation. It must perform no side effects.
 type Verifier interface {
 	Verify(rawEnvelope []byte) (provider.ActionContract, error)
 }
 
-// Provider executes a semantic ActionContract under the broker-issued
-// capability. Implementations must return ErrCommitIndeterminate when the
-// external transaction outcome cannot safely be known.
 type Provider interface {
 	Execute(ctx context.Context, contract provider.ActionContract, capability protocol.Envelope) (any, error)
 }
 
-// EvidenceVerifier is deliberately separate from the provider. A non-nil
-// artifact returned from Verify is evidence that the provider result satisfies
-// the contract's declared effect; verification failure returns an error and
-// must never yield a COMMITTED receipt.
 type EvidenceVerifier interface {
 	Verify(contract provider.ActionContract, providerResult any) (any, error)
 }
 
-// Broker is the reference M5.2 orchestration boundary.
 type Broker struct {
 	verifier        Verifier
 	ledger          *ledger.Ledger
@@ -98,7 +87,6 @@ func (b *Broker) Execute(ctx context.Context, rawEnvelope []byte) (receipt proto
 	// separate critical-failure class and is never hidden by a fabricated event.
 	status := StatusAborted
 	var evidence any
-	providerAttempted := false
 	dispatchedDurable := false
 
 	defer func() {
@@ -137,7 +125,6 @@ func (b *Broker) Execute(ctx context.Context, rawEnvelope []byte) (receipt proto
 			return
 		}
 		receipt = r
-		_ = providerAttempted // retained as an explicit state-machine marker.
 	}()
 
 	// PHASE 2: durable dispatch record before the provider call.
@@ -149,7 +136,6 @@ func (b *Broker) Execute(ctx context.Context, rawEnvelope []byte) (receipt proto
 
 	// PHASE 3: provider execution. After this point an error may represent an
 	// externally committed mutation, so commit ambiguity is never ABORTED.
-	providerAttempted = true
 	providerResult, err := b.provider.Execute(ctx, contract, capabilityEnvelope)
 	if err != nil {
 		finalErr = err
@@ -165,9 +151,9 @@ func (b *Broker) Execute(ctx context.Context, rawEnvelope []byte) (receipt proto
 	evidence, err = b.evidence.Verify(contract, providerResult)
 	if err != nil {
 		finalErr = err
-		// A provider implementation is required to return only after its
-		// transaction is committed. Therefore evidence failure here means the
-		// external effect exists but assurance failed: never claim COMMITTED.
+		// The provider returns only after its transaction is committed. Evidence
+		// failure therefore means external effect exists but assurance failed:
+		// never claim COMMITTED.
 		status = StatusIndeterminate
 		return
 	}
