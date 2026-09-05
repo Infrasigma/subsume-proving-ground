@@ -31,7 +31,9 @@ func main() {
 	}
 	fmt.Print(line)
 
-	if _, err := net.DialTimeout("tcp", "127.0.0.1:9", 200*time.Millisecond); err == nil {
+	// 198.51.100.0/24 is TEST-NET-2 (RFC 5737). It is not a local endpoint;
+	// in the isolated namespace there must be no route capable of reaching it.
+	if _, err := net.DialTimeout("tcp", "198.51.100.1:80", 200*time.Millisecond); err == nil {
 		fmt.Fprintln(os.Stderr, "network unexpectedly reachable")
 		os.Exit(6)
 	} else {
