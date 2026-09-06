@@ -62,7 +62,7 @@ func New(verifier Verifier, l *ledger.Ledger, p Provider, e EvidenceVerifier, br
 // only before AUTHORIZED is durable. Once AUTHORIZED commits, the deferred
 // finalizer owns terminal ledger append and receipt creation.
 func (b *Broker) Execute(ctx context.Context, rawEnvelope []byte) (receipt protocol.Receipt, finalErr error) {
-	// PHASE 1: pure verification. No ledger side effects exist yet.
+	// PHASE 1: pure verification. No execution lifecycle side effects exist yet.
 	contract, err := b.verifier.Verify(rawEnvelope)
 	if err != nil {
 		return protocol.Receipt{}, err
@@ -71,6 +71,13 @@ func (b *Broker) Execute(ctx context.Context, rawEnvelope []byte) (receipt proto
 	executionID, err := newExecutionID()
 	if err != nil {
 		return protocol.Receipt{}, fmt.Errorf("generate execution_id: %w", err)
+	}
+
+	// Consume the contract nonce before minting execution authority. This is the
+	// replay barrier for the signed intent itself; capability nonces remain
+	// single-use execution credentials and are still enforced independently.
+	if err := b.ledger.ReserveContractNonce(ctx, contract.Nonce, executionID); err != nil {
+		return protocol.Receipt{}, err
 	}
 
 	capabilityEnvelope, capability, err := protocol.MintCapability(contract, executionID, b.brokerID, b.audience, b.boundaryBinding, now(), b.privateKey)
@@ -95,9 +102,6 @@ func (b *Broker) Execute(ctx context.Context, rawEnvelope []byte) (receipt proto
 			finalErr = errors.Join(finalErr, fmt.Errorf("broker panic after AUTHORIZED: %v", r))
 		}
 
-		// AUTHORIZED -> terminal is not a legal transition in the existing
-		// ledger. Therefore a failed DISPATCHED append is surfaced as a critical
-		// ledger failure rather than pretending the provider was dispatched.
 		if !dispatchedDurable {
 			if finalErr == nil {
 				finalErr = ErrDispatchLedgerFailure
@@ -151,9 +155,6 @@ func (b *Broker) Execute(ctx context.Context, rawEnvelope []byte) (receipt proto
 	evidence, err = b.evidence.Verify(contract, providerResult)
 	if err != nil {
 		finalErr = err
-		// The provider returns only after its transaction is committed. Evidence
-		// failure therefore means external effect exists but assurance failed:
-		// never claim COMMITTED.
 		status = StatusIndeterminate
 		return
 	}

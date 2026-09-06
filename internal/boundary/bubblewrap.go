@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -81,12 +82,19 @@ func (b BubblewrapBackend) Start(ctx context.Context, opts StartOptions) (*exec.
 		"--tmpfs", "/tmp",
 		"--ro-bind", opts.Executable, guestExecutable,
 		"--bind", opts.BrokerDir, guestBrokerDir,
-		guestExecutable,
 	}
+	for _, env := range opts.Environment {
+		key, _, ok := strings.Cut(env, "=")
+		if !ok || key == "" || strings.ContainsAny(key, " \t\r\n") {
+			return nil, fmt.Errorf("invalid environment assignment")
+		}
+		args = append(args, "--setenv", key, env[len(key)+1:])
+	}
+	args = append(args, guestExecutable)
 	args = append(args, opts.Args...)
 
 	cmd := exec.CommandContext(ctx, bwrap, args...)
-	cmd.Env = append([]string{}, opts.Environment...)
+	cmd.Env = []string{}
 	cmd.Dir = "/"
 	return cmd, nil
 }
