@@ -67,18 +67,18 @@ func (b *Broker) HandleConnection(conn net.Conn) error {
 	}
 
 	var response []byte
-	if execErr != nil {
-		code := "execution_rejected"
-		if errors.Is(execErr, ledger.ErrContractNonceReplay) {
-			code = "duplicate_nonce"
-		}
-		response, _ = json.Marshal(transportError{Error: code})
-	} else {
+	if receipt.Type != "" {
 		var err error
 		response, err = json.Marshal(receipt)
 		if err != nil {
 			return fmt.Errorf("encode receipt: %w", err)
 		}
+	} else {
+		code := "execution_rejected"
+		if errors.Is(execErr, ledger.ErrContractNonceReplay) {
+			code = "duplicate_nonce"
+		}
+		response, _ = json.Marshal(transportError{Error: code})
 	}
 	if _, err := conn.Write(response); err != nil {
 		return fmt.Errorf("write response: %w", err)
