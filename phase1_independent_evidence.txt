@@ -1,0 +1,39 @@
+Repository: Infrasigma/subsume-proving-ground
+Commit: 5faebd91cf16ffd7b932ec982c6396c57df138a0
+Source SHA-256: eaf925172293cbc613e0197ff09a1b9f6569dfb71a39299612106dcdd0fdac34
+Python version: 3.13.5 (main, Jul 15 2026, 20:25:40) [GCC 14.2.0]
+OS/runtime: Linux-6.18.35-x86_64-with-glibc2.41; x86_64; /opt/pyvenv/bin/python
+uname -a: Linux localhost 6.18.35 #1 SMP Mon Aug 31 18:10:37 UTC 2026 x86_64 GNU/Linux
+Exact source retrieved from commit: YES
+Exact source executed: YES
+Execution command: python phase1_experiment.py 2>&1 | tee phase1_independent_rerun.txt
+Output SHA-256: 2b469bc54aeb0abc885f3d5d653c8668e4afeeda1546cd838b64cb7809f89d84
+
+Actual numerical results:
+K_1 mean E = 9.000000
+K_0 mean E = 85.700000
+Mean paired difference = 76.700000
+Median D = 52.000000
+SD D = 72.852487
+Range = 4–501
+K_1 beats K_0 = 100/100 (100.0%)
+K_1 reaches E=9 = 100/100
+K_0 reaches E=9 = 0/100
+Permutation p = 0.00001000
+Permutations = 100000
+
+Historical comparison: EXACT_MATCH
+Control audit:
+- K_1 and K_0 use identical seeds: YES (seeds 0..99 in both lists)
+- Learning trajectories identical before ablation: YES, program check returned True
+- Learned capabilities identical before ablation: YES, program check returned True
+- Only intervention capability deletion: YES, source performs agent.capabilities = {} and program check returned True
+- Cross-trial contamination: NO; each run creates fresh MinimalEnv and Organism, and learning_episode resets the RNG with the trial seed
+- Retained capability predictions correct during K_1 evaluation: YES, program check returned True
+- No hidden optimal-path heuristic in source: YES; no optimal path is encoded; random learning plus post-hoc goal-verified extraction is used
+- Program executes 100 seeds: YES, num_trials=100 and seeds=list(range(num_trials))
+- Program computes reported statistical test: YES, paired two-sided sign-flip permutation test with 100000 permutations and seed 20260910
+
+Execution note: the numerical experiment completed successfully with return code 0. The local execution harness appended an unrelated spreadsheet-runtime startup traceback to the captured process output after the experiment's own final line; this harness noise does not alter the experiment's printed numerical result.
+
+Final evidence status: VERIFIED_REPRODUCED
