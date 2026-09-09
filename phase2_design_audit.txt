@@ -1,0 +1,59 @@
+=== PHASE 2 DESIGN AUDIT ===
+
+A. FAMILY A
+Family A consists of 12 deterministic synthetic dependency-navigation tasks. Each task has a directed chain topology with eight nodes. Three transitions per task have latent prerequisites: the transition is initially blocked and becomes executable after a prerequisite transition has been executed. Node labels and action labels are independently permuted per task. The learner receives only environment observations and action outcomes; it is not given the graph, prerequisites, or an A solution.
+
+B. FAMILY B
+Family B consists of 100 deterministic synthetic dependency-navigation tasks. Each task has a branching/merging/lollipop topology with ten nodes. Three or four transitions have latent prerequisites. Node and action labels are independently permuted per task. B is generated independently from the fixed B generator using seeds 0..99.
+
+C. STRUCTURAL NOVELTY
+B is structurally novel because its transition topology is branching/merging/lollipop rather than A's directed chain. Novelty is measured on unlabeled structural signatures containing degree profile, reachable-distance profile, and dependency-placement structure. String/name differences are not used. The preregistered PASS threshold is mean structural novelty > 0.50.
+
+D. WHY A TRAJECTORY REPLAY CANNOT TRIVIALLY SOLVE B
+Action and node identifiers are independently permuted for every task. B also has a different topology and different dependency placement. Therefore an exact A action sequence is not a valid B solution. A direct replay control explicitly attempts A action sequences on B and records success.
+
+E. REUSABLE ABSTRACTION
+The intended transferable abstraction is a relational dependency mechanism: when an attempted transition is blocked, an intervening action can change that transition's availability, after which the blocked transition can succeed. The abstraction is not a task-specific path or action label.
+
+F. K_A
+K_A contains dependency abstractions mined from A observations, with source task IDs, source experiences, abstraction IDs, abstraction content, and applicability conditions. The mining procedure is generic observation-based comparison; it does not read B metadata or B solutions.
+
+G. K_0
+K_0 contains no A-derived rules and no A-derived episodic information available to the B decision process.
+
+H. DIFFERENCE DURING B
+K_A has the learned relational rule store; K_0 has an empty rule store. The task generator, solver, seed, action randomness, environment, interaction cap, and search budget are otherwise held fixed.
+
+I. ENVIRONMENT INTERACTION COST E
+E is the number of environment action attempts until the goal is reached, capped at 200 interactions (with an additional decision-budget cutoff at 120 in the implementation). Failed/blocked actions count as interactions.
+
+J. SEARCH COST I
+I is the number of candidate-action trials classified as search decisions. It is logged independently from E. All conditions use the same decision procedure and budget.
+
+K. INTERNAL COMPUTATION/SEARCH COST S
+S is the number of comparisons between retrieved relational rules and current candidate actions during B decisions. This is a lightweight proxy for internal matching cost, not a hardware-independent runtime measure.
+
+L. DELAY/TIME COST D
+Wall-clock delay is not a primary outcome because it is machine-dependent. The program records total elapsed wall-clock time only as execution metadata; D is therefore not used for PASS/FAIL.
+
+M. SUCCESSFUL TRANSFER
+A transfer event requires retrieval of an A abstraction in B, a prediction that a blocked transition can become enabled after an intervening action, and verification by an actual successful transition outcome. Experiment-level PASS additionally requires structural novelty, lower K_A mean E, statistical significance, positive-transfer rate, final performance, low direct replay, and the preregistered control conditions.
+
+N. NEGATIVE TRANSFER
+A paired B trial is negative transfer when E_KA > E_K0. Negative-transfer rate is the fraction of the 100 matched B trials with this sign.
+
+O. CONTROLS
+K0: no A-derived knowledge.
+KR: A episodic records are retained in the learner object but no extracted abstraction rules are supplied to the B decision process.
+KS: same no-knowledge B solver and the same fixed search/action budget as K_A.
+KP: same solver, randomization, and task prior; no B-specific information is supplied.
+Direct replay: A action sequences are attempted on B to test whether literal trajectory reuse explains performance.
+
+P. STATISTICAL TEST
+The primary test is a two-sided paired sign-flip permutation test on D = E_K0 - E_KA, with 100,000 deterministic sign permutations and fixed permutation seed 20260911. A deterministic percentile bootstrap with 20,000 resamples and fixed seed 20260912 supplies a 95% interval for the paired mean difference.
+
+Q. PREREGISTERED SUCCESS/FAILURE CRITERION
+PASS requires all of: mean structural novelty > 0.50; mean E_KA < mean E_K0; primary p < 0.05; positive-transfer rate >= 70%; negative-transfer rate <= 20%; K_A final success >= K_0; retrieved-and-verified transfer rate >= 80%; direct A-trajectory replay success <= 10%; and the episodic-only KR control does not reproduce the K_A advantage. Failure of any criterion is FAIL. An execution/control-validity failure would instead be INCONCLUSIVE.
+
+FREEZE/INTEGRITY STATEMENT
+The Phase-2 source, task generators, seed set, metrics, controls, statistical procedure, and PASS criteria are frozen in phase2_structural_transfer.py before the recorded Phase-2 execution result. No Phase-1 file is modified. The Phase-2 result is not interpreted as an AGI result.
