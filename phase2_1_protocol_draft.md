@@ -1,549 +1,1340 @@
-# PHASE 2.1 PREREGISTERED SCIENTIFIC PROTOCOL — DRAFT FOR INDEPENDENT AUDIT
+# PHASE 2.1 PREREGISTERED SCIENTIFIC PROTOCOL — FINAL FREEZE
 
-**Mode:** Design only. No execution is authorized by this document.
+**Mode:** Protocol frozen for execution only after independent final audit. This document authorizes no execution by itself.
 
 **Repository:** `Infrasigma/subsume-proving-ground`
+**Branch:** `phase2-structural-transfer-20260910`
 
-**Historical references**
-- Phase 1 verified commit: `5faebd91cf16ffd7b932ec982c6396c57df138a0`
-- Phase 2 branch: `phase2-structural-transfer-20260910`
-- Phase 2 tip: `ebe3b99f0a1b6abc85b7c0121229a33d0542ddc7`
-- Phase 2 verdict: `FAIL`
+## 0. Historical boundary and scientific scope
 
-**Integrity rule:** Phase 1 and all frozen Phase 2 artifacts remain untouched. This document is a new protocol draft only. It contains no executable experiment code, no generated corpus, and no empirical result.
+Phase 1 remains the verified baseline at commit `5faebd91cf16ffd7b932ec982c6396c57df138a0`.
 
-## 1. Hypothesis
+Historical Phase 2 remains frozen at tip `ebe3b99f0a1b6abc85b7c0121229a33d0542ddc7` with verdict `FAIL`. Its artifacts are not altered by Phase 2.1.
 
-### Scientific hypothesis
-An agent can extract a reusable relational abstraction from prior experience in one structurally different task family and use that abstraction to reduce future interaction cost in a novel task family.
+Phase 2.1 is a new test of structural transfer. It does not reinterpret Phase 2's FAIL as evidence for Phase 2.1, and it does not claim AGI, general intelligence, semantic understanding, or general representation learning.
 
-### Primary operational hypothesis
+This protocol freezes the scientific question, environment families, learner information boundary, acquisition definition, transfer attribution, controls, endpoint, statistics, and execution rules before empirical observation.
+
+No executable Phase 2.1 experiment, generated corpus, or empirical result is part of this protocol.
+
+---
+
+# 1. Scientific invariants
+
+## 1.1 Primary hypothesis
+
+The immutable operational hypothesis is:
+
 \[
-C(B^+\mid K_A) < C(B^+\mid K_0)
+\boxed{C(B^+\mid K_A)<C(B^+\mid K_0)}
 \]
 
-where:
-- `K_A` = genuinely acquired relational knowledge from Family A;
-- `K_0` = matched no-A-knowledge counterfactual;
-- `B+` = structurally novel Family B;
-- `C` = frozen environment interaction cost `E`.
+where `C` is the frozen environment interaction cost `E`, `K_A` is A-derived relational knowledge that passes the acquisition gate, `K_0` is the matched no-A-knowledge condition, and `B+` is Family B after the preregistered structural-novelty gate.
 
-The hypothesis is not broadened to general intelligence, AGI, representation learning in general, or semantic similarity.
+The hypothesis is tested only for the frozen learner implementation and frozen synthetic task families defined here.
 
-## 2. Family A definition
+## 1.2 Primary endpoint
 
-Family A is a deterministic synthetic family of dependency-navigation environments designed so that the reusable mechanism is causally observable through intervention rather than merely encountered as a fixed sequence.
+For paired B task `i`:
 
-### 2.1 State
-An A task consists of a finite transition system. A state contains:
-- the current environment location/state;
-- latent enablement status for dependency-bearing transitions;
-- the task's ordinary observable state representation.
+\[
+D_i=E_{K_0,i}-E_{K_A,i}.
+\]
 
-The learner receives only the ordinary observation returned by the environment and the outcome of each attempted action. The learner does not receive the underlying dependency graph or latent prerequisite annotations.
+Positive `D_i` favors the hypothesis. Negative `D_i` opposes it.
 
-### 2.2 Actions
-Each state exposes a finite set of opaque action labels. Labels are task-local and independently permuted for each task. An action may:
-- move/transition to another state;
-- attempt a dependency-bearing transition;
-- perform an intervening action that changes the availability of another transition;
-- be irrelevant to the target dependency.
+The primary aggregate is the mean paired difference.
 
-Action labels do not encode semantic roles.
+## 1.3 Frozen novelty threshold
 
-### 2.3 Blocked transition
-A target transition `X` is **blocked** when an attempt to execute X produces an ordinary environment outcome indicating that X is currently unavailable and leaves the target transition unavailable.
+The B-family novelty gate is unchanged:
 
-### 2.4 Enabling action
-An action `Y` is an enabling intervention for X when, from a comparable context:
-1. X is initially blocked;
-2. Y is executed;
-3. the environment state changes in a way that makes X available;
-4. a subsequent attempt of X succeeds.
+`mean structural novelty > 0.50`.
 
-Y must not simply be the unique mandatory next step on a fixed path to X. At least one alternative action `Z` must be available at the relevant decision point and must provide a non-enabling contrast for the same target relation.
+The strict comparison is greater-than, not greater-than-or-equal-to.
 
-### 2.5 Ordinary observations
-The causal evidence must arise only from interaction outcomes such as:
-- action accepted/rejected;
-- transition succeeded/failed;
-- resulting observable state;
-- subsequent availability/success of X.
+## 1.4 Frozen statistical parameters
 
-The environment must not expose prerequisite names, causal labels, answer keys, solution metadata, or an explicit statement that Y enables X.
+- Primary test: paired two-sided sign-flip permutation test.
+- Number of permutations: `100000`.
+- Permutation seed: `20260911`.
+- Bootstrap: deterministic percentile bootstrap.
+- Number of bootstrap resamples: `20000`.
+- Bootstrap seed: `20260912`.
 
-### 2.6 Recurrence
-The same abstract relation must recur across independently generated A instances. The relation is defined by roles and transition consequences, not by concrete identifiers.
+No parameter above may be changed after observation of any experimental outcome.
 
-Minimum necessary recurrence for acquisition validity: **two independently generated and independently relabeled A tasks**, each providing an independently observed instance of the same dependency relation with an intervention contrast. This is a minimum floor, not a claim that two observations establish a high-confidence causal law. Additional repeated contrasts are an optional strengthening.
+## 1.5 Frozen controls
 
-### 2.7 Independent relabeling
-For every A task, node/state identifiers and action labels are independently permuted using task-local randomization. The learner cannot rely on identifier equality across tasks.
+The required conditions remain:
 
-### 2.8 Task randomization
-Task topology, concrete identifiers, and placement of dependency relations are generated from the frozen A generator and frozen seed manifest. Randomization rules, seed set, and generator version must be fixed before execution.
+- `K_A`
+- `K_0`
+- `K_R`
+- `K_S`
+- `K_P`
+- direct A-trajectory replay control
 
-No randomization parameter may be selected after inspecting experimental outcomes.
+No control may receive information outside its defined boundary.
 
-### 2.9 Learner information boundary
-The learner may observe only information an ordinary agent interacting with the environment would receive: current observation, chosen action, and returned action/environment outcome. It may retain its own interaction history.
+## 1.6 Nine PASS criteria
 
-The learner may not observe:
-- latent prerequisite variables;
-- generator state;
-- random seed meaning;
-- task construction metadata;
-- answer keys;
-- future states not reached through interaction;
-- B information during A acquisition.
+The original nine PASS criteria are unchanged and all are required:
 
-## 3. Minimum causal observability evidence
+1. mean B structural novelty is strictly greater than `0.50`;
+2. `K_A` has lower mean interaction cost than `K_0`;
+3. the primary two-sided sign-flip permutation test has `p < 0.05`;
+4. positive-transfer rate is at least `70%`;
+5. negative-transfer rate is at most `20%`;
+6. `K_A` final success rate is at least the `K_0` final success rate;
+7. retrieved-and-verified transfer events are at least `80%` of eligible transfer-attribution opportunities;
+8. direct A-trajectory replay success rate is at most `10%`;
+9. `K_R` does not reproduce the `K_A` primary effect under the predefined comparison.
 
-The protocol distinguishes temporal precedence from intervention.
+A statistically significant result in the wrong direction does not satisfy PASS.
 
-**A. Mere precedence:** Y happens before X in a successful trajectory.
+---
 
-**B. Interventional evidence:** changing whether Y is executed changes whether X becomes available, while an appropriate alternative action does not produce the same change.
+# 2. Deterministic randomness
 
-A relation qualifies for abstraction acquisition only under B.
+All randomized generation and statistical randomization use SHA-256 counter streams. No mutable global RNG is permitted.
 
-### Necessary minimum
-Across at least **two independently generated and independently relabeled A instances**, each relation proposed for abstraction must have:
-- an observed blocked X state;
-- an intervention Y;
-- a subsequent X attempt with a successful availability/outcome change;
-- at least one non-enabling contrast action Z under a comparable blocked-X condition;
-- observation records sufficient to reconstruct the before/after availability difference.
+## 2.1 Byte encoding
 
-This is the **NECESSARY** minimum. It is selected because one instance can be explained by task-specific coincidence, while two independently relabeled instances provide the minimum cross-instance invariance test without making a claim of statistical generality from a tiny sample.
+All stream inputs are UTF-8 strings except task seeds, counters, and integer indices, which are encoded as unsigned 64-bit big-endian integers. Fields are concatenated with a single zero byte separator.
 
-**OPTIONAL IMPROVEMENT:** multiple positive and negative interventions per relation and more than two independent A instances. These strengthen causal identification but do not alter the hypothesis or minimum gate.
+For stream name `S`, task seed `T`, condition identifier `C`, purpose `P`, and counter `n`, the digest input is:
 
-## 4. K_A representation
+`UTF8(S) || 0x00 || uint64_be(T) || 0x00 || UTF8(C) || 0x00 || UTF8(P) || 0x00 || uint64_be(n)`
 
-A candidate abstraction is a compact relational record, not an episode or trajectory.
+and the stream value is:
 
-Conceptual schema:
-- `abstraction_id`: unique local identifier;
-- `source_A_task_ids`: set of A tasks supporting the abstraction;
-- `source_A_observation_ids`: exact observation/event references supporting it;
-- `relational_rule`: abstract relation expressed in role terms, e.g. blocked target transition + intervening action + subsequent enabled target transition;
-- `applicability_conditions`: observable relational conditions under which the rule may be considered;
-- `prediction_rule`: testable predicted consequence of applying the relation;
-- `evidence_record`: supporting/contrasting observations and cross-instance support; confidence may be represented only as a record of evidence, not as an outcome-tuned scalar;
-- `creation_order`: deterministic order/index at which the abstraction was created;
-- `freeze_status`: must become frozen before any B exposure.
+`SHA256(input)`.
 
-The representation must not contain:
-- A task ID as the rule itself;
-- concrete A state IDs as the reusable mechanism;
-- concrete action IDs as semantic roles;
-- a concrete A trajectory as the abstraction;
-- goal-state lookup tables;
-- B task IDs or B metadata;
-- hidden answer keys.
+## 2.2 Stream namespaces
 
-A candidate abstraction that is formally nonempty but is task-specific, episodic, answer-key-like, or not label-invariant fails the acquisition gate.
+The only permitted namespaces are:
 
-## 5. Strict A acquisition gate G_A
+`TASK_GENERATION`
+`LABEL_PERMUTATION`
+`A_LEARNER`
+`B_LEARNER_KA`
+`B_LEARNER_K0`
+`B_LEARNER_KR`
+`B_LEARNER_KS`
+`B_LEARNER_KP`
+`SEARCH_KA`
+`SEARCH_K0`
+`SEARCH_KR`
+`SEARCH_KS`
+`SEARCH_KP`
+`PERMUTATION`
+`BOOTSTRAP`
 
-The automated pre-B acquisition gate is:
+No stream may be reused for a different scientific purpose.
+
+## 2.3 Uniform integer and rejection sampling
+
+To draw an integer uniformly from `[0,n)`, `n>0`, interpret the first eight digest bytes as unsigned integer `r`. Define `L=floor(2^64/n)*n`. If `r>=L`, increment the stream counter and redraw. Otherwise return `r mod n`.
+
+Every Fisher-Yates permutation uses this rejection-sampled integer rule, iterating from the final position down to the second position.
+
+## 2.4 Fixed seed manifests
+
+Family A uses task seeds `0..11` inclusive.
+Family B uses task seeds `0..99` inclusive.
+
+These are task-generation seeds, not learner-visible values.
+
+No seed may be replaced, reordered, or regenerated because of a result.
+
+---
+
+# 3. Learner-visible interface
+
+The learner-visible interface is completely specified below. Internal data structures are unconstrained only if they are observationally equivalent to this interface.
+
+## 3.1 ActionToken
+
+`ActionToken` is an ASCII/UTF-8 string of exactly 16 lowercase hexadecimal characters.
+
+Alphabet:
+
+`0123456789abcdef`
+
+There are exactly 16 characters, no prefix, suffix, delimiter, whitespace, sign, or numeric interpretation.
+
+For each task, semantic actions are first enumerated in a hidden canonical action table. A task-local opaque token pool is then generated independently of semantic role from the `LABEL_PERMUTATION` stream. A Fisher-Yates permutation assigns the generated tokens to the semantic action records. The token-generation input contains task seed and token-pool position only; it does not contain semantic role, source, destination, dependency identity, X/Y/Z identity, or goal status.
+
+State/location tokens are generated by the same role-independent token-pool method from the same `LABEL_PERMUTATION` namespace but a distinct purpose string. Location-token assignment is an independent task-local permutation.
+
+The learner never receives the hidden semantic-to-token mapping.
+
+Different tasks receive independent mappings. Equality of token strings across tasks has no semantic significance.
+
+## 3.2 Observation object
+
+Every learner observation is exactly this five-key object:
+
+```json
+{
+  "state": <StateObject>,
+  "available_actions": [<ActionToken>, ...],
+  "last_action": <ActionToken or null>,
+  "last_result": <ResultObject or null>,
+  "terminated": <boolean>
+}
+```
+
+No sixth key and no nested additional key is permitted.
+
+Initial observation:
+
+- `last_action = null`
+- `last_result = null`
+- `terminated = false`
+
+After an action, the observation reports the resulting observable state, resulting available action set, the token submitted for that action, its result object, and the termination Boolean.
+
+The learner may maintain its own history outside the observation object.
+
+## 3.3 State object
+
+Every state object is exactly:
+
+```json
+{"location":"<LocationToken>"}
+```
+
+`location` is exactly one 16-character lowercase hexadecimal opaque token.
+
+No coordinates, node indices, edge lists, latent variables, dependency IDs, seed values, task IDs, source/target fields, goal distance, path information, counters, timestamps, or metadata are learner-visible.
+
+## 3.4 Result object
+
+Every action result is exactly:
+
+```json
+{"status":"<ResultStatus>"}
+```
+
+`ResultStatus` is exactly one of:
+
+- `BLOCKED`
+- `ACCEPTED`
+- `SUCCESS`
+- `ILLEGAL_ACTION`
+- `ENVIRONMENT_ERROR`
+
+`BLOCKED` means the submitted token is a valid action for the task but that action is currently unavailable because its transition precondition is false. It produces no environment-state transition.
+
+`ACCEPTED` means the submitted valid action executed and did not reach the goal.
+
+`SUCCESS` means the submitted valid action executed and reached the goal.
+
+`ILLEGAL_ACTION` means the submitted token is not an action token in the current action interface. No alias or alternative spelling is accepted.
+
+`ENVIRONMENT_ERROR` means an environment-level failure defined by the execution implementation contract; it carries no diagnostic payload and invalidates the affected experimental unit rather than becoming scientific evidence.
+
+No free-form error string or additional result field is permitted.
+
+## 3.5 Termination
+
+Termination is represented only by the Boolean `terminated` field.
+
+`terminated=true` iff the preceding learner-issued action reached the task goal.
+
+There is no learner-visible termination reason, goal identifier, distance, remaining-step count, or route metadata.
+
+## 3.6 Canonical serialization
+
+Learner-visible objects are serialized as UTF-8 canonical JSON with these exact rules:
+
+1. object keys are sorted lexicographically by their ASCII byte values;
+2. no insignificant whitespace is emitted;
+3. separators are exactly `,` and `:`;
+4. JSON strings use standard JSON escaping;
+5. booleans are `true` or `false`;
+6. null is `null`;
+7. no numeric value occurs in any learner-visible object;
+8. arrays retain semantic order; `available_actions` has its separate mandatory ordering rule below;
+9. no object may contain an undeclared key;
+10. no implementation-specific serialization is exposed;
+11. no timestamps, process identifiers, addresses, locale data, memory identifiers, or platform fields are exposed.
+
+Because all permitted keys and token strings are ASCII and numeric values are prohibited, the ordering and encoding above uniquely determine the learner-visible byte representation.
+
+## 3.7 Action ordering
+
+`available_actions` is sorted strictly by lexicographic ordering of the ASCII bytes of the opaque token.
+
+It is never ordered by semantic action type, source state, destination state, dependency relation, creation order, generator order, or any other hidden property.
+
+No action token has semantic magnitude.
+
+## 3.8 Deterministic external interface
+
+For a fixed task, fixed hidden environment state, fixed submitted token, and fixed prior action history, the interface returns exactly one result, one observable resulting state, one available-action array, and one termination Boolean.
+
+The hidden environment state is itself a deterministic function of the frozen task definition and complete prior learner-issued action history. No hidden nondeterminism may alter it.
+
+The interface may not depend on dictionary iteration order, object identity, process ID, memory address, timestamp, locale, thread scheduling, filesystem ordering, inherited environment variables, or unrelated random state.
+
+---
+
+# 4. Auditor-only snapshot/fork and X-probe
+
+## 4.1 Snapshot/fork
+
+An auditor-only immutable environment snapshot may be taken immediately before an intervention comparison. The snapshot contains the exact transition-relevant environment state, including latent enablement variables, but is inaccessible to the learner.
+
+Two independent environment replicas may be created from the same snapshot for the Y and Z intervention arms. Snapshot creation, restoration, and fork operations are instrumentation operations and are not learner actions and are never exposed through the learner interface.
+
+The learner cannot request, observe, or invoke snapshot, fork, reset, rewind, or restore operations.
+
+## 4.2 X selection
+
+For each qualifying dependency relation, the harness selects semantic X from the hidden task construction table. X is never selected by token appearance, learner performance, or outcome.
+
+The harness resolves X's current task-local opaque `ActionToken` using the hidden semantic-to-token mapping.
+
+The learner is given no statement that the token represents X.
+
+## 4.3 X-probe presentation
+
+The harness-selected X probe is presented through the same ordinary action interface used for every other learner action. The learner sees only the ordinary observation and the opaque token supplied as the action to execute. It receives the same `ResultObject`, resulting `StateObject`, `available_actions`, and `terminated` fields as for every other action.
+
+The harness selection is an experimental control and is not represented in the learner-visible data.
+
+The X probe counts as one learner-issued environment interaction for `E`.
+
+A blocked X probe produces `BLOCKED`, changes no environment state, and becomes part of the learner's ordinary action/result history. It does not cause a learner-visible reset or restore.
+
+A later X execution after Y is also an ordinary action and counts toward `E`.
+
+The learner does not receive the semantic names X, Y, or Z, the dependency index, the hidden enablement variable, the causal hypothesis, or any harness metadata.
+
+---
+
+# 5. Family A: complete deterministic state machine
+
+## 5.1 Task count and nodes
+
+Family A contains exactly 12 tasks, with seeds `0..11`.
+
+Every A task has exactly eight semantic locations:
+
+`0,1,2,3,4,5,6,7`.
+
+Start location is `0`.
+Goal location is `7`.
+
+The canonical base edges are exactly:
+
+`0->1, 1->2, 2->3, 3->4, 4->5, 5->6, 6->7`.
+
+## 5.2 Dependency relations
+
+Every A task has exactly three dependency relations, indexed internally as `r=0,1,2`.
+
+Three distinct source locations are sampled without replacement from:
+
+`{0,1,2,3,4}`
+
+using the `TASK_GENERATION` stream and the rejection-sampled Fisher-Yates procedure.
+
+Let the resulting ordered source list be `s_0,s_1,s_2`.
+
+For each relation `r`:
+
+`X_r` is the semantic transition `s_r -> s_r+2`.
+
+`X_r` is initially blocked because latent variable `e_r=0`.
+
+The dependency edge does not replace a base edge; it is an additional action from the same source.
+
+## 5.3 Y and Z
+
+Each relation has exactly two intervention actions at source `s_r`:
+
+- `Y_r`: enabling intervention;
+- `Z_r`: non-enabling contrast.
+
+Both are zero-displacement actions: executing either leaves the location unchanged.
+
+`Y_r` changes exactly one hidden variable:
+
+`e_r: 0 -> 1`.
+
+It changes no other `e` variable and does not alter the observable location.
+
+`Z_r` changes no `e` variable and does not alter the observable location.
+
+No Y or Z action has any other environment effect.
+
+## 5.4 X semantics
+
+Before `Y_r`, `X_r` is unavailable. A probe of `X_r` returns `BLOCKED` and leaves both location and all `e` variables unchanged.
+
+After `Y_r`, `X_r` becomes available while the location remains `s_r`.
+
+Executing `X_r` then moves the environment from `s_r` to `s_r+2` and returns `ACCEPTED`, unless that action reaches goal, in which case it returns `SUCCESS`.
+
+The availability of `X_r` depends only on `e_r`.
+
+For every `q != r`, neither `Y_q` nor `Z_q` changes `e_r`, and `X_r` does not depend on `e_q`.
+
+Thus cross-relation independence is exact:
+
+`Y_r` affects only `e_r`; `Z_r` affects no enablement variable; `X_r` tests only `e_r`.
+
+## 5.5 Action sets
+
+At each location, the available semantic actions are exactly the outgoing base-edge actions plus dependency actions whose source equals the current location and whose availability condition is satisfied.
+
+For every relation source `s_r`, the semantic action set contains:
+
+- the base edge `s_r -> s_r+1`;
+- `Y_r`;
+- `Z_r`;
+- `X_r` only when `e_r=1`.
+
+When `e_r=0`, `X_r` is a valid but unavailable action: it may be submitted and returns `BLOCKED`, but it is not included in `available_actions`.
+
+At other locations, no relation-specific action is exposed.
+
+All task-local semantic actions receive opaque tokens through the frozen label-permutation procedure.
+
+## 5.6 A causal intervention requirement
+
+For every dependency relation used for abstraction acquisition, the auditor must establish:
+
+1. an X-blocked state exists at location `s_r` with `e_r=0`;
+2. the Y arm executes `Y_r`, leaves location at `s_r`, and changes only `e_r` to `1`;
+3. after Y, `X_r` is available and succeeds when executed from the same source location;
+4. the Z arm starts from the same pre-intervention state, executes `Z_r`, leaves `e_r=0`, and leaves `X_r` unavailable;
+5. the learner-visible pre-intervention context is byte-identical between Y and Z arms;
+6. the auditor-visible hidden-state difference between arms is exactly the prescribed Y-versus-Z intervention difference.
+
+The same source location is therefore used for the subsequent X test; X is not tested after movement to another location.
+
+## 5.7 A label permutation
+
+For each task, the complete semantic action set and complete semantic location set are mapped to independently generated opaque tokens by task-local permutations. Token generation is independent of semantic role.
+
+No semantic role may be encoded in token length, prefix, suffix, character class, ordering, or serialization.
+
+## 5.8 A validity and rejection behavior
+
+A generated A task is valid only if all of the following hold:
+
+- exactly eight locations exist;
+- start is `0` and goal is `7`;
+- exactly the seven base edges exist;
+- exactly three distinct dependency sources are selected from `{0,1,2,3,4}`;
+- each X edge is exactly `s_r -> s_r+2`;
+- each relation has exactly one Y and one Z;
+- Y and Z are zero-displacement;
+- initial `e=(0,0,0)`;
+- each Y changes only its own `e_r`;
+- each Z changes no `e` variable;
+- each X depends only on its own `e_r`;
+- X is blocked before Y;
+- Y makes X executable from the same source;
+- Z leaves X blocked;
+- the learner-visible pre-intervention context of Y and Z is identical;
+- all semantic actions and locations have valid task-local opaque tokens.
+
+If any predicate fails for a seed, the task is `INVALID_TASK_GENERATION`. The seed is not replaced because of the failure and no outcome-based regeneration is permitted.
+
+---
+
+# 6. A intervention comparability contract
+
+## 6.1 Learner-visible canonical context
+
+Immediately before intervention, define `C_X` as the canonical byte serialization of the learner-visible observation restricted to:
+
+- current `state`;
+- complete `available_actions` array;
+- target-role descriptor used by the auditor only to identify X, not exposed to the learner;
+- no hidden fields.
+
+For the learner-visible comparison, the serialized `state` and `available_actions` fields must be byte-identical between Y and Z arms. `last_action`, `last_result`, and `terminated` are also identical because the arms are forked before intervention and begin from the same pre-intervention observation.
+
+## 6.2 Auditor-only context
+
+The auditor may additionally inspect hidden location and `e` values. These fields never enter the learner observation.
+
+Before intervention, the hidden states of the Y and Z replicas are identical.
+
+After intervention:
+
+- Y changes exactly `e_r:0->1` and no other hidden variable;
+- Z changes no hidden variable;
+- both retain the same location;
+- subsequent X succeeds in the Y arm and remains blocked in the Z arm.
+
+## 6.3 Observation window
+
+The causal observation window is:
+
+`pre-X observation -> X probe -> post-X observation -> intervention -> post-intervention observation -> X execution -> outcome`.
+
+For the negative contrast:
+
+`pre-X observation -> X probe -> post-X observation -> Z -> post-Z observation -> X probe -> outcome`.
+
+For the positive intervention:
+
+`pre-X observation -> X probe -> post-X observation -> Y -> post-Y observation -> X execution -> outcome`.
+
+The X probe is an ordinary learner-visible action and counts toward E. Auditor fork creation is not a learner action.
+
+---
+
+# 7. K_pre and genuine A acquisition
+
+## 7.1 K_pre
+
+`K_pre` is the complete learner knowledge store immediately before the first A observation for Phase 2.1.
+
+It must be serialized using the same canonical JSON rules applicable to knowledge records and cryptographically hashed before A interaction begins.
+
+The serialized snapshot, hash, and acquisition-time ordering metadata are immutable audit artifacts.
+
+## 7.2 Operational acquisition claim
+
+Phase 2.1 does not claim metaphysical proof that an internal model “really learned” a causal law. It makes an operational provenance claim: a qualifying relational record was absent from the pre-A knowledge state, was constructed from permitted A evidence, and survived the mechanical admissibility and provenance checks.
+
+## 7.3 Material-equivalence test
+
+Material equivalence between `K_pre` and a candidate post-A rule is tested syntactically after canonical normalization under the K_A grammar in Section 8.
+
+The test is not a claim of metaphysical semantic equivalence.
+
+A candidate already materially present in `K_pre` is not A-acquired.
+
+## 7.4 Delta
+
+Define:
+
+`Delta_K_A = K_A \ K_pre`
+
+under canonical rule identity.
+
+Only records in `Delta_K_A` may be attributed as A-acquired knowledge.
+
+## 7.5 Acquisition classes
+
+Each post-A candidate belongs to exactly one class:
+
+**A — generic machinery:** general learner capability or search procedure that existed before A and did not become a new relational record. Not acquisition.
+
+**B — target-equivalent pre-A content:** a rule materially equivalent to content already present in K_pre. Not acquisition; if it is used to satisfy G2, G2 fails.
+
+**C — A-derived relational content:** a new admissible relational rule whose provenance points to qualifying A evidence and whose normalized identity is absent from K_pre. This can qualify for acquisition.
+
+**D — confidence/usage metadata:** evidence counts, usage frequency, or confidence bookkeeping without a new admissible relational rule. Not acquisition.
+
+## 7.6 Provenance
+
+Every candidate C record contains:
+
+- unique abstraction ID;
+- source A task IDs;
+- source A observation IDs;
+- rule in canonical K_A normal form;
+- evidence hash;
+- K_pre hash;
+- post-A knowledge hash;
+- deterministic creation index;
+- creation event references;
+- cross-instance support count;
+- freeze marker.
+
+Every cited observation must occur before the candidate creation event.
+
+## 7.7 Acquisition gate
+
+The mechanical gate is:
 
 `G_A = nonempty AND provenance-valid AND cross-instance-supported AND relational/non-episodic AND label-invariant AND B-independent AND independently-inspectable AND frozen-before-B`
 
-Each predicate must be mechanically auditable:
+A qualifying rule must have evidence from at least two independently generated and independently relabeled A tasks.
 
-1. **Nonempty:** at least one candidate abstraction record exists.
-2. **Provenance-valid:** every rule points to concrete A observation records and task IDs; those records predate rule creation.
-3. **Cross-instance-supported:** every qualifying reusable rule has evidence from at least two independent A task instances.
-4. **Relational/non-episodic:** the rule is represented in role/relationship terms and cannot be evaluated solely by exact task, state, action, or sequence identity.
-5. **Label-invariant:** the same rule matches independently relabeled A instances without relying on shared identifiers.
-6. **B-independent:** the rule store and creation process have no access to B identifiers, topology, metadata, generator state, solutions, or B outcomes.
-7. **Independently inspectable:** an auditor can reconstruct the rule from its cited A evidence and inspect its contents without hidden state.
-8. **Frozen-before-B:** the abstraction store is cryptographically or otherwise immutably frozen before B generation is exposed to the B learner/decision process.
+Generic pre-A machinery does not satisfy the gate merely because it is nonempty or because A observations increase its confidence.
 
-Failure of any predicate means **G2 acquisition validity failure** and requires cancellation before B.
+The A-derived rule store is frozen before any B exposure.
 
-## 6. Family B definition
+Failure of any predicate is a G2 acquisition validity failure and cancels transfer interpretation.
 
-Family B remains independently generated and structurally novel relative to A.
+---
 
-The existing Phase 2 structural novelty definition is frozen and is not changed:
-- unlabeled degree profile;
-- reachable-distance profile;
-- dependency-placement structure;
-- multiset Jaccard-based structural comparison;
-- no string/name similarity contribution.
+# 8. Closed K_A grammar
 
-The novelty threshold remains:
+The admissibility language is intentionally finite and mechanically decidable.
 
-`mean structural novelty > 0.50`
+## 8.1 Allowed atomic predicates
 
-No threshold or metric change is permitted in Phase 2.1.
+Only these atomic predicates exist:
 
-### B independence
-B generation must be performed by a separately specified B generator whose inputs do not include:
-- A trajectories;
-- A learned abstractions;
-- A task-specific A solution;
-- expected B results;
-- B-specific answer keys supplied to the learner;
-- post-hoc selection based on novelty or performance.
+`BLOCKED(x)`
+`AVAILABLE(x)`
+`ACTION(x)`
+`INTERVENES(y,x)`
+`BEFORE(a,b)`
+`AFTER(a,b)`
+`OBSERVED_EFFECT(a,e)`
+`ENABLES(y,x)`
+`NONENABLES(z,x)`
+`SAME_LOCAL_CONTEXT(a,b)`
 
-The generator may use the preregistered family-level design and its frozen seed manifest. It must not condition individual B tasks on observed A learning outcomes.
+The only permitted structural equality is equality of bound role variables.
 
-Before B exposure, the following must be frozen:
-- B generator source and hash;
-- B seed manifest;
-- generated B corpus or deterministic corpus-generation record;
-- novelty implementation;
-- novelty threshold;
+No other predicate is permitted. In particular, there is no open-ended category called “other structural predicates.”
+
+## 8.2 Constructors
+
+Allowed constructors are:
+
+- bounded `EXISTS`;
+- bounded `FORALL`;
+- conjunction `AND`;
+- implication `->`;
+- role-variable binding.
+
+No disjunction, negation, arithmetic, recursion, arbitrary function call, executable code, embedding, hash lookup, or unbounded quantifier is permitted.
+
+## 8.3 Canonical role vocabulary
+
+Role variables are restricted to the roles:
+
+`target`, `intervention`, `contrast`, `context`.
+
+They are alpha-renamed to canonical order.
+
+The reusable rule may express the following structural relation:
+
+`BLOCKED(target) AND INTERVENES(intervention,target) AND OBSERVED_EFFECT(intervention,ENABLES(target)) AND BEFORE(intervention,target) AND NONENABLES(contrast,target)`
+
+with the exact permitted predicate forms above.
+
+The grammar does not permit concrete state IDs, concrete action labels, seeds, coordinates, task IDs, trajectory literals, B identifiers, hidden-state predicates, or answer keys.
+
+## 8.4 Forbidden representations
+
+The validator rejects any candidate containing:
+
+- task-specific lookup tables;
+- concrete state/action identifiers as semantic roles;
+- literal A trajectories;
+- hard-coded constructors for B solutions;
+- hidden-state predicates;
+- generator coordinates;
+- seeds as rule content;
+- B identifiers or metadata;
+- executable programs;
+- arbitrary strings interpreted as rules;
+- embeddings or opaque learned vectors as rule identity;
+- any undeclared predicate or constructor.
+
+Thus adversarial candidates such as “blocked -> search,” “choose the third action,” concrete trajectory replay, or hidden-state rules are rejected unless they can be expressed entirely in the closed admissibility language, in which case only their canonical admissible form is retained.
+
+## 8.5 Canonical normal form
+
+Normalization performs, in order:
+
+1. alpha-renaming of role variables to canonical names;
+2. canonical ordering of bounded quantifiers;
+3. sorting of conjunction operands by canonical serialized form;
+4. duplicate-conjunct removal;
+5. canonical implication direction;
+6. canonical predicate argument ordering;
+7. UTF-8 JSON serialization with sorted ASCII keys and no whitespace.
+
+Two records with identical normalized rule serialization have the same rule identity.
+
+## 8.6 Validator
+
+The validator is deterministic and binary:
+
+`ADMISSIBLE`
+or
+`REJECTED`.
+
+No human semantic judgment is permitted after validation to turn a rejected record into an admissible one.
+
+---
+
+# 9. Family B: complete deterministic generator
+
+## 9.1 Task count
+
+Family B contains exactly 100 tasks, with seeds `0..99`.
+
+## 9.2 Fixed topology
+
+Every B task uses exactly ten semantic nodes:
+
+`0,1,2,3,4,5,6,7,8,9`.
+
+Start is `0`.
+Goal is `9`.
+
+The complete directed edge set is exactly:
+
+`0->1`
+`1->2`
+`2->3`
+`2->4`
+`3->5`
+`5->6`
+`6->7`
+`4->6`
+`7->8`
+`6->8`
+`8->9`
+`9->8`
+
+The `8<->9` pair is an explicit directed two-node lollipop cycle. The `0-1-2` stem branches at `2`, the branches merge at `6`, and the merged path enters the `8<->9` lollipop cycle. No statement in this protocol characterizes the B graph as cycle-free.
+
+## 9.3 Dependency candidate list
+
+The candidate dependency edges are exactly:
+
+`(0,1),(1,2),(2,3),(2,4),(3,5),(5,6),(4,6),(6,7),(7,8),(6,8),(8,9)`
+
+The edge `9->8` is not a dependency candidate and remains the cycle-return edge.
+
+## 9.4 Dependency count
+
+For even B task seed, exactly three dependency relations are selected.
+
+For odd B task seed, exactly four dependency relations are selected.
+
+Selection uses `TASK_GENERATION` with the fixed seed and deterministic rejection-sampled sampling without replacement.
+
+No dependency is selected twice.
+
+The generator rejects a candidate selection if it violates any of the following:
+
+- duplicate dependency;
+- use of `9->8` as a dependency;
+- loss of reachability of goal `9` through the ordinary transition system;
+- absence of a valid Y/Z intervention contrast;
+- violation of the exact causal semantics below.
+
+The generator advances the same deterministic stream and retries. At most `1,000,000` candidate counters are permitted for one task. If no valid task is obtained by counter `999999`, the task is `INVALID_TASK` and is not replaced because of experimental results.
+
+## 9.5 B causal semantics
+
+For every selected dependency edge `u->v`, create one hidden enablement variable `e_r` initially `0` and define:
+
+`X_r = u->v`.
+
+Create `Y_r` and `Z_r` as zero-displacement actions at the source `u`.
+
+`Y_r` changes only `e_r:0->1`.
+
+`Z_r` changes no enablement variable.
+
+`X_r` is unavailable while `e_r=0` and available only when `e_r=1`.
+
+After Y, X is executable from the same source state. After Z, X remains unavailable from that same source state.
+
+For distinct relations `r != q`, there are no cross-effects between `e_r` and `e_q`.
+
+## 9.6 B labels
+
+Location and action labels are independently task-local and opaque under the same token rules as Family A.
+
+No B token is derived from semantic role.
+
+## 9.7 B validity
+
+A B task is valid only if:
+
+- the exact ten-node graph above is present;
+- start and goal are correct;
+- the required number of distinct dependency candidates is selected;
+- all selected dependencies have exact X/Y/Z semantics;
+- the `8<->9` cycle is preserved;
+- goal remains reachable;
+- each dependency has a positive intervention and negative contrast;
+- learner-visible Y/Z pre-intervention contexts are identical;
+- all labels satisfy the opaque-token contract.
+
+Failure produces `INVALID_TASK`. No outcome-based task replacement is permitted.
+
+---
+
+# 10. Structural novelty algorithm
+
+This is explicitly the **NEW-FROZEN-PHASE2.1 OPERATIONALIZATION** of the existing Phase 2 novelty concept. The historical Phase 2 implementation does not establish an implementation-identical byte-level novelty procedure, so Phase 2.1 does not falsely claim such identity.
+
+The scientific novelty concept is unchanged: unlabeled degree profile, reachable-distance profile, and dependency-placement structure combined by multiset Jaccard.
+
+## 10.1 Degree feature multiset
+
+For every node `v`, add one feature:
+
+`DEGREE(in_degree(v), out_degree(v))`.
+
+The collection is a multiset; duplicate tuples retain multiplicity.
+
+## 10.2 Reachable-distance feature multiset
+
+For every ordered pair `(u,v)` with `u != v` for which a directed path exists, compute the exact shortest-path distance `d(u,v)` in the directed graph and add:
+
+`DISTANCE(d(u,v))`.
+
+Unreachable ordered pairs contribute no feature. Infinite distance is therefore represented by omission, not by a numeric sentinel.
+
+## 10.3 Dependency-placement feature multiset
+
+For each dependency edge `u->v`, add exactly:
+
+`DEPENDENCY(in(u),out(u),in(v),out(v),d(start,u),d(start,v),d(u,goal),d(v,goal))`.
+
+A task is invalid if any distance required by this feature is unreachable.
+
+## 10.4 Combined multiset
+
+The task feature multiset `M` is the multiset union of the three feature multisets above. Feature-type prefixes are part of feature identity, so a degree tuple cannot match a distance tuple.
+
+## 10.5 Multiset Jaccard
+
+For multisets `M1` and `M2`, let `count_M(x)` be multiplicity of feature `x`.
+
+Intersection:
+
+`I(M1,M2)=sum_x min(count_M1(x),count_M2(x))`.
+
+Union:
+
+`U(M1,M2)=sum_x max(count_M1(x),count_M2(x))`.
+
+If `U=0`, Jaccard is defined as `1.0`.
+
+Otherwise:
+
+`J(M1,M2)=I/U`.
+
+## 10.6 Task novelty
+
+For B task `b`:
+
+`novelty(b)=1-max_a J(M_b,M_a)`
+
+where the reference set is all 12 generated A tasks.
+
+No canonical graph labeling or graph-isomorphism solver is required. All features are graph-invariant multisets.
+
+## 10.7 Aggregate novelty
+
+The B novelty aggregate is the arithmetic mean of the 100 unrounded task novelty values.
+
+No per-task rounding occurs before aggregation.
+
+The gate passes iff the exact aggregate is strictly greater than `0.50`.
+
+No duplicate handling beyond ordinary multiset multiplicity is permitted.
+
+---
+
+# 11. B novelty gate
+
+The frozen order is:
+
+`generate B -> calculate novelty -> evaluate threshold -> freeze B -> permit transfer exposure`.
+
+If mean novelty is `<=0.50`, G3 fails and transfer interpretation is cancelled.
+
+No B task may be removed, regenerated, substituted, or reordered after novelty inspection to obtain a passing mean.
+
+Before transfer exposure, the following must be frozen:
+
+- generator source/hash;
+- seed manifest/hash;
+- B task-generation record/corpus hash;
+- novelty implementation/version;
+- per-task novelty values;
+- aggregate novelty;
 - A/K_A freeze artifact;
 - control configuration;
-- leakage-audit result.
+- leakage audit;
+- B immutable freeze marker.
 
-## 7. Pre-B novelty gate
+---
 
-Required order:
+# 12. Retrieval, applicability, and prediction
 
-`generate B -> calculate frozen novelty -> evaluate threshold -> freeze B -> permit transfer exposure`
+## 12.1 Retrieval candidate set
 
-If `mean novelty <= 0.50`, the run cannot be interpreted as a valid test of the preregistered B-transfer hypothesis. **G3 fails and transfer interpretation is cancelled.**
+During B, the learner-visible current observation is matched against all frozen K_A abstractions using their canonical applicability conditions.
 
-Required gate artifacts:
-- B generator source hash;
-- seed manifest hash;
-- B corpus/configuration hash;
-- per-task novelty values;
-- aggregate mean novelty;
-- exact frozen metric definition/version;
-- threshold value and comparison result;
-- timestamp/order proving novelty was evaluated before transfer exposure;
-- immutable B freeze marker.
+The candidate set contains every abstraction whose applicability predicates are satisfied by the current learner-visible relational context.
 
-No task may be removed, regenerated, or substituted after novelty inspection to obtain a passing mean.
+No hidden B metadata is used for matching.
 
-## 8. Genuine transfer event
+If the candidate set is empty, no A abstraction is retrieved.
 
-A transfer event exists only when all of the following occur in order:
+If exactly one candidate exists, it is retrieved.
 
-1. an A-derived abstraction exists and passed G2;
-2. that abstraction is retrieved during B;
-3. it is applied to a B situation matching its applicability conditions;
-4. it generates a testable prediction;
-5. an intervention/action is taken on the B environment on the basis of that application;
-6. the predicted environmental consequence is observed;
-7. the prediction is verified against the observed consequence;
-8. attribution audit finds that the event cannot be explained merely by a B-only heuristic available equally to K0.
+If multiple candidates exist, they are ordered by:
 
-### Conceptual machine-readable transfer event schema
-- `abstraction_id`
-- `source_A_task_ids`
-- `source_A_observation_ids`
-- `B_task_id`
-- `B_local_context`
-- `retrieval_event`
-- `application_event`
-- `prediction`
-- `intervention`
-- `predicted_outcome`
-- `observed_outcome`
-- `verification_result`
-- `attribution_audit`
-- `interaction_cost_before`
-- `interaction_cost_after`
-- `event_order`
+1. greatest number of satisfied canonical applicability predicates;
+2. canonical rule serialization as the deterministic tie-break.
 
-`retrieval` means the stored A abstraction was selected for consideration. It is not itself transfer.
+If multiple maximally specific candidates remain, the retrieval event is `CONFLICT` and no transfer may be attributed until the conflict is resolved before any B-only search.
 
-`prediction` means the abstraction generated a falsifiable expected B consequence. It is not itself transfer.
+## 12.2 Applicability
 
-`verification` means the observed B consequence matched the prediction under the predefined verification rule. It is necessary but not sufficient for transfer attribution.
+Applicability is evaluated only against the closed learner-visible relational language. It may not inspect latent `e` values, generator state, hidden semantic labels, task IDs, or future outcomes.
 
-`transfer` means the complete chain occurred and attribution passed.
+## 12.3 Prediction schema
 
-## 9. Controls
+A prediction event contains exactly:
 
-### K0 — no-A-knowledge counterfactual
-Receives the same B tasks, observations, action space, solver procedure, budgets, and randomization framework, but no A-derived knowledge. Controls for the baseline interaction cost of solving B without prior knowledge.
+- `abstraction_id`;
+- canonical applicable context hash;
+- normalized rule hash;
+- predicted consequence type;
+- event order.
 
-Cannot receive A abstractions, A episodic traces, or A-derived B-specific information.
+The prediction must be created before the decisive intervention/action.
 
-**Necessary.** It is the primary counterfactual for the hypothesis.
+A prediction is falsifiable: it must specify the expected availability/outcome consequence of applying the relation.
 
-### KR — episodic-retention control
-Retains A episodic records in the learner object but does not supply extracted abstraction rules to the B decision process.
+---
 
-Cannot receive the relational abstraction store.
+# 13. Transfer attribution
 
-Controls whether any observed effect is explainable by raw A episode retention/replay rather than abstraction.
+## 13.1 Required chain
 
-**Necessary.** It distinguishes relational reuse from episodic memory.
+A transfer event requires, in order:
 
-### KS — search/computation-budget control
-Uses the same no-knowledge B solver and fixed action/search budget as K_A.
+`retrieval -> application -> prediction -> intervention -> observed consequence -> verification -> attribution`.
 
-Cannot receive A-derived knowledge.
+Retrieval alone is not transfer.
+Prediction alone is not transfer.
+Correct outcome by coincidence is not transfer.
 
-Controls for an advantage caused merely by extra computation or search budget.
+## 13.2 Decisive action
 
-**Necessary.**
+The decisive action is the first executed B action causally downstream of the retrieved abstraction and explicit prediction, as recorded by the frozen event-order trace.
 
-### KP — solver-prior control
-Uses the same solver, randomization, and task prior as K_A but without A-derived B knowledge.
+If retrieval occurs after search or after the decisive action, the event cannot be `KA_TRANSFER`.
 
-Cannot receive B-specific answer information or A-derived abstraction.
+## 13.3 K0-equivalent attribution replay
 
-Controls for solver priors/randomization differences rather than knowledge transfer.
+For every claimed K_A transfer event, an auditor replays the same frozen B local context through the K0-equivalent decision procedure with A knowledge removed but all other solver/search configuration held fixed.
 
-**Necessary.**
+If K0 independently produces the same decisive action for the same reason available from B-only information, the event is not attributable to K_A and is classified `COINCIDENTAL` or `UNATTRIBUTABLE` according to the frozen precedence below.
 
-### Direct A-trajectory replay
-Attempts literal A action sequences on B under the predefined replay procedure.
+The replay is performed from the identical frozen B task state and observation window; it does not alter the primary E values.
 
-Cannot transform those trajectories into relational rules.
+## 13.4 Attribution precedence
 
-Controls whether any B performance could be explained by direct trajectory reuse.
+Exactly one terminal attribution classification is assigned using this precedence, highest first:
 
-**Necessary.** under the existing Phase 2 contract.
+`PROTOCOL_VIOLATION > UNATTRIBUTABLE > CONFLICT > RETRIEVAL_ONLY > PREDICTION_ONLY > COINCIDENTAL > KA_TRANSFER`
 
-No additional control is required unless a new concrete confound is identified before protocol freeze; adding a control may not be used to alter the primary hypothesis or endpoint.
+`PROTOCOL_VIOLATION` means a required protocol condition was violated.
 
-## 10. Leakage audit contract
+`UNATTRIBUTABLE` means the evidence cannot uniquely establish the claimed A-derived causal chain.
 
-Every item below must be audited before transfer interpretation. A failure invalidates scientific transfer interpretation.
+`CONFLICT` means unresolved maximally specific abstraction predictions remained.
 
-| Leakage route | Exact audit question | Pass condition | Failure consequence |
-|---|---|---|---|
-| Task IDs | Can IDs encode family, solution, role, or correct action? | IDs are opaque/randomized and carry no semantic answer information. | Invalid interpretation. |
-| Node labels | Can node names reveal roles or matching across tasks? | Labels are independently permuted and semantically opaque. | Invalid interpretation. |
-| Action labels | Can action names encode Y/X/Z roles? | Action labels are independently permuted and opaque. | Invalid interpretation. |
-| Generator metadata | Can learner inspect generator internals or latent variables? | No metadata is exposed through the interaction boundary. | Invalid interpretation. |
-| Seeds | Can seed values encode task answers or enable direct reconstruction by learner? | Seeds are only reproducibility identifiers and are inaccessible to the learner. | Invalid interpretation. |
-| Ordering artifacts | Does generation/order reveal the correct intervention? | Ordering has no deterministic answer-carrying relation. | Invalid interpretation. |
-| Topology shortcuts | Does local B topology directly identify the correct action without K_A? | Any B-only structural heuristic is equally available to K0 and cannot encode A-derived relation. | Invalid transfer attribution; if unavoidable, redesign before execution. |
-| Hidden solutions | Does any condition receive an answer key or latent solution? | No learner condition receives hidden solution information. | Invalid interpretation. |
-| A trajectories | Can B decisions replay concrete A trajectories? | No concrete trajectory is exposed as a B solution; replay is separately controlled. | Invalid interpretation. |
-| B metadata | Does K_A receive B task IDs, topology summaries, generator state, or future outcomes before retrieval? | None available before ordinary B observation. | Invalid interpretation. |
-| B topology-derived answer keys | Does topology contain a deterministic shortcut that is effectively an answer key? | No unique answer encoding unavailable to K0. | Invalid transfer attribution. |
-| Solver priors | Do K_A and controls differ in fixed priors unrelated to A learning? | Priors are matched or explicitly audited. | Invalid comparison. |
-| Randomization | Do conditions receive different random streams in a way that affects outcome? | Randomization protocol is fixed and matched as specified. | Invalid comparison. |
-| Cross-task memorization | Can exact A task structure be recognized in B? | Independent relabeling and structural novelty prevent identity matching. | Invalid transfer attribution. |
-| State/action indexing | Do numerical indices carry stable role information? | Indices are task-local and independently permuted. | Invalid interpretation. |
-| Deterministic generator quirks | Does a fixed generator artifact correlate with the answer? | No learner-visible deterministic quirk uniquely supplies the answer; audited before execution. | Invalid interpretation or cancellation. |
+`RETRIEVAL_ONLY` means an abstraction was retrieved but no qualifying prediction/intervention chain followed.
 
-## 11. Statistical endpoint
+`PREDICTION_ONLY` means a prediction was produced but no qualifying decisive action and verified consequence followed.
 
-The primary endpoint remains exactly the Phase 2 endpoint:
+`COINCIDENTAL` means the predicted consequence occurred but the K0-equivalent replay shows the same decisive action was independently available from B-only information.
 
-\[
-D = E_{K_0} - E_{K_A}
-\]
+`KA_TRANSFER` requires every step of the complete chain and successful attribution replay.
 
-Positive D favors the hypothesis. Negative D opposes it.
+## 13.5 Adversarial cases
 
-Preserved statistical procedure:
-- paired two-sided sign-flip permutation test;
-- 100,000 permutations;
-- deterministic permutation seed `20260911`;
-- 20,000 deterministic percentile-bootstrap resamples;
-- deterministic bootstrap seed `20260912`;
-- original Phase 2 PASS criteria unchanged.
+A. If search selects Y before retrieval, the event cannot be `KA_TRANSFER` and is classified by the precedence rules, normally `COINCIDENTAL` or `UNATTRIBUTABLE`.
 
-A statistically significant result with `D < 0` is **not** evidence for the hypothesis. It is evidence in the opposite direction under a valid experiment.
+B. If retrieval occurs first and the K_A prediction then causes the same action that K0 would independently select, the event is `COINCIDENTAL`, not transfer.
 
-A validity-gate failure means the transfer hypothesis was not validly tested by that run, regardless of any nominal p-value.
+C. If two maximally specific abstractions disagree, the event is `CONFLICT` unless the conflict was deterministically resolved before any B-only search; unresolved conflict is never silently assigned to K_A.
 
-## 12. Validity hierarchy
+D. If prediction is created after the decisive action, the event is not transfer and is classified `PREDICTION_ONLY` or `UNATTRIBUTABLE` according to available evidence.
 
-The frozen ordering is:
+E. If the correct consequence occurs without a causally attributable K_A action, the event is `COINCIDENTAL` or `UNATTRIBUTABLE`, never `KA_TRANSFER`.
 
-`G0 repository/provenance validity -> G1 A observability validity -> G2 A acquisition validity -> G3 B novelty validity -> G4 leakage validity -> G5 control validity -> primary transfer analysis`
+---
 
-### G0 — repository/provenance
-Pass requires all pre-execution protocol/source/generator/configuration/seed/environment artifacts to be frozen and independently inspectable.
+# 14. Controls and information boundaries
 
-Failure: **INVALID EXPERIMENT; CANCEL before execution.**
+## 14.1 K_A
 
-### G1 — A observability
-Pass requires the generated A environment to permit the specified blocked-X -> Y -> enabled-X intervention and non-enabling contrast, using ordinary observations.
+Receives only frozen `Delta_K_A` records that pass G2. It may use those records during B. It receives no B-specific answer key or future B outcome.
 
-Failure: **INVALID EXPERIMENT; CANCEL before acquisition interpretation.**
+## 14.2 K0
 
-### G2 — A acquisition
-Pass requires the complete G_A conjunction.
+Receives no A-derived knowledge and no raw A episodes. It receives the same frozen B tasks, initial states, learner-visible interface, solver family, and permitted budgets as K_A.
 
-Failure: **CANCEL BEFORE B.** No B transfer exposure or transfer inference is permitted.
+## 14.3 KR
 
-### G3 — B novelty
-Pass requires mean structural novelty > 0.50 under the unchanged metric.
+Retains raw A episodic records but is forbidden from performing cross-episode abstraction induction, aggregation, relational generalization, or rule construction during B.
 
-Failure: **CANCEL BEFORE TRANSFER INTERPRETATION.**
+KR may consult a single stored episode only as an episode. It may not synthesize a rule across episodes or convert episode content into a relational abstraction during B.
 
-### G4 — leakage
-Pass requires the complete leakage audit with no material leakage route.
+## 14.4 KS
 
-Failure: **INVALIDATE SCIENTIFIC INTERPRETATION.** A numerical result cannot rescue a leakage failure.
+Uses the same no-knowledge solver and fixed search/action budget as K_A. It receives no A-derived knowledge.
 
-### G5 — controls
-Pass requires control conditions to have received the specified information boundaries and matched budgets/procedures.
+## 14.5 KP
 
-Failure: **INVALID EXPERIMENT for causal transfer interpretation.** Do not reinterpret the remaining conditions to obtain a result.
+Uses the same solver, task prior, randomization configuration, and fixed decision procedure as K_A but without A-derived knowledge.
 
-## 13. PASS/FAIL classification
+## 14.6 Direct replay
 
-Three outcomes are mandatory.
+Uses literal A action sequences under the predefined replay procedure and cannot transform those sequences into relational rules.
 
-### 13.1 INVALID EXPERIMENT
-One or more scientific validity gates fail. No transfer hypothesis inference is permitted.
+## 14.7 Incidental state
 
-### 13.2 VALID NEGATIVE RESULT
-All validity gates pass, but one or more frozen transfer criteria fail.
+Any post-A state that could affect B behavior must be classified before B as one of:
 
-This includes a statistically significant effect in the wrong direction.
+1. explicitly part of the frozen K_A condition;
+2. reset/removed from the learner state;
+3. undeclared incidental state, which invalidates the experiment.
 
-### 13.3 VALID POSITIVE RESULT
-All validity gates pass and every frozen Phase 2 transfer criterion passes:
-- novelty > 0.50;
-- mean(E_KA) < mean(E_K0);
-- p < 0.05;
-- positive transfer >= 70%;
-- negative transfer <= 20%;
-- K_A final performance >= K0;
-- retrieved+verified transfer >= 80%;
-- direct replay <= 10%;
-- KR does not reproduce the K_A effect.
+No hidden incidental state may silently benefit K_A.
 
-No partial PASS is permitted.
+---
 
-## 14. Parameter-selection discipline
+# 15. Process, cache, filesystem, and environment isolation
 
-All numerical parameters already frozen in Phase 2 remain unchanged, including the novelty threshold, statistical resample counts, seeds, and PASS criteria.
+Each experimental condition starts in a fresh process state with:
 
-Any new Phase 2.1 numerical parameter must be justified before execution according to:
-1. **Scientific reason:** why the parameter is required to instantiate the hypothesis or its validity test;
-2. **Classification:** NECESSARY REPAIR or OPTIONAL IMPROVEMENT;
-3. **Role:** whether it affects hypothesis meaning, statistical power, or implementation feasibility;
-4. **Pre-outcome freeze:** value/range fixed before execution and not changed after any result is observed;
-5. **No outcome optimization:** expected probability of PASS is not an admissible justification.
+- fresh condition-specific RNG streams;
+- fresh learner state appropriate to that condition;
+- fresh search state;
+- fresh cache state;
+- isolated temporary filesystem namespace;
+- isolated environment variables;
+- no inherited task corpus or result cache;
+- no access to another condition's process memory;
+- no shared mutable global RNG.
 
-The only new numerical minimum explicitly required by this protocol is the causal-observability recurrence floor of **two independent, independently relabeled A instances per qualifying abstraction**, classified **NECESSARY**. Its justification is minimum cross-instance invariance, not expected performance.
+The immutable B task definition and initial state are the only shared scientific inputs between paired conditions.
 
-Optional stronger repetition is not allowed to replace the minimum after seeing outcomes.
+No condition may inspect another condition's logs, timing, memory, filesystem, cache, or result before completing its own decision.
 
-## 15. Implementation-neutral pseudocode
+Deterministic ordering is required wherever multiple internal candidates exist.
 
-```text
-FREEZE protocol, hypotheses, metrics, thresholds, seeds, controls, audit rules
-VERIFY G0 repository/provenance prerequisites
-IF G0 fails: CANCEL
+---
 
-GENERATE Family A from frozen A generator and seed manifest
-VERIFY G1 causal observability requirements
-IF G1 fails: CANCEL
+# 16. Pairing
 
-RUN A learning under the frozen information boundary
-BUILD candidate K_A abstractions from A observations only
-VERIFY G2 acquisition conjunction
-IF G2 fails: CANCEL BEFORE B
-FREEZE K_A
+There are exactly 100 paired primary observations.
 
-GENERATE Family B independently from frozen B generator and seed manifest
-CALCULATE frozen structural novelty metric
-VERIFY mean novelty > 0.50
-IF G3 fails: CANCEL BEFORE TRANSFER INTERPRETATION
-FREEZE B corpus/configuration
+For every `i`:
 
-RUN leakage audit and verify G4
-IF G4 fails: INVALIDATE SCIENTIFIC INTERPRETATION
+`pair_i = (B_i, K_A ; B_i, K_0)`.
 
-INSTANTIATE K0, KR, KS, KP and direct-replay controls
-VERIFY G5 information boundaries, matching and budgets
-IF G5 fails: INVALID EXPERIMENT
+The two conditions use the exact same frozen B task instance, exact same initial environment state, and exact same learner-visible observation at the start of the pair.
 
-RUN B transfer conditions under frozen protocol
-LOG every candidate transfer event using the transfer schema
-VERIFY retrieval -> application -> prediction -> intervention -> observation -> verification -> attribution
+Condition-specific learner/search randomness uses independent condition streams:
 
-COMPUTE E and paired D = E_K0 - E_KA
-RUN frozen sign-flip test and frozen bootstrap
-APPLY original PASS criteria without modification
-CLASSIFY as INVALID EXPERIMENT, VALID NEGATIVE RESULT, or VALID POSITIVE RESULT
+`B_LEARNER_KA`, `B_LEARNER_K0`, `SEARCH_KA`, and `SEARCH_K0`.
 
-PRESERVE all required artifacts and hashes
-```
+The B task itself is not regenerated between conditions.
 
-## 16. Reproducibility contract
+Each condition produces exactly one valid primary `E` value. If either condition is scientifically invalid, the pair is invalid rather than silently excluded.
 
-### Required before execution
-The complete bundle must exist and be independently inspectable before any experiment execution:
-- this protocol/specification;
-- experiment source;
-- Family A generator source;
-- Family B generator source;
-- exact configuration;
-- seed manifest;
-- dependency lock/environment description;
-- corpus-generation procedure;
-- acquisition-gate implementation;
-- transfer-event schema;
-- statistical analysis specification.
+---
 
-No experiment source or generator may remain only in an unversioned local working tree at execution time.
+# 17. Terminal outcomes and E
 
-### Required after execution
-Preserve:
-- raw stdout;
-- raw stderr;
-- structured results;
-- event logs;
-- source hash;
-- A/B generator hashes;
-- configuration/corpus hash;
-- output hash;
-- exact command;
-- runtime;
-- OS/environment information;
-- commit SHA.
+## 17.1 Terminal enum
 
-The implementation must make it possible for an independent auditor to reconstruct exactly what was executed and distinguish protocol artifacts from generated results.
+Every execution terminates in exactly one of:
 
-## 17. Cancellation rules
+- `SUCCESS`
+- `INTERACTION_CAP_EXHAUSTED`
+- `DECISION_CUTOFF_EXHAUSTED`
+- `ILLEGAL_ACTION`
+- `ENVIRONMENT_ERROR`
+- `PROTOCOL_VIOLATION`
+- `INVALID_TASK`
+- `INSTRUMENTATION_FAILURE`
 
-Cancellation is mandatory, not discretionary:
+## 17.2 Interaction cost
 
-1. **Before execution:** any G0 failure cancels execution.
-2. **During A:** any G1 failure cancels the run as an invalid test.
-3. **After A learning:** any G2 failure cancels **before B**. B must not be exposed to the transfer learner.
-4. **After B generation:** any G3 failure cancels **before transfer interpretation**. No threshold or metric may be changed.
-5. **At leakage audit:** any material G4 failure invalidates scientific interpretation.
-6. **At control validation:** any G5 failure invalidates the causal comparison.
-7. **Any post-hoc tuning, task deletion, seed substitution, threshold change, metric change, or selective event exclusion:** invalidates the affected run and cannot be used to establish a positive result.
-8. **Any inability to establish provenance from A observations to K_A:** treated as G2 failure.
-9. **Any inability to establish that B was independent and frozen before transfer exposure:** treated as G3/G4 failure as appropriate.
+`E` is the number of learner-issued action attempts through the goal-reaching action or through the terminal execution cutoff.
 
-## 18. Phase-3 advancement requirements
+The interaction cap is exactly `200` learner-issued actions.
 
-Phase 3 is not authorized by this protocol.
+The implementation decision-budget cutoff is exactly `120` decision units.
 
-It may only be considered after a future Phase 2.1 run has:
-- passed G0-G5;
-- produced a valid positive result under every unchanged transfer criterion;
-- demonstrated non-episodic A abstraction acquisition with inspectable provenance;
-- demonstrated B structural novelty > 0.50 under the frozen metric;
-- demonstrated actual retrieval, prediction, intervention, observed consequence, verification, and attribution;
-- shown mean E_KA < mean E_K0 with p < 0.05;
-- met positive-transfer >=70% and negative-transfer <=20%;
-- met retrieved+verified transfer >=80%;
-- kept direct replay <=10%;
-- shown KR does not reproduce the K_A advantage;
-- preserved complete source, generator, configuration, seed, environment, event, statistical, and output artifacts for independent audit;
-- been independently reproduced from the frozen source/protocol without post-hoc changes.
+A valid learner-issued action attempt counts toward E. A blocked action counts. An illegal action submission is not counted as a valid environment interaction and terminates the condition as `ILLEGAL_ACTION`.
 
-Even a valid positive Phase 2.1 result would support only the tested synthetic structural-transfer hypothesis under the specified conditions. It would not establish AGI, general intelligence, or broad real-world transfer.
+If the goal is reached on the final permitted interaction, that interaction counts and the condition is `SUCCESS`.
 
-## 19. Freeze statement
+If the interaction cap is exhausted without reaching the goal, the condition is `INTERACTION_CAP_EXHAUSTED` and `E=200`.
 
-This document is a protocol draft for independent audit only. It does not report empirical evidence. It does not authorize execution. It does not modify or reinterpret Phase 2. It does not alter the Phase 2 hypothesis, structural novelty metric, threshold, seeds, controls, endpoint, statistics, or PASS criteria.
+If the decision cutoff is exhausted after `e` learner-issued actions without success, the condition is `DECISION_CUTOFF_EXHAUSTED` and `E=e`.
 
-The minimum scientific repair is limited to making the A dependency causally observable through intervention, requiring genuine cross-instance A abstraction acquisition before B, and enforcing the unchanged B novelty gate. These are validity repairs, not result-optimization steps.
+## 17.3 Error precedence
+
+Scientific invalidity takes precedence over scoring. The effective precedence is:
+
+`PROTOCOL_VIOLATION / INSTRUMENTATION_FAILURE / INVALID_TASK / ENVIRONMENT_ERROR` -> invalidate;
+
+otherwise `SUCCESS` -> score success;
+
+otherwise `DECISION_CUTOFF_EXHAUSTED` -> score cutoff;
+
+otherwise `INTERACTION_CAP_EXHAUSTED` -> score cap;
+
+otherwise `ILLEGAL_ACTION` -> terminate as illegal and invalidate the condition's scientific comparison.
+
+An implementation must never silently convert an infrastructure/protocol error into an E value.
+
+No NaN, missing value, or selective exclusion is permitted.
+
+---
+
+# 18. Stopping and cancellation
+
+The gate order is immutable:
+
+`G0 -> G1 -> G2 -> G3 -> G4 -> G5 -> analysis`
+
+`G0`: protocol/source integrity.
+
+`G1`: A task-generation and causal-observability validity.
+
+`G2`: K_A acquisition validity.
+
+`G3`: B novelty validity.
+
+`G4`: leakage/control/pairing validity.
+
+`G5`: execution-completeness and terminal-outcome validity.
+
+Only after G5 may primary statistical analysis occur.
+
+Cancellation is mandatory if any gate fails in a way specified as invalidating the scientific comparison.
+
+The protocol forbids:
+
+- outcome-based stopping;
+- post-outcome parameter changes;
+- task replacement after novelty inspection;
+- B regeneration after seeing performance;
+- selective exclusion of unfavorable tasks;
+- changing the novelty threshold;
+- changing the statistical test;
+- changing seeds;
+- changing controls;
+- changing the endpoint;
+- relabeling a failed event as transfer after seeing its outcome.
+
+A negative result is reported as a negative result. The experiment is not rescued by changing the architecture or generator after observation.
+
+---
+
+# 19. Statistics
+
+The primary paired data are the 100 valid values:
+
+`D_i = E_K0,i - E_KA,i`.
+
+The primary hypothesis is tested by a two-sided paired sign-flip permutation test with exactly `100000` permutations and seed `20260911`.
+
+The bootstrap uses exactly `20000` deterministic percentile resamples and seed `20260912`.
+
+All randomization is performed after the primary data have been frozen and uses the `PERMUTATION` and `BOOTSTRAP` streams respectively.
+
+No alternative test is substituted after observation.
+
+---
+
+# 20. Leakage invariants
+
+The following are hard invariants:
+
+- all action tokens have identical datatype, width, alphabet, and encoding;
+- all location tokens have identical datatype, width, alphabet, and encoding;
+- state contains exactly `location`;
+- result contains exactly `status`;
+- observation contains exactly the five specified keys;
+- action ordering is token-lexicographic only;
+- no token contains semantic role information by construction;
+- no semantic X/Y/Z identity is learner-visible;
+- no latent enablement variable is learner-visible;
+- no task-generation metadata is learner-visible;
+- no seed is learner-visible;
+- no timestamps, PIDs, memory addresses, thread identifiers, locale strings, platform strings, cache identifiers, or generator counters are learner-visible;
+- no future state is exposed;
+- no answer key is exposed;
+- no auditor snapshot/fork/reset/restore is learner-visible;
+- no free-form diagnostic is learner-visible.
+
+Any violation is `PROTOCOL_VIOLATION` and invalidates the affected scientific comparison.
+
+---
+
+# 21. Reproducibility artifact contract
+
+A valid execution must preserve, without changing the frozen protocol:
+
+1. protocol file hash;
+2. learner implementation source and hash;
+3. A generator source and hash;
+4. B generator source and hash;
+5. exact A seed manifest;
+6. exact B seed manifest;
+7. generated task/configuration hash or deterministic generation record;
+8. K_pre serialization and hash;
+9. K_A delta serialization and hash;
+10. provenance/evidence records;
+11. B novelty per-task values and aggregate;
+12. novelty implementation/version identifier;
+13. leakage audit record;
+14. control configuration records;
+15. condition RNG namespace/configuration records;
+16. paired B task mapping;
+17. terminal outcome and E records;
+18. transfer-attribution event records;
+19. permutation seed and results;
+20. bootstrap seed and results;
+21. environment/runtime information sufficient to reproduce the execution.
+
+No artifact may be replaced after an outcome in order to improve reproducibility or statistical appearance.
+
+---
+
+# 22. Protocol-frozen vs implementation-frozen boundary
+
+## 22.1 Protocol-frozen
+
+The following are scientifically immutable:
+
+- hypothesis;
+- endpoint;
+- A and B family definitions;
+- causal relation;
+- observation boundary;
+- X-probe semantics;
+- K_pre and K_A acquisition boundary;
+- K_A grammar;
+- novelty feature definitions and threshold;
+- retrieval and attribution rules;
+- controls;
+- RNG and isolation rules;
+- pairing;
+- terminal outcomes;
+- statistical procedure;
+- seeds;
+- PASS criteria;
+- stopping and cancellation rules.
+
+## 22.2 Implementation-frozen
+
+Before execution, the concrete learner implementation must be frozen, including:
+
+- learner architecture;
+- internal representation;
+- learning algorithm;
+- memory implementation;
+- search procedure;
+- solver configuration;
+- action-selection implementation;
+- computation/decision budget;
+- serialization implementation;
+- RNG implementation;
+- process isolation implementation;
+- cache policy;
+- observation-interface implementation.
+
+Internal implementations may differ between independent implementations only if their external behavior satisfies the complete protocol. Scientific conclusions are scoped to the learner implementation actually executed.
+
+---
+
+# 23. Two-implementer equivalence test
+
+Before execution, two competent independent implementers must be able to implement the protocol without making a scientific choice about:
+
+- A generator;
+- B generator;
+- X probe;
+- observation interface;
+- state encoding;
+- action encoding;
+- intervention selection;
+- observation window;
+- K_pre;
+- K_A grammar;
+- retrieval;
+- attribution;
+- KR;
+- controls;
+- RNG;
+- novelty;
+- pairing;
+- terminal outcomes;
+- stopping.
+
+They may use different programming languages or internal data structures, but if both implementations comply with this protocol, they must expose the same learner-visible information, construct the same deterministic task families from the same seeds, compute the same novelty values, apply the same causal intervention rules, use the same knowledge admissibility language, classify the same attribution cases, pair the same B instances, and apply the same terminal/scoring rules.
+
+A remaining implementation disagreement is protocol-material only if it can change K_A acquisition, B novelty, transfer attribution, E_KA, E_K0, D, validity status, or interpretation of the hypothesis. Such a disagreement is prohibited.
+
+---
+
+# 24. PASS / FAIL interpretation
+
+The following classifications are distinct:
+
+### INVALID EXPERIMENT
+A protocol, generation, leakage, pairing, instrumentation, or execution-integrity failure prevents the frozen comparison from being scientifically interpreted.
+
+### VALID NEGATIVE RESULT
+All required validity gates pass, but the empirical endpoint fails to support the hypothesis or supports the opposite direction.
+
+### VALID POSITIVE RESULT
+All required validity gates pass and all nine PASS criteria are satisfied.
+
+A failure of Phase 2 does not count as a Phase 2.1 result.
+
+A Phase 2.1 positive result would establish only the preregistered structural-transfer effect for the frozen learner and synthetic task families. It would not establish AGI or general intelligence.
+
+---
+
+# 25. Phase-3 advancement restriction
+
+Phase 3 may begin only if:
+
+1. all original Phase 2.1 PASS criteria are satisfied;
+2. the Phase 2.1 execution is independently inspectable;
+3. the complete reproducibility artifact contract is satisfied;
+4. an independent reproduction using the same frozen protocol obtains the required positive result;
+5. no post-outcome protocol change is used to obtain advancement.
+
+A Phase 2.1 failure does not authorize a Phase-3 architecture rescue inside the same experiment.
+
+---
+
+# 26. Freeze statement
+
+This document is the authoritative Phase 2.1 scientific protocol baseline.
+
+The scientific hypothesis, primary endpoint, novelty threshold, statistical procedure, seeds, controls, PASS criteria, and historical Phase 1/Phase 2 boundary are frozen.
+
+The detailed learner-interface, environment-generator, causal-intervention, acquisition, attribution, isolation, terminal-outcome, pairing, and reproducibility clauses above are deterministic implementation-closure clauses. They do not change the scientific hypothesis or the primary endpoint.
+
+The novelty section is explicitly a **NEW-FROZEN-PHASE2.1 OPERATIONALIZATION** of the already frozen Phase 2 novelty concept; it is not represented as a historical implementation identity claim.
+
+No empirical result is contained in this protocol.
+
+**PHASE 2:** `FAIL` — historical frozen result.
+
+**PHASE 2.1:** `PROTOCOL FROZEN — NO EMPIRICAL RESULT`.
