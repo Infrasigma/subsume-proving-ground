@@ -1,0 +1,36 @@
+=== PHASE 1 RAW RESULT ===
+Total Independent Trials: 100
+Baseline validity status: NO architectural modification was made before execution.
+Known E_opt: 9
+Learning trajectories identical for every seed before ablation: True
+Learning interaction counts identical for every seed: True
+Learned capabilities identical before ablation: True
+Only intervention between K_1 and K_0: deletion of capabilities dictionary: True
+Mean E (K_1 retained): 9.000000
+Mean E (K_0 ablated):  85.700000
+Observed mean paired difference D = E_K0 - E_K1: 76.700000
+Median paired difference: 52.000000
+SD of paired differences: 72.852487
+Minimum paired difference: 4
+Maximum paired difference: 501
+Trials where K_1 beats K_0 (D > 0): 100/100 (100.0%)
+K_1 trials reaching exactly E=9: 100/100
+K_0 trials reaching exactly E=9: 0/100
+Every retained capability used during K_1 evaluation had a correct prediction: True
+Total retained-capability uses during K_1 evaluation: 900
+Learning episodes reaching goal: 100/100
+Paired two-sided sign-flip permutation p-value: 0.00001000
+Permutations used: 100000
+No hidden optimal-path heuristic introduced: True
+K_1 raw array:
+[9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9]
+K_0 raw array:
+[144, 25, 13, 57, 120, 29, 21, 37, 108, 210, 74, 34, 30, 102, 53, 60, 257, 69, 84, 68, 510, 175, 142, 88, 15, 21, 59, 116, 60, 314, 16, 52, 203, 48, 44, 143, 80, 43, 105, 155, 110, 62, 19, 28, 98, 132, 60, 115, 164, 269, 38, 45, 71, 124, 41, 24, 82, 70, 44, 166, 34, 126, 43, 33, 66, 63, 107, 38, 42, 50, 31, 27, 154, 125, 53, 51, 86, 30, 34, 48, 45, 49, 36, 76, 68, 88, 47, 87, 57, 49, 38, 69, 95, 40, 186, 179, 153, 45, 159, 17]
+Paired D raw array:
+[135, 16, 4, 48, 111, 20, 12, 28, 99, 201, 65, 25, 21, 93, 44, 51, 248, 60, 75, 59, 501, 166, 133, 79, 6, 12, 50, 107, 51, 305, 7, 43, 194, 39, 35, 134, 71, 34, 96, 146, 101, 53, 10, 19, 89, 123, 51, 106, 155, 260, 29, 36, 62, 115, 32, 15, 73, 61, 35, 157, 25, 117, 34, 24, 57, 54, 98, 29, 33, 41, 22, 18, 145, 116, 44, 42, 77, 21, 25, 39, 36, 40, 27, 67, 59, 79, 38, 78, 48, 40, 29, 60, 86, 31, 177, 170, 144, 36, 150, 8]
+=== END PHASE 1 RAW RESULT ===
+
+=== PHASE 1 SCIENTIFIC VERDICT ===
+PASS
+In this deterministic 1-D environment, retaining goal-verified capabilities causally reduced subsequent environment interaction cost relative to matched knowledge ablation.
+Prediction correctness, useful capability acquisition, cost reduction, and causal ablation evidence are reported separately.
