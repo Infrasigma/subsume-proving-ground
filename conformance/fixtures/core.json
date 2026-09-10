@@ -1,0 +1,17 @@
+[
+  {
+    "name":"positive_enablement","seed":7,
+    "history":[{"state":{"location":"loc0"},"available_actions":["aa"],"last_action":null,"last_result":null,"terminated":false},{"state":{"location":"loc0"},"available_actions":["aa","bb"],"last_action":"aa","last_result":{"status":"OK"},"terminated":false}],
+    "candidate":{"atoms":[{"predicate":"AVAILABLE","args":["target"]},{"predicate":"INTERVENES","args":["intervention","target"]}],"consequence":"ENABLES(target)"},"binding":{"target":"bb","intervention":"aa"},"next_action":"bb","cost":{"attempts":2,"terminal":"SUCCESS"},"attribution":{"evidence":["retrieval","prediction","intervention","consequence","verification","counterfactual"]},"novelty_a":[{"x":1},{"x":2}],"novelty_b":[{"x":2},{"x":3}],"expected":{"retrieval":true,"prediction":"ENABLES(target)","cost":2,"attribution":"KA_TRANSFER","novelty":0.6666666666666666}
+  },
+  {
+    "name":"negative_nonenablement","seed":8,
+    "history":[{"state":{"location":"loc0"},"available_actions":["aa"],"last_action":null,"last_result":null,"terminated":false},{"state":{"location":"loc0"},"available_actions":["aa"],"last_action":"aa","last_result":{"status":"OK"},"terminated":false}],
+    "candidate":{"atoms":[{"predicate":"NONENABLES","args":["contrast","target"]}],"consequence":"NONENABLES(contrast,target)"},"binding":{"target":"bb","contrast":"aa"},"next_action":"aa","cost":{"attempts":200,"terminal":"INTERACTION_CAP_EXHAUSTED"},"attribution":{"evidence":["retrieval","prediction","intervention","consequence","verification","counterfactual"]},"novelty_a":[{"x":1}],"novelty_b":[{"x":1}],"expected":{"retrieval":true,"prediction":"NONENABLES(contrast,target)","cost":200,"attribution":"KA_TRANSFER","novelty":0.0}
+  },
+  {
+    "name":"blocked_and_protocol_invalid","seed":9,
+    "history":[{"state":{"location":"loc0"},"available_actions":["aa"],"last_action":null,"last_result":null,"terminated":false},{"state":{"location":"loc0"},"available_actions":["aa"],"last_action":"aa","last_result":{"status":"BLOCKED"},"terminated":false}],
+    "candidate":{"atoms":[{"predicate":"BLOCKED","args":["target"]}],"consequence":"ENABLES(target)"},"binding":{"target":"aa"},"next_action":"aa","cost":{"attempts":1,"terminal":"PROTOCOL_VIOLATION"},"attribution":{"outside_domain":true,"evidence":["retrieval","prediction"]},"novelty_a":[],"novelty_b":[],"expected":{"retrieval":true,"prediction":"ENABLES(target)","cost":null,"attribution":"PROTOCOL_VIOLATION","novelty":1.0}
+  }
+]
