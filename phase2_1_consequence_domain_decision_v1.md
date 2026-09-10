@@ -169,7 +169,13 @@ SERL learner freeze where the two-value restriction first appears explicitly as 
 Decision artifact:
 
 - file: `phase2_1_consequence_domain_decision_v1.md`
-- commit: to be recorded after commit creation.
+- initial commit: `c5874afe7f9d8f1701cdaf8dc2cf40c45fe5cfd7`
+- finalized commit: this update commit
+
+Protocol v2:
+
+- file: `phase2_1_protocol_v2.md`
+- commit: `8a0e2b26e9a1f1e4dc3d23bf56bd29047c94cc7d`
 
 ## 13. Execution status
 
