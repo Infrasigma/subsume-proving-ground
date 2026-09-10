@@ -11,7 +11,6 @@ import (
 )
 
 type TransitionRecord struct { Before State; Action Action; After State; Outcome map[string]string; Uncertainty Uncertainty; Provenance Provenance }
-
 func EncodeTransition(x Experience, tr TransitionRecord) Experience { b,_:=json.Marshal(tr); x.Raw=b; x.Derived=nil; x.Uncertainty=tr.Uncertainty; x.Provenance=Prov("experience-transition",x.Provenance.ID,"encode-transition",tr); return x }
 func DecodeTransition(x Experience)(TransitionRecord,error){var tr TransitionRecord; if len(x.Raw)==0{return tr,errors.New("experience has no raw transition")}; if err:=json.Unmarshal(x.Raw,&tr);err!=nil{return tr,fmt.Errorf("decode transition: %w",err)};return tr,nil}
 
@@ -47,7 +46,7 @@ func DetectRepresentationInsufficiency(xs []Experience)[]RepresentationResidual{
 
 type ProgramInstruction struct{Op,A,B string}
 type ExecutableProgram struct{Instructions []ProgramInstruction}
-func(p ExecutableProgram)Run(input map[string]string)(map[string]string,error){env:=map[string]string{};for k,v:=range input{env[k]=v};for _,ins:=range p.Instructions{switch ins.Op{case "set":env[ins.A]=ins.B;case "copy":v,ok:=env[ins.B];if !ok{return nil,fmt.Errorf("missing input %s",ins.B)};env[ins.A]=v;case "add_int":v,ok:=env[ins.B];if !ok{return nil,fmt.Errorf("missing input %s",ins.B)};n,e:=strconv.Atoi(v);if e!=nil{return nil,e};d,e:=strconv.Atoi(ins.B);if e!=nil{return nil,e};env[ins.A]=strconv.Itoa(n+d);default:return nil,fmt.Errorf("unknown instruction %q",ins.Op)}};return env,nil}
+func(p ExecutableProgram)Run(input map[string]string)(map[string]string,error){env:=map[string]string{};for k,v:=range input{env[k]=v};for _,ins:=range p.Instructions{switch ins.Op{case "set":env[ins.A]=ins.B;case "copy":v,ok:=env[ins.B];if !ok{return nil,fmt.Errorf("missing input %s",ins.B)};env[ins.A]=v;case "add_int":v,ok:=env[ins.B];if !ok{return nil,fmt.Errorf("missing input %s",ins.B)};n,e:=strconv.Atoi(v);if e!=nil{return nil,e};env[ins.A]=strconv.Itoa(n+1);default:return nil,fmt.Errorf("unknown instruction %q",ins.Op)}};return env,nil}
 
 type ProgramBuilder struct{}
 func(ProgramBuilder)Build(c ArchitectureCandidate,s CapabilitySpecification)(ModificationProposal,error){if len(s.Inputs)==0||len(s.Outputs)==0{return ModificationProposal{},errors.New("program construction requires input and output")};in,out:=s.Inputs[0],s.Outputs[0];var p ExecutableProgram;switch c.Mechanism{case "copy":p=ExecutableProgram{Instructions:[]ProgramInstruction{{Op:"copy",A:out,B:in}}};case "increment":p=ExecutableProgram{Instructions:[]ProgramInstruction{{Op:"add_int",A:out,B:in}}};case "zero":p=ExecutableProgram{Instructions:[]ProgramInstruction{{Op:"set",A:out,B:"0"}}};default:return ModificationProposal{},fmt.Errorf("unsupported construction mechanism %q",c.Mechanism)};b,_:=json.Marshal(p);return ModificationProposal{ID:Hash([]any{c,s}),Capability:s,Candidate:c,Artifact:string(b),Provenance:Prov("mechanism-builder",c.ID,"construct-executable-program",p)},nil}
