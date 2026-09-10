@@ -1,0 +1,20 @@
+{
+  "version": "2",
+  "phase2_protocol": "v3",
+  "status": "PROSPECTIVE_NOT_EXECUTED",
+  "predicates": {
+    "BLOCKED": ["Action"],
+    "AVAILABLE": ["Action"],
+    "ACTION": ["Action"],
+    "INTERVENES": ["Action", "Action"],
+    "OBSERVED_EFFECT": ["Action", "Effect"],
+    "ENABLES": ["Action", "Action"],
+    "NONENABLES": ["Action", "Action"],
+    "SAME_LOCAL_CONTEXT": ["Action", "Action"]
+  },
+  "roles": ["target", "intervention", "contrast", "context"],
+  "constructors": ["EXISTS", "FORALL", "AND", "IMPLIES", "ROLE_BINDING"],
+  "candidate": {"min_atoms": 1, "max_atoms": 6, "consequences": ["ENABLES(target)", "NONENABLES(contrast,target)"]},
+  "forbidden_predicates": ["BEFORE", "AFTER"],
+  "forbidden": ["OR", "NOT", "ARITHMETIC", "RECURSION", "FUNCTION", "EMBEDDING", "HASH_LOOKUP", "EXECUTABLE_CODE", "UNBOUNDED_QUANTIFIER", "TASK_SPECIFIC_CONSTANT"]
+}
