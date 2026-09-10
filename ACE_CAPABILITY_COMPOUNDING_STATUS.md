@@ -8,11 +8,13 @@ Date: 2026-09-11
 
 No AGI claim is made.
 
-## Source
+## Source boundary
 
 Branch: `ace-full-system-20260911`
 
-Current source/documentation HEAD: `e98c07528f033abfeb738aa3ffdce9406b86c3ee`
+Latest source-code commit in this milestone: `0762bf1627c9e93545298e3d94b42258ba88b6cf`
+
+Latest documentation commit: this status update follows the source-code milestone and does not change the implementation.
 
 The milestone contains a latent-task laboratory, behavior-driven parameterized mechanism search, hidden-task evaluation, structural program composition, and a replicated compounding protocol. It deliberately does not replace the canonical runtime with a hand-authored AGI loop.
 
@@ -51,9 +53,9 @@ The repository contains a 12-instance hidden-task replication gate. Its intended
 
 ## CI evidence
 
-A first compounding validation run (`34542828179`) failed at Go compilation because the initial draft contained malformed syntax. The failure was inspected rather than hidden, and the malformed drafts were removed/replaced.
+The first compounding validation run (`34542828179`) failed at Go compilation because the initial draft contained malformed syntax. That failure was inspected and the malformed drafts were removed/replaced rather than hidden.
 
-The subsequent source repair was pushed as a parse-safe core. GitHub Actions validation for the newest HEAD is still being scheduled/executed; therefore this document intentionally makes **no green-CI claim** for HEAD `e98c07528f033abfeb738aa3ffdce9406b86c3ee`.
+The repaired source has been pushed and GitHub Actions runs have been triggered for it. At the time of this status snapshot, the newest full validation had not completed, so no green-CI claim is made for the repaired source.
 
 ## Exact justified claim
 
