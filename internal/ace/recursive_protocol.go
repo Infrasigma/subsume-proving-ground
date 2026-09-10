@@ -6,19 +6,17 @@ import (
 )
 
 func RunRecursiveCapabilityProtocolV3() (map[string]float64, error) {
-	lab := LatentTaskLab{Families: []TaskFamily{AffineFamily{}, ThresholdFamily{}, DeepCompositionFamily{}}}
-	_, c1, _, err := lab.GenerateDiscovery(0)
+	_, c1, _, err := (AffineFamily{}).Generate(0, false)
 	if err != nil { return nil, err }
 	k1, err := ParameterizedMechanismSearch(c1)
 	if err != nil { return nil, err }
-
-	_, c2, _, err := lab.GenerateDiscovery(1)
+	_, c2, _, err := (ThresholdFamily{}).Generate(0, false)
 	if err != nil { return nil, err }
 	if _, err = ParameterizedMechanismSearch(c2); err == nil { return nil, errors.New("pre-improvement arithmetic method unexpectedly solved conditional task") }
 
 	spec2, err := GeneralCapabilitySpecification(Task{ID: "opaque-t2", Goal: "classify input", Requirements: []string{"x"}, Structure: []string{"scalar", "conditional"}, Budget: ResourceVector{Compute: 100, Memory: 100, TimeMS: 5000, ExperimentBudget: 20}}, c2)
 	if err != nil { return nil, err }
-	hidden2 := []ProgramTestCase{methodInputOutputExample(-8, 0), methodInputOutputExample(2, 0), methodInputOutputExample(5, 1), methodInputOutputExample(9, 1)}
+	hidden2 := []ProgramTestCase{methodInputOutputExample(-8, 0), methodInputOutputExample(0, 0), methodInputOutputExample(1, 0), methodInputOutputExample(5, 1)}
 	telemetry := AcquisitionTelemetry{TaskID: "opaque-t2", TaskStructure: []string{"scalar", "conditional"}, KnownExamples: len(c2), CandidateCount: 1, CandidateFailures: []string{"arithmetic candidate rejected by independent boundary counterexample"}, Counterexamples: 1, Representation: []string{"scalar-input-output"}, SearchPath: []string{"parameterized-add", "parameterized-mul"}, VerificationOutcomes: []string{"independent-counterexample-failed"}, Cost: ResourceVector{Compute: 1, ExperimentBudget: 1}}
 	method, diagnosis, evals, err := AutonomousMethodImprovement(telemetry, spec2, hidden2, nil, nil)
 	if err != nil { return nil, fmt.Errorf("autonomous method improvement failed: %w", err) }
@@ -44,8 +42,7 @@ func RunRecursiveCapabilityProtocolV3() (map[string]float64, error) {
 
 func RunReplicatedCompoundingV2(n int) (map[string]float64, error) {
 	if n < 2 { return nil, errors.New("need replication") }
-	lab := LatentTaskLab{Families: []TaskFamily{AffineFamily{}, ReplicatedDeepFamily{}}}
-	_, base, _, err := lab.GenerateDiscovery(0)
+	_, base, _, err := (AffineFamily{}).Generate(0, false)
 	if err != nil { return nil, err }
 	shift, err := ParameterizedMechanismSearch(base)
 	if err != nil { return nil, err }
@@ -53,6 +50,6 @@ func RunReplicatedCompoundingV2(n int) (map[string]float64, error) {
 	if err != nil { return nil, err }
 	inc, err := ParameterizedMechanismSearch([]ProgramTestCase{methodInputOutputExample(2, 3), methodInputOutputExample(8, 9)})
 	if err != nil { return nil, err }
-	for i := 0; i < n; i++ { _, cases, _, err := lab.GenerateHidden(100 + i); if err != nil { return nil, err }; spec := CapabilitySpecification{ID: Hash(i), Inputs: []string{"x"}, Outputs: []string{"y"}, AcceptanceTests: []string{"hidden"}, ResourceLimits: ResourceVector{Compute: 100, Memory: 100, TimeMS: 5000, ExperimentBudget: 20}, KnownExamples: cases}; for _, name := range []string{"universal:straight-line", "universal:branching", "universal:compositional"} { candidate := ArchitectureCandidate{ID: name, Mechanism: name, Interfaces: []string{"executable-program"}, Tests: spec.AcceptanceTests, Resources: spec.ResourceLimits}; p, e := (UniversalProgramBuilder{}).Build(candidate, spec); if e == nil && programFitsJSON(p.Artifact, cases) { return nil, errors.New("K0 solved replicated hidden task") } }; q, e := composePrograms(shift.Program, mul.Program, "x"); if e != nil { return nil, e }; q, e = composePrograms(q, inc.Program, "x"); if e != nil { return nil, e }; if !programFits(q, cases) { return nil, errors.New("K2 failed replicated task") } }
+	for i := 0; i < n; i++ { _, cases, _, err := (ReplicatedDeepFamily{}).Generate(100+i, true); if err != nil { return nil, err }; spec := CapabilitySpecification{ID: Hash(i), Inputs: []string{"x"}, Outputs: []string{"y"}, AcceptanceTests: []string{"hidden"}, ResourceLimits: ResourceVector{Compute: 100, Memory: 100, TimeMS: 5000, ExperimentBudget: 20}, KnownExamples: cases}; for _, name := range []string{"universal:straight-line", "universal:branching", "universal:compositional"} { candidate := ArchitectureCandidate{ID: name, Mechanism: name, Interfaces: []string{"executable-program"}, Tests: spec.AcceptanceTests, Resources: spec.ResourceLimits}; p, e := (UniversalProgramBuilder{}).Build(candidate, spec); if e == nil && programFitsJSON(p.Artifact, cases) { return nil, errors.New("K0 solved replicated hidden task") } }; q, e := composePrograms(shift.Program, mul.Program, "x"); if e != nil { return nil, e }; q, e = composePrograms(q, inc.Program, "x"); if e != nil { return nil, e }; if !programFits(q, cases) { return nil, errors.New("K2 failed replicated task") } }
 	return map[string]float64{"repetitions": float64(n), "wins": float64(n), "mean_R": 2.0 / 3.0, "all_verified": 1}, nil
 }
