@@ -1,0 +1,27 @@
+=== PHASE 2 RAW RESULT ===
+A tasks: 12
+B tasks: 100
+Seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99]
+Mean structural novelty: 0.373369
+K_A learned abstraction count: 0
+KA mean E: 40.190000; median: 8.000000; SD: 51.269479
+K0 mean E: 39.980000; median: 7.500000; SD: 51.399992
+KR mean E: 39.980000; median: 7.500000; SD: 51.399992
+KS mean E: 39.980000; median: 7.500000; SD: 51.399992
+KP mean E: 39.980000; median: 7.500000; SD: 51.399992
+Mean paired difference K0-KA: -0.210000
+Median paired difference: 0.000000
+SD paired difference: 0.409360
+95% bootstrap CI for paired difference: (-0.29, -0.13)
+Positive-transfer rate: 0.000000
+Negative-transfer rate: 0.210000
+Primary sign-flip permutation p-value: 0.00001000
+KA success rate: 0.710000; K0 success rate: 0.710000
+Retrieved+verified transfer rate: 0.000000
+Direct A-trajectory replay success rate: 0.000000
+KR vs KA permutation p-value: 0.00005000
+Pass criteria: {'structural_novelty_gt_0.50': False, 'KA_lower_mean_E_than_K0': False, 'primary_p_lt_0.05': True, 'positive_transfer_rate_ge_0.70': False, 'negative_transfer_rate_le_0.20': False, 'KA_final_success_ge_K0': True, 'retrieved_and_verified_ge_0.80': False, 'direct_replay_rate_le_0.10': True, 'KR_does_not_reproduce_KA_advantage': True}
+=== END PHASE 2 RAW RESULT ===
+=== PHASE 2 SCIENTIFIC VERDICT ===
+FAIL
+The preregistered structural-transfer criteria were not all satisfied.

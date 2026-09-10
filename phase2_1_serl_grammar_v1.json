@@ -1,0 +1,58 @@
+{
+  "schema": "phase2_1_serl_grammar_v1",
+  "status": "PARTIALLY_FROZEN",
+  "scientific_role": "EXPERIMENTAL_INSTRUMENT",
+  "candidate_enumeration_status": "BLOCKED_BY_PREDICTION_DOMAIN",
+  "sorts": {
+    "Action": "task-local opaque ActionToken",
+    "Effect": "protocol consequence term"
+  },
+  "roles": ["target", "intervention", "contrast", "context"],
+  "predicates": [
+    {"name":"BLOCKED","arity":1,"argument_sorts":["Action"]},
+    {"name":"AVAILABLE","arity":1,"argument_sorts":["Action"]},
+    {"name":"ACTION","arity":1,"argument_sorts":["Action"]},
+    {"name":"INTERVENES","arity":2,"argument_sorts":["Action","Action"]},
+    {"name":"BEFORE","arity":2,"argument_sorts":["Action","Action"]},
+    {"name":"AFTER","arity":2,"argument_sorts":["Action","Action"]},
+    {"name":"OBSERVED_EFFECT","arity":2,"argument_sorts":["Action","Effect"]},
+    {"name":"ENABLES","arity":2,"argument_sorts":["Action","Action"]},
+    {"name":"NONENABLES","arity":2,"argument_sorts":["Action","Action"]},
+    {"name":"SAME_LOCAL_CONTEXT","arity":2,"argument_sorts":["Action","Action"]}
+  ],
+  "binding": {
+    "variables": "only the four declared role variables",
+    "free_variables": false,
+    "task_specific_constants": false,
+    "same_variable_in_multiple_positions": "permitted unless forbidden by an explicit parent predicate definition"
+  },
+  "composition": {
+    "antecedent": "conjunction of 1..6 atomic predicates",
+    "disjunction": false,
+    "negation": false,
+    "implication": true,
+    "recursion": false,
+    "arithmetic": false,
+    "function_symbols": false,
+    "embeddings": false,
+    "executable_code": false
+  },
+  "canonicalization": [
+    "alpha-normalize bound roles in first-appearance order using target, intervention, contrast, context",
+    "canonicalize predicate argument order according to the parent grammar",
+    "remove duplicate identical atoms",
+    "sort conjunction atoms by canonical atom serialization",
+    "reject unbound roles",
+    "canonicalize implication direction",
+    "serialize as UTF-8 JSON with sorted ASCII keys and no insignificant whitespace"
+  ],
+  "equivalence": "byte-identical canonical serialization",
+  "enumeration": {
+    "exhaustive": true,
+    "order": "ascending canonical serialization bytes",
+    "duplicate_policy": "collapse byte-identical canonical candidates",
+    "contradiction_policy": "validation metadata only; never confidence- or majority-resolved",
+    "candidate_count_cutoff": null
+  },
+  "blocker": "The parent protocol text establishes the relational predicate vocabulary but the inspected normative material does not establish that SERL's two-element consequence domain {ENABLES(target), NONENABLES(contrast,target)} is the complete parent prediction domain. The grammar therefore remains non-authorizing until that scientific choice is resolved."
+}

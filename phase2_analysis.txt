@@ -1,0 +1,42 @@
+=== PHASE 2 ANALYSIS ===
+
+Execution status: COMPLETED.
+Source remained unchanged between the two preserved consecutive executions.
+Exact-output rerun comparison: BYTE-IDENTICAL.
+
+Frozen source SHA-256: aab3d3a77fad99550332eb52fd08f8acd4f868fd515ac39e93c0960bcb593ee5
+Frozen generator SHA-256: 1e7f3c6013d883f9dc3fc806e7fc95c8ac4230449a55dcbc988cc99cfbabc684
+Preserved raw-output SHA-256: 993c6e3a62a99b3003b6ec92e1f16bf099d8a1889ffe196f3c7a2e8d879bdb67
+Preserved results SHA-256: 8d1b8b52d15dff99f9fada50bde18c279d1b6f7dffa438b0181d72b5f7d6060f
+
+Exact command:
+python phase2_structural_transfer.py 2>&1 | tee phase2_raw_output.txt
+
+Observed results:
+Mean structural novelty = 0.373369, below the preregistered >0.50 threshold.
+K_A learned abstraction count = 0.
+Mean E: K_A=40.19, K_0=39.98, K_R=39.98, K_S=39.98, K_P=39.98.
+Mean paired D=E_K0-E_KA=-0.21; median D=0; SD D=0.409360; 95% bootstrap CI=(-0.29,-0.13).
+Positive-transfer rate=0.00.
+Negative-transfer rate=0.21.
+Primary two-sided sign-flip p=0.00001000 using 100000 permutations.
+K_A success rate=0.71; K_0 success rate=0.71.
+Retrieved-and-verified transfer rate=0.00.
+Direct A-trajectory replay success rate=0.00.
+
+Control interpretation:
+The K_R, K_S, and K_P conditions numerically matched K_0 in this run. Direct A trajectory replay also did not solve B. These controls therefore provide no evidence that a hidden A replay path produced the observed costs.
+
+Critical limitation of this execution:
+K_A contained zero mined abstractions. Therefore the experiment did not actually instantiate the intended causal chain A experience -> abstraction -> B retrieval -> verified usefulness. The zero-transfer result cannot be interpreted as evidence that a successfully acquired structural abstraction fails to transfer. It is instead a failure of this frozen Phase-2 implementation to acquire the candidate abstraction under its own A-learning procedure, combined with failure of the preregistered B-transfer criteria.
+
+Statistical caution:
+The primary p-value is statistically significant in the opposite direction from the hypothesis: E_KA was slightly higher than E_K0. Because the preregistered test is two-sided, this is not a PASS and is consistent with a small negative effect in this implementation. The effect is tiny in absolute interaction cost compared with the large task-to-task variance.
+
+Verdict:
+FAIL. The preregistered Phase-2 PASS criteria were not all satisfied. This verdict is not a claim that structural transfer is impossible and is not an AGI claim.
+
+Narrowest justified conclusion:
+Under this exact frozen synthetic protocol, no evidence of structural transfer was demonstrated. The implementation failed to acquire any A-derived abstraction, measured structural novelty below the preregistered threshold, and showed no B cost reduction from K_A. Consequently this Phase-2 run does not establish the hypothesis C(B+|K_A) < C(B+|K_0).
+
+No Phase 1 files were modified. No Phase 3 work was performed.
