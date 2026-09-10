@@ -10,7 +10,7 @@ func TestRepresentationRevisionInventsMissingVariableAndRejectsIrrelevantDistinc
         trace("r4","act",map[string]string{"visible":"same","mode":"B","noise":"1"},map[string]string{"out":"2"}),
     }
     current:=Representation{Variables:[]string{"visible"}}
-    if len(DetectRepresentationInsufficiency(xs))!=0{t.Fatal("legacy detector unexpectedly modeled the intentionally omitted representation")}
+    if residualCount(xs,current)==0{t.Fatal("constructed world does not alias under the current representation")}
     cs,err:=ProposeRepresentationRevisions(xs,current);if err!=nil{t.Fatal(err)};if len(cs)<2{t.Fatalf("expected competing revisions, got %d",len(cs))}
     best,err:=SelectRepresentationRevision(xs,current);if err!=nil{t.Fatal(err)}
     if !containsString(best.Representation.Variables,"mode"){t.Fatalf("winner did not invent causal distinction: %+v",best)}
