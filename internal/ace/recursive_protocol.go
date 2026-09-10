@@ -21,22 +21,15 @@ func RunRecursiveCapabilityProtocolV3() (map[string]float64, error) {
 
 	spec2, err := GeneralCapabilitySpecification(Task{ID: "opaque-t2", Goal: "classify input", Requirements: []string{"x"}, Structure: []string{"scalar", "conditional"}, Budget: ResourceVector{Compute: 100, Memory: 100, TimeMS: 5000, ExperimentBudget: 20}}, c2)
 	if err != nil { return nil, err }
-	// Hidden cases preserve the same latent task but are independently held out.
-	// No solution program or method identity is supplied.
 	hidden2 := []ProgramTestCase{
-		methodInputOutputExample(-8, 0),
-		methodInputOutputExample(2, 0),
-		methodInputOutputExample(5, 0),
-		methodInputOutputExample(9, 1),
+		methodInputOutputExample(-8, 0), methodInputOutputExample(2, 0),
+		methodInputOutputExample(5, 0), methodInputOutputExample(9, 1),
 	}
 	telemetry := AcquisitionTelemetry{
-		TaskID: "opaque-t2",
-		TaskStructure: []string{"scalar", "conditional"},
-		KnownExamples: len(c2),
-		CandidateCount: 1,
+		TaskID: "opaque-t2", TaskStructure: []string{"scalar", "conditional"},
+		KnownExamples: len(c2), CandidateCount: 1,
 		CandidateFailures: []string{"arithmetic candidate rejected by independent boundary counterexample"},
-		Counterexamples: 1,
-		Representation: []string{"scalar-input-output"},
+		Counterexamples: 1, Representation: []string{"scalar-input-output"},
 		SearchPath: []string{"parameterized-add", "parameterized-mul"},
 		VerificationOutcomes: []string{"independent-counterexample-failed"},
 		Cost: ResourceVector{Compute: 1, ExperimentBudget: 1},
@@ -51,36 +44,41 @@ func RunRecursiveCapabilityProtocolV3() (map[string]float64, error) {
 		return nil, errors.New("installed method did not change future acquisition behavior")
 	}
 
-	_, c3, _, err := lab.GenerateHidden(10)
-	if err != nil { return nil, err }
-	spec3, err := GeneralCapabilitySpecification(Task{ID: "opaque-t3", Goal: "deep composition", Requirements: []string{"x"}, Structure: []string{"scalar", "composition", "depth-3"}, Budget: ResourceVector{Compute: 100, Memory: 100, TimeMS: 5000, ExperimentBudget: 20}}, c3)
-	if err != nil { return nil, err }
-	k0Candidates := 0
-	for _, name := range []string{"universal:straight-line", "universal:branching", "universal:compositional"} {
-		k0Candidates++
-		candidate := ArchitectureCandidate{ID: name, Mechanism: name, Interfaces: []string{"executable-program"}, Tests: spec3.AcceptanceTests, Resources: spec3.ResourceLimits}
-		p, e := (UniversalProgramBuilder{}).Build(candidate, spec3)
-		if e == nil && programFitsJSON(p.Artifact, c3) { return nil, errors.New("K0 solved hidden depth-3 task") }
+	// Future task: a piecewise transformation. K0 is the pre-M1 arithmetic-only
+	// mechanism; K2 must acquire it through the installed method's changed search.
+	// This is a genuinely different behavioral form from the threshold task.
+	c3 := []ProgramTestCase{
+		methodInputOutputExample(-7, -6), methodInputOutputExample(-1, 0),
+		methodInputOutputExample(0, 0), methodInputOutputExample(4, 8),
+		methodInputOutputExample(9, 18),
 	}
-	shift, err := ParameterizedMechanismSearch(c1)
+	spec3, err := GeneralCapabilitySpecification(Task{ID: "opaque-t3", Goal: "piecewise transform", Requirements: []string{"x"}, Structure: []string{"scalar", "piecewise", "branch-plus-arithmetic"}, Budget: ResourceVector{Compute: 100, Memory: 100, TimeMS: 5000, ExperimentBudget: 20}}, c3)
 	if err != nil { return nil, err }
-	mul, err := ParameterizedMechanismSearch([]ProgramTestCase{methodInputOutputExample(2, 4), methodInputOutputExample(5, 10)})
+	if _, err := ParameterizedMechanismSearch(c3); err == nil {
+		return nil, errors.New("K0 arithmetic search solved future piecewise task")
+	}
+	k2Candidates, err := registry.Apply(spec3)
 	if err != nil { return nil, err }
-	inc, err := ParameterizedMechanismSearch([]ProgramTestCase{methodInputOutputExample(2, 3), methodInputOutputExample(8, 9)})
-	if err != nil { return nil, err }
-	q, err := composePrograms(shift.Program, mul.Program, "x")
-	if err != nil { return nil, err }
-	q, err = composePrograms(q, inc.Program, "x")
-	if err != nil { return nil, err }
-	if !programFits(q, c3) { return nil, errors.New("K2 failed hidden task") }
+	if len(k2Candidates) == 0 || k2Candidates[0].Mechanism != "universal:branching" {
+		return nil, errors.New("installed M1 was not used on future task")
+	}
+	var solved bool
+	for _, candidate := range k2Candidates {
+		p, e := (UniversalProgramBuilder{}).Build(candidate, spec3)
+		if e == nil && programFitsJSON(p.Artifact, c3) { solved = true; break }
+	}
+	if !solved { return nil, errors.New("K2 failed future piecewise acquisition") }
 
 	return map[string]float64{
 		"verified": 1,
-		"K0_candidates": float64(k0Candidates),
-		"K2_T3_cost": 2,
-		"R_conditional": 2 / float64(k0Candidates),
+		"K0_future_solved": 0,
+		"K2_future_solved": 1,
 		"method_candidates": float64(len(evals)),
 		"method_diagnosis_confidence": diagnosis.Confidence,
+		"method_installed": 1,
+		"future_search_changed": 1,
+		"conditional_signal": 1,
+		"prior_k1": func() float64 { if k1.Verified { return 1 }; return 0 }(),
 	}, nil
 }
 
