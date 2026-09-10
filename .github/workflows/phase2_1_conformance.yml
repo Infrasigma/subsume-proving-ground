@@ -16,5 +16,9 @@ jobs:
         with:
           go-version: '1.25.x'
           cache: false
-      - name: Execute independent differential suite
+      - name: Execute bounded real development path
+        env:
+          PHASE2_1_DECOY: SECRET-SOLUTION-DECOY
+        run: python3 conformance/dev_gate.py
+      - name: Execute legacy differential regression suite
         run: python3 conformance/differential.py
