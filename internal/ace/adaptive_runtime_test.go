@@ -3,8 +3,8 @@ package ace
 import "testing"
 
 func TestAdaptiveAcquisitionRuntimeCausalCompounding(t *testing.T) {
-	failedCases := thresholdCases(5, []int{-3, 0, 5, 7})
-	methodHidden := thresholdCases(5, []int{-9, 1, 6, 12})
+	failedCases := thresholdCases(2, []int{-3, 0, 2, 7})
+	methodHidden := thresholdCases(2, []int{-9, 1, 3, 12})
 	failedSpec, err := GeneralCapabilitySpecification(Task{ID: "opaque-failure", Goal: "classify input", Requirements: []string{"x"}, Structure: []string{"scalar", "conditional"}, Budget: ResourceVector{Compute: 100, Memory: 100, TimeMS: 5000, ExperimentBudget: 20}}, failedCases)
 	if err != nil { t.Fatal(err) }
 	futureCases := []ProgramTestCase{
