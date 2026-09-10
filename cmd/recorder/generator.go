@@ -78,7 +78,6 @@ func (a arena) step() (arena, evaluator.TransitionEvidence) {
 		return next, ev
 	}
 
-	// Forced MOVE advances the agent and pushes the block in compositional mode.
 	next.entities[agent].x += tileSize
 	ev.AgentMoved = true
 
@@ -109,7 +108,7 @@ func buildAction(ar arena) protocol.ActionRecord {
 			break
 		}
 	}
-	action.Params[2] = 96 // +X movement in the smoke action encoding.
+	action.Params[2] = 96
 	action.Params[3] = 0
 	action.Params[4] = tileSize
 	action.Params[5] = 1
@@ -207,29 +206,52 @@ func Generate(path string, count int, mode string, seed int64) error {
 	}
 	defer f.Close()
 
+	// Reserve the fixed header first; class counts are filled after streaming
+	// the records, then the header is rewritten in place.
+	zeroHeader := protocol.NewDatasetHeaderV8(uint64(seed), uint32(count), [8]uint32{})
+	if err := protocol.WriteHeaderV8(f, &zeroHeader); err != nil {
+		return fmt.Errorf("write placeholder header: %w", err)
+	}
+
 	var classCounts [8]uint32
-	records := make([]protocol.TransitionRecordV8, count)
+	var multiHotRecords uint32
 	for i := 0; i < count; i++ {
 		r, mask, err := generateRecord(seed, i, mode)
 		if err != nil {
 			return err
 		}
-		records[i] = r
+		if bits := popcount8(mask); bits >= 2 {
+			multiHotRecords++
+		}
 		for bit := 0; bit < 8; bit++ {
 			if mask&(uint8(1)<<bit) != 0 {
 				classCounts[bit]++
 			}
 		}
-	}
-
-	header := protocol.NewDatasetHeaderV8(uint64(seed), uint32(count), classCounts)
-	if err := protocol.WriteHeaderV8(f, &header); err != nil {
-		return fmt.Errorf("write header: %w", err)
-	}
-	for i := range records {
-		if err := protocol.WriteRecordV8(f, &records[i]); err != nil {
+		if err := protocol.WriteRecordV8(f, &r); err != nil {
 			return fmt.Errorf("write record %d: %w", i, err)
 		}
 	}
+
+	if mode == modeCompositional && multiHotRecords == 0 {
+		return fmt.Errorf("compositional generation produced zero multi-hot records")
+	}
+
+	finalHeader := protocol.NewDatasetHeaderV8(uint64(seed), uint32(count), classCounts)
+	if _, err := f.Seek(0, 0); err != nil {
+		return fmt.Errorf("seek header: %w", err)
+	}
+	if err := protocol.WriteHeaderV8(f, &finalHeader); err != nil {
+		return fmt.Errorf("rewrite header: %w", err)
+	}
 	return nil
+}
+
+func popcount8(x uint8) int {
+	n := 0
+	for x != 0 {
+		x &= x - 1
+		n++
+	}
+	return n
 }
