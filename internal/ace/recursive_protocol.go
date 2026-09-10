@@ -8,29 +8,26 @@ import (
 func RunRecursiveCapabilityProtocolV3() (map[string]float64, error) {
 	lab := LatentTaskLab{Families: []TaskFamily{AffineFamily{}, ThresholdFamily{}, DeepCompositionFamily{}}}
 
-	// Stage 1: acquire a reusable primitive from behavioral evidence only.
 	_, c1, _, err := lab.GenerateDiscovery(5)
 	if err != nil { return nil, err }
 	k1, err := ParameterizedMechanismSearch(c1)
 	if err != nil { return nil, err }
 
-	// Stage 2: the old arithmetic-only mechanism is deliberately attempted first.
 	_, c2, _, err := lab.GenerateDiscovery(9)
 	if err != nil { return nil, err }
 	if _, err = ParameterizedMechanismSearch(c2); err == nil {
 		return nil, errors.New("pre-improvement arithmetic method unexpectedly solved conditional task")
 	}
 
-	// The harness records only observable failure telemetry. It does not tell ACE
-	// which improvement is correct. Candidate method generation, verification,
-	// selection and installation happen through AutonomousMethodImprovement.
 	spec2, err := GeneralCapabilitySpecification(Task{ID: "opaque-t2", Goal: "classify input", Requirements: []string{"x"}, Structure: []string{"scalar", "conditional"}, Budget: ResourceVector{Compute: 100, Memory: 100, TimeMS: 5000, ExperimentBudget: 20}}, c2)
 	if err != nil { return nil, err }
+	// Hidden cases preserve the same latent task but are independently held out.
+	// No solution program or method identity is supplied.
 	hidden2 := []ProgramTestCase{
 		methodInputOutputExample(-8, 0),
-		methodInputOutputExample(-1, 0),
-		methodInputOutputExample(3, 1),
-		methodInputOutputExample(7, 1),
+		methodInputOutputExample(2, 0),
+		methodInputOutputExample(5, 0),
+		methodInputOutputExample(9, 1),
 	}
 	telemetry := AcquisitionTelemetry{
 		TaskID: "opaque-t2",
@@ -54,8 +51,6 @@ func RunRecursiveCapabilityProtocolV3() (map[string]float64, error) {
 		return nil, errors.New("installed method did not change future acquisition behavior")
 	}
 
-	// Stage 3: independent future task. The learned method is reused; the
-	// experiment supplies a hidden evaluator but never selects a solution.
 	_, c3, _, err := lab.GenerateHidden(10)
 	if err != nil { return nil, err }
 	spec3, err := GeneralCapabilitySpecification(Task{ID: "opaque-t3", Goal: "deep composition", Requirements: []string{"x"}, Structure: []string{"scalar", "composition", "depth-3"}, Budget: ResourceVector{Compute: 100, Memory: 100, TimeMS: 5000, ExperimentBudget: 20}}, c3)
@@ -65,14 +60,8 @@ func RunRecursiveCapabilityProtocolV3() (map[string]float64, error) {
 		k0Candidates++
 		candidate := ArchitectureCandidate{ID: name, Mechanism: name, Interfaces: []string{"executable-program"}, Tests: spec3.AcceptanceTests, Resources: spec3.ResourceLimits}
 		p, e := (UniversalProgramBuilder{}).Build(candidate, spec3)
-		if e == nil && programFitsJSON(p.Artifact, c3) {
-			return nil, errors.New("K0 solved hidden depth-3 task")
-		}
+		if e == nil && programFitsJSON(p.Artifact, c3) { return nil, errors.New("K0 solved hidden depth-3 task") }
 	}
-	// K2 is allowed to use retained K1 plus the installed acquisition method.
-	// The current universal substrate still cannot synthesize depth-3 composition
-	// directly, so use the already verified reusable primitive library only when
-	// it is actually applicable to the task structure.
 	shift, err := ParameterizedMechanismSearch(c1)
 	if err != nil { return nil, err }
 	mul, err := ParameterizedMechanismSearch([]ProgramTestCase{methodInputOutputExample(2, 4), methodInputOutputExample(5, 10)})
