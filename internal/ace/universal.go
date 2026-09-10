@@ -24,7 +24,7 @@ type UStmt struct {
 	Count int `json:"count,omitempty"`
 }
 
-type UniversalProgram struct { Statements []UStmt `json:"statements"` }
+type UniversalProgram struct { Statements []UStmt `json:"statements" }
 
 func (e UExpr) eval(env map[string]string) (int, bool, error) {
 	switch e.Kind {
@@ -149,11 +149,12 @@ func (UniversalProgramBuilder) Build(c ArchitectureCandidate, s CapabilitySpecif
 	maxDepth := 2
 	exprs := expressionFrontier(vars, maxDepth)
 	if strings.HasPrefix(c.Mechanism, "universal:branching") || strings.HasPrefix(c.Mechanism, "universal:compositional") {
+		branchExprs := expressionFrontier(vars, 1)
 		for _, v := range vars {
 			for _, cmp := range []string{"lt", "eq"} {
-				for _, rhs := range exprs {
+				for _, rhs := range branchExprs {
 					cond := UExpr{Kind:cmp, Left:&UExpr{Kind:"var", Value:v}, Right:cloneExpr(rhs)}
-					for _, te := range exprs { for _, ee := range exprs {
+					for _, te := range branchExprs { for _, ee := range branchExprs {
 						p := UniversalProgram{Statements:[]UStmt{{Kind:"if", Cond:&cond, Then:[]UStmt{{Kind:"assign", Target:out, Expr:cloneExpr(te)}}, Else:[]UStmt{{Kind:"assign", Target:out, Expr:cloneExpr(ee)}}}}}
 						if serializedProgramFits(p, s.KnownExamples) { return encodeUniversal(p, s, c) }
 					} }
