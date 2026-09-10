@@ -22,5 +22,12 @@ jobs:
         run: CGO_ENABLED=0 go build -a -installsuffix cgo -o /tmp/aacr-boundary-probe ./cmd/aacr-boundary-probe
       - name: Disable AppArmor unprivileged userns restriction for bwrap
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-      - run: go test -v -mod=mod ./...
+      - name: Resolve module checksums
+        run: go mod download
+      - run: go test -mod=mod -v ./...
       - run: go vet -mod=mod ./...
+      - name: Publish generated go.sum
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-go-sum
+          path: go.sum
