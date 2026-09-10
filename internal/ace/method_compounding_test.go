@@ -1,9 +1,6 @@
 package ace
 
-import (
-	"strconv"
-	"testing"
-)
+import "testing"
 
 func thresholdCases(threshold int, xs []int) []ProgramTestCase {
 	out := make([]ProgramTestCase, 0, len(xs))
@@ -18,10 +15,6 @@ func thresholdCases(threshold int, xs []int) []ProgramTestCase {
 func TestAutonomousMethodImprovementFromTelemetry(t *testing.T) {
 	target := thresholdCases(2, []int{-3, 0, 2, 4, 7})
 	hidden := thresholdCases(2, []int{-8, -1, 3, 5, 11})
-	regression := []ProgramTestCase{
-		methodInputOutputExample(-5, -3),
-		methodInputOutputExample(9, 11),
-	}
 	tel := AcquisitionTelemetry{
 		TaskID: "opaque-task",
 		TaskStructure: []string{"scalar", "conditional"},
@@ -46,7 +39,6 @@ func TestAutonomousMethodImprovementFromTelemetry(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	if diagnosis.Class != BottleneckSearchSpace { t.Fatalf("diagnosis=%s", diagnosis.Class) }
 	if len(evals) < 2 { t.Fatalf("expected competing methods, got %d", len(evals)) }
-	if !method.Performance.Verified == false { /* performance is intentionally updated on the returned artifact below */ }
 	if method.Name == "" || method.Procedure == "" || method.Artifact == "" { t.Fatal("winner is not a first-class executable method artifact") }
 	if method.Procedure != "expand-executable-frontier" {
 		t.Fatalf("expected evidence-driven frontier expansion to win, got %s", method.Procedure)
@@ -62,8 +54,8 @@ func TestAutonomousMethodImprovementFromTelemetry(t *testing.T) {
 	if len(registry.Trace) < 2 { t.Fatalf("missing before/after execution trace: %#v", registry.Trace) }
 	if registry.Trace[len(registry.Trace)-1] == "" { t.Fatal("empty method trace") }
 
-	// The installed method must remain non-target-specific: it must be reusable
-	// on a structurally distinct threshold instance with a different latent value.
+	// The installed method is reused on a distinct threshold instance with a
+	// different latent value; no task-specific method name is supplied.
 	transfer := thresholdCases(5, []int{-4, 0, 5, 6, 13})
 	transferSpec := spec
 	transferSpec.ID = "opaque-threshold-transfer"
@@ -77,6 +69,4 @@ func TestAutonomousMethodImprovementFromTelemetry(t *testing.T) {
 		if e == nil && programFits(pArtifactProgram(p.Artifact), transfer) { verified = true; break }
 	}
 	if !verified { t.Fatal("installed method did not transfer to structurally distinct threshold instance") }
-
-	_ = strconv.Itoa // keep this test independent of task-family identifiers.
 }
