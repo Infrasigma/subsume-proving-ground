@@ -2,8 +2,8 @@
 """Phase 2.1 fact-semantics conformance wrapper.
 
 Uses the existing differential suite unchanged except for the independently
-implemented temporal reference surface, then adds explicit semantic assertions
-for temporal multiplicity. No endpoint experiment is invoked.
+implemented temporal production/reference surfaces, then adds explicit semantic
+assertions for temporal multiplicity. No endpoint experiment is invoked.
 """
 import pathlib
 import sys
@@ -11,6 +11,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import conformance.differential as d
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+d.CLOSURE_PROD = ROOT / "conformance/production/conformance_temporal_v2.py"
 d.CLOSURE_REF = ROOT / "conformance/reference/closure_temporal_v2.go"
 
 def temporal_semantics_regression():
