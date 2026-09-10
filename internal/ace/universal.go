@@ -24,7 +24,7 @@ type UStmt struct {
 	Count int `json:"count,omitempty"`
 }
 
-type UniversalProgram struct { Statements []UStmt `json:"statements" }
+type UniversalProgram struct { Statements []UStmt `json:"statements"` }
 
 func (e UExpr) eval(env map[string]string) (int, bool, error) {
 	switch e.Kind {
