@@ -2,17 +2,19 @@
 
 ## Evidence classification
 
-**TESTED BUT LIMITED — acquisition-method artifacts and a causal future-acquisition runtime are implemented; true recursive capability improvement and AGI remain UNPROVEN.**
+**TESTED BUT LIMITED — a bounded acquisition-method artifact loop is implemented, but autonomous general recursive improvement and AGI remain UNPROVEN.**
 
 No AGI claim is made.
 
-## Source milestone
+## Exact repository state
 
-Latest source-code milestone covered by this report:
+Branch: `ace-full-system-20260911`
 
-`2eb9c9213bc7de1d994e4ab6131bd3f04f32430f`
+Latest branch HEAD (test/guard commit): `afd35b741787aad69c7aa648183ac4c48cec401a`
 
-The branch may advance with documentation-only commits; this SHA identifies the implementation under evaluation.
+Latest implementation commit covered by this report: `c222d8fd845e0d153df1037ae87507f13eed1693`
+
+The status file itself is documentation-only.
 
 ## Actual executed data flow
 
@@ -24,73 +26,74 @@ The independent evaluator remains outside the cognitive mechanism.
 
 ### First-class acquisition method
 
-`AcquisitionMethodArtifact` contains identity, preconditions, expected strengths/failure modes, input capability specification, executable procedure, representation policy, candidate policy, verification policy, resource model, provenance, dependencies, learned performance statistics, regression constraints, transfer evidence, and an executable artifact representation.
+`AcquisitionMethodArtifact` records identity, preconditions, expected strengths/failure modes, input capability specification, executable procedure, representation policy, candidate policy, verification policy, resource model, provenance, dependencies, performance statistics, regression constraints, transfer evidence, and an artifact representation.
 
 ### Evidence-driven diagnosis
 
-`DiagnoseBottleneck` derives a bottleneck from candidate failures, counterexamples, search path, representation trace and verification outcomes. It does not receive the hidden target or an experiment-side instruction such as "use conditional search."
+`DiagnoseBottleneck` derives a bottleneck from candidate failures, counterexamples, search path, representation trace and verification outcomes. It does not receive the hidden solution or an experiment-side instruction such as "use conditional search."
 
 ### Competing method hypotheses
 
-For a search-space failure the runtime generates multiple method hypotheses, including executable-frontier expansion, representation revision and decomposition/composition. Candidates are actually executed and independently evaluated; a candidate can be rejected.
+A search-space failure generates multiple method hypotheses. Candidates are executed and independently evaluated; candidates can be rejected. The currently successful bounded procedure is executable-frontier expansion, which reorders the real synthesis frontier so branching is attempted before the pre-improvement arithmetic path.
 
-### Verified installation
+### Installation and future causal effect
 
-`InstalledMethodRegistry` accepts only complete method artifacts and records installation plus before/after execution traces. The frontier-expansion method materially changes future search by moving branching synthesis ahead of the pre-improvement arithmetic path.
+`InstalledMethodRegistry` refuses incomplete artifacts, records installation, and applies installed procedures to future acquisition. The before/after execution trace is part of the evidence.
 
 ### Adaptive runtime
 
-`AdaptiveAcquisitionRuntime.ImproveAndAcquire` closes diagnosis -> method generation -> method evaluation -> installation -> future acquisition and updates method history.
+`AdaptiveAcquisitionRuntime.ImproveAndAcquire` performs diagnosis -> method generation -> method evaluation -> installation -> future acquisition and updates method history.
 
-## Decisive bounded experiment
+## Decisive bounded result
 
-Stage 1 acquires an affine capability from behavioral examples.
+The repaired recursive protocol no longer contains the previous experiment-side `arithmetic failed -> use conditional search` authority.
 
-Stage 2 deliberately demonstrates failure of the arithmetic-only mechanism on a conditional task. Observable telemetry is then passed to autonomous method diagnosis/generation/evaluation. The harness does not select the winning method.
+It records an arithmetic acquisition failure, diagnoses search-space insufficiency, generates competing method artifacts, independently evaluates them, installs the selected method, and then uses the installed method to change the real future search path. A future piecewise transformation is acquired by that changed path while the pre-improvement arithmetic-only mechanism fails.
 
-Stage 3 is an independently specified piecewise transformation. The pre-improvement arithmetic-only search fails. The installed method changes the real search path and branching synthesis acquires the future capability.
+This is the strongest currently justified result: **a tested causal acquisition-method-to-future-acquisition loop on a bounded executable substrate.**
 
-The source-level test suite also checks reuse on a distinct latent threshold instance.
+## Important scientific correction: prior replication invalidated
 
-## Scientific classification
+The previous `ReplicatedDeepFamily` was algebraically `y = 2x + 5`, despite being described as depth-3 composition. A baseline universal/arithmetic mechanism can solve that function without retained composition. CI exposed this degeneracy. The replication function and test were therefore changed to explicitly record `baseline_degenerate=1`, `valid=0`, `wins=0` rather than fabricate a replication win.
 
-The strongest justified statement is:
+Consequently, no prior `mean_R < 1` result from that family is retained as evidence.
 
-> ACE now contains a tested bounded mechanism in which an acquisition failure produces telemetry, telemetry produces competing acquisition-method artifacts, a method is independently verified and installed, and the installed method causally changes a subsequent acquisition path that succeeds where the pre-improvement mechanism fails.
+## What remains UNPROVEN
 
-This is **not** yet evidence of open-ended recursive intelligence.
-
-## Known limitations
-
-- Method-hypothesis generation is still a hand-authored generic transformation library keyed by evidence classes. It is not yet a learned universal method-discovery process.
-- The executable substrate remains bounded integer/boolean synthesis; it is not yet a general typed programming environment.
-- The task laboratory remains small and source-defined rather than an open-ended self-generated challenge distribution.
-- Method verification currently uses source-level held-out behavioral cases, not a hardened external blind evaluation service.
-- Transfer is presently within the scalar executable domain; broad cross-domain transfer is unproven.
-- Method performance history exists in the adaptive runtime but is not yet a persistent knowledge object with calibrated predictive uncertainty.
-- Full `(E,I,S,D)` accounting is not frozen across experimentation, inference/search, synthesis, verification, compute, wall-clock time, retries and failed candidates.
-- Therefore no compute-inclusive replicated `R_n < 1` claim is made.
-- A second-order recursive improvement `M1 -> M2` has not been demonstrated.
-- Recursive architecture self-modification has not been demonstrated.
+- The acquisition-method hypothesis generator is still hand-authored and keyed by evidence classes; it is not itself autonomously synthesized.
+- The executable substrate remains bounded integer/boolean synthesis.
+- Open-ended self-generated task discovery is not demonstrated.
+- General representation invention is not demonstrated.
+- Autonomous causal-model discovery is not integrated into meta-acquisition.
+- Broad structural transfer across relational, planning, causal and program-transformation domains is not demonstrated.
+- Full compute-inclusive `(E,I,S,D)` accounting is not frozen and replicated.
+- No defensible compute-inclusive `R_n < 1` claim exists.
+- A second recursively discovered method `M1 -> M2` is not demonstrated.
+- Recursive architecture self-modification is not demonstrated.
 - AGI is unproven.
 
 ## Failure record
 
-A previous implementation run failed because `adaptive_runtime.go` referenced `CapabilitySpecification.Structure`, which does not exist. The CI log identified the exact compile error; the code was repaired by deriving the history key from available specification fields. A later experiment failure showed that the bootstrap task-family seed selected deep composition instead of affine acquisition; the seed was corrected rather than weakening the test. These are recorded as engineering/debugging failures, not evidence of intelligence.
+1. An initial implementation failed CI because `CapabilitySpecification.Structure` was referenced even though that field does not exist. The error was repaired from the exact CI log.
+2. A bootstrap seed accidentally selected the deep-composition task instead of affine acquisition. The protocol was corrected to select task families directly rather than relying on family-index arithmetic.
+3. The first replicated task family was scientifically degenerate because its nominal depth-3 computation simplified to an affine function. The evidence was explicitly invalidated instead of weakening the baseline.
 
-The historical Phase 2.1 conformance failure is intentionally not rewritten or made to pass.
+These failures are engineering/scientific corrections, not intelligence evidence.
 
 ## Validation state
 
-Dedicated ACE and repository-wide GitHub Actions are required for each source milestone. The implementation under `2eb9c9213bc7de1d994e4ab6131bd3f04f32430f` has a dedicated compounding run and repository validation runs in progress/queued at the time of this documentation update; until those exact-SHA runs complete green, they are **not** counted as validated evidence.
+The latest implementation has triggered dedicated ACE compounding, focused, and repository-wide GitHub Actions validation. At the time of this status update, the exact latest source/test SHA validation was queued/in progress; therefore **no green-CI claim is made for `afd35b7` yet**.
 
-## Next decisive work
+Historical Phase 2.1 conformance failures are not rewritten or suppressed.
 
-1. Replace the evidence-class switch with learned, executable method generation whose candidates are themselves synthesized and verified.
-2. Persist method artifacts and calibrated performance evidence in the knowledge lifecycle.
-3. Freeze full cost accounting before any recursive `R_n` claim.
-4. Generate structurally novel hidden tasks without source-visible solution structure.
-5. Stress method transfer under representation, mechanism and causal distribution shift.
-6. Only then attempt `M1 -> M2` and measure whether acquisition competence continues to improve.
+## Highest-value next boundary
 
-**Bottom line:** the experiment-side M1 oracle has been removed from the bounded protocol, and acquisition methods now exist as executable artifacts with a real installation effect. The remaining scientific gap is much harder: ACE must learn the machinery that generates those method artifacts rather than relying on the currently hand-authored generic method hypothesis generator.
+The current bottleneck is now clear and narrower than before:
+
+`hand-authored method hypothesis generator -> autonomously synthesized/verified method generator`
+
+The next decisive experiment must require ACE to construct the method-generation machinery itself, verify it independently, install it, and use it to discover a second acquisition improvement on structurally novel hidden tasks with frozen full cost accounting.
+
+Only after that should `M1 -> M2`, replicated `R_n`, and broader world/representation/causal integration be promoted.
+
+**Bottom line:** the M1 oracle boundary has been crossed only in a bounded research implementation. The genuinely hard recursive boundary — ACE learning the machinery that invents its own acquisition improvements — remains open and is the next target.
