@@ -14,6 +14,7 @@ func TestAutonomousAcquisitionPersistsAndTransfers(t *testing.T) {
     if rec.Mechanism!="increment"{t.Fatalf("search did not reject wrong mechanisms: %s",rec.Mechanism)}
     if rec.ArchitectureCost!=2{t.Fatalf("expected copy+increment search, got %v",rec.ArchitectureCost)}
     got,err:=ExecuteStructurally(reg,Task{ID:"novel-surface",Goal:"destination=source+1",Requirements:[]string{"source"},Novel:true,Budget:task.Budget});if err!=nil||got.Status!="verified"||!got.Independent{t.Fatalf("structural transfer failed: %+v %v",got,err)}
+    rejected,err:=ExecuteStructurally(reg,Task{ID:"surface-trap",Goal:"destination=source+2",Requirements:[]string{"source"},Novel:true,Budget:task.Budget});if err==nil||rejected.Status!="failed"{t.Fatalf("structurally different task was overgeneralized: %+v %v",rejected,err)}
     reopened,err:=NewPersistentRegistry(path);if err!=nil{t.Fatal(err)};if len(reopened.Records())!=1{t.Fatalf("capability not persisted: %+v",reopened.Records())}
     again,err:=ExecuteStructurally(reopened,Task{ID:"restart",Goal:"destination=source+1",Requirements:[]string{"source"},Novel:true,Budget:task.Budget});if err!=nil||again.Status!="verified"{t.Fatalf("restart execution failed: %+v %v",again,err)}
 }
