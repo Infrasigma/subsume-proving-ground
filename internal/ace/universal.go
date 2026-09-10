@@ -9,8 +9,8 @@ import (
 )
 
 type UExpr struct {
-	Kind       string  `json:"kind"`
-	Value      string  `json:"value,omitempty"`
+	Kind string `json:"kind"`
+	Value string `json:"value,omitempty"`
 	Left, Right *UExpr `json:"left,omitempty"`
 }
 
@@ -140,6 +140,8 @@ func expressionFrontier(vars []string, maxDepth int) []UExpr {
 	}
 	return front
 }
+
+type UniversalProgramBuilder struct{}
 
 func (UniversalProgramBuilder) Build(c ArchitectureCandidate, s CapabilitySpecification) (ModificationProposal, error) {
 	if len(s.KnownExamples) < 2 || len(s.Inputs) == 0 || len(s.Outputs) == 0 { return ModificationProposal{}, errors.New("insufficient behavioral evidence") }
