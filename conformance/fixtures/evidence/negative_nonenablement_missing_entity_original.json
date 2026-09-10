@@ -1,0 +1,14 @@
+{
+  "name":"negative_nonenablement_missing_entity",
+  "status":"INVALID_SCIENTIFIC_FIXTURE_PRESERVED_AS_EVIDENCE",
+  "reason":"Frozen retrieval=false conflicts with attribution evidence asserting retrieval/prediction/intervention/consequence/verification/counterfactual and expected KA_TRANSFER.",
+  "seed":8,
+  "history":[{"state":{"location":"loc0"},"available_actions":["aa"],"last_action":null,"last_result":null,"terminated":false},{"state":{"location":"loc0"},"available_actions":["aa"],"last_action":"aa","last_result":{"status":"OK"},"terminated":false}],
+  "candidate":{"atoms":[{"predicate":"NONENABLES","args":["contrast","target"]}],"consequence":"NONENABLES(contrast,target)"},
+  "binding":{"target":"bb","contrast":"aa"},
+  "next_action":"aa",
+  "cost":{"attempts":200,"terminal":"INTERACTION_CAP_EXHAUSTED"},
+  "attribution":{"evidence":["retrieval","prediction","intervention","consequence","verification","counterfactual"]},
+  "novelty_a":[{"x":1}],"novelty_b":[{"x":1}],
+  "expected":{"retrieval":false,"prediction":null,"cost":200,"attribution":"KA_TRANSFER","novelty":0.0}
+}
