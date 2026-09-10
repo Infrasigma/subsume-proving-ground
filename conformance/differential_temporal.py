@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Phase 2.1 fact-semantics conformance wrapper.
 
-Uses the existing differential suite unchanged except for the independently
-implemented temporal production/reference surfaces, then adds explicit semantic
-assertions for temporal multiplicity. No endpoint experiment is invoked.
+Uses the existing differential suite with independently implemented temporal
+production/reference surfaces, then adds explicit semantic assertions for
+Fact multiplicity. No endpoint experiment is invoked.
 """
+import json
 import pathlib
 import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -13,6 +14,22 @@ import conformance.differential as d
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 d.CLOSURE_PROD = ROOT / "conformance/production/conformance_temporal_v2.py"
 d.CLOSURE_REF = ROOT / "conformance/reference/closure_temporal_v2.go"
+
+def closure_temporal():
+    cases = json.loads(d.CLOSURE_FIX.read_text())
+    for c in cases:
+        prod, prod_raw = d.run([sys.executable, str(d.CLOSURE_PROD)], c)
+        ref, ref_raw = d.run(["go", "run", str(d.CLOSURE_REF)], c)
+        d.compare(prod, ref, c["name"], prod_raw, ref_raw)
+        assert prod["candidate_valid"] is True, c["name"]
+        expected_prediction_valid = c["name"] != "negative_retrieval"
+        assert prod["prediction"]["valid"] is expected_prediction_valid, c["name"]
+        print("PASS closure_differential", c["name"])
+    forward = [d.run([sys.executable, str(d.CLOSURE_PROD)], c)[0] for c in cases]
+    reverse = [d.run([sys.executable, str(d.CLOSURE_PROD)], c)[0] for c in reversed(cases)]
+    assert forward == list(reversed(reverse)), "closure execution-order nondeterminism"
+    assert forward == [d.run([sys.executable, str(d.CLOSURE_PROD)], c)[0] for c in cases], "closure repeat nondeterminism"
+    print("PASS closure_determinism_order_repeat")
 
 def temporal_semantics_regression():
     a = "0000000000000001"
@@ -43,7 +60,7 @@ def temporal_semantics_regression():
 
 def main():
     d.legacy()
-    d.closure()
+    closure_temporal()
     temporal_semantics_regression()
     print("PHASE2_1_CONFORMANCE_TEMPORAL_DIFFERENTIAL_PASS")
 
