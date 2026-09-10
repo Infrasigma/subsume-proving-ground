@@ -25,7 +25,7 @@ type Action struct{ID,CapabilityID,Operation string;Arguments map[string]string;
 type Prediction struct{ID string;ActionID string;Effects []string;Probability float64;StateHash string}
 type VerificationResult struct{Status string;Expected,Observed []string;EvidenceIDs []string;Independent bool;Provenance Provenance}
 type FailureDiagnosis struct{ID,Level,Reason string;EvidenceIDs []string;Confidence float64;RepresentationInsufficient bool;Provenance Provenance}
-type CapabilitySpecification struct{ID,DesiredBehaviour string;Inputs,Outputs,Invariants,AcceptanceTests []string;ResourceLimits ResourceVector;FailureCriteria,RegressionConstraints []string;Provenance Provenance}
+type CapabilitySpecification struct{ID,DesiredBehaviour string;Inputs,Outputs,Invariants,AcceptanceTests []string;ResourceLimits ResourceVector;FailureCriteria,RegressionConstraints []string;KnownExamples []ProgramTestCase;Provenance Provenance}
 type ArchitectureCandidate struct{ID,Mechanism string;Interfaces []string;Advantage,Assumptions string;Resources ResourceVector;Tests,Ablations,RegressionRisks []string;Provenance Provenance}
 type SelfModel struct{Capabilities []Capability;Resources ResourceVector;Tools []string;Memory []string;Components []string;Dependencies map[string]string;KnownFailures []string;CapabilityGaps []CapabilitySpecification;Version uint64;Provenance Provenance}
 type ModificationProposal struct{ID string;Capability CapabilitySpecification;Candidate ArchitectureCandidate;Artifact string;ParentVersion uint64;Provenance Provenance}
