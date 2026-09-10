@@ -29,6 +29,7 @@ func TestAutonomousAcquisitionRejectsBadCandidates(t *testing.T){
 
 func TestCapabilityRegistryUsesActualArtifact(t *testing.T){
     path:=t.TempDir()+"/registry.json";r,_:=NewPersistentRegistry(path)
-    if _,_,err:=AutonomousAcquirer{Registry:r}.Acquire(Task{ID:"t",Goal:"y=x+1",Requirements:[]string{"x"},Budget:ResourceVector{TimeMS:100}});err!=nil{t.Fatal(err)}
+    _,_,err:= (AutonomousAcquirer{Registry:r}).Acquire(Task{ID:"t",Goal:"y=x+1",Requirements:[]string{"x"},Budget:ResourceVector{TimeMS:100}})
+    if err!=nil{t.Fatal(err)}
     raw,err:=os.ReadFile(path);if err!=nil{t.Fatal(err)};if len(raw)==0{t.Fatal("registry file is empty")}
 }
