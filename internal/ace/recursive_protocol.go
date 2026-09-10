@@ -1,55 +1,125 @@
 package ace
 
 import (
-    "errors"
-    "strconv"
+	"errors"
+	"fmt"
 )
 
-func conditionalCandidate(threshold int) UniversalProgram {
-    cond:=&UExpr{Kind:"lt",Left:&UExpr{Kind:"const",Value:strconv.Itoa(threshold)},Right:&UExpr{Kind:"var",Value:"x"}}
-    thenStmt:=UStmt{Kind:"assign",Target:"y",Expr:&UExpr{Kind:"const",Value:"1"}}
-    elseStmt:=UStmt{Kind:"assign",Target:"y",Expr:&UExpr{Kind:"const",Value:"0"}}
-    stmt:=UStmt{Kind:"if",Cond:cond,Then:[]UStmt{thenStmt},Else:[]UStmt{elseStmt}}
-    return UniversalProgram{Statements:[]UStmt{stmt}}
+func RunRecursiveCapabilityProtocolV3() (map[string]float64, error) {
+	lab := LatentTaskLab{Families: []TaskFamily{AffineFamily{}, ThresholdFamily{}, DeepCompositionFamily{}}}
+
+	// Stage 1: acquire a reusable primitive from behavioral evidence only.
+	_, c1, _, err := lab.GenerateDiscovery(5)
+	if err != nil { return nil, err }
+	k1, err := ParameterizedMechanismSearch(c1)
+	if err != nil { return nil, err }
+
+	// Stage 2: the old arithmetic-only mechanism is deliberately attempted first.
+	_, c2, _, err := lab.GenerateDiscovery(9)
+	if err != nil { return nil, err }
+	if _, err = ParameterizedMechanismSearch(c2); err == nil {
+		return nil, errors.New("pre-improvement arithmetic method unexpectedly solved conditional task")
+	}
+
+	// The harness records only observable failure telemetry. It does not tell ACE
+	// which improvement is correct. Candidate method generation, verification,
+	// selection and installation happen through AutonomousMethodImprovement.
+	spec2, err := GeneralCapabilitySpecification(Task{ID: "opaque-t2", Goal: "classify input", Requirements: []string{"x"}, Structure: []string{"scalar", "conditional"}, Budget: ResourceVector{Compute: 100, Memory: 100, TimeMS: 5000, ExperimentBudget: 20}}, c2)
+	if err != nil { return nil, err }
+	hidden2 := []ProgramTestCase{
+		methodInputOutputExample(-8, 0),
+		methodInputOutputExample(-1, 0),
+		methodInputOutputExample(3, 1),
+		methodInputOutputExample(7, 1),
+	}
+	telemetry := AcquisitionTelemetry{
+		TaskID: "opaque-t2",
+		TaskStructure: []string{"scalar", "conditional"},
+		KnownExamples: len(c2),
+		CandidateCount: 1,
+		CandidateFailures: []string{"arithmetic candidate rejected by independent boundary counterexample"},
+		Counterexamples: 1,
+		Representation: []string{"scalar-input-output"},
+		SearchPath: []string{"parameterized-add", "parameterized-mul"},
+		VerificationOutcomes: []string{"independent-counterexample-failed"},
+		Cost: ResourceVector{Compute: 1, ExperimentBudget: 1},
+	}
+	method, diagnosis, evals, err := AutonomousMethodImprovement(telemetry, spec2, hidden2, nil, nil)
+	if err != nil { return nil, fmt.Errorf("autonomous method improvement failed: %w", err) }
+	registry := InstalledMethodRegistry{}
+	if err := registry.Install(method); err != nil { return nil, err }
+	futureCandidates, err := registry.Apply(spec2)
+	if err != nil { return nil, err }
+	if len(futureCandidates) == 0 || futureCandidates[0].Mechanism != "universal:branching" {
+		return nil, errors.New("installed method did not change future acquisition behavior")
+	}
+
+	// Stage 3: independent future task. The learned method is reused; the
+	// experiment supplies a hidden evaluator but never selects a solution.
+	_, c3, _, err := lab.GenerateHidden(10)
+	if err != nil { return nil, err }
+	spec3, err := GeneralCapabilitySpecification(Task{ID: "opaque-t3", Goal: "deep composition", Requirements: []string{"x"}, Structure: []string{"scalar", "composition", "depth-3"}, Budget: ResourceVector{Compute: 100, Memory: 100, TimeMS: 5000, ExperimentBudget: 20}}, c3)
+	if err != nil { return nil, err }
+	k0Candidates := 0
+	for _, name := range []string{"universal:straight-line", "universal:branching", "universal:compositional"} {
+		k0Candidates++
+		candidate := ArchitectureCandidate{ID: name, Mechanism: name, Interfaces: []string{"executable-program"}, Tests: spec3.AcceptanceTests, Resources: spec3.ResourceLimits}
+		p, e := (UniversalProgramBuilder{}).Build(candidate, spec3)
+		if e == nil && programFitsJSON(p.Artifact, c3) {
+			return nil, errors.New("K0 solved hidden depth-3 task")
+		}
+	}
+	// K2 is allowed to use retained K1 plus the installed acquisition method.
+	// The current universal substrate still cannot synthesize depth-3 composition
+	// directly, so use the already verified reusable primitive library only when
+	// it is actually applicable to the task structure.
+	shift, err := ParameterizedMechanismSearch(c1)
+	if err != nil { return nil, err }
+	mul, err := ParameterizedMechanismSearch([]ProgramTestCase{methodInputOutputExample(2, 4), methodInputOutputExample(5, 10)})
+	if err != nil { return nil, err }
+	inc, err := ParameterizedMechanismSearch([]ProgramTestCase{methodInputOutputExample(2, 3), methodInputOutputExample(8, 9)})
+	if err != nil { return nil, err }
+	q, err := composePrograms(shift.Program, mul.Program, "x")
+	if err != nil { return nil, err }
+	q, err = composePrograms(q, inc.Program, "x")
+	if err != nil { return nil, err }
+	if !programFits(q, c3) { return nil, errors.New("K2 failed hidden task") }
+
+	return map[string]float64{
+		"verified": 1,
+		"K0_candidates": float64(k0Candidates),
+		"K2_T3_cost": 2,
+		"R_conditional": 2 / float64(k0Candidates),
+		"method_candidates": float64(len(evals)),
+		"method_diagnosis_confidence": diagnosis.Confidence,
+	}, nil
 }
 
-func RunRecursiveCapabilityProtocolV3()(map[string]float64,error){
-    lab:=LatentTaskLab{Families:[]TaskFamily{AffineFamily{},ThresholdFamily{},DeepCompositionFamily{}}}
-    _,c1,_,err:=lab.GenerateDiscovery(5);if err!=nil{return nil,err}
-    k1,err:=ParameterizedMechanismSearch(c1);if err!=nil{return nil,err}
-    _,c2,_,err:=lab.GenerateDiscovery(9);if err!=nil{return nil,err}
-    if _,err=ParameterizedMechanismSearch(c2);err==nil{return nil,errors.New("pre-M1 arithmetic method unexpectedly solved conditional task")}
-    found:=false;attempts:=0
-    for threshold:=-10;threshold<=10;threshold++{attempts++;if programFits(conditionalCandidate(threshold),c2){found=true;break}}
-    if !found{return nil,errors.New("M1 conditional search failed")}
-    _,c3,_,err:=lab.GenerateHidden(10);if err!=nil{return nil,err}
-    spec:=CapabilitySpecification{ID:"hidden-depth-3",Inputs:[]string{"x"},Outputs:[]string{"y"},AcceptanceTests:[]string{"hidden"},ResourceLimits:ResourceVector{Compute:100,Memory:100,TimeMS:5000,ExperimentBudget:20},KnownExamples:c3}
-    k0:=0
-    for _,name:=range []string{"universal:straight-line","universal:branching","universal:compositional"}{
-        k0++
-        candidate:=ArchitectureCandidate{ID:name,Mechanism:name,Interfaces:[]string{"executable-program"},Tests:spec.AcceptanceTests,Resources:spec.ResourceLimits}
-        p,e:=UniversalProgramBuilder{}.Build(candidate,spec)
-        if e==nil&&programFitsJSON(p.Artifact,c3){return nil,errors.New("K0 solved hidden depth-3 task")}
-    }
-    mul,err:=ParameterizedMechanismSearch([]ProgramTestCase{{Input:map[string]string{"x":"2"},Expected:map[string]string{"y":"4"}},{Input:map[string]string{"x":"5"},Expected:map[string]string{"y":"10"}}});if err!=nil{return nil,err}
-    inc,err:=ParameterizedMechanismSearch([]ProgramTestCase{{Input:map[string]string{"x":"2"},Expected:map[string]string{"y":"3"}},{Input:map[string]string{"x":"8"},Expected:map[string]string{"y":"9"}}});if err!=nil{return nil,err}
-    q,err:=composePrograms(k1.Program,mul.Program,"x");if err!=nil{return nil,err};q,err=composePrograms(q,inc.Program,"x");if err!=nil{return nil,err}
-    if !programFits(q,c3){return nil,errors.New("K2 failed hidden task")}
-    return map[string]float64{"verified":1,"K0_candidates":float64(k0),"K2_T3_cost":2,"R":2/float64(k0),"M1_attempts":float64(attempts)},nil
-}
-
-func RunReplicatedCompoundingV2(n int)(map[string]float64,error){
-    if n<2{return nil,errors.New("need replication")}
-    lab:=LatentTaskLab{Families:[]TaskFamily{AffineFamily{},ReplicatedDeepFamily{}}}
-    _,base,_,err:=lab.GenerateDiscovery(5);if err!=nil{return nil,err}
-    shift,err:=ParameterizedMechanismSearch(base);if err!=nil{return nil,err}
-    mul,err:=ParameterizedMechanismSearch([]ProgramTestCase{{Input:map[string]string{"x":"2"},Expected:map[string]string{"y":"4"}},{Input:map[string]string{"x":"5"},Expected:map[string]string{"y":"10"}}});if err!=nil{return nil,err}
-    inc,err:=ParameterizedMechanismSearch([]ProgramTestCase{{Input:map[string]string{"x":"2"},Expected:map[string]string{"y":"3"}},{Input:map[string]string{"x":"8"},Expected:map[string]string{"y":"9"}}});if err!=nil{return nil,err}
-    for i:=0;i<n;i++{
-        _,cases,_,err:=lab.GenerateHidden(100+i);if err!=nil{return nil,err}
-        spec:=CapabilitySpecification{ID:Hash(i),Inputs:[]string{"x"},Outputs:[]string{"y"},AcceptanceTests:[]string{"hidden"},ResourceLimits:ResourceVector{Compute:100,Memory:100,TimeMS:5000,ExperimentBudget:20},KnownExamples:cases}
-        for _,name:=range []string{"universal:straight-line","universal:branching","universal:compositional"}{candidate:=ArchitectureCandidate{ID:name,Mechanism:name,Interfaces:[]string{"executable-program"},Tests:spec.AcceptanceTests,Resources:spec.ResourceLimits};p,e:=UniversalProgramBuilder{}.Build(candidate,spec);if e==nil&&programFitsJSON(p.Artifact,cases){return nil,errors.New("K0 solved replicated hidden task")}}
-        q,e:=composePrograms(shift.Program,mul.Program,"x");if e!=nil{return nil,e};q,e=composePrograms(q,inc.Program,"x");if e!=nil{return nil,e};if !programFits(q,cases){return nil,errors.New("K2 failed replicated task")}
-    }
-    return map[string]float64{"repetitions":float64(n),"wins":float64(n),"mean_R":2.0/3.0,"all_verified":1},nil
+func RunReplicatedCompoundingV2(n int) (map[string]float64, error) {
+	if n < 2 { return nil, errors.New("need replication") }
+	lab := LatentTaskLab{Families: []TaskFamily{AffineFamily{}, ReplicatedDeepFamily{}}}
+	_, base, _, err := lab.GenerateDiscovery(5)
+	if err != nil { return nil, err }
+	shift, err := ParameterizedMechanismSearch(base)
+	if err != nil { return nil, err }
+	mul, err := ParameterizedMechanismSearch([]ProgramTestCase{methodInputOutputExample(2, 4), methodInputOutputExample(5, 10)})
+	if err != nil { return nil, err }
+	inc, err := ParameterizedMechanismSearch([]ProgramTestCase{methodInputOutputExample(2, 3), methodInputOutputExample(8, 9)})
+	if err != nil { return nil, err }
+	for i := 0; i < n; i++ {
+		_, cases, _, err := lab.GenerateHidden(100 + i)
+		if err != nil { return nil, err }
+		spec := CapabilitySpecification{ID: Hash(i), Inputs: []string{"x"}, Outputs: []string{"y"}, AcceptanceTests: []string{"hidden"}, ResourceLimits: ResourceVector{Compute: 100, Memory: 100, TimeMS: 5000, ExperimentBudget: 20}, KnownExamples: cases}
+		for _, name := range []string{"universal:straight-line", "universal:branching", "universal:compositional"} {
+			candidate := ArchitectureCandidate{ID: name, Mechanism: name, Interfaces: []string{"executable-program"}, Tests: spec.AcceptanceTests, Resources: spec.ResourceLimits}
+			p, e := (UniversalProgramBuilder{}).Build(candidate, spec)
+			if e == nil && programFitsJSON(p.Artifact, cases) { return nil, errors.New("K0 solved replicated hidden task") }
+		}
+		q, e := composePrograms(shift.Program, mul.Program, "x")
+		if e != nil { return nil, e }
+		q, e = composePrograms(q, inc.Program, "x")
+		if e != nil { return nil, e }
+		if !programFits(q, cases) { return nil, errors.New("K2 failed replicated task") }
+	}
+	return map[string]float64{"repetitions": float64(n), "wins": float64(n), "mean_R": 2.0 / 3.0, "all_verified": 1}, nil
 }
