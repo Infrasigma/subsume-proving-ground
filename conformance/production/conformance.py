@@ -3,7 +3,7 @@ import hashlib, json, re, sys
 from itertools import permutations, product
 ROLES=("target","intervention","contrast","context")
 CONSEQUENCES=("ENABLES(target)","NONENABLES(contrast,target)")
-PRED_ARITY={"BLOCKED":1,"AVAILABLE":1,"ACTION":1,"INTERVENES":2,"BEFORE":2,"AFTER":2,"OBSERVED_EFFECT":2,"ENABLES":2,"NONENABLES":2,"SAME_LOCAL_CONTEXT":2}
+PRED_ARITY={"BLOCKED":1,"AVAILABLE":1,"ACTION":1,"INTERVENES":2,"OBSERVED_EFFECT":2,"ENABLES":2,"NONENABLES":2,"SAME_LOCAL_CONTEXT":2}
 TOKEN_RE=re.compile(r"^[0-9a-f]{16}$")
 def cj(x): return json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(",",":"),allow_nan=False).encode()
 def digest(x): return hashlib.sha256(cj(x)).hexdigest()
@@ -70,8 +70,7 @@ def legal_candidates(max_k=2):
                 if validate_rule(r): seen[cj(r)]=r
     return [seen[k] for k in sorted(seen)]
 def compile_facts(history):
-    facts=[]
-    known=set()
+    facts=[]; known=set()
     for o in history:
         known.update(o["available_actions"])
         if o["last_action"] is not None: known.add(o["last_action"])
@@ -82,10 +81,8 @@ def compile_facts(history):
             prev=set(history[i-1]["available_actions"]); cur=set(o["available_actions"]); x=o["last_action"]
             for t in sorted(known):
                 if t not in prev and t in cur:
-                    facts.append({"p":"INTERVENES","a":[x,t],"at":[i-1]})
-                    facts.append({"p":"OBSERVED_EFFECT","a":[x,"ENABLES("+t+")"],"at":[i-1]})
-                elif t not in prev and t not in cur:
-                    facts.append({"p":"NONENABLES","a":[x,t],"at":[i-1]})
+                    facts.append({"p":"INTERVENES","a":[x,t],"at":[i-1]}); facts.append({"p":"OBSERVED_EFFECT","a":[x,"ENABLES("+t+")"],"at":[i-1]})
+                elif t not in prev and t not in cur: facts.append({"p":"NONENABLES","a":[x,t],"at":[i-1]})
             if o["last_result"] and o["last_result"]["status"]=="BLOCKED": facts.append({"p":"BLOCKED","a":[x],"at":[i]})
     grouped={}
     for f in facts:
