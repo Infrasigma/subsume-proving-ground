@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 import json, subprocess, sys, pathlib, os
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-LEGACY_FIX=ROOT/'conformance/fixtures/core.json'; LEGACY_PROD=ROOT/'conformance/production/serl.py'; LEGACY_REF=ROOT/'conformance/reference/main.go'
+LEGACY_FIX=ROOT/'conformance/fixtures/core.json'; LEGACY_PROD=ROOT/'conformance/production/serl.py'; LEGACY_REF=ROOT/'conformance/reference/legacy/main.go'
 ORIGINAL_ATTR_FIX=ROOT/'conformance/fixtures/evidence/negative_nonenablement_missing_entity_original.json'
-CLOSURE_FIX=ROOT/'conformance/fixtures/closure.json'; CLOSURE_PROD=ROOT/'conformance/production/conformance.py'; CLOSURE_REF=ROOT/'conformance/reference/closure.go'
+CLOSURE_FIX=ROOT/'conformance/fixtures/closure.json'; CLOSURE_PROD=ROOT/'conformance/production/conformance.py'; CLOSURE_REF=ROOT/'conformance/reference/closure/main.go'
 
 def run(cmd,data):
     p=subprocess.run(cmd,input=json.dumps(data)+'\n',text=True,capture_output=True,check=False,env={**os.environ,'TASK_SEED':'999999','HIDDEN_GRAPH':'must-not-be-read','CONDITION_ID':'other','SEMANTIC_X':'must-not-be-read','SIMULATOR_STATE':'must-not-be-read','B_SOLUTION':'must-not-be-read'})
@@ -39,9 +39,6 @@ def legacy():
             assert type(prod['novelty']) is int and type(ref['novelty']) is int,'numeric canonical regression'
         clean,clean_raw=run([sys.executable,str(LEGACY_PROD)],c); assert clean==prod and clean_raw==prod_raw,c['name']+' environment leakage'
         print('PASS legacy_regression',c['name'])
-    # Regression B: preserve the exact contradictory historical fixture, but
-    # treat its stale attribution evidence as adversarial input. Actual retrieval
-    # is false, so KA_TRANSFER must remain impossible.
     original=json.loads(ORIGINAL_ATTR_FIX.read_text())
     op,oraw=run([sys.executable,str(LEGACY_PROD)],original); rr,rraw=run(['go','run',str(LEGACY_REF)],original)
     compare(op,rr,'original_attribution_attack',oraw,rraw)
