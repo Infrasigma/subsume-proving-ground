@@ -33,3 +33,11 @@ func TestUniversalProgramSupportsCompositionAndBranching(t *testing.T) {
     got,err=loop.Run(map[string]string{"x":"1"});if err!=nil||got["y"]!="2"{t.Fatalf("iteration failed: %v %v",got,err)}
     _=one
 }
+
+func TestExpressionFrontierContainsComposedNegation(t *testing.T) {
+    frontier:=expressionFrontier([]string{"x"},2)
+    cases:=[]ProgramTestCase{{Input:map[string]string{"x":"-3"},Expected:map[string]string{"y":"3"}}}
+    found:=false
+    for _,e:=range frontier {p:=UniversalProgram{Statements:[]UStmt{{Kind:"assign",Target:"y",Expr:cloneExpr(e)}}};if programFits(p,cases){found=true;break}}
+    if !found{t.Fatal("expression frontier failed to construct 0-x")}
+}
