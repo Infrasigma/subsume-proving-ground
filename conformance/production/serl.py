@@ -3,42 +3,28 @@ import hashlib, json, sys
 
 # Phase 2.1 production conformance surface. This is fixture-driven only: it never
 # constructs or evaluates the definitive 100-task endpoint.
-
 ROLE_ORDER = ["target", "intervention", "contrast", "context"]
 CONSEQUENCES = {"ENABLES(target)", "NONENABLES(contrast,target)"}
 PREDICATES = ["ACTION","AFTER","AVAILABLE","BEFORE","BLOCKED","ENABLES","INTERVENES","NONENABLES","OBSERVED_EFFECT","SAME_LOCAL_CONTEXT"]
 
-
 def canon(x):
     return json.dumps(x, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
-
 def sha(x): return hashlib.sha256(x).hexdigest()
-
 def token(namespace, seed, index):
     b = namespace.encode()+b"\0"+seed.to_bytes(8,"big")+b"\0"+index.to_bytes(8,"big")
     return hashlib.sha256(b).hexdigest()[:16]
-
 def rng_word(namespace, seed, counter):
     b = namespace.encode()+b"\0"+seed.to_bytes(8,"big")+b"\0"+counter.to_bytes(8,"big")
     return int.from_bytes(hashlib.sha256(b).digest()[:8],"big")
-
 def fisher(values, namespace, seed):
     a=list(values); c=0
     for i in range(len(a)-1,0,-1):
-        # Rejection-free bounded mapping is used only by this conformance helper;
-        # task generation fixtures freeze the resulting semantic candidate list.
         j=rng_word(namespace,seed,c)%(i+1); c+=1; a[i],a[j]=a[j],a[i]
     return a
-
 def canonical_candidate(rule):
-    r=dict(rule)
-    atoms=[]
-    for a in r["atoms"]:
-        atoms.append({"predicate":a["predicate"],"args":list(a["args"])})
+    r=dict(rule); atoms=[{"predicate":a["predicate"],"args":list(a["args"])} for a in r["atoms"]]
     atoms=sorted({canon(a).decode() for a in atoms})
-    atoms=[json.loads(a) for a in atoms]
-    return {"atoms":atoms,"consequence":r["consequence"]}
-
+    return {"atoms":[json.loads(a) for a in atoms],"consequence":r["consequence"]}
 def validate_candidate(rule):
     if rule.get("consequence") not in CONSEQUENCES: return False
     atoms=rule.get("atoms",[])
@@ -50,7 +36,6 @@ def validate_candidate(rule):
         if not isinstance(args,list) or any(x not in ROLE_ORDER for x in args): return False
         seen.add(canon(a))
     return len(seen)==len(atoms)
-
 def facts(history):
     out=[]
     for i,o in enumerate(history):
@@ -67,7 +52,6 @@ def facts(history):
                     out.append({"p":"NONENABLES","a":[x,target],"at":i-1})
             status=(o.get("last_result") or {}).get("status")
             if status=="BLOCKED": out.append({"p":"BLOCKED","a":[x],"at":i})
-    # SAME_LOCAL_CONTEXT is derived only between actual action occurrences.
     acts=[]
     for i,o in enumerate(history):
         if o.get("last_action") is not None:
@@ -76,63 +60,44 @@ def facts(history):
         for bi in range(ai+1,len(acts)):
             if acts[ai][2]==acts[bi][2]: out.append({"p":"SAME_LOCAL_CONTEXT","a":[acts[ai][0],acts[bi][0]],"at":min(acts[ai][1],acts[bi][1])})
     return sorted(out,key=canon)
-
 def applicable(rule, fs):
-    # Fixture-level applicability: a rule is applicable when each atom has a fact
-    # with matching predicate/arity after role substitution supplied by fixture.
     binding=rule.get("binding",{})
     for a in rule["atoms"]:
         args=[binding.get(x,x) for x in a["args"]]
         if not any(f["p"]==a["predicate"] and f["a"]==args for f in fs): return False
     return True
-
-def attribution(case):
-    order=["PROTOCOL_VIOLATION","UNATTRIBUTABLE","CONFLICT","RETRIEVAL_ONLY","PREDICTION_ONLY","COINCIDENTAL","KA_TRANSFER"]
+def attribution(case, actual_retrieval, actual_prediction):
     present=set(case.get("evidence",[]))
     if case.get("outside_domain"): return "PROTOCOL_VIOLATION"
     if "invalid" in present: return "UNATTRIBUTABLE"
     if "conflict" in present: return "CONFLICT"
-    if "retrieval" in present and "prediction" not in present: return "RETRIEVAL_ONLY"
-    if "prediction" in present and "intervention" not in present: return "PREDICTION_ONLY"
+    # Attribution is downstream of the actual retrieval/prediction boundaries;
+    # fixture claims cannot manufacture those events.
+    if not actual_retrieval: return "UNATTRIBUTABLE"
+    if not actual_prediction: return "RETRIEVAL_ONLY"
     if "coincidental" in present: return "COINCIDENTAL"
-    if {"retrieval","prediction","intervention","consequence","verification","counterfactual"} <= present: return "KA_TRANSFER"
-    return "UNATTRIBUTABLE"
-
+    need={"retrieval","grounding","prediction","intervention","consequence","verification","counterfactual"}
+    return "KA_TRANSFER" if need<=present else "UNATTRIBUTABLE"
 def cost(case):
-    e=case["attempts"]
-    status=case["terminal"]
+    e=case["attempts"]; status=case["terminal"]
     if status=="SUCCESS": return e
     if status in ("INTERACTION_CAP_EXHAUSTED","DECISION_CUTOFF_EXHAUSTED"): return e
-    if status in ("ILLEGAL_ACTION","PROTOCOL_VIOLATION","INVALID_TASK","INSTRUMENTATION_FAILURE","ENVIRONMENT_ERROR"): return None
     return None
-
 def novelty(a,b):
-    sa={canon(x) for x in a}; sb={canon(x) for x in b}
-    u=len(sa|sb)
-    return 1.0 if u==0 else 1.0-len(sa&sb)/u
-
+    sa={canon(x) for x in a}; sb={canon(x) for x in b}; u=len(sa|sb)
+    if u==0: return 1
+    v=1-len(sa&sb)/u
+    # Canonical numeric rule for the Phase 2.1 conformance surface: an
+    # integer-valued result is emitted as an integer, never as 0.0/1.0.
+    return int(v) if v in (0,1) else v
 def run(f):
-    h=f["history"]
-    fs=facts(h)
-    c=canonical_candidate(f["candidate"])
+    h=f["history"]; fs=facts(h); c=canonical_candidate(f["candidate"])
     if not validate_candidate(c): raise ValueError("invalid candidate")
-    ret=applicable({**c,"binding":f.get("binding",{})},fs)
-    pred=c["consequence"] if ret else None
-    return {
-      "input_hash":sha(canon(f)),
-      "event_ledger":h,
-      "facts":fs,
-      "candidate":c,
-      "candidate_valid":True,
-      "retrieval":{"applicable":ret,"candidate":c if ret else None},
-      "prediction":{"consequence":pred,"valid":pred in CONSEQUENCES if pred else False},
-      "action":f.get("next_action"),
-      "cost":cost(f["cost"]),
-      "attribution":attribution(f["attribution"]),
-      "novelty":novelty(f["novelty_a"],f["novelty_b"]),
-      "task_tokens":{"action":token("ACTION_TOKEN",f["seed"],0),"location":token("LOCATION_TOKEN",f["seed"],0)},
-      "rng_probe":[rng_word("TASK_GENERATION",f["seed"],i) for i in range(4)],
-    }
-
+    ret=applicable({**c,"binding":f.get("binding",{})},fs); pred=c["consequence"] if ret else None
+    return {"input_hash":sha(canon(f)),"event_ledger":h,"facts":fs,"candidate":c,"candidate_valid":True,
+      "retrieval":{"applicable":ret,"candidate":c if ret else None},"prediction":{"consequence":pred,"valid":pred in CONSEQUENCES if pred else False},
+      "action":f.get("next_action"),"cost":cost(f["cost"]),"attribution":attribution(f["attribution"],ret,pred is not None),
+      "novelty":novelty(f["novelty_a"],f["novelty_b"]),"task_tokens":{"action":token("ACTION_TOKEN",f["seed"],0),"location":token("LOCATION_TOKEN",f["seed"],0)},
+      "rng_probe":[rng_word("TASK_GENERATION",f["seed"],i) for i in range(4)]}
 if __name__=="__main__":
     obj=json.load(sys.stdin); print(canon(run(obj)).decode())
