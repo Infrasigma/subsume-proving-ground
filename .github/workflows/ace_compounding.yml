@@ -1,0 +1,29 @@
+name: ACE Capability Compounding
+
+on:
+  push:
+    branches: ["ace-full-system-20260911"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  compounding:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: false
+      - name: Test
+        run: go test -mod=mod ./...
+      - name: Race
+        run: go test -mod=mod -race ./...
+      - name: Vet
+        run: go vet -mod=mod ./...
+      - name: Build
+        run: go build ./cmd/ace
+      - name: Capability compounding gate
+        run: go test -mod=mod -run 'Test(RecursiveCapabilityProtocolV2|DeepRecursiveCompoundingEvidence|ReplicatedCapabilityCompounding)$' ./internal/ace
