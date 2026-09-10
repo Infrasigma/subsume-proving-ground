@@ -2,102 +2,95 @@
 
 ## Evidence classification
 
-**TESTED BUT LIMITED — autonomous acquisition-method capability is implemented, but true recursive capability improvement and AGI remain UNPROVEN.**
+**TESTED BUT LIMITED — acquisition-method artifacts and a causal future-acquisition runtime are implemented; true recursive capability improvement and AGI remain UNPROVEN.**
 
 No AGI claim is made.
 
 ## Source milestone
 
-Source-code HEAD at the time of this report:
+Latest source-code milestone covered by this report:
 
-`70dd64d4e1ef6bf9f2ba1fb3bb92c33e55f26572`
+`2eb9c9213bc7de1d994e4ab6131bd3f04f32430f`
 
-This report is documentation-only and must not be treated as source evidence.
+The branch may advance with documentation-only commits; this SHA identifies the implementation under evaluation.
 
-## Actual architecture executed
+## Actual executed data flow
 
-The current compounding path contains:
+`behavioral task evidence -> capability specification -> pre-improvement attempt -> independent failure/counterexample telemetry -> bottleneck diagnosis -> competing acquisition-method hypotheses -> executable method evaluation -> verified method artifact -> installation -> changed candidate ordering -> future capability acquisition -> retention/history`
 
-`behavioral task evidence -> capability specification -> bounded executable mechanism search -> independent counterexample/held-out verification -> failure telemetry -> evidence-driven bottleneck diagnosis -> competing acquisition-method hypotheses -> executable method candidates -> independent method evaluation -> verified method installation -> changed future search order -> future capability acquisition`
+The independent evaluator remains outside the cognitive mechanism.
 
-The installed-method registry records executable method artifacts and before/after execution traces.
+## Implemented breakthrough
 
-## What changed in this milestone
+### First-class acquisition method
 
-### 1. First-class acquisition-method artifact
+`AcquisitionMethodArtifact` contains identity, preconditions, expected strengths/failure modes, input capability specification, executable procedure, representation policy, candidate policy, verification policy, resource model, provenance, dependencies, learned performance statistics, regression constraints, transfer evidence, and an executable artifact representation.
 
-`AcquisitionMethodArtifact` records identity, applicability/preconditions, expected strengths/failure modes, input capability specification, executable procedure, representation/candidate/verification policies, resource model, provenance, dependencies, performance statistics, regression constraints, transfer evidence, and an artifact representation.
+### Evidence-driven diagnosis
 
-### 2. Evidence-driven bottleneck diagnosis
+`DiagnoseBottleneck` derives a bottleneck from candidate failures, counterexamples, search path, representation trace and verification outcomes. It does not receive the hidden target or an experiment-side instruction such as "use conditional search."
 
-`DiagnoseBottleneck` consumes acquisition telemetry rather than a task-family label or hidden solution. The telemetry includes candidate failures, counterexamples, representation/search traces, verification outcomes and cost.
+### Competing method hypotheses
 
-### 3. Competing method generation
+For a search-space failure the runtime generates multiple method hypotheses, including executable-frontier expansion, representation revision and decomposition/composition. Candidates are actually executed and independently evaluated; a candidate can be rejected.
 
-`GenerateMethodCandidates` produces multiple executable method hypotheses from the diagnosed evidence class. The harness does not select a method by name.
+### Verified installation
 
-### 4. Independent method evaluation
+`InstalledMethodRegistry` accepts only complete method artifacts and records installation plus before/after execution traces. The frontier-expansion method materially changes future search by moving branching synthesis ahead of the pre-improvement arithmetic path.
 
-Candidates are executed through the acquisition substrate and tested against held-out behavioral cases. Failed candidates are retained as rejected hypotheses rather than being silently converted into success.
+### Adaptive runtime
 
-### 5. Installation with real causal effect
+`AdaptiveAcquisitionRuntime.ImproveAndAcquire` closes diagnosis -> method generation -> method evaluation -> installation -> future acquisition and updates method history.
 
-`InstalledMethodRegistry.Apply` executes the installed method. The frontier-expansion method changes the actual acquisition candidate order by moving executable branching ahead of the pre-improvement arithmetic-only order. A trace records the before/after path.
+## Decisive bounded experiment
 
-### 6. Adaptive acquisition runtime
+Stage 1 acquires an affine capability from behavioral examples.
 
-`AdaptiveAcquisitionRuntime.ImproveAndAcquire` closes diagnosis -> method generation -> method evaluation -> installation -> future acquisition in one executable path and records method history.
+Stage 2 deliberately demonstrates failure of the arithmetic-only mechanism on a conditional task. Observable telemetry is then passed to autonomous method diagnosis/generation/evaluation. The harness does not select the winning method.
 
-## Decisive experiment boundary
+Stage 3 is an independently specified piecewise transformation. The pre-improvement arithmetic-only search fails. The installed method changes the real search path and branching synthesis acquires the future capability.
 
-The repaired recursive protocol now removes the previous experiment-side `arithmetic failed -> use conditional search` authority.
+The source-level test suite also checks reuse on a distinct latent threshold instance.
 
-The protocol instead observes an arithmetic failure, constructs telemetry, diagnoses search-space insufficiency, generates competing method artifacts, independently evaluates them, installs the selected method, and uses the installed method to change future acquisition behavior.
+## Scientific classification
 
-The future task is a piecewise transformation that the pre-improvement arithmetic-only mechanism cannot acquire but the installed branching search can acquire.
+The strongest justified statement is:
 
-This demonstrates a **causal method-to-future-acquisition path on a bounded executable substrate**.
+> ACE now contains a tested bounded mechanism in which an acquisition failure produces telemetry, telemetry produces competing acquisition-method artifacts, a method is independently verified and installed, and the installed method causally changes a subsequent acquisition path that succeeds where the pre-improvement mechanism fails.
 
-## What is NOT demonstrated
+This is **not** yet evidence of open-ended recursive intelligence.
 
-- Fully autonomous invention of arbitrary new acquisition algorithms.
-- General typed executable mechanism construction.
-- Open-ended task generation beyond the bounded task lab.
-- General representation invention.
-- Autonomous causal hypothesis generation/discrimination integrated with method discovery.
-- Compute-inclusive replicated `R_n < 1`.
-- Structurally broad cross-domain transfer (arithmetic -> relational/planning/causal/program transformation).
-- A second independently discovered recursive improvement `M1 -> M2`.
-- Recursive self-modification of the cognitive architecture.
-- Broad general intelligence or AGI.
+## Known limitations
 
-## Cost accounting
+- Method-hypothesis generation is still a hand-authored generic transformation library keyed by evidence classes. It is not yet a learned universal method-discovery process.
+- The executable substrate remains bounded integer/boolean synthesis; it is not yet a general typed programming environment.
+- The task laboratory remains small and source-defined rather than an open-ended self-generated challenge distribution.
+- Method verification currently uses source-level held-out behavioral cases, not a hardened external blind evaluation service.
+- Transfer is presently within the scalar executable domain; broad cross-domain transfer is unproven.
+- Method performance history exists in the adaptive runtime but is not yet a persistent knowledge object with calibrated predictive uncertainty.
+- Full `(E,I,S,D)` accounting is not frozen across experimentation, inference/search, synthesis, verification, compute, wall-clock time, retries and failed candidates.
+- Therefore no compute-inclusive replicated `R_n < 1` claim is made.
+- A second-order recursive improvement `M1 -> M2` has not been demonstrated.
+- Recursive architecture self-modification has not been demonstrated.
+- AGI is unproven.
 
-The current compounding protocol exposes only bounded substrate costs and candidate/search counts. It does **not** yet provide a frozen, compute-inclusive `(E,I,S,D)` ledger covering experimentation, inference/search, synthesis, verification, compute, wall-clock time, retries and failed candidates for a defensible recursive `R_n` comparison.
+## Failure record
 
-Therefore no current method-compounding result is promoted to a full compute-inclusive `R_n < 1` claim.
+A previous implementation run failed because `adaptive_runtime.go` referenced `CapabilitySpecification.Structure`, which does not exist. The CI log identified the exact compile error; the code was repaired by deriving the history key from available specification fields. A later experiment failure showed that the bootstrap task-family seed selected deep composition instead of affine acquisition; the seed was corrected rather than weakening the test. These are recorded as engineering/debugging failures, not evidence of intelligence.
 
-## Leakage boundary
+The historical Phase 2.1 conformance failure is intentionally not rewritten or made to pass.
 
-The task harness may define task generators and independent evaluators. It must not provide hidden solution programs or the correct acquisition method to ACE. The new recursive path contains no `conditionalCandidate` oracle or equivalent experiment-side method-selection authority.
+## Validation state
 
-The present tests are still source-level research protocols rather than a hardened blind external evaluation environment; leakage robustness therefore remains LIMITED.
+Dedicated ACE and repository-wide GitHub Actions are required for each source milestone. The implementation under `2eb9c9213bc7de1d994e4ab6131bd3f04f32430f` has a dedicated compounding run and repository validation runs in progress/queued at the time of this documentation update; until those exact-SHA runs complete green, they are **not** counted as validated evidence.
 
-## Validation
+## Next decisive work
 
-The branch has repeatedly used repository-wide Go CI and dedicated ACE compounding workflows. A source failure discovered during this milestone was a concrete compile error (`CapabilitySpecification.Structure` does not exist); it was diagnosed from CI logs and repaired without weakening acceptance criteria.
+1. Replace the evidence-class switch with learned, executable method generation whose candidates are themselves synthesized and verified.
+2. Persist method artifacts and calibrated performance evidence in the knowledge lifecycle.
+3. Freeze full cost accounting before any recursive `R_n` claim.
+4. Generate structurally novel hidden tasks without source-visible solution structure.
+5. Stress method transfer under representation, mechanism and causal distribution shift.
+6. Only then attempt `M1 -> M2` and measure whether acquisition competence continues to improve.
 
-The newest source milestone is subject to its own GitHub Actions validation. A green result must be recorded against the exact source SHA before being treated as engineering evidence.
-
-Historical Phase 2.1 conformance failures involving the frozen legacy development gate are not rewritten or reclassified by this milestone.
-
-## Remaining highest-value work
-
-1. Make method artifacts persistent first-class knowledge objects rather than an in-memory registry only.
-2. Replace the hand-authored bottleneck-to-method candidate mapping with a learned/general program-transformation mechanism.
-3. Make method discovery itself subject to blind, structurally novel transfer tests.
-4. Freeze and measure the complete acquisition cost vector before comparing `K_n` and `K_{n+1}`.
-5. Build self-generated challenge tasks from the self-model and feed their failures into the same method-discovery loop.
-6. Attempt a second-order improvement only after the first method survives adversarial replication.
-
-**Bottom line:** the missing boundary has been crossed at the level of a bounded, executable research mechanism: acquisition methods are now artifacts that can be diagnosed, proposed, independently evaluated, installed, and causally used by a future acquisition path. The stronger claim — that ACE autonomously improves its own general capability-acquisition competence in an open-ended, compute-inclusive, structurally broad setting — remains UNPROVEN.
+**Bottom line:** the experiment-side M1 oracle has been removed from the bounded protocol, and acquisition methods now exist as executable artifacts with a real installation effect. The remaining scientific gap is much harder: ACE must learn the machinery that generates those method artifacts rather than relying on the currently hand-authored generic method hypothesis generator.
