@@ -19,26 +19,16 @@ type Input struct { Seed uint64 `json:"seed"`; History []Observation `json:"hist
 type Fact struct { P string `json:"p"`; A []string `json:"a"`; At []int `json:"at"` }
 
 var roles=[]string{"target","intervention","contrast","context"}
-var arity=map[string]int{"BLOCKED":1,"AVAILABLE":1,"ACTION":1,"INTERVENES":2,"BEFORE":2,"AFTER":2,"OBSERVED_EFFECT":2,"ENABLES":2,"NONENABLES":2,"SAME_LOCAL_CONTEXT":2}
+var arity=map[string]int{"BLOCKED":1,"AVAILABLE":1,"ACTION":1,"INTERVENES":2,"OBSERVED_EFFECT":2,"ENABLES":2,"NONENABLES":2,"SAME_LOCAL_CONTEXT":2}
 var tokenRE=regexp.MustCompile(`^[0-9a-f]{16}$`)
 var consequences=map[string]bool{"ENABLES(target)":true,"NONENABLES(contrast,target)":true}
-
-// canon implements the protocol's language-independent canonical JSON rule:
-// UTF-8, ASCII-sorted object keys, no insignificant whitespace. Go's default
-// struct-field order is deliberately not used as a scientific serialization rule.
-func canon(v any)[]byte{
- raw,err:=json.Marshal(v);if err!=nil{panic(err)}
- dec:=json.NewDecoder(bytes.NewReader(raw));dec.UseNumber()
- var x any;if err:=dec.Decode(&x);err!=nil{panic(err)}
- out,err:=json.Marshal(x);if err!=nil{panic(err)}
- return out
-}
+func canon(v any)[]byte { raw,err:=json.Marshal(v);if err!=nil{panic(err)};dec:=json.NewDecoder(bytes.NewReader(raw));dec.UseNumber();var x any;if err:=dec.Decode(&x);err!=nil{panic(err)};out,err:=json.Marshal(x);if err!=nil{panic(err)};return out }
 func hash(v any)string{h:=sha256.Sum256(canon(v));return hex.EncodeToString(h[:])}
-func stream(ns string,seed,counter uint64,condition,purpose string)[]byte{b:=append([]byte(ns+"\x00"),make([]byte,8)...);put64(b[len(ns)+1:],seed);b=append(b,0);b=append(b,[]byte(condition)...);b=append(b,0);b=append(b,[]byte(purpose)...);b=append(b,0);x:=make([]byte,8);put64(x,counter);return append(b,x...)}
 func put64(b []byte,x uint64){for i:=0;i<8;i++{b[i]=byte(x>>(56-8*i))}}
+func stream(ns string,seed,counter uint64,condition,purpose string)[]byte{b:=append([]byte(ns+"\x00"),make([]byte,8)...);put64(b[len(ns)+1:],seed);b=append(b,0);b=append(b,[]byte(condition)...);b=append(b,0);b=append(b,[]byte(purpose)...);b=append(b,0);x:=make([]byte,8);put64(x,counter);return append(b,x...)}
 func word(ns string,seed,counter uint64,condition,purpose string)uint64{h:=sha256.Sum256(stream(ns,seed,counter,condition,purpose));var x uint64;for _,b:=range h[:8]{x=(x<<8)|uint64(b)};return x}
 func token(ns string,seed,index uint64,condition,purpose string)string{h:=sha256.Sum256(stream(ns,seed,index,condition,purpose));return hex.EncodeToString(h[:])[:16]}
-func validObs(o Observation)bool{if len(o.State)!=1{return false};if !tokenRE.MatchString(o.State["location"]){return false};cp:=append([]string(nil),o.Available...);sort.Strings(cp);if !equal(cp,o.Available){return false};seen:=map[string]bool{};for _,x:=range o.Available{if !tokenRE.MatchString(x)||seen[x]{return false};seen[x]=true};if o.LastAction!=nil{if x,ok:=o.LastAction.(string);!ok||!tokenRE.MatchString(x){return false}};if o.LastResult!=nil{m,ok:=o.LastResult.(map[string]any);if !ok||len(m)!=1{return false};s,_:=m["status"].(string);if s!="BLOCKED"&&s!="ACCEPTED"&&s!="SUCCESS"&&s!="ILLEGAL_ACTION"&&s!="ENVIRONMENT_ERROR"{return false}};return true}
+func validObs(o Observation)bool{if len(o.State)!=1||!tokenRE.MatchString(o.State["location"]){return false};cp:=append([]string(nil),o.Available...);sort.Strings(cp);if !equal(cp,o.Available){return false};seen:=map[string]bool{};for _,x:=range o.Available{if !tokenRE.MatchString(x)||seen[x]{return false};seen[x]=true};if o.LastAction!=nil{if x,ok:=o.LastAction.(string);!ok||!tokenRE.MatchString(x){return false}};if o.LastResult!=nil{m,ok:=o.LastResult.(map[string]any);if !ok||len(m)!=1{return false};s,_:=m["status"].(string);if s!="BLOCKED"&&s!="ACCEPTED"&&s!="SUCCESS"&&s!="ILLEGAL_ACTION"&&s!="ENVIRONMENT_ERROR"{return false}};return true}
 func equal(a,b []string)bool{if len(a)!=len(b){return false};for i:=range a{if a[i]!=b[i]{return false}};return true}
 func atomKey(a Atom)string{return string(canon(map[string]any{"args":a.Args,"predicate":a.Predicate}))}
 func canonical(r Rule)Rule{seen:=map[string]Atom{};for _,a:=range r.Atoms{seen[atomKey(a)]=a};ks:=make([]string,0,len(seen));for k:=range seen{ks=append(ks,k)};sort.Strings(ks);out:=make([]Atom,0,len(ks));for _,k:=range ks{out=append(out,seen[k])};r.Atoms=out;return r}
