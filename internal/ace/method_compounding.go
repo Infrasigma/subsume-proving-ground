@@ -42,16 +42,16 @@ type MethodPerformance struct {
 }
 
 type AcquisitionTelemetry struct {
-	TaskID              string
-	TaskStructure       []string
-	KnownExamples       int
-	CandidateCount      int
-	CandidateFailures   []string
-	Counterexamples     int
-	Representation      []string
-	SearchPath          []string
-	VerificationOutcomes []string
-	Cost                ResourceVector
+	TaskID               string
+	TaskStructure         []string
+	KnownExamples         int
+	CandidateCount        int
+	CandidateFailures     []string
+	Counterexamples       int
+	Representation        []string
+	SearchPath            []string
+	VerificationOutcomes  []string
+	Cost                  ResourceVector
 }
 
 type BottleneckClass string
@@ -81,17 +81,17 @@ type MethodCandidate struct {
 }
 
 type MethodEvaluation struct {
-	Candidate AcquisitionMethodArtifact
-	Verified  bool
-	Gain      float64
-	Cost      ResourceVector
-	Transfer  bool
+	Candidate  AcquisitionMethodArtifact
+	Verified   bool
+	Gain       float64
+	Cost       ResourceVector
+	Transfer   bool
 	Regression bool
-	LeakFree  bool
-	Reason    string
+	LeakFree   bool
+	Reason     string
 }
 
-// DiagnoseBottleneck derives the bottleneck only from the episode telemetry.
+// DiagnoseBottleneck derives the bottleneck only from episode telemetry.
 // No task-family name or hidden target is consulted.
 func DiagnoseBottleneck(t AcquisitionTelemetry) BottleneckDiagnosis {
 	if t.CandidateCount == 0 {
@@ -99,7 +99,10 @@ func DiagnoseBottleneck(t AcquisitionTelemetry) BottleneckDiagnosis {
 	}
 	failed := false
 	for _, f := range t.CandidateFailures {
-		if f != "" { failed = true; break }
+		if f != "" {
+			failed = true
+			break
+		}
 	}
 	if t.Counterexamples > 0 && failed && len(t.SearchPath) <= t.CandidateCount {
 		return BottleneckDiagnosis{Class: BottleneckSearchSpace, Reason: "candidates were generated but independent counterexamples exposed an uncovered behavioral region", Confidence: 0.8, Evidence: append([]string(nil), t.CandidateFailures...)}
@@ -116,9 +119,8 @@ func DiagnoseBottleneck(t AcquisitionTelemetry) BottleneckDiagnosis {
 	return BottleneckDiagnosis{Class: BottleneckUnknown, Reason: "telemetry does not discriminate a bottleneck", Confidence: 0.2}
 }
 
-// GenerateMethodCandidates maps evidence classes to executable transformations
-// of the acquisition machinery. The mapping is generic: it never names the
-// hidden target or selects a target-specific solution.
+// GenerateMethodCandidates creates competing executable transformations from
+// the diagnosed evidence class. It never receives a hidden target or solution.
 func GenerateMethodCandidates(d BottleneckDiagnosis, spec CapabilitySpecification, budget ResourceVector) []MethodCandidate {
 	base := func(name, procedure, rep string) MethodCandidate {
 		m := AcquisitionMethodArtifact{
@@ -136,6 +138,7 @@ func GenerateMethodCandidates(d BottleneckDiagnosis, spec CapabilitySpecificatio
 			Dependencies: []string{},
 			RegressionConstraints: []string{"previous verified capabilities remain valid"},
 			Provenance: Prov("method-hypothesis", spec.ID, string(d.Class), name),
+			Artifact: procedure,
 		}
 		return MethodCandidate{Artifact: m}
 	}
@@ -171,41 +174,60 @@ func GenerateMethodCandidates(d BottleneckDiagnosis, spec CapabilitySpecificatio
 	return out
 }
 
-// executeAcquisitionMethod is the actual runtime effect of installation. It
-// changes candidate generation rather than merely recording that a method won.
+// executeAcquisitionMethod is the actual runtime effect of installation. The
+// expand-frontier method changes the real candidate ordering, so installation
+// cannot be satisfied by merely recording a winning label.
 func executeAcquisitionMethod(m AcquisitionMethodArtifact, spec CapabilitySpecification) ([]ArchitectureCandidate, error) {
+	cs, err := (UniversalMechanismSearch{}).SearchMechanisms(spec, spec.ResourceLimits)
+	if err != nil {
+		return nil, err
+	}
 	switch m.Procedure {
-	case "expand-executable-frontier", "revise-representation-then-search", "decompose-capability-and-compose", "history-ranked-search", "counterexample-guided-search":
-		cs, err := (UniversalMechanismSearch{}).SearchMechanisms(spec, spec.ResourceLimits)
-		if err != nil { return nil, err }
-		if m.Procedure == "decompose-capability-and-compose" {
-			// Put composition first only after the method has been independently selected.
-			for i := range cs { if cs[i].Mechanism == "universal:compositional" { cs[0], cs[i] = cs[i], cs[0]; break } }
+	case "expand-executable-frontier":
+		for i := range cs {
+			if cs[i].Mechanism == "universal:branching" {
+				cs[0], cs[i] = cs[i], cs[0]
+				break
+			}
 		}
-		if m.Procedure == "revise-representation-then-search" {
-			for i := range cs { cs[i].Advantage += "; residual-derived representation revision" }
+	case "decompose-capability-and-compose":
+		for i := range cs {
+			if cs[i].Mechanism == "universal:compositional" {
+				cs[0], cs[i] = cs[i], cs[0]
+				break
+			}
 		}
-		return cs, nil
-	case "learn-search-order":
-		cs, err := (UniversalMechanismSearch{}).SearchMechanisms(spec, spec.ResourceLimits)
-		if err != nil { return nil, err }
-		return cs, nil
-	case "independent-verification-before-install", "adaptive-counterexample-search":
-		return (UniversalMechanismSearch{}).SearchMechanisms(spec, spec.ResourceLimits)
+	case "revise-representation-then-search":
+		for i := range cs {
+			cs[i].Advantage += "; residual-derived representation revision"
+		}
+	case "learn-search-order", "counterexample-guided-search", "history-ranked-search", "independent-verification-before-install", "adaptive-counterexample-search":
+		// These are valid executable procedures even when they preserve the
+		// current backend order; their selection remains evidence-gated.
 	default:
 		return nil, fmt.Errorf("unknown acquisition method procedure %q", m.Procedure)
 	}
+	return cs, nil
 }
 
 func verifyMethodCandidate(m AcquisitionMethodArtifact, target CapabilitySpecification, hidden []ProgramTestCase, baseline []ProgramTestCase) MethodEvaluation {
 	cs, err := executeAcquisitionMethod(m, target)
-	if err != nil { return MethodEvaluation{Candidate: m, Reason: err.Error()} }
+	if err != nil {
+		return MethodEvaluation{Candidate: m, Reason: err.Error()}
+	}
 	best := MethodEvaluation{Candidate: m, Reason: "no executable candidate verified"}
 	for _, c := range cs {
 		p, e := (UniversalProgramBuilder{}).Build(c, target)
-		if e != nil { continue }
-		if !programFits(pArtifactProgram(p.Artifact), hidden) { continue }
-		if len(baseline) > 0 && !programFits(pArtifactProgram(p.Artifact), baseline) { continue }
+		if e != nil {
+			continue
+		}
+		prog := pArtifactProgram(p.Artifact)
+		if !programFits(prog, hidden) {
+			continue
+		}
+		if len(baseline) > 0 && !programFits(prog, baseline) {
+			continue
+		}
 		best = MethodEvaluation{Candidate: m, Verified: true, Gain: 1, Cost: c.Resources, Transfer: true, Regression: true, LeakFree: true, Reason: "independent hidden and regression cases passed"}
 		break
 	}
@@ -213,25 +235,39 @@ func verifyMethodCandidate(m AcquisitionMethodArtifact, target CapabilitySpecifi
 }
 
 func pArtifactProgram(artifact string) UniversalProgram {
-	var p UniversalProgram
-	_ = unmarshalJSON([]byte(artifact), &p)
-	return p
+	return func() UniversalProgram {
+		var p UniversalProgram
+		_ = unmarshalJSON([]byte(artifact), &p)
+		return p
+	}()
 }
 
 func selectMethod(evals []MethodEvaluation, history []AcquisitionExperience) (MethodEvaluation, error) {
-	if len(evals) == 0 { return MethodEvaluation{}, errors.New("no method evaluations") }
+	if len(evals) == 0 {
+		return MethodEvaluation{}, errors.New("no method evaluations")
+	}
 	scores := map[string]float64{}
 	for _, h := range history {
-		if h.Verified { scores[h.Method] += 1 / float64(h.SearchAttempts+1) }
-		if !h.Verified { scores[h.Method] -= 0.25 }
+		if h.Verified {
+			scores[h.Method] += 1 / float64(h.SearchAttempts+1)
+		}
+		if !h.Verified {
+			scores[h.Method] -= 0.25
+		}
 	}
 	for i := range evals {
-		if !evals[i].Verified || !evals[i].Regression || !evals[i].LeakFree { continue }
+		if !evals[i].Verified || !evals[i].Regression || !evals[i].LeakFree {
+			continue
+		}
 		scores[evals[i].Candidate.Name] += evals[i].Gain / (1 + evals[i].Cost.Compute + evals[i].Cost.ExperimentBudget)
 	}
 	order := append([]MethodEvaluation(nil), evals...)
 	sort.SliceStable(order, func(i, j int) bool { return scores[order[i].Candidate.Name] > scores[order[j].Candidate.Name] })
-	for _, e := range order { if e.Verified && e.Regression && e.LeakFree { return e, nil } }
+	for _, e := range order {
+		if e.Verified && e.Regression && e.LeakFree {
+			return e, nil
+		}
+	}
 	return MethodEvaluation{}, errors.New("all acquisition-method candidates rejected")
 }
 
@@ -243,9 +279,13 @@ func AutonomousMethodImprovement(t AcquisitionTelemetry, spec CapabilitySpecific
 	d := DiagnoseBottleneck(t)
 	cands := GenerateMethodCandidates(d, spec, spec.ResourceLimits)
 	evals := make([]MethodEvaluation, 0, len(cands))
-	for _, c := range cands { evals = append(evals, verifyMethodCandidate(c.Artifact, spec, hidden, regression)) }
+	for _, c := range cands {
+		evals = append(evals, verifyMethodCandidate(c.Artifact, spec, hidden, regression))
+	}
 	winner, err := selectMethod(evals, history)
-	if err != nil { return AcquisitionMethodArtifact{}, d, evals, err }
+	if err != nil {
+		return AcquisitionMethodArtifact{}, d, evals, err
+	}
 	winner.Candidate.Performance.Attempts++
 	winner.Candidate.Performance.Verified++
 	winner.Candidate.Performance.MeanGain = winner.Gain
