@@ -2,6 +2,7 @@ package main
 
 import (
  "bufio"
+ "bytes"
  "crypto/sha256"
  "encoding/hex"
  "encoding/json"
@@ -22,7 +23,16 @@ var arity=map[string]int{"BLOCKED":1,"AVAILABLE":1,"ACTION":1,"INTERVENES":2,"BE
 var tokenRE=regexp.MustCompile(`^[0-9a-f]{16}$`)
 var consequences=map[string]bool{"ENABLES(target)":true,"NONENABLES(contrast,target)":true}
 
-func canon(v any)[]byte{b,_:=json.Marshal(v);return b}
+// canon implements the protocol's language-independent canonical JSON rule:
+// UTF-8, ASCII-sorted object keys, no insignificant whitespace. Go's default
+// struct-field order is deliberately not used as a scientific serialization rule.
+func canon(v any)[]byte{
+ raw,err:=json.Marshal(v);if err!=nil{panic(err)}
+ dec:=json.NewDecoder(bytes.NewReader(raw));dec.UseNumber()
+ var x any;if err:=dec.Decode(&x);err!=nil{panic(err)}
+ out,err:=json.Marshal(x);if err!=nil{panic(err)}
+ return out
+}
 func hash(v any)string{h:=sha256.Sum256(canon(v));return hex.EncodeToString(h[:])}
 func stream(ns string,seed,counter uint64,condition,purpose string)[]byte{b:=append([]byte(ns+"\x00"),make([]byte,8)...);put64(b[len(ns)+1:],seed);b=append(b,0);b=append(b,[]byte(condition)...);b=append(b,0);b=append(b,[]byte(purpose)...);b=append(b,0);x:=make([]byte,8);put64(x,counter);return append(b,x...)}
 func put64(b []byte,x uint64){for i:=0;i<8;i++{b[i]=byte(x>>(56-8*i))}}
