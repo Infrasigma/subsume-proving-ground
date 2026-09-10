@@ -47,7 +47,7 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquire(
 			Capability: Capability{ID: Hash([]any{"future-capability", futureSpec.ID, method.ID}), Name: futureSpec.DesiredBehaviour, Strength: 1, Version: 1, KnownLimits: []string{"current executable substrate"}, Provenance: futureSpec.Provenance},
 			Artifact: p.Artifact, Tests: futureHidden, Mechanism: c.Mechanism, ArchitectureCost: float64(i + 1),
 		}
-		r.History = append(r.History, AcquisitionExperience{TaskStructure: Hash(futureSpec.Inputs, futureSpec.Outputs, futureSpec.Invariants), Method: method.Name, SearchAttempts: i + 1, Cost: c.Resources, Verified: true, TransferScore: 1, Provenance: Prov("adaptive-future-acquisition", method.ID, "verified", c)})
+		r.History = append(r.History, AcquisitionExperience{TaskStructure: Hash([]any{futureSpec.Inputs, futureSpec.Outputs, futureSpec.Invariants}), Method: method.Name, SearchAttempts: i + 1, Cost: c.Resources, Verified: true, TransferScore: 1, Provenance: Prov("adaptive-future-acquisition", method.ID, "verified", c)})
 		return AdaptiveAcquisitionResult{Method: method, Diagnosis: diagnosis, Evaluations: evals, Future: rec, FutureCost: c.Resources, Trace: append([]string(nil), r.Methods.Trace...)}, nil
 	}
 	return AdaptiveAcquisitionResult{}, errors.New("installed acquisition method could not acquire future capability")
