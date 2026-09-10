@@ -90,7 +90,7 @@ func TestLearnedSimulationProducesEmpiricalDistribution(t *testing.T){
         trace("b","advance",map[string]string{"x":"1"},map[string]string{"x":"2"}),
         trace("c","advance",map[string]string{"x":"1"},map[string]string{"x":"3"}),
     }
-    p,err:=(LearnedTransitionSimulator{Experiences:xs}).Simulate(State{Values:map[string]string{"x":"1"}},Action{ID:"a",Operation:"advance"},ResourceVector{TimeMS:10});if err!=nil||len(p)!=2{t.Fatalf("bad empirical simulation: %+v %v",p,err)}
+    p,err:=(EmpiricalSimulator{Experiences:xs}).Simulate(State{Values:map[string]string{"x":"1"}},Action{ID:"a",Operation:"advance"},ResourceVector{TimeMS:10});if err!=nil||len(p)!=2{t.Fatalf("bad empirical simulation: %+v %v",p,err)}
     if p[0].Probability!=2.0/3.0{t.Fatalf("expected 2/3 dominant outcome: %+v",p)}
 }
 
@@ -98,7 +98,7 @@ func TestPlannerSearchesMultipleActions(t *testing.T){
     s:=State{Values:map[string]string{"x":"0"}}
     one:=Skill{ID:"inc1",Preconditions:[]string{"x=0"},Confidence:1,Actions:[]Action{{ID:"a",Operation:"set",Arguments:map[string]string{"x":"1"}}}}
     two:=Skill{ID:"inc2",Preconditions:[]string{"x=1"},Confidence:1,Actions:[]Action{{ID:"b",Operation:"set",Arguments:map[string]string{"x":"2"}}}}
-    p,err:=(SearchPlanner{MaxDepth:3}).Search(Task{ID:"t",Goal:"x=2"},s,[]Skill{one,two},nil,ResourceVector{TimeMS:10});if err!=nil||len(p.Steps)!=2{t.Fatalf("planner did not find two-step plan: %+v %v",p,err)}
+    p,err:=(SafeSearchPlanner{MaxDepth:3}).Search(Task{ID:"t",Goal:"x=2"},s,[]Skill{one,two},nil,ResourceVector{TimeMS:10});if err!=nil||len(p.Steps)!=2{t.Fatalf("planner did not find two-step plan: %+v %v",p,err)}
 }
 
 func TestRepresentationResidualDetectsAliasing(t *testing.T){
@@ -110,7 +110,7 @@ func TestRepresentationResidualDetectsAliasing(t *testing.T){
 }
 
 func TestExecutableMechanismSearchConstructsAndRunsProgram(t *testing.T){
-    spec:=CapabilitySpecification{ID:"inc",Inputs:[]string{"x"},Outputs:[]string{"y"},ResourceLimits:ResourceVector{TimeMS:100}}
+    spec:=CapabilitySpecification{ID:"inc",Inputs:[]string{"x"},Outputs:[]string{"y"},AcceptanceTests:[]string{"increment x into y"},ResourceLimits:ResourceVector{TimeMS:100}}
     cs,_:=CompetingMechanismSearch{}.SearchMechanisms(spec,spec.ResourceLimits)
     cases:=map[string][]ProgramTestCase{}
     for _,c:=range cs{cases[c.ID]=[]ProgramTestCase{{Input:map[string]string{"x":"4"},Expected:map[string]string{"y":"5"}}}}
