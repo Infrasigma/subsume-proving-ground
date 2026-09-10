@@ -12,7 +12,7 @@ No AGI claim is made.
 
 Branch: `ace-full-system-20260911`
 
-Current source milestone: `6b8c595f1455377dbbde0bb1949d6f5b1b61934a`
+Current source/documentation HEAD: `e98c07528f033abfeb738aa3ffdce9406b86c3ee`
 
 The milestone contains a latent-task laboratory, behavior-driven parameterized mechanism search, hidden-task evaluation, structural program composition, and a replicated compounding protocol. It deliberately does not replace the canonical runtime with a hand-authored AGI loop.
 
@@ -38,7 +38,7 @@ A separate conditional search is invoked after the arithmetic-only acquisition m
 
 The repository contains a 12-instance hidden-task replication gate. Its intended metric compares a frozen K0 mechanism-search boundary with two structural composition operations after primitive retention. This is a conditional search-cost metric, not yet the project's full compute-inclusive `R_n` ledger.
 
-## Decisive failures / limitations
+## Adversarial findings
 
 1. The compounding protocol is not integrated into `Runtime.Acquire` as an evidence-driven controller.
 2. The experiment harness supplies several acquisition mechanisms; therefore it cannot yet establish autonomous meta-capability invention.
@@ -51,17 +51,17 @@ The repository contains a 12-instance hidden-task replication gate. Its intended
 
 ## CI evidence
 
-A prior capability-compounding run at `34542828179` failed during compilation because the first implementation contained malformed Go syntax. The failure was inspected and the malformed drafts were removed/replaced.
+A first compounding validation run (`34542828179`) failed at Go compilation because the initial draft contained malformed syntax. The failure was inspected rather than hidden, and the malformed drafts were removed/replaced.
 
-A subsequent focused run for source `6b8c595f1455377dbbde0bb1949d6f5b1b61934a` was triggered. At document update time it had not yet produced a completed result, so this file makes **no green-CI claim** for the new source.
+The subsequent source repair was pushed as a parse-safe core. GitHub Actions validation for the newest HEAD is still being scheduled/executed; therefore this document intentionally makes **no green-CI claim** for HEAD `e98c07528f033abfeb738aa3ffdce9406b86c3ee`.
 
 ## Exact justified claim
 
 > ACE has a tested, bounded substrate for behavior-driven capability acquisition and structural reuse across hidden task instances. The repository does not yet demonstrate that ACE autonomously discovers a missing acquisition capability, constructs and verifies a meta-capability, installs it into its own acquisition policy, and thereby improves subsequent capability acquisition.
 
-## Next decisive experiment
+## Next decisive milestone
 
-The next milestone must make the acquisition policy itself an object of learning:
+Make the acquisition policy itself a learned, verifiable object:
 
 `failure telemetry -> bottleneck diagnosis -> competing acquisition-method candidates -> independent verification -> policy installation -> changed future behavior -> replicated hidden-task improvement`.
 
