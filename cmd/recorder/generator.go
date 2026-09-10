@@ -3,14 +3,16 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"os"
+	"path/filepath"
 
 	"github.com/Infrasigma/subsume-proving-ground/evaluator"
 	"github.com/Infrasigma/subsume-proving-ground/protocol"
 )
 
 const (
-	modeIsolated       = "isolated_rules"
-	modeCompositional  = "compositional_ood"
+	modeIsolated      = "isolated_rules"
+	modeCompositional = "compositional_ood"
 	actionMove uint32 = 1
 )
 
@@ -45,8 +47,6 @@ func buildArena(rng *rand.Rand, mode string, variant int) arena {
 		}}
 	}
 
-	// Both compositional chains are constructed so the forced one-tick MOVE
-	// places the block directly on its terminal target.
 	target := entitySwitch
 	if variant == 1 {
 		target = entitySinkhole
@@ -63,9 +63,7 @@ func (a arena) step() (arena, evaluator.TransitionEvidence) {
 	copy(next.entities, a.entities)
 
 	ev := evaluator.TransitionEvidence{}
-	agent := -1
-	block := -1
-	target := -1
+	agent, block, target := -1, -1, -1
 	for i := range next.entities {
 		switch next.entities[i].kind {
 		case entityAgent:
@@ -76,18 +74,16 @@ func (a arena) step() (arena, evaluator.TransitionEvidence) {
 			target = i
 		}
 	}
-
 	if agent < 0 {
 		return next, ev
 	}
 
-	// Forced MOVE advances the agent and pushes the block when the chain mode
-	// has one. The movement fact is accumulated independently of contact facts.
-	next.entities[agent].x += 6
+	// Forced MOVE advances the agent and pushes the block in compositional mode.
+	next.entities[agent].x += tileSize
 	ev.AgentMoved = true
 
 	if block >= 0 && next.entities[block].x == next.entities[agent].x {
-		next.entities[block].x += 6
+		next.entities[block].x += tileSize
 		ev.ElasticContact = true
 
 		if target >= 0 && next.entities[block].x == next.entities[target].x {
@@ -96,12 +92,10 @@ func (a arena) step() (arena, evaluator.TransitionEvidence) {
 				ev.PropertyMutation = true
 			case entitySinkhole:
 				ev.CreationDeletion = true
-				// The sinkhole consumes the block.
 				next.entities[block].kind = entityKind(255)
 			}
 		}
 	}
-
 	return next, ev
 }
 
@@ -115,11 +109,9 @@ func buildAction(ar arena) protocol.ActionRecord {
 			break
 		}
 	}
-	// MOVE vector in Q10 units; magnitude/duration are fixed for the smoke
-	// generator so every example has identical causal timing.
-	action.Params[2] = 96
+	action.Params[2] = 96 // +X movement in the smoke action encoding.
 	action.Params[3] = 0
-	action.Params[4] = 6 * 1024 / 64
+	action.Params[4] = tileSize
 	action.Params[5] = 1
 	return action
 }
@@ -186,6 +178,19 @@ func generateRecord(seed int64, index int, mode string) (protocol.TransitionReco
 	record.FrameBefore = render(before)
 	record.FrameAfter = render(after)
 	return record, mask, nil
+}
+
+func openOutput(path string) (*os.File, error) {
+	if dir := filepath.Dir(path); dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, fmt.Errorf("create output directory: %w", err)
+		}
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return nil, fmt.Errorf("create output: %w", err)
+	}
+	return f, nil
 }
 
 func Generate(path string, count int, mode string, seed int64) error {
