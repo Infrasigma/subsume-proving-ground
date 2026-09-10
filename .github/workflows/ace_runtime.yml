@@ -21,6 +21,15 @@ jobs:
         run: go mod download
       - name: Expose generated checksums for repository repair
         run: cat go.sum
+      - name: Package generated checksums
+        if: always()
+        run: tar -czf /tmp/go-sum.tgz go.sum
+      - name: Upload generated checksums
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-go-sum
+          path: /tmp/go-sum.tgz
       - run: go test ./...
       - run: go test -race ./...
       - run: go vet ./...
