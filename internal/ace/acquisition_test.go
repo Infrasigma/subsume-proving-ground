@@ -23,7 +23,7 @@ func TestAutonomousAcquisitionRejectsBadCandidates(t *testing.T){
     cs,_:=CompetingMechanismSearch{}.SearchMechanisms(spec,spec.ResourceLimits)
     tests:=map[string][]ProgramTestCase{};for _,c:=range cs{tests[c.ID]=[]ProgramTestCase{{Input:map[string]string{"x":"8"},Expected:map[string]string{"y":"9"}}}}
     _,rr,err:=SearchAndTestMechanism(cs,spec,ProgramBuilder{},ExecutableSandbox{Cases:tests});if err!=nil||!rr.Passed{t.Fatalf("valid candidate set unexpectedly rejected: %v %+v",err,rr)}
-    bad:=cs[2];p,_:=ProgramBuilder{}.Build(bad,spec);if _,err:=ExecutableSandbox{Cases:tests}.Validate(p);err==nil{t.Fatal("bad zero candidate unexpectedly passed")}
+    bad:=cs[2];p,_:=ProgramBuilder{}.Build(bad,spec);sandbox:=ExecutableSandbox{Cases:tests};if _,err:=sandbox.Validate(p);err==nil{t.Fatal("bad zero candidate unexpectedly passed")}
 }
 
 func TestCapabilityRegistryUsesActualArtifact(t *testing.T){
