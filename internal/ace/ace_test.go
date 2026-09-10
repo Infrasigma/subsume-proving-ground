@@ -1,6 +1,9 @@
 package ace
 
-import "testing"
+import (
+    "encoding/json"
+    "testing"
+)
 
 func TestPromotionRequiresEvidence(t *testing.T) {
     k:=KnowledgeObject{ID:"k",Level:C2}
@@ -78,7 +81,7 @@ func TestAbstractionFindsInvariantAcrossSurfaceValues(t *testing.T){
 func TestStructuralRetrievalIgnoresVocabulary(t *testing.T){
     k:=KnowledgeObject{ID:"k",Level:C3,Pattern:[]string{"operation:advance","delta:y=1"}}
     tsk:=Task{Structure:[]string{"operation:advance","delta:y=1"}}
-    out,err:=StructuralRetriever{}.Retrieve(tsk,[]KnowledgeObject{k, {ID:"wrong",Level:C3,Pattern:[]string{"operation:advance","delta:z=1"}}});if err!=nil||len(out)!=1||out[0].ID!="k"{t.Fatalf("structural retrieval wrong: %+v %v",out,err)}
+    out,err:=StructuralRetriever{}.Retrieve(tsk,[]KnowledgeObject{k,{ID:"wrong",Level:C3,Pattern:[]string{"operation:advance","delta:z=1"}}});if err!=nil||len(out)!=1||out[0].ID!="k"{t.Fatalf("structural retrieval wrong: %+v %v",out,err)}
 }
 
 func TestLearnedSimulationProducesEmpiricalDistribution(t *testing.T){
