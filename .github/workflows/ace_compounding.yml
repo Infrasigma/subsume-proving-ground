@@ -26,4 +26,4 @@ jobs:
       - name: Build
         run: go build ./cmd/ace
       - name: Capability compounding gate
-        run: go test -mod=mod -run 'Test(RecursiveCapabilityProtocolV2|DeepRecursiveCompoundingEvidence|ReplicatedCapabilityCompounding)$' ./internal/ace
+        run: go test -mod=mod -run 'Test(RecursiveCapabilityCompoundingCore|ReplicatedCapabilityCompoundingCore|AutonomousMethodImprovementFromTelemetry)$' ./internal/ace
