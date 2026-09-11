@@ -66,6 +66,14 @@ func (l *AbstractionLibrary) Install(a AcquiredAbstraction) error {
 	if len(a.Evidence) == 0 {
 		return errors.New("acquired abstraction lacks evidence")
 	}
+	for _, dep := range abstractionDependencies(a.Procedure) {
+		if dep == a.ID {
+			return errors.New("acquired abstraction cannot depend on itself")
+		}
+		if _, ok := l.Find(dep); !ok {
+			return errors.New("acquired abstraction dependency is not installed")
+		}
+	}
 	if _, ok := l.Find(a.ID); ok {
 		return nil
 	}
@@ -158,11 +166,11 @@ func DiscoverReusableAbstraction(observations []AbstractionObservation, minDisti
 		}
 	}
 	verification := VerificationResult{
-		Status:     "verified",
+		Status:      "verified",
 		Independent: true,
-		Expected:   []string{"repeated cross-structure behavioural validity", "composable executable semantics"},
-		Observed:   []string{"independent held-out evidence", "distinct task structures"},
-		Provenance: Prov("abstraction-verifier", procedureSignature(best.procedure), "cross-structure-evidence", best.observations),
+		Expected:    []string{"repeated cross-structure behavioural validity", "composable executable semantics"},
+		Observed:    []string{"independent held-out evidence", "distinct task structures"},
+		Provenance:  Prov("abstraction-verifier", procedureSignature(best.procedure), "cross-structure-evidence", best.observations),
 	}
 	a := AcquiredAbstraction{
 		ID:        Hash([]any{"acquired-abstraction", procedureSignature(best.procedure)}),
@@ -176,7 +184,7 @@ func DiscoverReusableAbstraction(observations []AbstractionObservation, minDisti
 		},
 		Dependencies: abstractionDependencies(best.procedure),
 		Verification: verification,
-		Provenance:  Prov("abstraction-acquisition", first.TaskStructure, "cross-structure-composition", best.procedure),
+		Provenance:   Prov("abstraction-acquisition", first.TaskStructure, "cross-structure-composition", best.procedure),
 	}
 	for _, o := range best.observations {
 		a.Evidence = append(a.Evidence, AbstractionEvidence{
