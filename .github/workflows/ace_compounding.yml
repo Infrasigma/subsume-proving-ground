@@ -37,6 +37,15 @@ jobs:
             ACE_V3_FRONTIER_FALSIFICATION.json
             ACE_V3_FRONTIER_FALSIFICATION.md
           if-no-files-found: error
+      - name: Upload autonomous discovery artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ace-autonomous-operator-discovery
+          path: |
+            ACE_AUTONOMOUS_OPERATOR_DISCOVERY.json
+            ACE_AUTONOMOUS_OPERATOR_DISCOVERY.md
+          if-no-files-found: error
       - name: Race
         run: go test -mod=mod -race ./...
       - name: Vet
@@ -44,4 +53,4 @@ jobs:
       - name: Build
         run: go build ./cmd/ace
       - name: Capability compounding gate
-        run: go test -mod=mod -run 'Test(RecursiveCapabilityCompoundingCore|ReplicatedCapabilityCompoundingCore|AutonomousMethodImprovementFromTelemetry|ExecutableAcquisitionMethodIsSerializableAndComposable|SelfExtensibleCapabilityProbe|ExecutableMethodPersistsAcrossRestart|BootstrapExpansionB0ToB1CausalAndIndependent|BootstrapExpansionRecursiveLibraryRestartAndAblation|AdaptiveAcquisitionRuntimeEndogenousAbstractionLearning|V3FrontierExpansionFalsification)$' ./internal/ace
+        run: go test -mod=mod -run 'Test(RecursiveCapabilityCompoundingCore|ReplicatedCapabilityCompoundingCore|AutonomousMethodImprovementFromTelemetry|ExecutableAcquisitionMethodIsSerializableAndComposable|SelfExtensibleCapabilityProbe|ExecutableMethodPersistsAcrossRestart|BootstrapExpansionB0ToB1CausalAndIndependent|BootstrapExpansionRecursiveLibraryRestartAndAblation|AdaptiveAcquisitionRuntimeEndogenousAbstractionLearning|V3FrontierExpansionFalsification|AutonomousOperatorDiscovery)$' ./internal/ace
