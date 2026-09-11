@@ -7,7 +7,6 @@ import (
 	"strconv"
 )
 
-// FrontierRegime identifies a task family without exposing its latent mechanism.
 type FrontierRegime string
 
 const (
@@ -17,16 +16,15 @@ const (
 	RegimeCrossRegime FrontierRegime = "cross-regime"
 )
 
-// LatentTask is the evaluator-side representation. Latent is deliberately not
-// copied into Public; it is only used by the independent oracle.
+// LatentTask is evaluator-side state. Latent is never copied into Public.
 type LatentTask struct {
-	ID        string
-	Regime    FrontierRegime
-	Public    Task
-	Examples  []TaskExample
-	HeldOut   []TaskExample
-	Latent    string
-	Seed      int64
+	ID       string
+	Regime   FrontierRegime
+	Public   Task
+	Examples []TaskExample
+	HeldOut  []TaskExample
+	Latent   string
+	Seed     int64
 }
 
 type TaskExample struct {
@@ -34,9 +32,6 @@ type TaskExample struct {
 	Output map[string]string
 }
 
-// FrontierTaskGenerator creates tasks from a deterministic latent program
-// family. The caller chooses only the regime and seed; individual instances
-// are generated from the latent parameters rather than authored test-by-test.
 type FrontierTaskGenerator struct{}
 
 func (FrontierTaskGenerator) Generate(regime FrontierRegime, seed int64) (LatentTask, error) {
@@ -78,8 +73,6 @@ func generateSymbolic(r *rand.Rand, seed int64) LatentTask {
 
 func generateRelational(r *rand.Rand, seed int64) LatentTask {
 	shift := r.Intn(5) + 1
-	// The public examples expose observations, not the latent relation rule.
-	// The hidden evaluator uses a separately computed relational oracle.
 	train := []TaskExample{
 		{Input: map[string]string{"edge": "a->b", "value_a": "2"}, Output: map[string]string{"value_b": strconv.Itoa(2 + shift)}},
 		{Input: map[string]string{"edge": "b->c", "value_b": "5"}, Output: map[string]string{"value_c": strconv.Itoa(5 + shift)}},
@@ -124,14 +117,12 @@ func latentTask(seed int64, regime FrontierRegime, latent string, train, test []
 		Goal: fmt.Sprintf("frontier:%s", id),
 		Requirements: []string{"solve generated task"},
 		Novel: true,
-		Budget: ResourceVector{Compute: 100, Search: 100, ExperimentBudget: 20, Discovery: 50},
+		Budget: ResourceVector{Compute: 100, Memory: 100, Storage: 10, TimeMS: 1000, ExperimentBudget: 20},
 		Provenance: Prov("independent-task-generator", id, "latent-program", seed),
 	}
 	return LatentTask{ID: id, Regime: regime, Public: public, Examples: append([]TaskExample(nil), train...), HeldOut: append([]TaskExample(nil), test...), Latent: latent, Seed: seed}
 }
 
-// SortedRegimes gives deterministic evaluator ordering and prevents test
-// authors from selecting an easy family by map iteration order.
 func SortedRegimes() []FrontierRegime {
 	out := []FrontierRegime{RegimeSymbolic, RegimeRelational, RegimeInteractive, RegimeCrossRegime}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
