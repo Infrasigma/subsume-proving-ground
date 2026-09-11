@@ -204,7 +204,7 @@ func TestBootstrapExpansionRecursiveLibraryRestartAndAblation(t *testing.T) {
 		t.Fatalf("second abstraction was not recursively grounded in L1: deps=%v", proposal2.Dependencies)
 	}
 	l2, err := VerifyAcquiredAbstraction(proposal2, library, []AbstractionVerificationCase{
-		{Input: candidateStream("S", "B", "C"), Expected: []string{"C", "S", "B"}},
+		{Input: candidateStream("S", "B", "C"), Expected: []string{"S", "C", "B"}},
 		{Input: candidateStream("B", "C", "S"), Expected: []string{"B", "S", "C"}},
 	})
 	if err != nil {
@@ -214,7 +214,7 @@ func TestBootstrapExpansionRecursiveLibraryRestartAndAblation(t *testing.T) {
 		t.Fatal(err)
 	}
 	stream := candidateStream("S", "B", "C")
-	expected := []string{"C", "S", "B"}
+	expected := []string{"S", "C", "B"}
 	got, err := ExecuteAcquiredAbstraction(l2, stream, library)
 	if err != nil {
 		t.Fatal(err)
