@@ -1,14 +1,13 @@
 package ace
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"sort"
 )
 
-// AbstractionContract describes the reusable interface of an acquired
-// computational organization. It is deliberately substrate-level rather than
-// task-specific: the current abstraction family transforms architecture-
-// candidate streams into architecture-candidate streams.
 type AbstractionContract struct {
 	Inputs         []string
 	Outputs        []string
@@ -17,29 +16,29 @@ type AbstractionContract struct {
 }
 
 type AbstractionEvidence struct {
-	TaskStructure  string
-	Verified       bool
-	HeldOut        bool
-	TransferScore  float64
-	DiscoveryCost  ResourceVector
-	ObservedGain   float64
+	TaskStructure string
+	Verified      bool
+	HeldOut       bool
+	TransferScore float64
+	DiscoveryCost ResourceVector
+	ObservedGain  float64
 }
 
 type AcquiredAbstraction struct {
 	ID           string
 	Name         string
 	Procedure    AcquisitionProcedure
-	Contract    AbstractionContract
+	Contract     AbstractionContract
 	Dependencies []string
-	Evidence    []AbstractionEvidence
-	CostHistory []ResourceVector
+	Evidence     []AbstractionEvidence
+	CostHistory  []ResourceVector
 	Verification VerificationResult
-	Provenance  Provenance
+	Provenance   Provenance
 }
 
 type AbstractionLibrary struct {
-	Version       uint64
-	Abstractions  []AcquiredAbstraction
+	Version      uint64
+	Abstractions []AcquiredAbstraction
 }
 
 func (l *AbstractionLibrary) Find(id string) (AcquiredAbstraction, bool) {
@@ -84,10 +83,6 @@ func (l AbstractionLibrary) IDs() []string {
 	return out
 }
 
-// AbstractionObservation is the minimum evidence needed to turn a successful
-// executable composition into a reusable library object. The library is not a
-// cache: its later effect is measured by re-entering the executable procedure
-// search space through call steps.
 type AbstractionObservation struct {
 	TaskStructure string
 	Procedure     AcquisitionProcedure
@@ -113,18 +108,14 @@ func abstractionDependencies(p AcquisitionProcedure) []string {
 	return out
 }
 
-// DiscoverReusableAbstraction is intentionally evidence-driven. It accepts no
-// developer-provided abstraction name or target algorithm. A composition is
-// eligible only when independently verified evidence exists on at least two
-// distinct task structures and the composition is genuinely non-trivial.
 func DiscoverReusableAbstraction(observations []AbstractionObservation, minDistinctStructures int) (AcquiredAbstraction, error) {
 	if minDistinctStructures < 2 {
 		minDistinctStructures = 2
 	}
 	type bucket struct {
-		procedure       AcquisitionProcedure
-		observations    []AbstractionObservation
-		structures      map[string]bool
+		procedure    AcquisitionProcedure
+		observations []AbstractionObservation
+		structures   map[string]bool
 	}
 	buckets := map[string]*bucket{}
 	for _, o := range observations {
@@ -211,17 +202,13 @@ func enumerateProcedureAtoms(lib *AbstractionLibrary) []ProcedureStep {
 		{Op: "rotate", Arg: 1},
 	}
 	if lib != nil {
-		ids := lib.IDs()
-		for _, id := range ids {
+		for _, id := range lib.IDs() {
 			atoms = append(atoms, ProcedureStep{Op: "call", Ref: id})
 		}
 	}
 	return atoms
 }
 
-// ProcedureLibrarySearchCost returns the size of the executable procedure
-// language explored by a bounded enumerator. It is a bookkeeping primitive for
-// discovery-inclusive cost, not a performance target.
 func ProcedureLibrarySearchCost(maxSteps int, lib *AbstractionLibrary) int {
 	if maxSteps < 1 {
 		return 0
@@ -236,11 +223,66 @@ func ProcedureLibrarySearchCost(maxSteps int, lib *AbstractionLibrary) int {
 	return total
 }
 
-// ExecuteAcquiredAbstraction reuses the same interpreter as ordinary
-// procedures. There is no second semantics for a library object.
 func ExecuteAcquiredAbstraction(a AcquiredAbstraction, cs []ArchitectureCandidate, lib *AbstractionLibrary) ([]ArchitectureCandidate, error) {
 	if lib == nil {
 		return nil, errors.New("abstraction execution requires a library")
 	}
 	return executeSearchProcedureWithLibrary(a.Procedure, cs, lib)
+}
+
+type persistedAbstractions struct {
+	Version      uint64                `json:"version"`
+	Abstractions []AcquiredAbstraction `json:"abstractions"`
+}
+
+type PersistentAbstractionLibrary struct {
+	Path string
+	Data persistedAbstractions
+}
+
+func NewPersistentAbstractionLibrary(path string) (*PersistentAbstractionLibrary, error) {
+	p := &PersistentAbstractionLibrary{Path: path}
+	b, err := os.ReadFile(path)
+	if err == nil {
+		if err = json.Unmarshal(b, &p.Data); err != nil {
+			return nil, err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	return p, nil
+}
+
+func (p *PersistentAbstractionLibrary) Save(l *AbstractionLibrary) error {
+	if l == nil {
+		return errors.New("nil abstraction library")
+	}
+	p.Data = persistedAbstractions{Version: l.Version, Abstractions: append([]AcquiredAbstraction(nil), l.Abstractions...)}
+	if p.Path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(p.Path), 0755); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(p.Data, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := p.Path + ".tmp"
+	if err = os.WriteFile(tmp, b, 0600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, p.Path)
+}
+
+func (p *PersistentAbstractionLibrary) Restore(dst *AbstractionLibrary) error {
+	if dst == nil {
+		return errors.New("nil abstraction library destination")
+	}
+	for _, a := range p.Data.Abstractions {
+		if err := dst.Install(a); err != nil {
+			return err
+		}
+	}
+	return nil
 }
