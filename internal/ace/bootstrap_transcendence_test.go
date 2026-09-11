@@ -105,33 +105,47 @@ func TestBootstrapExpansionB0ToB1CausalAndIndependent(t *testing.T) {
 		newVerifiedAbstractionObservation("family-A", p),
 		newVerifiedAbstractionObservation("family-B", p),
 	}
-	lib, err := DiscoverReusableAbstraction(obs, 2)
+	proposal, err := DiscoverReusableAbstraction(obs, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(lib.Procedure.Steps) != 2 {
-		t.Fatalf("unexpected abstraction procedure: %#v", lib.Procedure)
+	if proposal.Verification.Independent || proposal.Verification.Status != "pending" {
+		t.Fatalf("discovery incorrectly certified its own proposal: %#v", proposal.Verification)
 	}
-	if !reflect.DeepEqual(abstractionDependencies(lib.Procedure), []string{}) {
-		t.Fatalf("B1 abstraction unexpectedly depends on a prior abstraction: %v", abstractionDependencies(lib.Procedure))
+	verificationCases := []AbstractionVerificationCase{
+		{Input: candidateStream("S", "B", "C"), Expected: []string{"B", "S", "C"}},
+		{Input: candidateStream("C", "B", "S"), Expected: []string{"B", "C", "S"}},
 	}
-	if ProcedureLibrarySearchCost(1, l0) != 6 || ProcedureLibrarySearchCost(1, &AbstractionLibrary{Abstractions: []AcquiredAbstraction{lib}}) != 7 {
-		t.Fatal("unexpected bootstrap/library language size")
-	}
-	if err := (&AbstractionLibrary{}).Install(lib); err != nil {
+	verified, err := VerifyAcquiredAbstraction(proposal, &AbstractionLibrary{}, verificationCases)
+	if err != nil {
 		t.Fatal(err)
 	}
-	library := &AbstractionLibrary{Version: 1, Abstractions: []AcquiredAbstraction{lib}}
+	if !verified.Verification.Independent || verified.Verification.Status != "verified" {
+		t.Fatal("independent verifier did not promote abstraction")
+	}
+	if len(verified.Procedure.Steps) != 2 {
+		t.Fatalf("unexpected abstraction procedure: %#v", verified.Procedure)
+	}
+	if !reflect.DeepEqual(abstractionDependencies(verified.Procedure), []string{}) {
+		t.Fatalf("B1 abstraction unexpectedly depends on a prior abstraction: %v", abstractionDependencies(verified.Procedure))
+	}
+	library := &AbstractionLibrary{}
+	if err := library.Install(verified); err != nil {
+		t.Fatal(err)
+	}
+	if ProcedureLibrarySearchCost(1, l0) != 6 || ProcedureLibrarySearchCost(1, library) != 7 {
+		t.Fatal("unexpected bootstrap/library language size")
+	}
 	streamA := candidateStream("S", "B", "C")
 	expectedA := []string{"B", "S", "C"}
-	gotA, err := ExecuteAcquiredAbstraction(lib, streamA, library)
+	gotA, err := ExecuteAcquiredAbstraction(verified, streamA, library)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(mechanismOrder(gotA), expectedA) {
 		t.Fatalf("B1 abstraction behavior mismatch: got=%v want=%v", mechanismOrder(gotA), expectedA)
 	}
-	refA := referenceApply(lib.Procedure, streamA, map[string]AcquiredAbstraction{lib.ID: lib})
+	refA := referenceApply(verified.Procedure, streamA, map[string]AcquiredAbstraction{verified.ID: verified})
 	if !reflect.DeepEqual(mechanismOrder(gotA), mechanismOrder(refA)) {
 		t.Fatalf("independent reference verifier disagrees: got=%v ref=%v", mechanismOrder(gotA), mechanismOrder(refA))
 	}
@@ -148,7 +162,7 @@ func TestBootstrapExpansionB0ToB1CausalAndIndependent(t *testing.T) {
 	b1 := EnumerateAcquisitionProceduresWithLibrary(1, library)
 	foundCall := false
 	for _, candidate := range b1 {
-		if len(candidate.Steps) != 1 || candidate.Steps[0].Op != "call" || candidate.Steps[0].Ref != lib.ID {
+		if len(candidate.Steps) != 1 || candidate.Steps[0].Op != "call" || candidate.Steps[0].Ref != verified.ID {
 			continue
 		}
 		out, err := executeSearchProcedureWithLibrary(candidate, streamA, library)
@@ -165,7 +179,14 @@ func TestBootstrapExpansionB0ToB1CausalAndIndependent(t *testing.T) {
 func TestBootstrapExpansionRecursiveLibraryRestartAndAblation(t *testing.T) {
 	base := AcquisitionProcedure{Version: 1, Steps: []ProcedureStep{{Op: "reverse"}, {Op: "rotate", Arg: 1}}}
 	obs1 := []AbstractionObservation{newVerifiedAbstractionObservation("A", base), newVerifiedAbstractionObservation("B", base)}
-	l1, err := DiscoverReusableAbstraction(obs1, 2)
+	proposal1, err := DiscoverReusableAbstraction(obs1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l1, err := VerifyAcquiredAbstraction(proposal1, &AbstractionLibrary{}, []AbstractionVerificationCase{
+		{Input: candidateStream("S", "B", "C"), Expected: []string{"B", "S", "C"}},
+		{Input: candidateStream("C", "B", "S"), Expected: []string{"B", "C", "S"}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,12 +196,19 @@ func TestBootstrapExpansionRecursiveLibraryRestartAndAblation(t *testing.T) {
 	}
 	l2Procedure := AcquisitionProcedure{Version: 1, Steps: []ProcedureStep{{Op: "call", Ref: l1.ID}, {Op: "rotate", Arg: 1}}}
 	obs2 := []AbstractionObservation{newVerifiedAbstractionObservation("C", l2Procedure), newVerifiedAbstractionObservation("D", l2Procedure)}
-	l2, err := DiscoverReusableAbstraction(obs2, 2)
+	proposal2, err := DiscoverReusableAbstraction(obs2, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(l2.Dependencies, []string{l1.ID}) {
-		t.Fatalf("second abstraction was not recursively grounded in L1: deps=%v", l2.Dependencies)
+	if !reflect.DeepEqual(proposal2.Dependencies, []string{l1.ID}) {
+		t.Fatalf("second abstraction was not recursively grounded in L1: deps=%v", proposal2.Dependencies)
+	}
+	l2, err := VerifyAcquiredAbstraction(proposal2, library, []AbstractionVerificationCase{
+		{Input: candidateStream("S", "B", "C"), Expected: []string{"C", "S", "B"}},
+		{Input: candidateStream("B", "C", "S"), Expected: []string{"B", "S", "C"}},
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	if err := library.Install(l2); err != nil {
 		t.Fatal(err)
