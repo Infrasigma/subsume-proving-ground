@@ -22,13 +22,13 @@ func (r *AdaptiveAcquisitionRuntime) prepareLibraries() error {
 
 func abstractionObservationFromMethod(m AcquisitionMethodArtifact, taskStructure string, verified, heldOut bool, gain float64, cost ResourceVector) AbstractionObservation { p, _ := decodeAcquisitionProcedure(m.Artifact); return AbstractionObservation{TaskStructure: taskStructure, Procedure: p, Verified: verified, HeldOut: heldOut, TransferScore: boolScore(verified && heldOut), DiscoveryCost: cost, ObservedGain: gain} }
 
-func streamForAbstractionVerification(names ...string) []ArchitectureCandidate { out:=make([]ArchitectureCandidate,len(names));for i,name:=range names{out[i]=ArchitectureCandidate{ID:Hash([]any{"runtime-abstraction-probe",name}),Mechanism:name,Resources:ResourceVector{Compute:float64(i+1),ExperimentBudget:1}}};return out }
+func streamForAbstractionVerification(names ...string) []ArchitectureCandidate { out:=make([]ArchitectureCandidate,len(names));for i,name:=range names{out[i]=ArchitectureCandidate{ID:Hash([]any{"runtime-abstraction-probe",name}),Mechanism:name,Resources:ResourceVector{Compute:float64(i+1),ExperimentBudget:1}}};return out}
 
 func (r *AdaptiveAcquisitionRuntime) learnAbstractionFromVerifiedMethod(method AcquisitionMethodArtifact, telemetry AcquisitionTelemetry, futureSpec CapabilitySpecification, hidden []ProgramTestCase) error {
 	if !r.EnableAbstractionLearning || len(method.Procedure) == 0 { return nil }
 	p, err := decodeAcquisitionProcedure(method.Artifact); if err != nil || len(p.Steps) < 2 { return nil }
 	gain := 1.0; cost := method.Resources
-	r.AbstractionHistory = append(r.AbstractionHistory, abstractionObservationFromMethod(method, telemetry.TaskID, true, true, gain, cost), abstractionObservationFromMethod(method, Hash([]any{futureSpec.Inputs,futureSpec.Outputs,futureSpec.Invariants,futureSpec.Structure}), true, len(hidden)>0, gain, cost))
+	r.AbstractionHistory = append(r.AbstractionHistory, abstractionObservationFromMethod(method, telemetry.TaskID, true, true, gain, cost), abstractionObservationFromMethod(method, Hash([]any{futureSpec.Inputs,futureSpec.Outputs,futureSpec.Invariants}), true, len(hidden)>0, gain, cost))
 	proposal, err := DiscoverReusableAbstraction(r.AbstractionHistory, 2); if err != nil { return nil }
 	inputs := [][]ArchitectureCandidate{streamForAbstractionVerification("probe-a","probe-b","probe-c"),streamForAbstractionVerification("probe-c","probe-a","probe-b","probe-d")}
 	cases:=make([]AbstractionVerificationCase,0,len(inputs));for _,input:=range inputs{cases=append(cases,AbstractionVerificationCase{Input:input})}
