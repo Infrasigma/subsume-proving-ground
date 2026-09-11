@@ -82,9 +82,19 @@ func executeSearchProcedure(p AcquisitionProcedure, cs []ArchitectureCandidate) 
 	return executeSearchProcedureWithLibrary(p, cs, nil)
 }
 
+const maxAcquisitionProcedureExecutionSteps = 256
+
 func executeSearchProcedureWithLibrary(p AcquisitionProcedure, cs []ArchitectureCandidate, lib *AbstractionLibrary) ([]ArchitectureCandidate, error) {
+	return executeSearchProcedureWithLibraryState(p, cs, lib, map[string]bool{}, new(int))
+}
+
+func executeSearchProcedureWithLibraryState(p AcquisitionProcedure, cs []ArchitectureCandidate, lib *AbstractionLibrary, callStack map[string]bool, steps *int) ([]ArchitectureCandidate, error) {
 	cur := append([]ArchitectureCandidate(nil), cs...)
 	for _, s := range p.Steps {
+		*steps++
+		if *steps > maxAcquisitionProcedureExecutionSteps {
+			return nil, errors.New("acquisition procedure execution step limit exceeded")
+		}
 		switch s.Op {
 		case "identity":
 		case "reverse":
@@ -123,12 +133,17 @@ func executeSearchProcedureWithLibrary(p AcquisitionProcedure, cs []Architecture
 			if lib == nil {
 				return nil, errors.New("call step requires acquired abstraction library")
 			}
+			if callStack[s.Ref] {
+				return nil, fmt.Errorf("cyclic acquired abstraction call %q", s.Ref)
+			}
 			a, ok := lib.Find(s.Ref)
 			if !ok {
 				return nil, fmt.Errorf("unknown acquired abstraction %q", s.Ref)
 			}
+			callStack[s.Ref] = true
 			var err error
-			cur, err = executeSearchProcedureWithLibrary(a.Procedure, cur, lib)
+			cur, err = executeSearchProcedureWithLibraryState(a.Procedure, cur, lib, callStack, steps)
+			delete(callStack, s.Ref)
 			if err != nil {
 				return nil, err
 			}
