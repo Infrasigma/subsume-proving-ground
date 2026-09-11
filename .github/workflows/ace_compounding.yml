@@ -32,6 +32,8 @@ jobs:
             ACE_V3_LIBRARY_REACHABILITY.json
             ACE_V3_FRONTIER_PREDICATE_AUDIT.md
             ACE_V3_SELF_EXTENSIBLE_FORENSICS.md
+            ACE_V3_FRONTIER_FALSIFICATION.json
+            ACE_V3_FRONTIER_FALSIFICATION.md
           if-no-files-found: error
       - name: Race
         run: go test -mod=mod -race ./...
@@ -40,4 +42,4 @@ jobs:
       - name: Build
         run: go build ./cmd/ace
       - name: Capability compounding gate
-        run: go test -mod=mod -run 'Test(RecursiveCapabilityCompoundingCore|ReplicatedCapabilityCompoundingCore|AutonomousMethodImprovementFromTelemetry|ExecutableAcquisitionMethodIsSerializableAndComposable|SelfExtensibleCapabilityProbe|ExecutableMethodPersistsAcrossRestart|BootstrapExpansionB0ToB1CausalAndIndependent|BootstrapExpansionRecursiveLibraryRestartAndAblation|AdaptiveAcquisitionRuntimeEndogenousAbstractionLearning)$' ./internal/ace
+        run: go test -mod=mod -run 'Test(RecursiveCapabilityCompoundingCore|ReplicatedCapabilityCompoundingCore|AutonomousMethodImprovementFromTelemetry|ExecutableAcquisitionMethodIsSerializableAndComposable|SelfExtensibleCapabilityProbe|ExecutableMethodPersistsAcrossRestart|BootstrapExpansionB0ToB1CausalAndIndependent|BootstrapExpansionRecursiveLibraryRestartAndAblation|AdaptiveAcquisitionRuntimeEndogenousAbstractionLearning|V3FrontierExpansionFalsification)$' ./internal/ace
