@@ -21,6 +21,33 @@ jobs:
           cache: false
       - name: Isolated universal branching diagnostic
         run: go test -mod=mod -run '^TestUniversalBranchingSynthesizesThresholdDiagnostic$' ./internal/ace -count=1 -v
+      - name: CSI artifact preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/.csi-artifact-preflight"
+          sentinel="$GITHUB_WORKSPACE/.csi-artifact-preflight/sentinel"
+          touch "$sentinel"
+          test -f "$sentinel"
+          test "$GITHUB_WORKSPACE/ACE_CSI_BASELINE.json" = "$GITHUB_WORKSPACE/ACE_CSI_BASELINE.json"
+          test "$GITHUB_WORKSPACE/ACE_CSI_BASELINE.md" = "$GITHUB_WORKSPACE/ACE_CSI_BASELINE.md"
+          test "$GITHUB_WORKSPACE/ACE_CSI_EXPERIMENT.json" = "$GITHUB_WORKSPACE/ACE_CSI_EXPERIMENT.json"
+          test "$GITHUB_WORKSPACE/ACE_CSI_EXPERIMENT.md" = "$GITHUB_WORKSPACE/ACE_CSI_EXPERIMENT.md"
+          rm -f "$sentinel"
+          rmdir "$GITHUB_WORKSPACE/.csi-artifact-preflight"
+      - name: Capability-substrate induction boundary
+        run: go test -mod=mod -run '^TestCapabilitySubstrateInductionBoundary$' ./internal/ace -count=1 -v
+      - name: Upload CSI artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ace-csi-capability-substrate-induction
+          path: |
+            ${{ github.workspace }}/ACE_CSI_BASELINE.json
+            ${{ github.workspace }}/ACE_CSI_BASELINE.md
+            ${{ github.workspace }}/ACE_CSI_EXPERIMENT.json
+            ${{ github.workspace }}/ACE_CSI_EXPERIMENT.md
+          if-no-files-found: error
       - name: Open-ended operator invention boundary
         run: go test -mod=mod -run '^TestOpenEndedOperatorInventionBoundary$' ./internal/ace -count=1 -v
       - name: Upload open-ended invention artifacts
@@ -66,4 +93,4 @@ jobs:
       - name: Build
         run: go build ./cmd/ace
       - name: Capability compounding gate
-        run: go test -mod=mod -run 'Test(RecursiveCapabilityCompoundingCore|ReplicatedCapabilityCompoundingCore|AutonomousMethodImprovementFromTelemetry|ExecutableAcquisitionMethodIsSerializableAndComposable|SelfExtensibleCapabilityProbe|ExecutableMethodPersistsAcrossRestart|BootstrapExpansionB0ToB1CausalAndIndependent|BootstrapExpansionRecursiveLibraryRestartAndAblation|AdaptiveAcquisitionRuntimeEndogenousAbstractionLearning|V3FrontierExpansionFalsification|AutonomousOperatorDiscovery|OpenEndedOperatorInventionBoundary)$' ./internal/ace
+        run: go test -mod=mod -run 'Test(RecursiveCapabilityCompoundingCore|ReplicatedCapabilityCompoundingCore|AutonomousMethodImprovementFromTelemetry|ExecutableAcquisitionMethodIsSerializableAndComposable|SelfExtensibleCapabilityProbe|ExecutableMethodPersistsAcrossRestart|BootstrapExpansionB0ToB1CausalAndIndependent|BootstrapExpansionRecursiveLibraryRestartAndAblation|AdaptiveAcquisitionRuntimeEndogenousAbstractionLearning|V3FrontierExpansionFalsification|AutonomousOperatorDiscovery|OpenEndedOperatorInventionBoundary|CapabilitySubstrateInductionBoundary)$' ./internal/ace
