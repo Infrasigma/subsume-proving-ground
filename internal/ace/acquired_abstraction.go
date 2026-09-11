@@ -101,6 +101,11 @@ type AbstractionObservation struct {
 	ObservedGain  float64
 }
 
+type AbstractionVerificationCase struct {
+	Input    []ArchitectureCandidate
+	Expected []string
+}
+
 func abstractionDependencies(p AcquisitionProcedure) []string {
 	seen := map[string]bool{}
 	for _, s := range p.Steps {
@@ -165,13 +170,6 @@ func DiscoverReusableAbstraction(observations []AbstractionObservation, minDisti
 			first = o
 		}
 	}
-	verification := VerificationResult{
-		Status:      "verified",
-		Independent: true,
-		Expected:    []string{"repeated cross-structure behavioural validity", "composable executable semantics"},
-		Observed:    []string{"independent held-out evidence", "distinct task structures"},
-		Provenance:  Prov("abstraction-verifier", procedureSignature(best.procedure), "cross-structure-evidence", best.observations),
-	}
 	a := AcquiredAbstraction{
 		ID:        Hash([]any{"acquired-abstraction", procedureSignature(best.procedure)}),
 		Name:      "acquired-abstraction:" + procedureSignature(best.procedure),
@@ -183,7 +181,7 @@ func DiscoverReusableAbstraction(observations []AbstractionObservation, minDisti
 			Postconditions: []string{"deterministic executable transformation"},
 		},
 		Dependencies: abstractionDependencies(best.procedure),
-		Verification: verification,
+		Verification: VerificationResult{Status: "pending", Independent: false},
 		Provenance:   Prov("abstraction-acquisition", first.TaskStructure, "cross-structure-composition", best.procedure),
 	}
 	for _, o := range best.observations {
@@ -198,6 +196,120 @@ func DiscoverReusableAbstraction(observations []AbstractionObservation, minDisti
 		a.CostHistory = append(a.CostHistory, o.DiscoveryCost)
 	}
 	return a, nil
+}
+
+// VerifyAcquiredAbstraction uses an independent reference interpreter rather
+// than the acquisition-procedure executor. This prevents the proposer from
+// certifying the same semantics it produced.
+func VerifyAcquiredAbstraction(a AcquiredAbstraction, lib *AbstractionLibrary, cases []AbstractionVerificationCase) (AcquiredAbstraction, error) {
+	if lib == nil {
+		return a, errors.New("abstraction verification requires a library")
+	}
+	if len(cases) < 2 {
+		return a, errors.New("abstraction verification requires at least two independent cases")
+	}
+	for _, tc := range cases {
+		got, err := ExecuteAcquiredAbstraction(a, tc.Input, lib)
+		if err != nil {
+			return a, err
+		}
+		want := referenceProcedure(a.Procedure, tc.Input, lib, map[string]bool{})
+		if !equalMechanismOrders(got, want) || !equalMechanismOrders(got, namesToCandidates(tc.Expected)) {
+			return a, errors.New("independent abstraction verifier rejected behavior")
+		}
+	}
+	a.Verification = VerificationResult{
+		Status:      "verified",
+		Independent: true,
+		Expected:    []string{"held-out procedure behavior"},
+		Observed:    []string{"independent reference interpreter agreement"},
+		Provenance:  Prov("independent-abstraction-verifier", a.ID, "differential-reference-execution", cases),
+	}
+	return a, nil
+}
+
+func referenceProcedure(p AcquisitionProcedure, cs []ArchitectureCandidate, lib *AbstractionLibrary, stack map[string]bool) []ArchitectureCandidate {
+	cur := append([]ArchitectureCandidate(nil), cs...)
+	for _, s := range p.Steps {
+		switch s.Op {
+		case "identity":
+		case "reverse":
+			next := make([]ArchitectureCandidate, len(cur))
+			for i := range cur {
+				next[len(cur)-1-i] = cur[i]
+			}
+			cur = next
+		case "rotate":
+			if len(cur) == 0 {
+				continue
+			}
+			n := s.Arg % len(cur)
+			if n < 0 {
+				n += len(cur)
+			}
+			next := append([]ArchitectureCandidate(nil), cur[n:]...)
+			next = append(next, cur[:n]...)
+			cur = next
+		case "dedupe":
+			seen := map[string]bool{}
+			next := make([]ArchitectureCandidate, 0, len(cur))
+			for _, c := range cur {
+				if seen[c.Mechanism] {
+					continue
+				}
+				seen[c.Mechanism] = true
+				next = append(next, c)
+			}
+			cur = next
+		case "sort-cost":
+			for i := 1; i < len(cur); i++ {
+				v := cur[i]
+				j := i - 1
+				for j >= 0 && cur[j].Resources.Compute+cur[j].Resources.ExperimentBudget > v.Resources.Compute+v.Resources.ExperimentBudget {
+					cur[j+1] = cur[j]
+					j--
+				}
+				cur[j+1] = v
+			}
+		case "take":
+			if s.Arg < 1 || s.Arg > len(cur) {
+				return nil
+			}
+			cur = append([]ArchitectureCandidate(nil), cur[:s.Arg]...)
+		case "call":
+			if stack[s.Ref] {
+				return nil
+			}
+			a, ok := lib.Find(s.Ref)
+			if !ok {
+				return nil
+			}
+			stack[s.Ref] = true
+			cur = referenceProcedure(a.Procedure, cur, lib, stack)
+			delete(stack, s.Ref)
+		}
+	}
+	return cur
+}
+
+func equalMechanismOrders(a, b []ArchitectureCandidate) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Mechanism != b[i].Mechanism {
+			return false
+		}
+	}
+	return true
+}
+
+func namesToCandidates(names []string) []ArchitectureCandidate {
+	out := make([]ArchitectureCandidate, len(names))
+	for i, name := range names {
+		out[i] = ArchitectureCandidate{Mechanism: name}
+	}
+	return out
 }
 
 func enumerateProcedureAtoms(lib *AbstractionLibrary) []ProcedureStep {
