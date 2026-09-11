@@ -4,12 +4,12 @@
 
 `PARTIAL`
 
-This milestone crosses a real architectural boundary: acquisition procedures are now representable as executable, serializable programs in a generic search substrate and retained methods can be invoked by later methods. It does **not** establish AGI, open-ended intelligence, or compute-inclusive recursive improvement.
+This milestone crosses a real architectural boundary: acquisition procedures are now representable as executable, serializable programs in a generic search substrate; retained methods can be invoked by later methods; and executable methods can survive process restart. It does **not** establish AGI, open-ended intelligence, or compute-inclusive recursive improvement.
 
 ## Exact branch / HEAD
 
 - Branch: `ace-full-system-20260911`
-- Current documentation commit at status creation: `61113dd2ff6cdb89ee0e33aec3c19743bb68811c`
+- Exact HEAD at this status update: `721f82a65fcb9a20cadb9f41ecdb2b3b57b99612`
 - Pre-mission audited HEAD: `30c2966ca51aed5dab26837404147cac783cefd6`
 
 ## Boundary audit
@@ -22,13 +22,15 @@ This milestone crosses a real architectural boundary: acquisition procedures are
 
 1. `CapabilitySearchObject` — common typed artifact envelope for task/capability/method/representation/verifier/decomposer/controller/abstraction objects.
 2. `ExecutableAcquisitionMethod` — executable instruction sequence with inputs, outputs, cost, applicability, verifier, parents and version.
-3. `SearchLibrary` — persistent-in-memory library of search primitives, executable methods, abstractions and history.
+3. `SearchLibrary` — library of search primitives, executable methods, abstractions and history.
 4. Generic method interpreter with only bootstrap opcode semantics: `search`, `use`, `dedupe`, `reverse`.
 5. Bootstrap method search that enumerates executable method programs rather than selecting among hand-authored method names.
 6. Independent behavioral verification of executable methods.
 7. Serialization round-trip through JSON before installation.
 8. Data-driven repeated-instruction abstraction mining.
 9. Bounded recursive probe `RunSelfExtensibleExperiment`.
+
+`internal/ace/self_extensible_persistence.go` adds atomic JSON persistence and reload of the executable search library, and the restart test proves a retained method survives a fresh library process boundary.
 
 ## Bootstrap primitives
 
@@ -69,7 +71,7 @@ Current bounded probe checks:
 
 `T1 -> K1 -> T2 -> M1 -> T3 -> T4 -> M2`
 
-It verifies executable method synthesis, installation/reuse, and a second method artifact. It does **not** yet prove that M2's discovery depended materially on M1 in a way that lowers future acquisition cost on unseen structure.
+It verifies executable method synthesis, installation/reuse, persistence, and a second method artifact. It does **not** yet prove that M2's discovery depended materially on M1 in a way that lowers future acquisition cost on unseen structure.
 
 ## R_n
 
@@ -84,12 +86,13 @@ Partially instrumented via `ResourceVector` and candidate counts. Full discovery
 - Existing historical experiments and the invalidated affine replication result were not rewritten.
 - Hidden held-out behavioral cases are used for method verification.
 - Serialization round-trip is tested.
+- Restart persistence is tested.
 - The previous replicated family remains explicitly invalidated because its target was algebraically affine.
 - Leakage audit identifies remaining bootstrap/search-strategy knowledge as the main boundary.
 
 ## Strongest current endpoint
 
-**The acquisition procedure itself is now an executable searchable artifact rather than metadata interpreted through a method-specific Go branch. A verified method can enter the library and be invoked by later executable methods.**
+**The acquisition procedure itself is now an executable searchable artifact rather than metadata interpreted through a method-specific Go branch. A verified method can enter the library, survive restart, and be invoked by later executable methods.**
 
 That is a genuine architectural improvement, but it remains a bounded symbolic self-extension experiment. It is not AGI.
 
