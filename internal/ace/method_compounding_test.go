@@ -2,43 +2,15 @@ package ace
 
 import "testing"
 
-func thresholdCases(threshold int, xs []int) []ProgramTestCase {
-	out := make([]ProgramTestCase, 0, len(xs))
-	for _, x := range xs { y := 0; if x > threshold { y = 1 }; out = append(out, methodInputOutputExample(x, y)) }
-	return out
+func thresholdCases(threshold int, xs []int) []ProgramTestCase {out:=make([]ProgramTestCase,0,len(xs));for _,x:=range xs{y:=0;if x>threshold{y=1};out=append(out,methodInputOutputExample(x,y))};return out}
+
+func TestAutonomousMethodImprovementFromTelemetry(t *testing.T){
+	target:=thresholdCases(1,[]int{-3,0,1,4,7});hidden:=thresholdCases(1,[]int{-8,-1,2,5,11})
+	tel:=AcquisitionTelemetry{TaskID:"opaque-task",TaskStructure:[]string{"scalar","conditional"},KnownExamples:len(target),CandidateCount:7,CandidateFailures:[]string{"independent counterexample mismatch","search exhausted"},Counterexamples:2,Representation:[]string{"scalar-input-output"},SearchPath:[]string{"add","sub","mul","constant"},VerificationOutcomes:[]string{"failed-heldout"},Cost:ResourceVector{Compute:7,ExperimentBudget:2}}
+	spec:=CapabilitySpecification{ID:"opaque-threshold",DesiredBehaviour:"classify input",Inputs:[]string{"x"},Outputs:[]string{"y"},AcceptanceTests:[]string{"heldout"},ResourceLimits:ResourceVector{Compute:100,Memory:100,TimeMS:5000,ExperimentBudget:20},KnownExamples:target}
+	method,diagnosis,evals,err:=AutonomousMethodImprovement(tel,spec,hidden,nil,nil);if err!=nil{t.Fatal(err)};if diagnosis.Class!=BottleneckSearchSpace{t.Fatalf("diagnosis=%s",diagnosis.Class)};if len(evals)<2{t.Fatalf("expected competing executable procedures, got %d",len(evals))};if method.Name==""||method.Procedure==""||method.Artifact==""{t.Fatal("winner is not a first-class executable method artifact")};p,err:=decodeAcquisitionProcedure(method.Artifact);if err!=nil{t.Fatal(err)};if method.Procedure=="expand-executable-frontier"||method.Procedure=="revise-representation-then-search"{t.Fatalf("legacy developer-authored procedure survived: %s",method.Procedure)};if procedureSignature(p)==""{t.Fatal("missing procedure signature")}
+	registry:=InstalledMethodRegistry{};if err:=registry.Install(method);err!=nil{t.Fatal(err)};cs,err:=registry.Apply(spec);if err!=nil{t.Fatal(err)};if len(cs)==0||cs[0].Mechanism=="universal:straight-line"{t.Fatalf("installed acquired procedure did not change future search order: %#v",cs)};if len(registry.Trace)<2{t.Fatalf("missing before/after execution trace: %#v",registry.Trace)}
+	transfer:=thresholdCases(1,[]int{-20,-2,3,17,31});transferSpec:=spec;transferSpec.ID="opaque-threshold-transfer";transferSpec.KnownExamples=transfer;transferCS,err:=registry.Apply(transferSpec);if err!=nil{t.Fatal(err)};verified:=false;for _,c:=range transferCS{p,e:=(UniversalProgramBuilder{}).Build(c,transferSpec);if e==nil&&programFits(pArtifactProgram(p.Artifact),transfer){verified=true;break}};if !verified{t.Fatal("installed acquired procedure did not transfer to a held-out input distribution")}
 }
 
-func TestAutonomousMethodImprovementFromTelemetry(t *testing.T) {
-	target := thresholdCases(1, []int{-3, 0, 1, 4, 7})
-	hidden := thresholdCases(1, []int{-8, -1, 2, 5, 11})
-	tel := AcquisitionTelemetry{TaskID:"opaque-task",TaskStructure:[]string{"scalar","conditional"},KnownExamples:len(target),CandidateCount:7,CandidateFailures:[]string{"independent counterexample mismatch","search exhausted"},Counterexamples:2,Representation:[]string{"scalar-input-output"},SearchPath:[]string{"add","sub","mul","constant"},VerificationOutcomes:[]string{"failed-heldout"},Cost:ResourceVector{Compute:7,ExperimentBudget:2}}
-	spec := CapabilitySpecification{ID:"opaque-threshold",DesiredBehaviour:"classify input",Inputs:[]string{"x"},Outputs:[]string{"y"},AcceptanceTests:[]string{"heldout"},ResourceLimits:ResourceVector{Compute:100,Memory:100,TimeMS:5000,ExperimentBudget:20},KnownExamples:target}
-	method,diagnosis,evals,err:=AutonomousMethodImprovement(tel,spec,hidden,nil,nil);if err!=nil{t.Fatal(err)}
-	if diagnosis.Class!=BottleneckSearchSpace{t.Fatalf("diagnosis=%s",diagnosis.Class)}
-	if len(evals)<2{t.Fatalf("expected competing executable procedures, got %d",len(evals))}
-	if method.Name==""||method.Procedure==""||method.Artifact==""{t.Fatal("winner is not a first-class executable method artifact")}
-	p,err:=decodeAcquisitionProcedure(method.Artifact);if err!=nil{t.Fatal(err)}
-	if method.Procedure=="expand-executable-frontier"||method.Procedure=="revise-representation-then-search"{t.Fatalf("legacy developer-authored procedure survived: %s",method.Procedure)}
-	if procedureSignature(p)==""{t.Fatal("missing procedure signature")}
-
-	registry:=InstalledMethodRegistry{};if err:=registry.Install(method);err!=nil{t.Fatal(err)}
-	cs,err:=registry.Apply(spec);if err!=nil{t.Fatal(err)}
-	if len(cs)==0||cs[0].Mechanism!="universal:branching"{t.Fatalf("installed acquired procedure did not change future search order: %#v",cs)}
-	if len(registry.Trace)<2{t.Fatalf("missing before/after execution trace: %#v",registry.Trace)}
-
-	transfer:=thresholdCases(1,[]int{-20,-2,3,17,31})
-	transferSpec:=spec;transferSpec.ID="opaque-threshold-transfer";transferSpec.KnownExamples=transfer
-	transferCS,err:=registry.Apply(transferSpec);if err!=nil{t.Fatal(err)}
-	verified:=false;for _,c:=range transferCS{p,e:=(UniversalProgramBuilder{}).Build(c,transferSpec);if e==nil&&programFits(pArtifactProgram(p.Artifact),transfer){verified=true;break}}
-	if !verified{t.Fatal("installed acquired procedure did not transfer to a held-out input distribution")}
-}
-
-func TestAcquiredProcedureSurvivesRestart(t *testing.T){
-	path:=t.TempDir()+"/methods.json"
-	m:=AcquisitionMethodArtifact{ID:"restart-method",Name:"acquired-procedure:test",Artifact:`{"version":1,"steps":[{"op":"reverse"}]}`,Procedure:`{"version":1,"steps":[{"op":"reverse"}]}`}
-	store,err:=NewPersistentMethodRegistry(path);if err!=nil{t.Fatal(err)};if err=store.Install(m);err!=nil{t.Fatal(err)}
-	reloaded,err:=NewPersistentMethodRegistry(path);if err!=nil{t.Fatal(err)};dst:=InstalledMethodRegistry{};if err=reloaded.Restore(&dst);err!=nil{t.Fatal(err)}
-	if len(dst.Methods)!=1||dst.Methods[0].ID!=m.ID{t.Fatalf("restart lost acquired procedure: %#v",dst.Methods)}
-	cs,err:=dst.Apply(CapabilitySpecification{ID:"restart",DesiredBehaviour:"x",Inputs:[]string{"x"},Outputs:[]string{"y"},ResourceLimits:ResourceVector{Compute:10,ExperimentBudget:10}});if err!=nil{t.Fatal(err)}
-	if len(cs)!=3||cs[0].Mechanism!="universal:compositional"{t.Fatalf("restored procedure not executable after restart: %#v",cs)}
-}
+func TestAcquiredProcedureSurvivesRestart(t *testing.T){path:=t.TempDir()+"/methods.json";m:=AcquisitionMethodArtifact{ID:"restart-method",Name:"acquired-procedure:test",Artifact:`{"version":1,"steps":[{"op":"reverse"}]}`,Procedure:`{"version":1,"steps":[{"op":"reverse"}]}`};store,err:=NewPersistentMethodRegistry(path);if err!=nil{t.Fatal(err)};if err=store.Install(m);err!=nil{t.Fatal(err)};reloaded,err:=NewPersistentMethodRegistry(path);if err!=nil{t.Fatal(err)};dst:=InstalledMethodRegistry{};if err=reloaded.Restore(&dst);err!=nil{t.Fatal(err)};if len(dst.Methods)!=1||dst.Methods[0].ID!=m.ID{t.Fatalf("restart lost acquired procedure: %#v",dst.Methods)};cs,err:=dst.Apply(CapabilitySpecification{ID:"restart",DesiredBehaviour:"x",Inputs:[]string{"x"},Outputs:[]string{"y"},ResourceLimits:ResourceVector{Compute:10,ExperimentBudget:10}});if err!=nil{t.Fatal(err)};if len(cs)!=3||cs[0].Mechanism!="universal:compositional"{t.Fatalf("restored procedure not executable after restart: %#v",cs)}}
