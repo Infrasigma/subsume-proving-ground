@@ -28,4 +28,4 @@ jobs:
       - name: Build
         run: go build ./cmd/ace
       - name: Capability compounding gate
-        run: go test -mod=mod -run 'Test(RecursiveCapabilityCompoundingCore|ReplicatedCapabilityCompoundingCore|AutonomousMethodImprovementFromTelemetry|ExecutableAcquisitionMethodIsSerializableAndComposable|SelfExtensibleCapabilityProbe|ExecutableMethodPersistsAcrossRestart|BootstrapExpansionB0ToB1CausalAndIndependent|BootstrapExpansionRecursiveLibraryRestartAndAblation)$' ./internal/ace
+        run: go test -mod=mod -run 'Test(RecursiveCapabilityCompoundingCore|ReplicatedCapabilityCompoundingCore|AutonomousMethodImprovementFromTelemetry|ExecutableAcquisitionMethodIsSerializableAndComposable|SelfExtensibleCapabilityProbe|ExecutableMethodPersistsAcrossRestart|BootstrapExpansionB0ToB1CausalAndIndependent|BootstrapExpansionRecursiveLibraryRestartAndAblation|AdaptiveAcquisitionRuntimeEndogenousAbstractionLearning)$' ./internal/ace
