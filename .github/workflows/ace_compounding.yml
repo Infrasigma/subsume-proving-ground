@@ -21,6 +21,19 @@ jobs:
           cache: false
       - name: Isolated universal branching diagnostic
         run: go test -mod=mod -run '^TestUniversalBranchingSynthesizesThresholdDiagnostic$' ./internal/ace -count=1 -v
+      - name: Open-ended operator invention boundary
+        run: go test -mod=mod -run '^TestOpenEndedOperatorInventionBoundary$' ./internal/ace -count=1 -v
+      - name: Upload open-ended invention artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ace-open-ended-operator-invention
+          path: |
+            ACE_BASELINE_FRONTIER.json
+            ACE_BASELINE_FRONTIER.md
+            ACE_OPEN_ENDED_OPERATOR_INVENTION.json
+            ACE_OPEN_ENDED_OPERATOR_INVENTION.md
+          if-no-files-found: error
       - name: Test
         run: go test -mod=mod ./...
       - name: Upload V3 forensic runtime artifacts
@@ -53,4 +66,4 @@ jobs:
       - name: Build
         run: go build ./cmd/ace
       - name: Capability compounding gate
-        run: go test -mod=mod -run 'Test(RecursiveCapabilityCompoundingCore|ReplicatedCapabilityCompoundingCore|AutonomousMethodImprovementFromTelemetry|ExecutableAcquisitionMethodIsSerializableAndComposable|SelfExtensibleCapabilityProbe|ExecutableMethodPersistsAcrossRestart|BootstrapExpansionB0ToB1CausalAndIndependent|BootstrapExpansionRecursiveLibraryRestartAndAblation|AdaptiveAcquisitionRuntimeEndogenousAbstractionLearning|V3FrontierExpansionFalsification|AutonomousOperatorDiscovery)$' ./internal/ace
+        run: go test -mod=mod -run 'Test(RecursiveCapabilityCompoundingCore|ReplicatedCapabilityCompoundingCore|AutonomousMethodImprovementFromTelemetry|ExecutableAcquisitionMethodIsSerializableAndComposable|SelfExtensibleCapabilityProbe|ExecutableMethodPersistsAcrossRestart|BootstrapExpansionB0ToB1CausalAndIndependent|BootstrapExpansionRecursiveLibraryRestartAndAblation|AdaptiveAcquisitionRuntimeEndogenousAbstractionLearning|V3FrontierExpansionFalsification|AutonomousOperatorDiscovery|OpenEndedOperatorInventionBoundary)$' ./internal/ace
