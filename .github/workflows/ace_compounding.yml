@@ -21,6 +21,18 @@ jobs:
         run: go test -mod=mod -run '^TestUniversalBranchingSynthesizesThresholdDiagnostic$' ./internal/ace -count=1 -v
       - name: Test
         run: go test -mod=mod ./...
+      - name: Upload V3 forensic runtime artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ace-v3-rejection-forensics
+          path: |
+            ACE_V3_REJECTION_MATRIX.json
+            ACE_V3_REJECTION_FORENSICS.md
+            ACE_V3_LIBRARY_REACHABILITY.json
+            ACE_V3_FRONTIER_PREDICATE_AUDIT.md
+            ACE_V3_SELF_EXTENSIBLE_FORENSICS.md
+          if-no-files-found: error
       - name: Race
         run: go test -mod=mod -race ./...
       - name: Vet
