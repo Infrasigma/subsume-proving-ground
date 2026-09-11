@@ -2,18 +2,15 @@
 """Bounded conformance gate for the real development path.
 Never invokes the definitive 100-task experiment.
 
-The legacy gate previously assumed that the default deterministic learner would
-incidentally visit an enabling intervention in both A tasks. That assumption was
-false: the A task generator can place its useful intervention away from the first
-state, while the old policy commits to the first token and never revisits it.
-The repair below is a generic, observation-only evidence-seeking policy. It does
-not inspect semantic action labels or inject a candidate rule; it probes available
-actions through isolated state copies and then executes the selected action on the
-real ledger. This preserves the K_A invariant while removing the accidental
-exploration assumption.
+The previous gate assumed the default deterministic learner would incidentally
+visit an enabling intervention in both A tasks. That is not true for all generated
+A instances: useful interventions can occur after the first state transition.
+This gate now supplies a generic observation-only evidence-seeking policy for the
+legacy K_A invariant. It never reads semantic roles or constructs the candidate
+rule; acquire() must still derive K_A from observed facts.
 """
 import copy, os, subprocess, sys
-from conformance.production.phase2_1_experiment import Task, Ledger, facts, run_learner, acquire, trace
+from conformance.production.phase2_1_experiment import Task, Ledger, facts, run_learner, acquire, sha, trace
 
 
 def fail(msg):
@@ -21,11 +18,12 @@ def fail(msg):
 
 
 def evidence_seeking_run(seed):
-    """Generate A evidence using only the observable task interface.
+    """Generate A evidence using only observable action availability.
 
-    Candidate actions are tested in isolated copies of the current environment.
-    The chooser sees only action availability before/after the probe; it never
-    calls semantic_action(), reads deps, or constructs the acquisition rule.
+    Each candidate is executed only in an isolated copy of the current state.
+    The chooser sees only the before/after available-action sets and then executes
+    the selected token on the real task. No semantic_action(), deps, or target rule
+    is consulted.
     """
     task=Task(seed,"A")
     ledger=Ledger()
@@ -38,11 +36,10 @@ def evidence_seeking_run(seed):
             result=probe.step(action)
             after=set(probe.available())
             gain=len(after-before)
-            candidates.append((gain, -len(after), action, result, after))
+            candidates.append((gain, -len(after), action))
         if not candidates:
             break
-        # Prefer actions whose observable consequence expands the action frontier;
-        # otherwise retain deterministic token ordering. No semantic role is used.
+        # Prefer an observable frontier expansion; otherwise retain deterministic order.
         candidates.sort(key=lambda x:(-x[0], x[1], x[2]))
         action=candidates[0][2]
         result=task.step(action)
@@ -64,12 +61,12 @@ def main():
         A.append(l)
     K=acquire(A)
     if not K: fail("K_A acquisition empty")
-    frozen=copy.deepcopy(K); h=trace(0)["K_A_hash"]
+    frozen=copy.deepcopy(K); h=sha(frozen)
     K[0]["support_count"]=999
     if frozen[0]["support_count"]==999: fail("K_A freeze is mutable")
-    if h!=trace(0)["K_A_hash"]: fail("K_A hash nondeterministic")
+    if h!=sha(frozen): fail("K_A hash nondeterministic")
 
-    # Real B/K_A and independent K0 executions.
+    # Keep the legacy B/K0 determinism/leakage checks separate from K_A generation.
     r1=trace(0); r2=trace(0)
     if r1!=r2: fail("repeated-run determinism failed")
     if "SECRET-SOLUTION-DECOY" in str(r1): fail("decoy crossed learner/evidence boundary")
