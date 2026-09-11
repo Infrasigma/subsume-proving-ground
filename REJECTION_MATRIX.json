@@ -1,0 +1,18 @@
+{
+  "artifact": "REJECTION_MATRIX",
+  "evidence_mode": "EXECUTION_NOT_AVAILABLE_THROUGH_CONNECTED_GITHUB_ACTIONS",
+  "baseline_head": "2218ce62e8fd6dc4c2b9dd43196f07b117637cf1",
+  "raw_counts": {"total_candidates":"NOT_EXECUTED","verified_failures":"NOT_EXECUTED","regression_failures":"NOT_EXECUTED","leak_free_failures":"NOT_EXECUTED","future_search_unchanged_failures":"NOT_EXECUTED","accepted_candidates":"NOT_EXECUTED"},
+  "why_not_fabricated": "The available GitHub integration can read/write repository objects and inspect existing workflow runs, but it cannot execute `go test ./...` or add/run a fresh forensic harness. Therefore no candidate-level runtime counts or raw traces are asserted.",
+  "code_level_rejection_paths": [
+    "procedure decode error",
+    "UniversalMechanismSearch error",
+    "future search unchanged: sameMechanismOrder(base, cs)",
+    "hidden case failure",
+    "baseline regression failure",
+    "no executable candidate verified",
+    "selectMethod rejects all candidates lacking Verified && Regression && LeakFree && FutureTraceChanged"
+  ],
+  "candidate_mechanism_group": "At current generator depth with nil library: six depth-1 stream operators and thirty-six ordered depth-2 compositions. No acquired call candidates exist in V3 because the library argument is nil.",
+  "important_non-equivalence": "A code-derived rejection path is not a raw execution rejection count. This artifact deliberately preserves NOT_EXECUTED rather than inventing a matrix."
+}

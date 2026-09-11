@@ -1,0 +1,31 @@
+{
+  "artifact": "ACE_ACQUISITION_REACHABILITY",
+  "evidence_mode": "CODE_DERIVED_NO_EXECUTION",
+  "baseline_head": "2218ce62e8fd6dc4c2b9dd43196f07b117637cf1",
+  "branch": "ace-full-system-20260911",
+  "execution_required_for_raw_fields": true,
+  "procedure_generator": {
+    "function": "EnumerateAcquisitionProceduresWithLibrary",
+    "max_steps_used_by_recursive_method_improvement": 2,
+    "atom_order": ["identity","reverse","dedupe","sort-cost","take(arg=1)","rotate(arg=1)"],
+    "with_nil_library_atom_count": 6,
+    "procedure_count": 42,
+    "count_formula": "6 + 6^2"
+  },
+  "procedure_grammar": {"version": 1, "sequence_only": true, "conditionals": false, "loops": false, "variables": false, "dynamic_dispatch": false, "call": "only when a supplied AbstractionLibrary reference exists"},
+  "primitive_operations": ["identity","reverse","dedupe","sort-cost","take","rotate","call"],
+  "argument_choices": {"take": "Arg=1 only in enumeration", "rotate": "Arg=1 only in enumeration", "call": "one atom per installed abstraction ID"},
+  "branching_choices": "none in AcquisitionProcedure; UniversalMechanismSearch has exactly three fixed strategies",
+  "loop_choices": "none in procedure grammar; executor has a fixed 256 procedure-step execution ceiling",
+  "call_targets": "sorted installed abstraction IDs when library is non-nil",
+  "composition": "ordered concatenation of atoms up to maxSteps; call recursively executes referenced procedure",
+  "verification_variants": ["hidden behavioral cases","baseline regression cases","future-search-order/length change"],
+  "pruning": "Marshal/decode validity, executor errors, no observable future search change, hidden/regression behavioral failure",
+  "resource_limits": "candidate artifact receives spec.ResourceLimits; selector cost uses candidate Resources.Compute and ExperimentBudget only",
+  "universal_search": {"strategies": ["universal:straight-line","universal:branching","universal:compositional"], "candidate_count_per_search": 3, "new_strategy_generation": false},
+  "actual_depth_0": [],
+  "actual_depth_1": ["identity","reverse","dedupe","sort-cost","take(1)","rotate(1)"],
+  "actual_depth_2": ["identity identity","identity reverse","identity dedupe","identity sort-cost","identity take(1)","identity rotate(1)","reverse identity","reverse reverse","reverse dedupe","reverse sort-cost","reverse take(1)","reverse rotate(1)","dedupe identity","dedupe reverse","dedupe dedupe","dedupe sort-cost","dedupe take(1)","dedupe rotate(1)","sort-cost identity","sort-cost reverse","sort-cost dedupe","sort-cost sort-cost","sort-cost take(1)","sort-cost rotate(1)","take(1) identity","take(1) reverse","take(1) dedupe","take(1) sort-cost","take(1) take(1)","take(1) rotate(1)","rotate(1) identity","rotate(1) reverse","rotate(1) dedupe","rotate(1) sort-cost","rotate(1) take(1)","rotate(1) rotate(1)"],
+  "acquired_reference_depth": "unbounded in principle subject to cycle detection and 256 execution steps, but only installed references are legal",
+  "critical_reachability_finding": "The grammar can express a call to A1 if A1 is already installed. However the current recursive V3 acquisition path calls AutonomousMethodImprovement with lib=nil, so its actual generated candidate set contains no acquired calls."
+}

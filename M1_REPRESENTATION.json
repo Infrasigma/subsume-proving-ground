@@ -1,0 +1,21 @@
+{
+  "artifact": "M1_REPRESENTATION",
+  "evidence_mode": "CODE_DERIVED_NO_EXECUTION",
+  "candidate_id": "not_stably_observable_without_execution; nearest recursive V3 candidate is the first accepted procedure under deterministic atom order",
+  "nearest_expected_candidate": {"procedure_ast":{"version":1,"steps":[{"op":"reverse"}]},"basis":"identity is first and produces no future-order change; reverse is second and changes stream order; this is a static code-path inference, not a run result"},
+  "execution_graph": ["AcquisitionMethodCandidate -> decode AcquisitionProcedure -> UniversalMechanismSearch -> three fixed ArchitectureCandidates -> executeSearchProcedureWithLibrary -> reverse/other stream transform -> UniversalProgramBuilder -> hidden/regression checks"],
+  "primitive_leaves": ["reverse"],
+  "acquired_dependencies": [],
+  "search_calls": ["UniversalMechanismSearch.SearchMechanisms; fixed strategies universal:straight-line, universal:branching, universal:compositional"],
+  "verification_calls": ["UniversalProgramBuilder.Build", "programFits(hidden)", "programFits(baseline)", "sameMechanismOrder"],
+  "state_reads": ["CapabilitySpecification", "KnownExamples", "Inputs", "Outputs", "ResourceLimits", "optional AbstractionLibrary"],
+  "state_writes": ["candidate stream ordering/selection in local execution; installed method only after external registration"],
+  "loops": ["procedure-step loop", "candidate loop", "program synthesis frontiers"],
+  "branches": ["executor opcode switch", "builder strategy branches", "hidden/regression predicates"],
+  "dynamic_dispatch": ["call dispatch only for explicitly installed abstraction IDs when library is non-nil; nearest recursive V3 candidate uses no call"],
+  "effective_search_operator": "reverse stream transformation over a fixed three-strategy UniversalMechanismSearch result",
+  "novel_operator_count": 0,
+  "bootstrap_operator_count": 1,
+  "classification": "WRAPPED_BOOTSTRAP",
+  "scientific_interpretation": "The reachable nearest M1 is not evidence of an acquired search operator. It is a developer-defined procedure atom applied to a developer-defined fixed search result. The code supports abstraction calls, but the recursive V3 path does not supply the library to AutonomousMethodImprovement."
+}
