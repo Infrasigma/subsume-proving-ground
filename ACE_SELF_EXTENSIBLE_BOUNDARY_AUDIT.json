@@ -1,0 +1,41 @@
+{
+  "classification": "PARTIAL",
+  "branch": "ace-full-system-20260911",
+  "audited_head_before_changes": "30c2966ca51aed5dab26837404147cac783cefd6",
+  "working_tree_visibility": "remote_git_only; local_uncommitted_state_not_observable_through_GitHub_API",
+  "boundary_findings": {
+    "runtime": "Runtime.Acquire remains a separate fixed controller path; the new adaptive runtime was a wrapper, not the core acquisition controller.",
+    "method_artifact": "AcquisitionMethodArtifact had executable-looking metadata but Procedure was interpreted by a hard-coded switch over procedure names.",
+    "method_generator": "GenerateMethodCandidates was a hand-authored bottleneck-to-method table.",
+    "method_evaluator": "verifyMethodCandidate executed named procedures and used UniversalMechanismSearch; evaluator was independent of candidate selection but method semantics were privileged.",
+    "installation": "InstalledMethodRegistry persisted method metadata and changed future search, but installed procedures were not represented in a general executable IR.",
+    "hidden_evaluator": "Hidden ProgramTestCase evaluation existed and was outside method selection.",
+    "task_generator": "Recursive protocol directly selected task families; the experiment author still controlled task sequencing.",
+    "library": "CapabilityLibrary/history existed, but learned method programs were not a first-class compositional library.",
+    "representation": "UniversalProgram/UExpr/UStmt provided one executable representation; representation revision was not itself in a unified search substrate.",
+    "synthesis_ir": "UniversalProgram was executable for task programs but not for acquisition procedures.",
+    "planner": "SearchPlanner/UniversalMechanismSearch handled task mechanism search; acquisition-method search was separate.",
+    "diagnosis": "DiagnoseBottleneck was rule-based and hand-authored.",
+    "self_model": "SelfModel stored capabilities/gaps/failures but did not causally predict method applicability from held-out evidence.",
+    "critical_leak": "The old method path selected method semantics through named Go branches; this was the primary hidden cognitive decision at the recursion boundary."
+  },
+  "trace": [
+    "task -> CapabilitySpecification",
+    "failure telemetry -> DiagnoseBottleneck",
+    "diagnosis -> GenerateMethodCandidates",
+    "named method -> executeAcquisitionMethod switch",
+    "candidate -> UniversalMechanismSearch",
+    "hidden/regression cases -> verification",
+    "winner -> InstalledMethodRegistry",
+    "installed method -> changed future candidate order",
+    "future task -> capability"
+  ],
+  "replacement": {
+    "substrate": "CapabilitySearchObject + ExecutableAcquisitionMethod + SearchLibrary",
+    "bootstrap_primitives": ["search", "use", "dedupe", "reverse", "serialize", "verify"],
+    "bootstrap_privilege": "only primitive opcode semantics; no privileged method-name selection",
+    "recursive_edge": "verified executable method is registered as a library object and can be invoked by later executable methods",
+    "abstraction": "repeated instruction suffixes can be mined into a retained executable abstraction",
+    "known_limit": "the bootstrap primitive vocabulary and available UniversalMechanismSearch strategies are still human-specified"
+  }
+}
