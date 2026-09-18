@@ -16,7 +16,7 @@ import (
 )
 
 type Arm string
-const ( ArmMPlus Arm="M+"; ArmMMinus Arm="M-"; ArmReimpl Arm="M^reimpl"; ArmFresh Arm="A0^fresh" )
+const ( ArmF0 Arm="F0"; ArmMPlus Arm="M+"; ArmMMinus Arm="M-"; ArmReimpl Arm="M^reimpl"; ArmFresh Arm="A0^fresh" )
 
 type ResourceBudget struct { TokenBudget int64; CPUTimeMS int64; WallTimeMS int64 }
 type ArmRequest struct { ProtocolVersion string; StudyID string; Arm Arm; TaskFile string; ResultFile string; Budget ResourceBudget }
