@@ -6,33 +6,45 @@
   "thresholds": {
     "alpha": 0.05,
     "power_target": 0.8,
-    "f0_max_score": 0.0,
-    "delta_C": 0.0,
-    "delta_K": 0.0,
-    "delta_delete": 0.0,
-    "delta_X": 0.0
+    "f0_max_score": 0,
+    "delta_C": 0,
+    "delta_K": 0,
+    "delta_delete": 0,
+    "delta_X": 0
   },
   "generator": {
     "generator_families": [],
-    "max_ngram_jaccard": 0.0,
+    "max_ngram_jaccard": 0,
     "ngram_size": 5,
-    "max_constant_latent_fraction": 0.0,
-    "novel_structure_features": []
+    "max_constant_latent_fraction": 0,
+    "novel_structure_features": [],
+    "novelty": {
+      "ast_depth_min": 3,
+      "graph_node_count_min": 6,
+      "cycle_rank_min": 2,
+      "dependency_path_min": 5
+    }
   },
   "statistics": {
     "outer_simulations": 10000,
     "permutations_per_simulation": 1000,
     "analysis_permutations": 100000,
     "sample_size": 100,
-    "null_std": 1.0,
-    "alt_std": 1.0,
+    "null_std": 1,
+    "alt_std": 1,
     "seed": 20260918
   },
   "interpolation": {
     "method": "stepwise_linear",
-    "capability_target": 0.0,
+    "capability_target": 0,
     "extrapolation_allowed": false
   },
   "selection_rule": "REPLACE_BEFORE_EXECUTION",
-  "execution_rules": ["REPLACE_WITH_PREREGISTERED_RULES"]
+  "execution_rules": [
+    "REPLACE_WITH_PREREGISTERED_RULES"
+  ],
+  "cost_model": {
+    "token_weight": 1,
+    "cpu_time_ms_weight": 0.001
+  }
 }
