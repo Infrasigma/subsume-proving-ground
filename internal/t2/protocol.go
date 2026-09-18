@@ -132,9 +132,8 @@ func SplitAndSeal(tasks []Task,p Preregistration,outDir string)(SealManifest,[]b
 
 type AuditScores struct { Scores []float64 }
 func AuditF0(scores AuditScores,maxScore float64)error{
-	if len(scores.Scores)==0{return errors.New("F0 integrity failed: no FM scores")};sum:=0.0
-	for _,s:=range scores.Scores{if math.IsNaN(s)||s<0{return errors.New("F0 integrity failed: invalid score")};sum+=s}
-	if sum/float64(len(scores.Scores))>maxScore{return fmt.Errorf("FM-assisted ACE: mean score exceeds threshold")}
+	if len(scores.Scores)==0{return errors.New("F0 integrity failed: no FM scores")}
+	for i,s:=range scores.Scores{if math.IsNaN(s)||s<0{return errors.New("F0 integrity failed: invalid score")};if s>maxScore{return fmt.Errorf("FM-assisted ACE: score %d exceeds threshold",i)}}
 	return nil
 }
 

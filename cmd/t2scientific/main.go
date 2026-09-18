@@ -30,8 +30,18 @@ func calibrate(args []string){
 	p,h:=load(*prereg);r,err:=t2.SimulateCalibration(p);if err!=nil{fail(err.Error())};v:=map[string]any{"protocol":t2.ProtocolVersion,"prereg_hash":h,"result":r};b:=t2.MustJSON(v);if err:=os.WriteFile(*out,b,0600);err!=nil{fail(err.Error())};os.Stdout.Write(b);os.Stdout.Write([]byte("\\n"))
 }
 func seal(args []string){
-	fs:=flag.NewFlagSet("seal",flag.ExitOnError);prereg:=fs.String("prereg","","locked prereg JSON");tasks:=fs.String("tasks","","task JSONL");out:=fs.String("out","","split dir");fs.Parse(args);if *prereg==""||*tasks==""||*out==""{fail("seal requires --prereg --tasks --out")}
-	p,_:=load(*prereg);ts,err:=t2.ReadJSONL(*tasks);if err!=nil{fail(err.Error())};m,key,err:=t2.SplitAndSeal(ts,p,*out);if err!=nil{fail(err.Error())};fmt.Printf("SEAL_MANIFEST_HASH=%s\\n",t2.SHA256Bytes(t2.MustJSON(m)));fmt.Printf("OFFLINE_TEST_KEY_BASE64=%s\\n",base64.StdEncoding.EncodeToString(key));fmt.Println("Production D_validate release must come from a remote KMS after Phase-4 lock attestation.")
+	fs:=flag.NewFlagSet("seal",flag.ExitOnError)
+	prereg:=fs.String("prereg","","locked prereg JSON")
+	tasks:=fs.String("tasks","","task JSONL")
+	out:=fs.String("out","","split dir")
+	offline:=fs.Bool("offline-test",false,"emit test-only local data key; never use for production")
+	fs.Parse(args)
+	if *prereg==""||*tasks==""||*out==""{fail("seal requires --prereg --tasks --out")}
+	p,_:=load(*prereg);ts,err:=t2.ReadJSONL(*tasks);if err!=nil{fail(err.Error())}
+	m,key,err:=t2.SplitAndSeal(ts,p,*out);if err!=nil{fail(err.Error())}
+	fmt.Printf("SEAL_MANIFEST_HASH=%s\n",t2.SHA256Bytes(t2.MustJSON(m)))
+	if *offline {fmt.Printf("OFFLINE_TEST_KEY_BASE64=%s\n",base64.StdEncoding.EncodeToString(key))}
+	if !*offline {fmt.Println("D_validate key intentionally withheld; production release must come from the remote KMS after Phase-4 lock attestation.")}
 }
 func finalize(args []string){
 	fs:=flag.NewFlagSet("finalize",flag.ExitOnError);in:=fs.String("input","","finalizer input JSON");fs.Parse(args);if *in==""{fail("finalize requires --input")}
