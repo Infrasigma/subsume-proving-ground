@@ -83,7 +83,7 @@ func (ArithmeticASTGenerator) Generate(seed int64, novel bool) (ScoredTask, erro
 type FSMGenerator struct{}
 func (FSMGenerator) Name() string { return "G2_finite_state" }
 func (FSMGenerator) Generate(seed int64, novel bool) (ScoredTask, error) {
-	r:=rand.New(rand.NewSource(seed)); n:=4;if novel{n=6};cycle:=1;if novel{cycle=2}
+	r:=mrand.New(mrand.NewSource(seed)); n:=4;if novel{n=6};cycle:=1;if novel{cycle=2}
 	trans:=make([]int,n);for i:=0;i<n;i++{trans[i]=(i+1)%n};for j:=0;j<cycle;j++{from:=r.Intn(n);to:=r.Intn(n);trans[from]=to}
 	seqs:=[][]int{{0,1,2},{1,2,3,4},{2,0,1,3}}
 	ex:=make([]ExamplePair,0,len(seqs));for _,seq:=range seqs{st:=0;for _,step:=range seq{st=(trans[(st+step)%n]+step)%n};ex=append(ex,ExamplePair{mustRaw(seq),mustRaw(st)})}

@@ -31,7 +31,7 @@ func HashDirectory(path string) (string,error) {
 		if info.Mode().IsRegular(){b,err:=os.ReadFile(filepath.Join(path,e.Name()));if err!=nil{return "",err};sum=SHA256Bytes(b)}
 		items=append(items,item{name:e.Name(),mode:info.Mode(),size:info.Size(),sum:sum})
 	}
-	return SHA256Bytes(items),nil
+	return SHA256Bytes(MustJSON(items)),nil
 }
 
 func RequireEmptyDirectory(path string) error {

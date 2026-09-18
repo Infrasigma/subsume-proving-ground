@@ -53,8 +53,8 @@ func RunImmutableArm(ctx context.Context,cfg ImmutableArmConfig,scored []ScoredT
 	resp.Usage.CPUTimeMS=actualCPU
 	if actualCPU<0||actualCPU>cfg.Budget.CPUTimeMS{return AdapterEvidence{},errors.New("CPU budget exceeded")}
 	resp.Usage.WallTimeMS=wall.Milliseconds();if resp.Usage.WallTimeMS>cfg.Budget.WallTimeMS{return AdapterEvidence{},errors.New("wall-time budget exceeded")}
-	capability,structural:=scorePredictions(resp.Predictions,scored);cost:=cfg.CostModel.TokenWeight*float64(resp.Usage.TokensIn+resp.Usage.TokensOut)+cfg.CostModel.CPUTimeMSWeight*float64(resp.Usage.CPUTimeMS)
-	return AdapterEvidence{Arm:cfg.Arm,ExecutableSHA256:got,WorkspaceHash:SHA256Bytes([]byte("isolated-workspace-v1")),StateHash:resp.StateHash,Usage:resp.Usage,CompositeCost:cost,Capability:capability,StructuralX:structural},nil
+	capability,structural,scores:=scorePredictions(resp.Predictions,scored);cost:=cfg.CostModel.TokenWeight*float64(resp.Usage.TokensIn+resp.Usage.TokensOut)+cfg.CostModel.CPUTimeMSWeight*float64(resp.Usage.CPUTimeMS)
+	return AdapterEvidence{Arm:cfg.Arm,ExecutableSHA256:got,WorkspaceHash:SHA256Bytes([]byte("isolated-workspace-v1")),StateHash:resp.StateHash,Usage:resp.Usage,CompositeCost:cost,Capability:capability,StructuralX:structural,TaskScores:scores},nil
 }
 
 func writePublicTasks(path string,tasks []PublicTask)error{f,err:=os.OpenFile(path,os.O_WRONLY|os.O_CREATE|os.O_TRUNC,0600);if err!=nil{return err};defer f.Close();e:=json.NewEncoder(f);for _,t:=range tasks{if err:=e.Encode(t);err!=nil{return err}};return nil}
