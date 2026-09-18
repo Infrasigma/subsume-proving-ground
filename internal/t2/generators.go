@@ -23,12 +23,7 @@ type StructuralVector struct {
 	OperatorCardinality int
 }
 
-type NoveltyRule struct {
-	ASTDepthMin int
-	GraphNodeCountMin int
-	CycleRankMin int
-	DependencyPathMin int
-}
+type NoveltyRule struct { ASTDepthMin int `json:"ast_depth_min"`; GraphNodeCountMin int `json:"graph_node_count_min"`; CycleRankMin int `json:"cycle_rank_min"`; DependencyPathMin int `json:"dependency_path_min"` }
 
 func (r NoveltyRule) IsNovel(s StructuralVector) bool {
 	return (r.ASTDepthMin > 0 && s.ASTDepth >= r.ASTDepthMin) ||

@@ -141,7 +141,7 @@ func AuditF0(scores AuditScores,maxScore float64)error{
 }
 
 type LockProof struct { StudyID string `json:"study_id"`; PreregHash string `json:"prereg_hash"`; FreshStateHash string `json:"fresh_state_hash"`; ResourceHash string `json:"resource_hash"`; Phase2PurgeHash string `json:"phase2_purge_hash"`; Nonce string `json:"nonce"`; IssuedAtUnix int64 `json:"issued_at_unix"` }
-type EstimandInput struct { Estimand string `json:"estimand"`; Value float64 `json:"value"`; PValue float64 `json:"p_value"`
+type EstimandInput struct { Estimand string `json:"estimand"`; Value float64 `json:"value"`; PValue float64 `json:"p_value"` }
 
 func FinalizeFromPrereg(p Preregistration, audits map[string]bool, in map[string]EstimandInput)(map[string]any,error){
 	required:=[]string{"null_simulation_calibrated","power_evaluation_passed","F0_integrity_passed","generator_integrity_passed"}
