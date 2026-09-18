@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	mrand "math/rand"
 	"os"
 	"path/filepath"
 	"sort"
