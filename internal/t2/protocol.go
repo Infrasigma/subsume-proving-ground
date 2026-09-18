@@ -60,7 +60,7 @@ func SHA256Bytes(b []byte) string { h:=sha256.Sum256(b); return hex.EncodeToStri
 
 func SealPreregistration(p Preregistration)(Preregistration,error){
 	p.Status="LOCKED"
-	p.CriteriaHash="UNSEALED"
+	p.CriteriaHash=strings.Repeat("0",64)
 	if err:=p.Validate();err!=nil{return p,err}
 	p.CriteriaHash=""
 	p.CriteriaHash=SHA256Bytes(canonicalJSON(p))
