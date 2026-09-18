@@ -20,6 +20,35 @@ type SignedLockProof struct { LockProof LockProof; PublicKeyB64 string; Signatur
 func SignLockProof(p LockProof, privateKey ed25519.PrivateKey)(SignedLockProof,error){sig:=ed25519.Sign(privateKey,MustJSON(p));pub:=privateKey.Public().(ed25519.PublicKey);return SignedLockProof{LockProof:p,PublicKeyB64:base64.StdEncoding.EncodeToString(pub),SignatureB64:base64.StdEncoding.EncodeToString(sig)},nil}
 func VerifyLockProof(s SignedLockProof)error{pub,err:=base64.StdEncoding.DecodeString(s.PublicKeyB64);if err!=nil{return err};sig,err:=base64.StdEncoding.DecodeString(s.SignatureB64);if err!=nil{return err};if len(pub)!=ed25519.PublicKeySize||len(sig)!=ed25519.SignatureSize{return errors.New("invalid lock proof size")};if !ed25519.Verify(ed25519.PublicKey(pub),MustJSON(s.LockProof),sig){return errors.New("invalid lock proof signature")};return nil}
 
+func HashDirectory(path string) (string,error) {
+	entries,err:=os.ReadDir(path);if err!=nil{return "",err}
+	type item struct{name string;mode os.FileMode;size int64;sum string}
+	items:=make([]item,0,len(entries))
+	for _,e:=range entries{
+		info,err:=e.Info();if err!=nil{return "",err}
+		sum:=""
+		if info.Mode().IsRegular(){b,err:=os.ReadFile(filepath.Join(path,e.Name()));if err!=nil{return "",err};sum=SHA256Bytes(b)}
+		items=append(items,item{name:e.Name(),mode:info.Mode(),size:info.Size(),sum:sum})
+	}
+	return SHA256Bytes(items),nil
+}
+
+func RequireEmptyDirectory(path string) error {
+	entries,err:=os.ReadDir(path);if err!=nil{return err}
+	if len(entries)!=0{return errors.New("fresh-state directory is not empty")}
+	return nil
+}
+
+func BuildLockProof(studyID,preregHash,phase2Dir,freshDir string,budget ResourceBudget)(LockProof,error){
+	if studyID==""||preregHash==""{return LockProof{},errors.New("study ID and prereg hash required")}
+	if err:=RequireEmptyDirectory(phase2Dir);err!=nil{return LockProof{},fmt.Errorf("phase-2 purge not established: %w",err)}
+	if err:=RequireEmptyDirectory(freshDir);err!=nil{return LockProof{},fmt.Errorf("fresh state not empty: %w",err)}
+	phaseHash,err:=HashDirectory(phase2Dir);if err!=nil{return LockProof{},err}
+	freshHash,err:=HashDirectory(freshDir);if err!=nil{return LockProof{},err}
+	nonceRaw:=make([]byte,32);if _,err:=rand.Read(nonceRaw);err!=nil{return LockProof{},err}
+	return LockProof{StudyID:studyID,PreregHash:preregHash,FreshStateHash:freshHash,ResourceHash:SHA256Bytes(MustJSON(budget)),Phase2PurgeHash:phaseHash,Nonce:base64.RawURLEncoding.EncodeToString(nonceRaw),IssuedAtUnix:time.Now().Unix()},nil
+}
+
 type RemoteKMS struct { BaseURL string; BearerToken string; Client *http.Client }
 type kmsStoreRequest struct { StudyID string; ValidateCipherHash string; KeyB64 string }
 type kmsReleaseRequest struct { Signed SignedLockProof; ValidateCipherHash string }

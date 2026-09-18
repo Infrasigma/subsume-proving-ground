@@ -150,6 +150,24 @@ func AuditGeneratedPool(tasks []ScoredTask,p Preregistration) error {
 	return nil
 }
 
+func GenerateAuditPool(plan GeneratorPlan) ([]ScoredTask,error){
+	audit:=plan
+	audit.Seed=plan.Seed+9000000
+	audit.NonNovelPerFamily=4
+	audit.NovelPerFamily=4
+	return GenerateTaskPool(audit)
+}
+
+func WriteAuditPool(tasks []ScoredTask,outDir string) error {
+	if len(tasks)==0{return errors.New("empty audit pool")}
+	if err:=os.MkdirAll(outDir,0700);err!=nil{return err}
+	public:=encodePublic(tasks)
+	scored:=encodeScored(tasks)
+	if err:=os.WriteFile(filepath.Join(outDir,"D_audit.jsonl"),public,0600);err!=nil{return err}
+	if err:=os.WriteFile(filepath.Join(outDir,"D_audit_scored.jsonl"),scored,0600);err!=nil{return err}
+	return nil
+}
+
 func GenerateAndSplit(plan GeneratorPlan,p Preregistration,outDir string)(SplitManifest,[]byte,error){
 	tasks,err:=GenerateTaskPool(plan);if err!=nil{return SplitManifest{},nil,err};if err:=AuditGeneratedPool(tasks,p);err!=nil{return SplitManifest{},nil,err}
 	var d,s,v []ScoredTask
