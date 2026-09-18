@@ -21,24 +21,12 @@ import (
 
 const ProtocolVersion = "t2-hostile-adjudication/v1"
 
-type Thresholds struct { Alpha, PowerTarget, F0MaxScore, DeltaC, DeltaK, DeltaDelete, DeltaX float64 }
-type GeneratorRules struct { GeneratorFamilies []string; MaxNGramJaccard float64; NGramSize int; MaxConstantLatentFrac float64; NovelStructureFeatures []string; Novelty NoveltyRule }
-type StatisticalPlan struct { OuterSimulations, PermutationsPerSimulation, AnalysisPermutations, SampleSize int; NullStd, AltStd float64; Seed int64 }
-type InterpolationPlan struct { Method string; CapabilityTarget float64; ExtrapolationAllowed bool }
-type CostModel struct { TokenWeight float64; CPUTimeMSWeight float64 }
-type Preregistration struct {
-	ProtocolVersion string
-	Status string
-	StudyID string
-	CriteriaHash string
-	Thresholds Thresholds
-	Generator GeneratorRules
-	Statistics StatisticalPlan
-	Interpolation InterpolationPlan
-	CostModel CostModel
-	SelectionRule string
-	ExecutionRules []string
-}
+type Thresholds struct { Alpha float64 `json:"alpha"`; PowerTarget float64 `json:"power_target"`; F0MaxScore float64 `json:"f0_max_score"`; DeltaC float64 `json:"delta_C"`; DeltaK float64 `json:"delta_K"`; DeltaDelete float64 `json:"delta_delete"`; DeltaX float64 `json:"delta_X"` }
+type GeneratorRules struct { GeneratorFamilies []string `json:"generator_families"`; MaxNGramJaccard float64 `json:"max_ngram_jaccard"`; NGramSize int `json:"ngram_size"`; MaxConstantLatentFrac float64 `json:"max_constant_latent_fraction"`; NovelStructureFeatures []string `json:"novel_structure_features"`; Novelty NoveltyRule `json:"novelty"` }
+type StatisticalPlan struct { OuterSimulations int `json:"outer_simulations"`; PermutationsPerSimulation int `json:"permutations_per_simulation"`; AnalysisPermutations int `json:"analysis_permutations"`; SampleSize int `json:"sample_size"`; NullStd float64 `json:"null_std"`; AltStd float64 `json:"alt_std"`; Seed int64 `json:"seed"` }
+type InterpolationPlan struct { Method string `json:"method"`; CapabilityTarget float64 `json:"capability_target"`; ExtrapolationAllowed bool `json:"extrapolation_allowed"` }
+type CostModel struct { TokenWeight float64 `json:"token_weight"`; CPUTimeMSWeight float64 `json:"cpu_time_ms_weight"` }
+type Preregistration struct { ProtocolVersion string `json:"protocol_version"`; Status string `json:"status"`; StudyID string `json:"study_id"`; CriteriaHash string `json:"criteria_hash"`; Thresholds Thresholds `json:"thresholds"`; Generator GeneratorRules `json:"generator"`; Statistics StatisticalPlan `json:"statistics"`; Interpolation InterpolationPlan `json:"interpolation"`; CostModel CostModel `json:"cost_model"`; SelectionRule string `json:"selection_rule"`; ExecutionRules []string `json:"execution_rules"` }
 
 func (p Preregistration) Validate() error {
 	if p.ProtocolVersion != ProtocolVersion { return fmt.Errorf("protocol_version must be %q", ProtocolVersion) }
@@ -145,56 +133,15 @@ func SplitAndSeal(tasks []Task,p Preregistration,outDir string)(SealManifest,[]b
 	return m,key,nil
 }
 
-type AuditScores struct { Scores []float64 }
+type AuditScores struct { Scores []float64 `json:"scores"` }
 func AuditF0(scores AuditScores,maxScore float64)error{
 	if len(scores.Scores)==0{return errors.New("F0 integrity failed: no FM scores")}
 	for i,s:=range scores.Scores{if math.IsNaN(s)||s<0{return errors.New("F0 integrity failed: invalid score")};if s>maxScore{return fmt.Errorf("FM-assisted ACE: score %d exceeds threshold",i)}}
 	return nil
 }
 
-type LockProof struct { StudyID,PreregHash,FreshStateHash,ResourceHash,Phase2PurgeHash,Nonce string; IssuedAtUnix int64 }
-func(p LockProof)Hash()string{return SHA256Bytes(canonicalJSON(p))}
-type KMSClient interface{ReleaseValidateKey(LockProof)([]byte,error)}
-type LocalKMS struct{Key []byte}
-func(k LocalKMS)ReleaseValidateKey(p LockProof)([]byte,error){if p.StudyID==""||p.PreregHash==""||p.FreshStateHash==""||p.ResourceHash==""||p.Phase2PurgeHash==""||p.Nonce==""||p.IssuedAtUnix<=0{return nil,errors.New("invalid lock proof")};return append([]byte(nil),k.Key...),nil}
-
-type Measurement struct { TaskID string; Capability,Cost,StructuralX,ResourceCost float64 }
-type ArmResult struct { Arm string; Results []Measurement; StateHash string }
-
-func ValidateArm(r ArmResult,ids []string,arm string)error{if r.Arm!=arm{return fmt.Errorf("unexpected arm %q",r.Arm)};if len(r.Results)!=len(ids){return fmt.Errorf("%s result count mismatch",arm)};seen:=map[string]bool{};for _,x:=range r.Results{if x.TaskID==""||seen[x.TaskID]{return fmt.Errorf("%s duplicate/empty task id",arm)};seen[x.TaskID]=true};for _,id:=range ids{if !seen[id]{return fmt.Errorf("%s missing task %s",arm,id)}};return nil}
-func SignFlipPValue(a,b []float64,permutations int,seed int64)(float64,float64,error){if len(a)==0||len(a)!=len(b){return 0,0,errors.New("invalid paired sample")};d:=make([]float64,len(a));obs:=0.0;for i:=range a{d[i]=b[i]-a[i];obs+=d[i]};obs/=float64(len(d));r:=mrand.New(mrand.NewSource(seed));ext:=0;for i:=0;i<permutations;i++{m:=0.0;for _,x:=range d{if r.Intn(2)==0{m+=x}else{m-=x}};m/=float64(len(d));if math.Abs(m)>=math.Abs(obs){ext++}};return obs,float64(ext+1)/float64(permutations+1),nil}
-func randNorm(r *mrand.Rand)float64{u1:=r.Float64();if u1<1e-12{u1=1e-12};u2:=r.Float64();return math.Sqrt(-2*math.Log(u1))*math.Cos(2*math.Pi*u2)}
-
-func SimulateCalibration(p Preregistration)(map[string]float64,error){
-	s:=p.Statistics
-	effects:=map[string]float64{"delta_C":p.Thresholds.DeltaC,"delta_K":p.Thresholds.DeltaK,"delta_delete":p.Thresholds.DeltaDelete,"delta_X":p.Thresholds.DeltaX}
-	r:=mrand.New(mrand.NewSource(s.Seed))
-	out:=map[string]float64{}
-	for name,effect:=range effects{
-		nullFP,altPass:=0,0
-		for i:=0;i<s.OuterSimulations;i++{
-			na,nb,aa,ab:=make([]float64,s.SampleSize),make([]float64,s.SampleSize),make([]float64,s.SampleSize),make([]float64,s.SampleSize)
-			for j:=0;j<s.SampleSize;j++{
-				na[j]=randNorm(r)*s.NullStd
-				nb[j]=randNorm(r)*s.NullStd
-				aa[j]=randNorm(r)*s.AltStd
-				ab[j]=aa[j]+effect+randNorm(r)*s.AltStd*0.15
-			}
-			_,pn,_:=SignFlipPValue(na,nb,s.PermutationsPerSimulation,r.Int63())
-			_,pa,_:=SignFlipPValue(aa,ab,s.PermutationsPerSimulation,r.Int63())
-			if pn<=p.Thresholds.Alpha{nullFP++}
-			if pa<=p.Thresholds.Alpha{altPass++}
-		}
-		fpr,pow:=float64(nullFP)/float64(s.OuterSimulations),float64(altPass)/float64(s.OuterSimulations)
-		out[name+"_false_positive_rate"]=fpr
-		out[name+"_power"]=pow
-		if fpr>p.Thresholds.Alpha{return out,fmt.Errorf("statistical calibration failed: %s type-I %.6f > %.6f",name,fpr,p.Thresholds.Alpha)}
-		if pow<p.Thresholds.PowerTarget{return out,fmt.Errorf("statistical calibration failed: %s power %.6f < %.6f",name,pow,p.Thresholds.PowerTarget)}
-	}
-	return out,nil
-}
-
-type EstimandInput struct { Estimand string; Value float64; PValue float64 }
+type LockProof struct { StudyID string `json:"study_id"`; PreregHash string `json:"prereg_hash"`; FreshStateHash string `json:"fresh_state_hash"`; ResourceHash string `json:"resource_hash"`; Phase2PurgeHash string `json:"phase2_purge_hash"`; Nonce string `json:"nonce"`; IssuedAtUnix int64 `json:"issued_at_unix"` }
+type EstimandInput struct { Estimand string `json:"estimand"`; Value float64 `json:"value"`; PValue float64 `json:"p_value"`
 
 func FinalizeFromPrereg(p Preregistration, audits map[string]bool, in map[string]EstimandInput)(map[string]any,error){
 	required:=[]string{"null_simulation_calibrated","power_evaluation_passed","F0_integrity_passed","generator_integrity_passed"}
