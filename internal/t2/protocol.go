@@ -51,12 +51,22 @@ func (p Preregistration) Validate() error {
 	if s.OuterSimulations!=10000 || s.PermutationsPerSimulation<100 || s.AnalysisPermutations<1000 || s.SampleSize<4 || s.NullStd<=0 || s.AltStd<=0 { return errors.New("invalid statistical preregistration") }
 	if p.Interpolation.Method!="stepwise_linear" || p.Interpolation.ExtrapolationAllowed { return errors.New("invalid acquisition-cost interpolation rule") }\n\tif p.CostModel.TokenWeight<=0 || p.CostModel.CPUTimeMSWeight<=0 { return errors.New("resource cost weights must be positive") }
 	if p.SelectionRule=="" || len(p.ExecutionRules)==0 { return errors.New("selection/execution rules are required") }
-	if p.CriteriaHash=="" || p.CriteriaHash=="AUTO" { return errors.New("criteria_hash must be sealed") }
+	if p.CriteriaHash=="" || p.CriteriaHash=="AUTO" || p.CriteriaHash=="UNSEALED" { return errors.New("criteria_hash must be sealed") }
 	return nil
 }
 
 func canonicalJSON(v any) []byte { b,_:=json.Marshal(v); return b }
 func SHA256Bytes(b []byte) string { h:=sha256.Sum256(b); return hex.EncodeToString(h[:]) }
+
+func SealPreregistration(p Preregistration)(Preregistration,error){
+	p.Status="LOCKED"
+	p.CriteriaHash="UNSEALED"
+	if err:=p.Validate();err!=nil{return p,err}
+	p.CriteriaHash=""
+	p.CriteriaHash=SHA256Bytes(canonicalJSON(p))
+	if err:=p.Validate();err!=nil{return p,err}
+	return p,nil
+}
 
 func LoadPreregistration(path string) (Preregistration,string,error) {
 	b,err:=os.ReadFile(path); if err!=nil{return Preregistration{},"",err}
@@ -141,7 +151,7 @@ type LockProof struct { StudyID,PreregHash,FreshStateHash,ResourceHash,Phase2Pur
 func(p LockProof)Hash()string{return SHA256Bytes(canonicalJSON(p))}
 type KMSClient interface{ReleaseValidateKey(LockProof)([]byte,error)}
 type LocalKMS struct{Key []byte}
-func(k LocalKMS)ReleaseValidateKey(p LockProof)([]byte,error){if p.StudyID==""||p.PreregHash==""||p.FreshStateHash==""||p.ResourceHash==""{return nil,errors.New("invalid lock proof")};return append([]byte(nil),k.Key...),nil}
+func(k LocalKMS)ReleaseValidateKey(p LockProof)([]byte,error){if p.StudyID==""||p.PreregHash==""||p.FreshStateHash==""||p.ResourceHash==""||p.Phase2PurgeHash==""||p.Nonce==""||p.IssuedAtUnix<=0{return nil,errors.New("invalid lock proof")};return append([]byte(nil),k.Key...),nil}
 
 type Measurement struct { TaskID string; Capability,Cost,StructuralX,ResourceCost float64 }
 type ArmResult struct { Arm string; Results []Measurement; StateHash string }
