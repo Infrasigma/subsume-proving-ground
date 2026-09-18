@@ -76,7 +76,7 @@ func (ArithmeticASTGenerator) Generate(seed int64, novel bool) (ScoredTask, erro
 	ex:=make([]ExamplePair,0,3);for _,x:=range inputs{ex=append(ex,ExamplePair{mustRaw(x),mustRaw(f(x))})}
 	q:=seededInt(r)
 	s:=StructuralVector{ASTDepth:depth,OperatorCardinality:depth+1,BranchingFactor:2}
-	pub:=PublicTask{ID:fmt.Sprintf("g1-%d-%t",seed,novel),Family:"G1_arithmetic_ast",Prompt:"Infer the deterministic numeric transformation from the examples, then return the output for the query input.",Examples:ex,Query:mustRaw(q),Structure:s,Novel:novel}
+	pub:=PublicTask{ID:fmt.Sprintf("g1-%d-%t",seed,novel),Family:"G1_arithmetic_ast",Prompt:fmt.Sprintf("instance=%016x; infer the deterministic numeric transformation from the examples, then return the output for the query input.",uint64(seed)),Examples:ex,Query:mustRaw(q),Structure:s,Novel:novel}
 	return ScoredTask{Public:pub,Oracle:mustRaw(f(q))},nil
 }
 
@@ -89,7 +89,7 @@ func (FSMGenerator) Generate(seed int64, novel bool) (ScoredTask, error) {
 	ex:=make([]ExamplePair,0,len(seqs));for _,seq:=range seqs{st:=0;for _,step:=range seq{st=(trans[(st+step)%n]+step)%n};ex=append(ex,ExamplePair{mustRaw(seq),mustRaw(st)})}
 	q:=[]int{r.Intn(n),r.Intn(n)+1,r.Intn(n)+2,r.Intn(n)+3};st:=0;for _,step:=range q{st=(trans[(st+step)%n]+step)%n}
 	s:=StructuralVector{GraphNodeCount:n,CycleRank:cycle,BranchingFactor:1}
-	pub:=PublicTask{ID:fmt.Sprintf("g2-%d-%t",seed,novel),Family:"G2_finite_state",Prompt:"Infer the deterministic state transition rule from the observed sequences, then return the terminal state for the query sequence.",Examples:ex,Query:mustRaw(q),Structure:s,Novel:novel}
+	pub:=PublicTask{ID:fmt.Sprintf("g2-%d-%t",seed,novel),Family:"G2_finite_state",Prompt:fmt.Sprintf("instance=%016x; infer the deterministic state transition rule from the observed sequences, then return the terminal state for the query sequence.",uint64(seed)),Examples:ex,Query:mustRaw(q),Structure:s,Novel:novel}
 	return ScoredTask{Public:pub,Oracle:mustRaw(st)},nil
 }
 
@@ -102,7 +102,7 @@ func (BooleanASTGenerator) Generate(seed int64, novel bool) (ScoredTask, error) 
 	for _,in:=range exInputs{ex=append(ex,ExamplePair{mustRaw(in),mustRaw(f(in[0],in[1],in[2]))})}
 	q:=[3]int{r.Intn(2),r.Intn(2),r.Intn(2)}
 	s:=StructuralVector{ASTDepth:depth,OperatorCardinality:4,BranchingFactor:2}
-	pub:=PublicTask{ID:fmt.Sprintf("g3-%d-%t",seed,novel),Family:"G3_boolean_ast",Prompt:"Infer the deterministic boolean transformation from the examples, then return 0 or 1 for the query triple.",Examples:ex,Query:mustRaw(q),Structure:s,Novel:novel}
+	pub:=PublicTask{ID:fmt.Sprintf("g3-%d-%t",seed,novel),Family:"G3_boolean_ast",Prompt:fmt.Sprintf("instance=%016x; infer the deterministic boolean transformation from the examples, then return 0 or 1 for the query triple.",uint64(seed)),Examples:ex,Query:mustRaw(q),Structure:s,Novel:novel}
 	return ScoredTask{Public:pub,Oracle:mustRaw(f(q[0],q[1],q[2]))},nil
 }
 
@@ -114,7 +114,7 @@ func (ListRewriteGenerator) Generate(seed int64, novel bool) (ScoredTask, error)
 	inputs:=[][]int{{1,2,3},{2,4,6},{-1,0,2}};ex:=make([]ExamplePair,0,len(inputs));for _,in:=range inputs{ex=append(ex,ExamplePair{mustRaw(in),mustRaw(f(in))})}
 	q:=[]int{r.Intn(7)-3,r.Intn(7)-3,r.Intn(7)-3,r.Intn(7)-3}
 	s:=StructuralVector{DependencyPathLength:path,BranchingFactor:1}
-	pub:=PublicTask{ID:fmt.Sprintf("g4-%d-%t",seed,novel),Family:"G4_list_rewrite",Prompt:"Infer the ordered list-rewrite procedure from the examples, then return the transformed query list.",Examples:ex,Query:mustRaw(q),Structure:s,Novel:novel}
+	pub:=PublicTask{ID:fmt.Sprintf("g4-%d-%t",seed,novel),Family:"G4_list_rewrite",Prompt:fmt.Sprintf("instance=%016x; infer the ordered list-rewrite procedure from the examples, then return the transformed query list.",uint64(seed)),Examples:ex,Query:mustRaw(q),Structure:s,Novel:novel}
 	return ScoredTask{Public:pub,Oracle:mustRaw(f(q))},nil
 }
 
@@ -182,8 +182,8 @@ func GenerateAndSplit(plan GeneratorPlan,p Preregistration,outDir string)(SplitM
 	nonNovel:=[]ScoredTask{};novel:=[]ScoredTask{}
 	for _,t:=range tasks{if t.Public.Novel{novel=append(novel,t)}else{nonNovel=append(nonNovel,t)}}
 	sort.Slice(nonNovel,func(i,j int)bool{return nonNovel[i].Public.ID<nonNovel[j].Public.ID});sort.Slice(novel,func(i,j int)bool{return novel[i].Public.ID<novel[j].Public.ID})
-	discoverCount:=len(nonNovel)/2;selectCount:=len(nonNovel)-discoverCount
-	d=append(d,nonNovel[:discoverCount]...);s=append(s,nonNovel[discoverCount:discoverCount+selectCount]...);v=append(v,novel...)
+	third:=len(nonNovel)/3;if third<1{return SplitManifest{},nil,errors.New("insufficient non-novel tasks for discover/select/validate")}
+	d=append(d,nonNovel[:third]...);s=append(s,nonNovel[third:2*third]...);v=append(v,nonNovel[2*third:]...);v=append(v,novel...)
 	if len(d)==0||len(s)==0||len(v)==0{return SplitManifest{},nil,errors.New("stratified split produced empty partition")}
 	db,sb,vb:=encodePublic(d),encodeScored(s),encodeScored(v)
 	if err:=os.MkdirAll(outDir,0700);err!=nil{return SplitManifest{},nil,err}
