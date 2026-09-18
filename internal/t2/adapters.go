@@ -49,7 +49,7 @@ func RunImmutableArm(ctx context.Context,cfg ImmutableArmConfig,scored []ScoredT
 	b,err:=os.ReadFile(result);if err!=nil{return AdapterEvidence{},fmt.Errorf("%s produced no result file: %w",cfg.Arm,err)}
 	var resp ArmResponse;if err:=json.Unmarshal(b,&resp);err!=nil{return AdapterEvidence{},fmt.Errorf("invalid arm response: %w",err)};if resp.Arm!=cfg.Arm{return AdapterEvidence{},errors.New("arm identity mismatch")}
 	if resp.Usage.TokensIn<0||resp.Usage.TokensOut<0||resp.Usage.TokensIn+resp.Usage.TokensOut>cfg.Budget.TokenBudget{return AdapterEvidence{},errors.New("token budget exceeded")}
-	if resp.Usage.CPUTimeMS<0||resp.Usage.CPUTimeMS>cfg.Budget.CPUTimeMS{return AdapterEvidence{},errors.New("CPU budget exceeded")}
+	actualCPU:=int64((cmd.ProcessState.UserTime()+cmd.ProcessState.SystemTime())/time.Millisecond)\n\tresp.Usage.CPUTimeMS=actualCPU\n\tif actualCPU<0||actualCPU>cfg.Budget.CPUTimeMS{return AdapterEvidence{},errors.New("CPU budget exceeded")}
 	resp.Usage.WallTimeMS=wall.Milliseconds();if resp.Usage.WallTimeMS>cfg.Budget.WallTimeMS{return AdapterEvidence{},errors.New("wall-time budget exceeded")}
 	capability,structural:=scorePredictions(resp.Predictions,scored);cost:=cfg.CostModel.TokenWeight*float64(resp.Usage.TokensIn+resp.Usage.TokensOut)+cfg.CostModel.CPUTimeMSWeight*float64(resp.Usage.CPUTimeMS)
 	return AdapterEvidence{Arm:cfg.Arm,ExecutableSHA256:got,WorkspaceHash:SHA256Bytes([]byte("isolated-workspace-v1")),StateHash:resp.StateHash,Usage:resp.Usage,CompositeCost:cost,Capability:capability,StructuralX:structural},nil

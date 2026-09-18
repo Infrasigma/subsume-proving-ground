@@ -55,7 +55,7 @@ func (p Preregistration) Validate() error {
 	return nil
 }
 
-func canonicalJSON(v any) []byte { b,_:=json.Marshal(v); return b }
+func canonicalJSON(v any) []byte { b,_:=json.Marshal(v); return b }\nfunc criteriaDigest(p Preregistration) string { q:=p; q.CriteriaHash=""; return SHA256Bytes(canonicalJSON(q)) }
 func SHA256Bytes(b []byte) string { h:=sha256.Sum256(b); return hex.EncodeToString(h[:]) }
 
 func SealPreregistration(p Preregistration)(Preregistration,error){
@@ -72,7 +72,7 @@ func LoadPreregistration(path string) (Preregistration,string,error) {
 	b,err:=os.ReadFile(path); if err!=nil{return Preregistration{},"",err}
 	var p Preregistration
 	if err:=json.Unmarshal(b,&p);err!=nil{return p,"",err}
-	got:=SHA256Bytes(canonicalJSON(p))
+	got:=criteriaDigest(p)
 	if got!=p.CriteriaHash{return p,got,fmt.Errorf("criteria_hash mismatch: file=%s computed=%s",p.CriteriaHash,got)}
 	if err:=p.Validate();err!=nil{return p,got,err}
 	return p,got,nil
