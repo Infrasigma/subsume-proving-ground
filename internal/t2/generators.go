@@ -96,7 +96,7 @@ func (FSMGenerator) Generate(seed int64, novel bool) (ScoredTask, error) {
 type BooleanASTGenerator struct{}
 func (BooleanASTGenerator) Name() string { return "G3_boolean_ast" }
 func (BooleanASTGenerator) Generate(seed int64, novel bool) (ScoredTask, error) {
-	r:=rand.New(rand.NewSource(seed));depth:=2;if novel{depth=3};a,b,c:=r.Intn(2),r.Intn(2),r.Intn(2)
+	r:=mrand.New(mrand.NewSource(seed));depth:=2;if novel{depth=3};a,b,c:=r.Intn(2),r.Intn(2),r.Intn(2)
 	f:=func(x,y,z int)int{v:=x^a;v&=(y|b);v^=c;if depth>=3{v=(v|x)&(z|1)};return v&1}
 	exInputs:=[][3]int{{0,0,0},{0,1,0},{1,0,1},{1,1,0}};ex:=make([]ExamplePair,0,len(exInputs))
 	for _,in:=range exInputs{ex=append(ex,ExamplePair{mustRaw(in),mustRaw(f(in[0],in[1],in[2]))})}
@@ -109,7 +109,7 @@ func (BooleanASTGenerator) Generate(seed int64, novel bool) (ScoredTask, error) 
 type ListRewriteGenerator struct{}
 func (ListRewriteGenerator) Name() string { return "G4_list_rewrite" }
 func (ListRewriteGenerator) Generate(seed int64, novel bool) (ScoredTask, error) {
-	r:=rand.New(rand.NewSource(seed));path:=3;if novel{path=5}
+	r:=mrand.New(mrand.NewSource(seed));path:=3;if novel{path=5}
 	f:=func(xs []int)[]int{ys:=append([]int(nil),xs...);for i:=0;i<path;i++{if i%2==0{for j:=range ys{ys[j]+=i+1}}else{for l,r:=0,len(ys)-1;l<r;l,r=l+1,r-1{ys[l],ys[r]=ys[r],ys[l]}}};return ys}
 	inputs:=[][]int{{1,2,3},{2,4,6},{-1,0,2}};ex:=make([]ExamplePair,0,len(inputs));for _,in:=range inputs{ex=append(ex,ExamplePair{mustRaw(in),mustRaw(f(in))})}
 	q:=[]int{r.Intn(7)-3,r.Intn(7)-3,r.Intn(7)-3,r.Intn(7)-3}
