@@ -1,0 +1,33 @@
+name: T2 Hostile Scientific Pipeline
+
+on:
+  push:
+    branches: ["ace-full-system-20260911"]
+  pull_request:
+    branches: ["ace-full-system-20260911"]
+
+permissions:
+  contents: read
+
+jobs:
+  t2-kernel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: false
+      - name: Unit test sealed scientific kernel
+        run: go test ./internal/t2
+      - name: Build T2 execution binary
+        run: go build ./cmd/t2scientific
+      - name: Reject malformed mechanical verdict input
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ./t2scientific finalize --input /dev/null >/tmp/t2.out 2>/tmp/t2.err; then
+            echo "FAIL: malformed input was accepted"
+            exit 1
+          fi
+          test -s /tmp/t2.err

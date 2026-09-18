@@ -1,0 +1,38 @@
+{
+  "protocol_version": "t2-hostile-adjudication/v1",
+  "status": "DRAFT",
+  "study_id": "REPLACE_BEFORE_EXECUTION",
+  "criteria_hash": "REPLACE_AFTER_ALL_FIELDS_ARE_LOCKED",
+  "thresholds": {
+    "alpha": 0.05,
+    "power_target": 0.8,
+    "f0_max_score": 0.0,
+    "delta_C": 0.0,
+    "delta_K": 0.0,
+    "delta_delete": 0.0,
+    "delta_X": 0.0
+  },
+  "generator": {
+    "generator_families": [],
+    "max_ngram_jaccard": 0.0,
+    "ngram_size": 5,
+    "max_constant_latent_fraction": 0.0,
+    "novel_structure_features": []
+  },
+  "statistics": {
+    "outer_simulations": 10000,
+    "permutations_per_simulation": 1000,
+    "analysis_permutations": 100000,
+    "sample_size": 100,
+    "null_std": 1.0,
+    "alt_std": 1.0,
+    "seed": 20260918
+  },
+  "interpolation": {
+    "method": "stepwise_linear",
+    "capability_target": 0.0,
+    "extrapolation_allowed": false
+  },
+  "selection_rule": "REPLACE_BEFORE_EXECUTION",
+  "execution_rules": ["REPLACE_WITH_PREREGISTERED_RULES"]
+}
