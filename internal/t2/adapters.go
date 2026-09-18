@@ -28,7 +28,7 @@ type CostModel struct { TokenWeight float64; CPUTimeMSWeight float64 }
 
 type ImmutableArmConfig struct { Arm Arm; StudyID string; Executable string; ExpectedSHA256 string; Args []string; Tasks []PublicTask; Budget ResourceBudget; CostModel CostModel }
 
-type AdapterEvidence struct { Arm Arm; ExecutableSHA256 string; WorkspaceHash string; StateHash string; Usage ArmUsage; CompositeCost float64; Capability float64; StructuralX float64 }
+type AdapterEvidence struct { Arm Arm; ExecutableSHA256 string; WorkspaceHash string; StateHash string; Usage ArmUsage; CompositeCost float64; Capability float64; StructuralX float64; TaskScores []float64 }
 
 func SHA256File(path string)(string,error){f,err:=os.Open(path);if err!=nil{return "",err};defer f.Close();h:=sha256.New();if _,err:=io.Copy(h,f);err!=nil{return "",err};return hex.EncodeToString(h.Sum(nil)),nil}
 
@@ -57,4 +57,4 @@ func RunImmutableArm(ctx context.Context,cfg ImmutableArmConfig,scored []ScoredT
 
 func writePublicTasks(path string,tasks []PublicTask)error{f,err:=os.OpenFile(path,os.O_WRONLY|os.O_CREATE|os.O_TRUNC,0600);if err!=nil{return err};defer f.Close();e:=json.NewEncoder(f);for _,t:=range tasks{if err:=e.Encode(t);err!=nil{return err}};return nil}
 func writeJSONFile(path string,v any,mode os.FileMode)error{b,err:=json.Marshal(v);if err!=nil{return err};return os.WriteFile(path,b,mode)}
-func scorePredictions(pred []Prediction,scored []ScoredTask)(float64,float64){exp:=map[string]json.RawMessage{};nov:=map[string]bool{};for _,t:=range scored{exp[t.Public.ID]=t.Oracle;nov[t.Public.ID]=t.Public.Novel};got:=map[string]json.RawMessage{};for _,p:=range pred{got[p.TaskID]=p.Answer};correct,novCorrect,novTotal:=0,0,0;for id,want:=range exp{ans,ok:=got[id];if ok&&string(ans)==string(want){correct++};if nov[id]{novTotal++;if ok&&string(ans)==string(want){novCorrect++}}};if len(exp)==0{return 0,0};structural:=0.0;if novTotal>0{structural=float64(novCorrect)/float64(novTotal)};return float64(correct)/float64(len(exp)),structural}
+func scorePredictions(pred []Prediction,scored []ScoredTask)(float64,float64,[]float64){exp:=map[string]json.RawMessage{};nov:=map[string]bool{};for _,t:=range scored{exp[t.Public.ID]=t.Oracle;nov[t.Public.ID]=t.Public.Novel};got:=map[string]json.RawMessage{};for _,p:=range pred{got[p.TaskID]=p.Answer};correct,novCorrect,novTotal:=0,0,0;for id,want:=range exp{ans,ok:=got[id];if ok&&string(ans)==string(want){correct++};if nov[id]{novTotal++;if ok&&string(ans)==string(want){novCorrect++}}};if len(exp)==0{return 0,0,nil};structural:=0.0;if novTotal>0{structural=float64(novCorrect)/float64(novTotal)};scores:=make([]float64,0,len(exp));for id:=range exp{ans,ok:=got[id];if ok&&string(ans)==string(exp[id]){scores=append(scores,1)}else{scores=append(scores,0)}};return float64(correct)/float64(len(exp)),structural,scores}
