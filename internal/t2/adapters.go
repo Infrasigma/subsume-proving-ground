@@ -24,8 +24,6 @@ type ArmUsage struct { TokensIn int64; TokensOut int64; CPUTimeMS int64; WallTim
 type Prediction struct { TaskID string; Answer json.RawMessage }
 type ArmResponse struct { Arm Arm; Predictions []Prediction; Usage ArmUsage; StateHash string }
 
-type CostModel struct { TokenWeight float64; CPUTimeMSWeight float64 }
-
 type ImmutableArmConfig struct { Arm Arm; StudyID string; Executable string; ExpectedSHA256 string; Args []string; Tasks []PublicTask; Budget ResourceBudget; CostModel CostModel }
 
 type AdapterEvidence struct { Arm Arm; ExecutableSHA256 string; WorkspaceHash string; StateHash string; Usage ArmUsage; CompositeCost float64; Capability float64; StructuralX float64; TaskScores []float64 }
