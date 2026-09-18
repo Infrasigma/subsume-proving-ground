@@ -24,7 +24,8 @@ const ProtocolVersion = "t2-hostile-adjudication/v1"
 type Thresholds struct { Alpha, PowerTarget, F0MaxScore, DeltaC, DeltaK, DeltaDelete, DeltaX float64 }
 type GeneratorRules struct { GeneratorFamilies []string; MaxNGramJaccard float64; NGramSize int; MaxConstantLatentFrac float64; NovelStructureFeatures []string; Novelty NoveltyRule }
 type StatisticalPlan struct { OuterSimulations, PermutationsPerSimulation, AnalysisPermutations, SampleSize int; NullStd, AltStd float64; Seed int64 }
-type InterpolationPlan struct { Method string; CapabilityTarget float64; ExtrapolationAllowed bool }\ntype CostModel struct { TokenWeight float64; CPUTimeMSWeight float64 }
+type InterpolationPlan struct { Method string; CapabilityTarget float64; ExtrapolationAllowed bool }
+type CostModel struct { TokenWeight float64; CPUTimeMSWeight float64 }
 type Preregistration struct {
 	ProtocolVersion string
 	Status string
@@ -46,16 +47,19 @@ func (p Preregistration) Validate() error {
 	if !(t.Alpha>0 && t.Alpha<=0.05) || !(t.PowerTarget>=0.80 && t.PowerTarget<1) { return errors.New("invalid alpha/power thresholds") }
 	if t.F0MaxScore<0 || t.DeltaC<=0 || t.DeltaK<=0 || t.DeltaDelete<=0 || t.DeltaX<=0 { return errors.New("F0 threshold and all minimum effects must be concrete positive values") }
 	g:=p.Generator
-	if len(g.GeneratorFamilies)<2 || g.NGramSize<1 || g.MaxNGramJaccard<0 || g.MaxNGramJaccard>=1 || g.MaxConstantLatentFrac<0 || g.MaxConstantLatentFrac>1 || len(g.NovelStructureFeatures)==0 { return errors.New("invalid generator audit preregistration") }\n\tif g.Novelty.ASTDepthMin<1 || g.Novelty.GraphNodeCountMin<1 || g.Novelty.CycleRankMin<1 || g.Novelty.DependencyPathMin<1 { return errors.New("all novelty thresholds must be concrete positive values") }
+	if len(g.GeneratorFamilies)<2 || g.NGramSize<1 || g.MaxNGramJaccard<0 || g.MaxNGramJaccard>=1 || g.MaxConstantLatentFrac<0 || g.MaxConstantLatentFrac>1 || len(g.NovelStructureFeatures)==0 { return errors.New("invalid generator audit preregistration") }
+	if g.Novelty.ASTDepthMin<1 || g.Novelty.GraphNodeCountMin<1 || g.Novelty.CycleRankMin<1 || g.Novelty.DependencyPathMin<1 { return errors.New("all novelty thresholds must be concrete positive values") }
 	s:=p.Statistics
 	if s.OuterSimulations!=10000 || s.PermutationsPerSimulation<100 || s.AnalysisPermutations<1000 || s.SampleSize<4 || s.NullStd<=0 || s.AltStd<=0 { return errors.New("invalid statistical preregistration") }
-	if p.Interpolation.Method!="stepwise_linear" || p.Interpolation.ExtrapolationAllowed { return errors.New("invalid acquisition-cost interpolation rule") }\n\tif p.CostModel.TokenWeight<=0 || p.CostModel.CPUTimeMSWeight<=0 { return errors.New("resource cost weights must be positive") }
+	if p.Interpolation.Method!="stepwise_linear" || p.Interpolation.ExtrapolationAllowed { return errors.New("invalid acquisition-cost interpolation rule") }
+	if p.CostModel.TokenWeight<=0 || p.CostModel.CPUTimeMSWeight<=0 { return errors.New("resource cost weights must be positive") }
 	if p.SelectionRule=="" || len(p.ExecutionRules)==0 { return errors.New("selection/execution rules are required") }
 	if p.CriteriaHash=="" || p.CriteriaHash=="AUTO" || p.CriteriaHash=="UNSEALED" { return errors.New("criteria_hash must be sealed") }
 	return nil
 }
 
-func canonicalJSON(v any) []byte { b,_:=json.Marshal(v); return b }\nfunc criteriaDigest(p Preregistration) string { q:=p; q.CriteriaHash=""; return SHA256Bytes(canonicalJSON(q)) }
+func canonicalJSON(v any) []byte { b,_:=json.Marshal(v); return b }
+func criteriaDigest(p Preregistration) string { q:=p; q.CriteriaHash=""; return SHA256Bytes(canonicalJSON(q)) }
 func SHA256Bytes(b []byte) string { h:=sha256.Sum256(b); return hex.EncodeToString(h[:]) }
 
 func SealPreregistration(p Preregistration)(Preregistration,error){
