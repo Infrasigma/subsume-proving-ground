@@ -1,7 +1,7 @@
 package t2
 
 import (
-	"bytes"
+	"bufio"\n\t"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -148,6 +148,13 @@ func AuditGeneratedPool(tasks []ScoredTask,p Preregistration) error {
 	if err:=AuditGenerator(public,p);err!=nil{return err}
 	for _,t:=range tasks{if p.Generator.Novelty.IsNovel(t.Public.Structure)!=t.Public.Novel{return fmt.Errorf("novelty bit inconsistent for %s",t.Public.ID)}}
 	return nil
+}
+
+func ReadScoredJSONL(path string)([]ScoredTask,error){
+	f,err:=os.Open(path);if err!=nil{return nil,err};defer f.Close()
+	var out []ScoredTask;s:=bufio.NewScanner(f)
+	for s.Scan(){var t ScoredTask;if err:=json.Unmarshal(s.Bytes(),&t);err!=nil{return nil,err};out=append(out,t)}
+	return out,s.Err()
 }
 
 func GenerateAuditPool(plan GeneratorPlan) ([]ScoredTask,error){
