@@ -2,7 +2,7 @@ package t2
 
 import (
 	"bytes"
-	"crypto/ed25519"
+	"crypto/ed25519"\n\t"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
