@@ -22,9 +22,9 @@ import (
 const ProtocolVersion = "t2-hostile-adjudication/v1"
 
 type Thresholds struct { Alpha, PowerTarget, F0MaxScore, DeltaC, DeltaK, DeltaDelete, DeltaX float64 }
-type GeneratorRules struct { GeneratorFamilies []string; MaxNGramJaccard float64; NGramSize int; MaxConstantLatentFrac float64; NovelStructureFeatures []string }
+type GeneratorRules struct { GeneratorFamilies []string; MaxNGramJaccard float64; NGramSize int; MaxConstantLatentFrac float64; NovelStructureFeatures []string; Novelty NoveltyRule }
 type StatisticalPlan struct { OuterSimulations, PermutationsPerSimulation, AnalysisPermutations, SampleSize int; NullStd, AltStd float64; Seed int64 }
-type InterpolationPlan struct { Method string; CapabilityTarget float64; ExtrapolationAllowed bool }
+type InterpolationPlan struct { Method string; CapabilityTarget float64; ExtrapolationAllowed bool }\ntype CostModel struct { TokenWeight float64; CPUTimeMSWeight float64 }
 type Preregistration struct {
 	ProtocolVersion string
 	Status string
@@ -46,10 +46,10 @@ func (p Preregistration) Validate() error {
 	if !(t.Alpha>0 && t.Alpha<=0.05) || !(t.PowerTarget>=0.80 && t.PowerTarget<1) { return errors.New("invalid alpha/power thresholds") }
 	if t.F0MaxScore<0 || t.DeltaC<=0 || t.DeltaK<=0 || t.DeltaDelete<=0 || t.DeltaX<=0 { return errors.New("F0 threshold and all minimum effects must be concrete positive values") }
 	g:=p.Generator
-	if len(g.GeneratorFamilies)<2 || g.NGramSize<1 || g.MaxNGramJaccard<0 || g.MaxNGramJaccard>=1 || g.MaxConstantLatentFrac<0 || g.MaxConstantLatentFrac>1 || len(g.NovelStructureFeatures)==0 { return errors.New("invalid generator audit preregistration") }
+	if len(g.GeneratorFamilies)<2 || g.NGramSize<1 || g.MaxNGramJaccard<0 || g.MaxNGramJaccard>=1 || g.MaxConstantLatentFrac<0 || g.MaxConstantLatentFrac>1 || len(g.NovelStructureFeatures)==0 { return errors.New("invalid generator audit preregistration") }\n\tif g.Novelty.ASTDepthMin<1 || g.Novelty.GraphNodeCountMin<1 || g.Novelty.CycleRankMin<1 || g.Novelty.DependencyPathMin<1 { return errors.New("all novelty thresholds must be concrete positive values") }
 	s:=p.Statistics
 	if s.OuterSimulations!=10000 || s.PermutationsPerSimulation<100 || s.AnalysisPermutations<1000 || s.SampleSize<4 || s.NullStd<=0 || s.AltStd<=0 { return errors.New("invalid statistical preregistration") }
-	if p.Interpolation.Method!="stepwise_linear" || p.Interpolation.ExtrapolationAllowed { return errors.New("invalid acquisition-cost interpolation rule") }
+	if p.Interpolation.Method!="stepwise_linear" || p.Interpolation.ExtrapolationAllowed { return errors.New("invalid acquisition-cost interpolation rule") }\n\tif p.CostModel.TokenWeight<=0 || p.CostModel.CPUTimeMSWeight<=0 { return errors.New("resource cost weights must be positive") }
 	if p.SelectionRule=="" || len(p.ExecutionRules)==0 { return errors.New("selection/execution rules are required") }
 	if p.CriteriaHash=="" || p.CriteriaHash=="AUTO" { return errors.New("criteria_hash must be sealed") }
 	return nil
@@ -137,7 +137,7 @@ func AuditF0(scores AuditScores,maxScore float64)error{
 	return nil
 }
 
-type LockProof struct { StudyID,PreregHash,FreshStateHash,ResourceHash string }
+type LockProof struct { StudyID,PreregHash,FreshStateHash,ResourceHash,Phase2PurgeHash,Nonce string; IssuedAtUnix int64 }
 func(p LockProof)Hash()string{return SHA256Bytes(canonicalJSON(p))}
 type KMSClient interface{ReleaseValidateKey(LockProof)([]byte,error)}
 type LocalKMS struct{Key []byte}
@@ -188,7 +188,7 @@ func FinalizeFromPrereg(p Preregistration, audits map[string]bool, in map[string
 	rules:=[]rule{
 		{"causality_established","ΔC_delete",p.Thresholds.DeltaDelete,1},
 		{"structural_transfer_established","Δ_X",p.Thresholds.DeltaX,1},
-		{"capability_advantage_established","ΔC_MA",p.Thresholds.DeltaC,-1},
+		{"capability_advantage_established","ΔC_MA",p.Thresholds.DeltaC,1},
 		{"cost_advantage_established","ΔK_MA",p.Thresholds.DeltaK,1},
 	}
 	out:=map[string]map[string]any{};all:=true
