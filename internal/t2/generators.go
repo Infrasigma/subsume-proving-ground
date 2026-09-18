@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
+	"crypto/rand"
+	mrand "math/rand"
 	"os"
 	"path/filepath"
 	"sort"
@@ -67,7 +68,7 @@ type TaskGenerator interface {
 type ArithmeticASTGenerator struct{}
 func (ArithmeticASTGenerator) Name() string { return "G1_arithmetic_ast" }
 func (ArithmeticASTGenerator) Generate(seed int64, novel bool) (ScoredTask, error) {
-	r:=rand.New(rand.NewSource(seed)); depth:=2; if novel {depth=3}
+	r:=mrand.New(mrand.NewSource(seed)); depth:=2; if novel {depth=3}
 	a,b,c,d,e:=r.Intn(5)+1,r.Intn(4)+2,r.Intn(3)+1,r.Intn(4)+1,r.Intn(5)-2
 	f:=func(x int)int{v:=x+a;v=v*b+c;if depth>=3{v=v*d+e};return v}
 	inputs:=[]int{seededInt(r),seededInt(r),seededInt(r)}
@@ -116,7 +117,7 @@ func (ListRewriteGenerator) Generate(seed int64, novel bool) (ScoredTask, error)
 	return ScoredTask{Public:pub,Oracle:mustRaw(f(q))},nil
 }
 
-func seededInt(r *rand.Rand) int { return r.Intn(19)-9 }
+func seededInt(r *mrand.Rand) int { return r.Intn(19)-9 }
 func mustRaw(v any) json.RawMessage {b,_:=json.Marshal(v);return b}
 
 type GeneratorPlan struct { Generators []TaskGenerator; NonNovelPerFamily int; NovelPerFamily int; Seed int64; Novelty NoveltyRule }
@@ -162,7 +163,7 @@ func GenerateAndSplit(plan GeneratorPlan,p Preregistration,outDir string)(SplitM
 	if err:=os.MkdirAll(outDir,0700);err!=nil{return SplitManifest{},nil,err}
 	if err:=os.WriteFile(filepath.Join(outDir,"D_discover.jsonl"),db,0600);err!=nil{return SplitManifest{},nil,err}
 	if err:=os.WriteFile(filepath.Join(outDir,"D_select.jsonl"),sb,0600);err!=nil{return SplitManifest{},nil,err}
-	key:=make([]byte,32);if _,err:=rand.Read(rand.Reader,key);err!=nil{return SplitManifest{},nil,err}
+	key:=make([]byte,32);if _,err:=rand.Read(key);err!=nil{return SplitManifest{},nil,err}
 	ct,err:=Encrypt(vb,key,p.StudyID+":D_validate");if err!=nil{return SplitManifest{},nil,err}
 	m:=SplitManifest{ProtocolVersion:ProtocolVersion,PreregHash:p.CriteriaHash,NoveltyFormula:plan.Novelty.Formula(),DiscoverHash:SHA256Bytes(db),SelectHash:SHA256Bytes(sb),ValidatePlainHash:SHA256Bytes(vb),ValidateCipherHash:SHA256Bytes(ct),Counts:map[string]int{"discover":len(d),"select":len(s),"validate":len(v)}}
 	mb,_:=json.MarshalIndent(m,"","  ");if err:=os.WriteFile(filepath.Join(outDir,"SPLIT_MANIFEST.json"),mb,0600);err!=nil{return SplitManifest{},nil,err}
