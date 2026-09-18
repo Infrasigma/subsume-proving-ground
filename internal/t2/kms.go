@@ -20,6 +20,10 @@ import (
 type SignedLockProof struct { LockProof LockProof; PublicKeyB64 string; SignatureB64 string }
 
 func SignLockProof(p LockProof, privateKey ed25519.PrivateKey)(SignedLockProof,error){sig:=ed25519.Sign(privateKey,MustJSON(p));pub:=privateKey.Public().(ed25519.PublicKey);return SignedLockProof{LockProof:p,PublicKeyB64:base64.StdEncoding.EncodeToString(pub),SignatureB64:base64.StdEncoding.EncodeToString(sig)},nil}
+func (p LockProof) Hash() string {
+	return SHA256Bytes(MustJSON(p))
+}
+
 func VerifyLockProof(s SignedLockProof)error{pub,err:=base64.StdEncoding.DecodeString(s.PublicKeyB64);if err!=nil{return err};sig,err:=base64.StdEncoding.DecodeString(s.SignatureB64);if err!=nil{return err};if len(pub)!=ed25519.PublicKeySize||len(sig)!=ed25519.SignatureSize{return errors.New("invalid lock proof size")};if !ed25519.Verify(ed25519.PublicKey(pub),MustJSON(s.LockProof),sig){return errors.New("invalid lock proof signature")};return nil}
 
 func HashDirectory(path string) (string,error) {
