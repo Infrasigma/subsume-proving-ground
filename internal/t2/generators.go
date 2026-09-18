@@ -1,7 +1,8 @@
 package t2
 
 import (
-	"bufio"\n\t"bytes"
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
