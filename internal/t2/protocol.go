@@ -151,16 +151,32 @@ func SignFlipPValue(a,b []float64,permutations int,seed int64)(float64,float64,e
 func randNorm(r *mrand.Rand)float64{u1:=r.Float64();if u1<1e-12{u1=1e-12};u2:=r.Float64();return math.Sqrt(-2*math.Log(u1))*math.Cos(2*math.Pi*u2)}
 
 func SimulateCalibration(p Preregistration)(map[string]float64,error){
-	s:=p.Statistics;r:=mrand.New(mrand.NewSource(s.Seed));nullFP,altPass:=0,0
-	for i:=0;i<s.OuterSimulations;i++{
-		na,nb,aa,ab:=make([]float64,s.SampleSize),make([]float64,s.SampleSize),make([]float64,s.SampleSize),make([]float64,s.SampleSize)
-		for j:=0;j<s.SampleSize;j++{na[j]=randNorm(r)*s.NullStd;nb[j]=randNorm(r)*s.NullStd;aa[j]=randNorm(r)*s.AltStd;ab[j]=aa[j]+p.Thresholds.DeltaC+randNorm(r)*s.AltStd*0.15}
-		_,pn,_:=SignFlipPValue(na,nb,s.PermutationsPerSimulation,r.Int63());_,pa,_:=SignFlipPValue(aa,ab,s.PermutationsPerSimulation,r.Int63())
-		if pn<=p.Thresholds.Alpha{nullFP++};if pa<=p.Thresholds.Alpha{altPass++}
+	s:=p.Statistics
+	effects:=map[string]float64{"delta_C":p.Thresholds.DeltaC,"delta_K":p.Thresholds.DeltaK,"delta_delete":p.Thresholds.DeltaDelete,"delta_X":p.Thresholds.DeltaX}
+	r:=mrand.New(mrand.NewSource(s.Seed))
+	out:=map[string]float64{}
+	for name,effect:=range effects{
+		nullFP,altPass:=0,0
+		for i:=0;i<s.OuterSimulations;i++{
+			na,nb,aa,ab:=make([]float64,s.SampleSize),make([]float64,s.SampleSize),make([]float64,s.SampleSize),make([]float64,s.SampleSize)
+			for j:=0;j<s.SampleSize;j++{
+				na[j]=randNorm(r)*s.NullStd
+				nb[j]=randNorm(r)*s.NullStd
+				aa[j]=randNorm(r)*s.AltStd
+				ab[j]=aa[j]+effect+randNorm(r)*s.AltStd*0.15
+			}
+			_,pn,_:=SignFlipPValue(na,nb,s.PermutationsPerSimulation,r.Int63())
+			_,pa,_:=SignFlipPValue(aa,ab,s.PermutationsPerSimulation,r.Int63())
+			if pn<=p.Thresholds.Alpha{nullFP++}
+			if pa<=p.Thresholds.Alpha{altPass++}
+		}
+		fpr,pow:=float64(nullFP)/float64(s.OuterSimulations),float64(altPass)/float64(s.OuterSimulations)
+		out[name+"_false_positive_rate"]=fpr
+		out[name+"_power"]=pow
+		if fpr>p.Thresholds.Alpha{return out,fmt.Errorf("statistical calibration failed: %s type-I %.6f > %.6f",name,fpr,p.Thresholds.Alpha)}
+		if pow<p.Thresholds.PowerTarget{return out,fmt.Errorf("statistical calibration failed: %s power %.6f < %.6f",name,pow,p.Thresholds.PowerTarget)}
 	}
-	fpr,pow:=float64(nullFP)/float64(s.OuterSimulations),float64(altPass)/float64(s.OuterSimulations)
-	if fpr>p.Thresholds.Alpha||pow<p.Thresholds.PowerTarget{return map[string]float64{"false_positive_rate":fpr,"power":pow},errors.New("statistical calibration failed")}
-	return map[string]float64{"false_positive_rate":fpr,"power":pow},nil
+	return out,nil
 }
 
 type EstimandInput struct { Estimand string; Value float64; PValue float64 }
