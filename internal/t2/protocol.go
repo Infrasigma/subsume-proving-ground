@@ -35,6 +35,7 @@ type Preregistration struct {
 	Generator GeneratorRules
 	Statistics StatisticalPlan
 	Interpolation InterpolationPlan
+	CostModel CostModel
 	SelectionRule string
 	ExecutionRules []string
 }
