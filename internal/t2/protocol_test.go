@@ -27,6 +27,14 @@ func TestSplitIsAuthenticated(t *testing.T){
 }
 
 func TestMechanicalConjunction(t *testing.T){
-	o:=MechanicalOutput(map[string]bool{"null_simulation_calibrated":true},map[string]map[string]any{},T2Conjunction{true,true,true,true})
+	p:=testPrereg()
+	a:=map[string]bool{"null_simulation_calibrated":true,"power_evaluation_passed":true,"F0_integrity_passed":true,"generator_integrity_passed":true}
+	in:=map[string]EstimandInput{
+		"causality_established":{Estimand:"ΔC_delete",Value:1.1,PValue:0.01},
+		"structural_transfer_established":{Estimand:"Δ_X",Value:0.3,PValue:0.01},
+		"capability_advantage_established":{Estimand:"ΔC_MA",Value:-1.1,PValue:0.01},
+		"cost_advantage_established":{Estimand:"ΔK_MA",Value:1.1,PValue:0.01},
+	}
+	o,err:=FinalizeFromPrereg(p,a,in);if err!=nil{t.Fatal(err)}
 	if o["VERDICT"]!="T2_DEMONSTRATED"{t.Fatalf("unexpected verdict %v",o["VERDICT"])}
 }

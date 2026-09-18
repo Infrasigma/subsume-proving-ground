@@ -44,10 +44,20 @@ func seal(args []string){
 	if !*offline {fmt.Println("D_validate key intentionally withheld; production release must come from the remote KMS after Phase-4 lock attestation.")}
 }
 func finalize(args []string){
-	fs:=flag.NewFlagSet("finalize",flag.ExitOnError);in:=fs.String("input","","finalizer input JSON");fs.Parse(args);if *in==""{fail("finalize requires --input")}
+	fs:=flag.NewFlagSet("finalize",flag.ExitOnError)
+	in:=fs.String("input","","finalizer input JSON")
+	fs.Parse(args)
+	if *in==""{fail("finalize requires --input")}
 	b,err:=os.ReadFile(*in);if err!=nil{fail(err.Error())}
-	var x struct{Audits map[string]bool;Conjunction t2.T2Conjunction;Values map[string]map[string]any}
-	if err:=json.Unmarshal(b,&x);err!=nil{fail(err.Error())};for k,v:=range x.Audits{if !v{fail("pre-execution audit failed: "+k)}}
-	o:=t2.MechanicalOutput(x.Audits,x.Values,x.Conjunction);os.Stdout.Write(t2.MustJSON(o));os.Stdout.Write([]byte("\\n"))
+	var x struct{
+		Prereg string
+		Audits map[string]bool
+		Estimands map[string]t2.EstimandInput
+	}
+	if err:=json.Unmarshal(b,&x);err!=nil{fail(err.Error())}
+	if x.Prereg==""{fail("finalizer requires locked prereg path")}
+	p,_:=load(x.Prereg)
+	o,err:=t2.FinalizeFromPrereg(p,x.Audits,x.Estimands);if err!=nil{fail(err.Error())}
+	os.Stdout.Write(t2.MustJSON(o));os.Stdout.Write([]byte("\n"))
 }
 func fail(s string){fmt.Fprintln(os.Stderr,s);os.Exit(1)}

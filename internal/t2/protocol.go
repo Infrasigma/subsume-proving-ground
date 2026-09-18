@@ -163,6 +163,32 @@ func SimulateCalibration(p Preregistration)(map[string]float64,error){
 	return map[string]float64{"false_positive_rate":fpr,"power":pow},nil
 }
 
+type EstimandInput struct { Estimand string; Value float64; PValue float64 }
+
+func FinalizeFromPrereg(p Preregistration, audits map[string]bool, in map[string]EstimandInput)(map[string]any,error){
+	required:=[]string{"null_simulation_calibrated","power_evaluation_passed","F0_integrity_passed","generator_integrity_passed"}
+	for _,k:=range required{if !audits[k]{return nil,fmt.Errorf("pre-execution audit failed: %s",k)}}
+	type rule struct{name,estimand string;effect float64;direction int}
+	rules:=[]rule{
+		{"causality_established","ΔC_delete",p.Thresholds.DeltaDelete,1},
+		{"structural_transfer_established","Δ_X",p.Thresholds.DeltaX,1},
+		{"capability_advantage_established","ΔC_MA",p.Thresholds.DeltaC,-1},
+		{"cost_advantage_established","ΔK_MA",p.Thresholds.DeltaK,1},
+	}
+	out:=map[string]map[string]any{};all:=true
+	for _,r:=range rules{
+		x,ok:=in[r.name];if !ok{return nil,fmt.Errorf("missing estimand %s",r.name)}
+		if x.Estimand!=r.estimand{return nil,fmt.Errorf("estimand label mismatch for %s",r.name)}
+		if math.IsNaN(x.Value)||math.IsInf(x.Value,0)||math.IsNaN(x.PValue)||math.IsInf(x.PValue,0)||x.PValue<0||x.PValue>1{return nil,fmt.Errorf("invalid statistical result for %s",r.name)}
+		passed:=x.PValue<=p.Thresholds.Alpha
+		if r.direction>0{passed=passed&&x.Value>=r.effect}else{passed=passed&&x.Value<=-r.effect}
+		out[r.name]=map[string]any{"estimand":r.estimand,"value":x.Value,"p_value":x.PValue,"passed_threshold":passed}
+		all=all&&passed
+	}
+	verdict:="MECHANICAL_EVALUATION_PENDING";if all{verdict="T2_DEMONSTRATED"}
+	return map[string]any{"PRE_EXECUTION_AUDITS":audits,"T2_CAUSAL_CONJUNCTION":out,"VERDICT":verdict},nil
+}
+
 type T2Conjunction struct { Causality,StructuralTransfer,CapabilityAdvantage,CostAdvantage bool }
 func MechanicalOutput(audits map[string]bool,values map[string]map[string]any,c T2Conjunction)map[string]any{
 	all:=c.Causality&&c.StructuralTransfer&&c.CapabilityAdvantage&&c.CostAdvantage;v:="MECHANICAL_EVALUATION_PENDING";if all{v="T2_DEMONSTRATED"}
