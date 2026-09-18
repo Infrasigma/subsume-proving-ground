@@ -11,8 +11,8 @@ import (
 )
 
 func main(){
-	if len(os.Args)<2{fail("commands: preregister | preflight | calibrate | generate-live | audit-f0 | seal | finalize")}
-	switch os.Args[1]{case "preregister":preregister(os.Args[2:]);case "preflight":preflight(os.Args[2:]);case "calibrate":calibrate(os.Args[2:]);case "generate-live":generateLive(os.Args[2:]);case "audit-f0":auditF0(os.Args[2:]);case "seal":seal(os.Args[2:]);case "finalize":finalize(os.Args[2:]);default:fail("unknown command")}
+	if len(os.Args)<2{fail("commands: preregister | preflight | calibrate | generate-audit | generate-live | run-f0 | audit-f0 | seal | finalize")}
+	switch os.Args[1]{case "preregister":preregister(os.Args[2:]);case "preflight":preflight(os.Args[2:]);case "calibrate":calibrate(os.Args[2:]);case "generate-audit":generateAudit(os.Args[2:]);case "generate-live":generateLive(os.Args[2:]);case "run-f0":runF0(os.Args[2:]);case "audit-f0":auditF0(os.Args[2:]);case "seal":seal(os.Args[2:]);case "finalize":finalize(os.Args[2:]);default:fail("unknown command")}
 }
 func load(path string)(t2.Preregistration,string){p,h,err:=t2.LoadPreregistration(path);if err!=nil{fail(err.Error())};return p,h}
 
@@ -25,11 +25,27 @@ func preregister(args []string){
 	j:=t2.MustJSON(p);if err:=os.WriteFile(*out,j,0600);err!=nil{fail(err.Error())};fmt.Println(t2.SHA256Bytes(j))
 }
 
+func runF0(args []string){
+	fs:=flag.NewFlagSet("run-f0",flag.ExitOnError);prereg:=fs.String("prereg","","locked prereg JSON");scoredPath:=fs.String("scored","","D_audit_scored.jsonl");exe:=fs.String("executable","","immutable F0 executable");sha:=fs.String("sha256","","expected executable SHA256");study:=fs.String("study","","study ID");fs.Parse(args)
+	if *prereg==""||*scoredPath==""||*exe==""||*sha==""{fail("run-f0 requires --prereg --scored --executable --sha256")}
+	p,_:=load(*prereg);scored,err:=t2.ReadScoredJSONL(*scoredPath);if err!=nil{fail(err.Error())};public:=make([]t2.PublicTask,0,len(scored));for _,x:=range scored{public=append(public,x.Public)}
+	if *study==""{*study=p.StudyID}
+	ev,err:=t2.RunImmutableArm(context.Background(),t2.ImmutableArmConfig{Arm:t2.ArmF0,StudyID:*study,Executable:*exe,ExpectedSHA256:*sha,Tasks:public,Budget:t2.ResourceBudget{TokenBudget:1<<60,CPUTimeMS:1<<60,WallTimeMS:1<<60},CostModel:p.CostModel},scored);if err!=nil{fail(err.Error())}
+	if err:=t2.AuditF0(t2.AuditScores{Scores:ev.TaskScores},p.Thresholds.F0MaxScore);err!=nil{fail(err.Error())}
+	fmt.Println(string(t2.MustJSON(map[string]any{"f0_integrity_passed":true,"evidence":ev})))
+}
+
 func auditF0(args []string){
 	fs:=flag.NewFlagSet("audit-f0",flag.ExitOnError);in:=fs.String("scores","","D_audit F0 score JSON");prereg:=fs.String("prereg","","locked prereg JSON");fs.Parse(args)
 	if *in==""||*prereg==""{fail("audit-f0 requires --scores --prereg")}
 	p,_:=load(*prereg);b,err:=os.ReadFile(*in);if err!=nil{fail(err.Error())};var s t2.AuditScores;if err:=json.Unmarshal(b,&s);err!=nil{fail(err.Error())}
 	if err:=t2.AuditF0(s,p.Thresholds.F0MaxScore);err!=nil{fail(err.Error())};fmt.Println("{\"f0_integrity_passed\":true}")
+}
+
+func generateAudit(args []string){
+	fs:=flag.NewFlagSet("generate-audit",flag.ExitOnError);prereg:=fs.String("prereg","","locked prereg JSON");out:=fs.String("out","","audit directory");seed:=fs.Int64("seed",20260918,"independent audit seed");fs.Parse(args)
+	if *prereg==""||*out==""{fail("generate-audit requires --prereg --out")}
+	p,_:=load(*prereg);plan:=t2.DefaultGeneratorPlan(*seed);plan.Novelty=p.Generator.Novelty;tasks,err:=t2.GenerateAuditPool(plan);if err!=nil{fail(err.Error())};if err:=t2.AuditGeneratedPool(tasks,p);err!=nil{fail(err.Error())};if err:=t2.WriteAuditPool(tasks,*out);err!=nil{fail(err.Error())};fmt.Println(t2.SHA256Bytes(t2.MustJSON(tasks)))
 }
 
 func generateLive(args []string){
