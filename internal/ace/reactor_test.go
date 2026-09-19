@@ -128,6 +128,7 @@ func TestContinuousReactorContinuesAfterSearchFailure(t *testing.T) {
 	bad.MaxSearchDepth = 1
 	bad.MinProcedureSteps = 1
 	bad.AdmitAsAbstraction = false
+	bad.RequireAbstractionID = "does-not-exist"
 	next := DefaultT2ReactorTasks()[0]
 	results, err := (&ContinuousReactor{
 		Runtime:             reactor.Runtime,
