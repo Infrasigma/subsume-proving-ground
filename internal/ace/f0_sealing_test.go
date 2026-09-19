@@ -1,6 +1,7 @@
 package ace
 
 import (
+	"encoding/hex"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
