@@ -132,7 +132,7 @@ func csiMatches(e UExpr, xs,ys []int) bool {if len(xs)!=len(ys){return false};fo
 // TestCapabilitySubstrateInductionBoundary freezes a finite complete baseline
 // and then gives CSI only generic graph transformations over that frontier.
 func TestCapabilitySubstrateInductionBoundary(t *testing.T) {
-	root:=csiRoot(t); head:=csiGit(t,"rev-parse","HEAD"); parents:=strings.Fields(csiGit(t,"show","-s","--format=%P","HEAD")); if len(parents)==0{t.Fatal("provenance parent unavailable")}; parent:=parents[0]
+	root:=csiRoot(t); head:=csiGit(t,"rev-parse","HEAD"); parent:=testProvenanceParent(t)
 	if s:=os.Getenv("GITHUB_SHA"); s!="" && s!=head {t.Fatalf("provenance mismatch: env=%s head=%s",s,head)}
 	budget:=map[string]int{"candidate_count":186,"graph_nodes":1,"expression_depth":1,"execution_steps":1,"recursion_depth":1,"memory_units":16,"search_expansions":24}
 	language:="existing executable acquisition substrate: one assign y:=E; E is expressionFrontier([x],1), i.e. x | const(-2..2) | E+E | E-E | E*E | E< E | E==E; no loops, no branches, one execution step; exact depth-1 frontier enumerated structurally."
