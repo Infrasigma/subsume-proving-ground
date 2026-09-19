@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Infrasigma/subsume-proving-ground/internal/protocol"
 )
 
 type SignedLockProof struct { LockProof LockProof; PublicKeyB64 string; SignatureB64 string }
@@ -63,6 +65,24 @@ type kmsReleaseResponse struct { KeyB64 string }
 func NewRemoteKMSFromEnv()(RemoteKMS,error){url:=os.Getenv("T2_KMS_URL");token:=os.Getenv("T2_KMS_BEARER_TOKEN");if url==""||token==""{return RemoteKMS{},errors.New("T2_KMS_URL and T2_KMS_BEARER_TOKEN are required")};if !strings.HasPrefix(url,"https://"){return RemoteKMS{},errors.New("T2_KMS_URL must use HTTPS")};tlsCfg:=&tls.Config{MinVersion:tls.VersionTLS13};if ca:=os.Getenv("T2_KMS_CA");ca!=""{b,err:=os.ReadFile(ca);if err!=nil{return RemoteKMS{},err};roots:=x509.NewCertPool();if !roots.AppendCertsFromPEM(b){return RemoteKMS{},errors.New("invalid KMS CA")};tlsCfg.RootCAs=roots};if cert,key:=os.Getenv("T2_KMS_CLIENT_CERT"),os.Getenv("T2_KMS_CLIENT_KEY");cert!=""&&key!=""{pair,err:=tls.LoadX509KeyPair(cert,key);if err!=nil{return RemoteKMS{},err};tlsCfg.Certificates=[]tls.Certificate{pair}};return RemoteKMS{BaseURL:strings.TrimRight(url,"/"),BearerToken:token,Client:&http.Client{Transport:&http.Transport{TLSClientConfig:tlsCfg},Timeout:20*time.Second}},nil}
 
 func(k RemoteKMS) StoreValidateKey(studyID,hash string,key []byte)error{if len(key)!=32{return errors.New("AES-256 key required")};return k.post("/v1/t2/keys",kmsStoreRequest{StudyID:studyID,ValidateCipherHash:hash,KeyB64:base64.StdEncoding.EncodeToString(key)},nil)}
+
+
+// SignAbstractionHash asks the configured remote KMS to sign the canonical abstraction artifact hash.
+func (k RemoteKMS) SignAbstractionHash(ctx context.Context, artifactHash, signerID string) (protocol.KMSSignedArtifact, error) {
+	if artifactHash == "" || signerID == "" { return protocol.KMSSignedArtifact{}, errors.New("artifact hash and signer ID are required") }
+	var out protocol.KMSSignedArtifact
+	payload := struct { ArtifactHash string; SignerID string }{artifactHash, signerID}
+	if err := k.postContext(ctx, "/v1/t2/abstractions/sign", payload, &out); err != nil { return protocol.KMSSignedArtifact{}, err }
+	if out.ArtifactHash != artifactHash || out.SignerID != signerID { return protocol.KMSSignedArtifact{}, errors.New("KMS returned mismatched abstraction signer response") }
+	return out, nil
+}
+
+func VerifyAbstractionSignature(s protocol.KMSSignedArtifact, trustedPublicKeyB64 string) error {
+	return protocol.VerifyKMSSignedArtifact(s, trustedPublicKeyB64)
+}
+
 func(k RemoteKMS) ReleaseValidateKey(s SignedLockProof,hash string)([]byte,error){if err:=VerifyLockProof(s);err!=nil{return nil,err};var out kmsReleaseResponse;if err:=k.post("/v1/t2/release",kmsReleaseRequest{Signed:s,ValidateCipherHash:hash},&out);err!=nil{return nil,err};key,err:=base64.StdEncoding.DecodeString(out.KeyB64);if err!=nil{return nil,err};if len(key)!=32{return nil,errors.New("KMS returned invalid key")};return key,nil}
 
-func(k RemoteKMS) post(path string,payload any,out any)error{if k.Client==nil{return errors.New("nil KMS client")};b,err:=json.Marshal(payload);if err!=nil{return err};req,err:=http.NewRequest(http.MethodPost,k.BaseURL+path,bytes.NewReader(b));if err!=nil{return err};req.Header.Set("Content-Type","application/json");req.Header.Set("Authorization","Bearer "+k.BearerToken);resp,err:=k.Client.Do(req);if err!=nil{return err};defer resp.Body.Close();if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("remote KMS HTTP status %d",resp.StatusCode)};if out!=nil{return json.NewDecoder(resp.Body).Decode(out)};return nil}
+func(k RemoteKMS) post(path string,payload any,out any)error{return k.postContext(context.Background(),path,payload,out)}
+
+func(k RemoteKMS) postContext(ctx context.Context,path string,payload any,out any)error{if k.Client==nil{return errors.New("nil KMS client")};b,err:=json.Marshal(payload);if err!=nil{return err};req,err:=http.NewRequestWithContext(ctx,http.MethodPost,k.BaseURL+path,bytes.NewReader(b));if err!=nil{return err};req.Header.Set("Content-Type","application/json");req.Header.Set("Authorization","Bearer "+k.BearerToken);resp,err:=k.Client.Do(req);if err!=nil{return err};defer resp.Body.Close();if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("remote KMS HTTP status %d",resp.StatusCode)};if out!=nil{return json.NewDecoder(resp.Body).Decode(out)};return nil}
