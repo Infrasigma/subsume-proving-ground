@@ -44,6 +44,7 @@ func newReactorTestFixture(t *testing.T) (*ContinuousReactor, *ledger.Ledger, st
 		PersistentLibrary:   persistent,
 		TrustedSignerID:     signerID,
 		TrustedPublicKeyB64: trusted,
+		Verifier:            DefaultT2ReactorVerifier(),
 	}
 	return reactor, store, trusted
 }
@@ -137,6 +138,7 @@ func TestContinuousReactorContinuesAfterSearchFailure(t *testing.T) {
 		PersistentLibrary:   reactor.PersistentLibrary,
 		TrustedSignerID:     reactor.TrustedSignerID,
 		TrustedPublicKeyB64: trusted,
+		Verifier:            DefaultT2ReactorVerifier(),
 	}).Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
