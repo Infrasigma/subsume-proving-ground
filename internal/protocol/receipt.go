@@ -104,15 +104,15 @@ func VerifyKMSSignedArtifact(s KMSSignedArtifact, trustedPublicKeyB64 string) er
 }
 
 func AbstractionAdmissionHash(r AbstractionAdmissionReceipt) (string, error) {
-	unsigned := struct {
-		ArtifactHash string `json:"artifact_hash"`
-		SignerID string `json:"signer_id"`
-		PublicKeyB64 string `json:"public_key_b64"`
-		SignatureB64 string `json:"signature_b64"`
-		LedgerAdmissionRef string `json:"ledger_admission_ref"`
-		PreviousAdmissionHash string `json:"previous_admission_hash"`
-		CreatedAtUnix int64 `json:"created_at_unix"`
-	}{r.ArtifactHash,r.SignerID,r.PublicKeyB64,r.SignatureB64,r.LedgerAdmissionRef,r.PreviousAdmissionHash,r.CreatedAtUnix}
+	unsigned := map[string]any{
+		"artifact_hash": r.ArtifactHash,
+		"signer_id": r.SignerID,
+		"public_key_b64": r.PublicKeyB64,
+		"signature_b64": r.SignatureB64,
+		"ledger_admission_ref": r.LedgerAdmissionRef,
+		"previous_admission_hash": r.PreviousAdmissionHash,
+		"created_at_unix": r.CreatedAtUnix,
+	}
 	canonical, err := c14n.Canonicalize(unsigned)
 	if err != nil { return "", err }
 	digest := PayloadHash(canonical)
