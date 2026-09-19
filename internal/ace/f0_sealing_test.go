@@ -47,7 +47,8 @@ func testAdmitAbstraction(t *testing.T, a AcquiredAbstraction) AcquiredAbstracti
 	_ = pub
 	hash, _, err := a.canonicalArtifact()
 	if err != nil { t.Fatal(err) }
-	signed, err := protocol.SignAbstractionHash(hash, "test-kms", priv)
+	signerID := "test-kms-" + hex.EncodeToString(hash[:4])
+	signed, err := protocol.SignAbstractionHash(hash, signerID, priv)
 	if err != nil { t.Fatal(err) }
 	store, err := ledger.Open(t.TempDir() + "/admission.db")
 	if err != nil { t.Fatal(err) }
