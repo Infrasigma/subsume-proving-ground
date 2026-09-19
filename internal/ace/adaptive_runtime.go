@@ -36,6 +36,7 @@ type AdaptiveAcquisitionRuntime struct {
 	AbstractionKMS      AbstractionKMS
 	AdmissionLedger     AbstractionAdmissionLedger
 	KMSSignerID         string
+	TrustedKMSPublicKeyB64 string
 }
 
 type AdaptiveAcquisitionResult struct { Method AcquisitionMethodArtifact; Diagnosis BottleneckDiagnosis; Evaluations []MethodEvaluation; Future CapabilityRecord; FutureCost ResourceVector; Trace []string }
@@ -404,6 +405,9 @@ func (r *AdaptiveAcquisitionRuntime) admitAbstraction(ctx context.Context, a Acq
 	if err != nil { return AcquiredAbstraction{}, fmt.Errorf("KMS abstraction signing failed: %w", err) }
 	if signed.ArtifactHash != artifactHash || signed.SignerID != r.KMSSignerID || signed.PublicKeyB64 == "" {
 		return AcquiredAbstraction{}, errors.New("KMS returned an invalid abstraction seal")
+	}
+	if r.TrustedKMSPublicKeyB64 != "" && signed.PublicKeyB64 != r.TrustedKMSPublicKeyB64 {
+		return AcquiredAbstraction{}, errors.New("KMS returned a public key outside the configured trust root")
 	}
 	receipt, err := r.AdmissionLedger.AppendAbstractionAdmission(ctx, protocol.AbstractionAdmissionReceipt{KMSSignedArtifact:signed})
 	if err != nil { return AcquiredAbstraction{}, fmt.Errorf("durable abstraction admission failed: %w", err) }
