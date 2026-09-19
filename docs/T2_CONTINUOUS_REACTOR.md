@@ -12,7 +12,7 @@ Each loop iteration:
 4. Recompute the artifact hash and verify the KMS Ed25519 admission receipt.
 5. Pull the next task from the queue.
 6. Run library-aware parameterized mechanism search over the existing acquisition-procedure substrate.
-7. Verify both public examples and hidden examples, including comparison with the independent reference interpreter.
+7. Verify candidates against evaluator-owned holdout fixtures, including comparison with the independent reference interpreter.
 8. When a new abstraction is promoted, send it through the existing F0 admission choke point: KMS signature, durable SQLite admission, receipt verification, then installation.
 9. Persist the expanded abstraction library.
 10. Continue with the next task using the expanded in-memory library.
@@ -25,6 +25,8 @@ The default queue contains two tasks:
 
 - 01-sequence-monotonic-normalization: normalize descending candidate streams into ascending streams and admit the discovered procedure.
 - 02-matrix-row-major-reversal: reverse flattened 2x2 row-major streams while requiring the latest admitted abstraction.
+
+Holdout examples are owned by the verifier, not serialized into the task queue. The search process receives only training examples.
 
 These are deliberate probes against the current ACE substrate. The universal execution/search representation is an ordered stream of ArchitectureCandidate values; it does not yet implement a typed sequence or matrix value system. Therefore these tasks demonstrate endogenous operator reuse and cross-task transfer in the existing substrate, not a general-purpose monotonicity classifier or a general matrix reasoning engine.
 
@@ -63,7 +65,7 @@ Queue files are atomically moved to processing/, then to done/ or failed/.
 
 ## CI evidence
 
-The headless test TestContinuousReactorCompoundsAcrossTasks proves, using a real SQLite ledger and a real Ed25519 signing primitive:
+The headless test TestContinuousReactorCompoundsAcrossTasks proves, using a real SQLite ledger, a real Ed25519 signing primitive, and evaluator-owned holdouts:
 
 - Task 1 discovers and admits a new abstraction.
 - The admission receipt is durably retrievable from SQLite.
