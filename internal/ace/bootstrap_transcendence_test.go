@@ -232,7 +232,7 @@ func TestBootstrapExpansionRecursiveLibraryRestartAndAblation(t *testing.T) {
 	if !reflect.DeepEqual(mechanismOrder(got), mechanismOrder(ref)) {
 		t.Fatalf("independent verifier disagrees on recursive abstraction: got=%v ref=%v", mechanismOrder(got), mechanismOrder(ref))
 	}
-	withoutL1 := &AbstractionLibrary{Version: 1, Abstractions: []AcquiredAbstraction{l2}}
+	withoutL1 := &AbstractionLibrary{Version: 1, Abstractions: []AcquiredAbstraction{l2}, TrustedSigners: map[string]string{l2.KMSSignature.SignerID: l2.KMSSignature.PublicKeyB64}}
 	if _, err := ExecuteAcquiredAbstraction(l2, stream, withoutL1); err == nil {
 		t.Fatal("L2 unexpectedly executed after causal removal of dependency L1")
 	}
