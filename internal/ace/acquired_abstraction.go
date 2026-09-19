@@ -1,6 +1,7 @@
 package ace
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -68,7 +69,13 @@ type canonicalAbstractionArtifact struct {
 
 func (a AcquiredAbstraction) canonicalArtifact() (string, []byte, error) {
 	v := canonicalAbstractionArtifact{a.ID,a.Name,a.Procedure,a.Contract,append([]string(nil),a.Dependencies...),append([]AbstractionEvidence(nil),a.Evidence...),append([]ResourceVector(nil),a.CostHistory...),a.Verification,a.Provenance}
-	canonical, err := c14n.Canonicalize(v)
+	encoded, err := json.Marshal(v)
+	if err != nil { return "", nil, err }
+	dec := json.NewDecoder(bytes.NewReader(encoded))
+	dec.UseNumber()
+	var value any
+	if err := dec.Decode(&value); err != nil { return "", nil, err }
+	canonical, err := c14n.Canonicalize(value)
 	if err != nil { return "", nil, err }
 	digest := sha256.Sum256(canonical)
 	return hex.EncodeToString(digest[:]), canonical, nil
