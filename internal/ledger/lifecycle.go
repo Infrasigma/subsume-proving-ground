@@ -1,8 +1,9 @@
 package ledger
 
 import (
-	"database/sql"
 	"context"
+	"database/sql"
+	"errors"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
