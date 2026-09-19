@@ -5,7 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/Infrasigma/subsume-proving-ground/internal/protocol"
 )
+
+type AbstractionKMS interface {
+	SignAbstractionHash(context.Context, string, string) (protocol.KMSSignedArtifact, error)
+}
+
+type AbstractionAdmissionLedger interface {
+	AppendAbstractionAdmission(context.Context, protocol.AbstractionAdmissionReceipt) (protocol.AbstractionAdmissionReceipt, error)
+}
 
 type AdaptiveAcquisitionRuntime struct {
 	Diagnostics *DiagnosticLog
@@ -20,6 +30,12 @@ type AdaptiveAcquisitionRuntime struct {
 	// T2 recursion is bounded and deadline-controlled. Zero values use safe defaults.
 	MaxCompoundingIterations int
 	CompoundingTimeout       time.Duration
+
+	// F0 admission plane. Both dependencies are mandatory whenever a newly
+	// promoted abstraction is admitted; absence is fail-closed.
+	AbstractionKMS      AbstractionKMS
+	AdmissionLedger     AbstractionAdmissionLedger
+	KMSSignerID         string
 }
 
 type AdaptiveAcquisitionResult struct { Method AcquisitionMethodArtifact; Diagnosis BottleneckDiagnosis; Evaluations []MethodEvaluation; Future CapabilityRecord; FutureCost ResourceVector; Trace []string }
@@ -415,6 +431,35 @@ func (r *AdaptiveAcquisitionRuntime) promotePartialProcedure(ctx context.Context
 	verified, err := VerifyAcquiredAbstractionWithDiagnostics(proposal, &r.Abstractions, probe, r.Diagnostics)
 	if err != nil {
 		return AcquiredAbstraction{}, err
+	}
+	if r.AbstractionKMS == nil || r.AdmissionLedger == nil || r.KMSSignerID == "" {
+		return AcquiredAbstraction{}, errors.New("F0 abstraction admission requires KMS, admission ledger, and signer identity")
+	}
+	artifactHash, _, err := verified.canonicalArtifact()
+	if err != nil {
+		return AcquiredAbstraction{}, fmt.Errorf("canonicalize promoted abstraction: %w", err)
+	}
+	signed, err := r.AbstractionKMS.SignAbstractionHash(ctx, artifactHash, r.KMSSignerID)
+	if err != nil {
+		return AcquiredAbstraction{}, fmt.Errorf("KMS abstraction signing failed: %w", err)
+	}
+	if signed.ArtifactHash != artifactHash || signed.SignerID != r.KMSSignerID {
+		return AcquiredAbstraction{}, errors.New("KMS returned an invalid abstraction seal")
+	}
+	trustedKey := signed.PublicKeyB64
+	receipt, err := r.AdmissionLedger.AppendAbstractionAdmission(ctx, protocol.AbstractionAdmissionReceipt{KMSSignedArtifact:signed})
+	if err != nil {
+		return AcquiredAbstraction{}, fmt.Errorf("durable abstraction admission failed: %w", err)
+	}
+	verified.ArtifactHash = artifactHash
+	verified.KMSSignature = receipt.KMSSignedArtifact
+	verified.LedgerAdmissionRef = receipt.LedgerAdmissionRef
+	verified.LedgerAdmissionHash = receipt.LedgerAdmissionHash
+	verified.LedgerPreviousAdmissionHash = receipt.PreviousAdmissionHash
+	verified.LedgerCreatedAtUnix = receipt.CreatedAtUnix
+	r.Abstractions.ConfigureTrustedSigner(receipt.SignerID, trustedKey)
+	if err := verified.VerifyAdmission(trustedKey); err != nil {
+		return AcquiredAbstraction{}, fmt.Errorf("post-ledger admission receipt verification failed: %w", err)
 	}
 	if err := r.Abstractions.Install(verified); err != nil {
 		return AcquiredAbstraction{}, err
