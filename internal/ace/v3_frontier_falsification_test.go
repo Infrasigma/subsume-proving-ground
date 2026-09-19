@@ -9,7 +9,7 @@ type vfReport struct{Head,Parent,Target string;GitStatus,ExperimentCommit,Runtim
 func vfRuntimeProvenance(t *testing.T) (head,parent,status,workflow string,match bool) {
  run:=func(args ...string)string{cmd:=exec.Command("git",args...);b,e:=cmd.Output();if e!=nil{t.Fatalf("runtime provenance unavailable: git %s: %v",strings.Join(args," "),e)};return strings.TrimSpace(string(b))}
  head=run("rev-parse","HEAD")
- parent=run("rev-parse","HEAD^")
+ parentFields:=strings.Fields(run("show","-s","--format=%P","HEAD")); if len(parentFields)==0{t.Fatal("runtime provenance unavailable: empty parent")}; parent=parentFields[0]
  cmd:=exec.Command("git","status","--porcelain");b,e:=cmd.Output();if e!=nil{t.Fatalf("runtime provenance unavailable: git status: %v",e)};status=string(b)
  workflow=os.Getenv("GITHUB_RUN_ID")
  expected:=os.Getenv("GITHUB_SHA")
