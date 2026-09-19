@@ -1,6 +1,7 @@
 package t2
 
 import (
+	"context"
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -71,7 +72,7 @@ func(k RemoteKMS) StoreValidateKey(studyID,hash string,key []byte)error{if len(k
 func (k RemoteKMS) SignAbstractionHash(ctx context.Context, artifactHash, signerID string) (protocol.KMSSignedArtifact, error) {
 	if artifactHash == "" || signerID == "" { return protocol.KMSSignedArtifact{}, errors.New("artifact hash and signer ID are required") }
 	var out protocol.KMSSignedArtifact
-	payload := struct { ArtifactHash string; SignerID string }{artifactHash, signerID}
+	payload := struct { ArtifactHash string `json:"artifact_hash"`; SignerID string `json:"signer_id"` }{artifactHash, signerID}
 	if err := k.postContext(ctx, "/v1/t2/abstractions/sign", payload, &out); err != nil { return protocol.KMSSignedArtifact{}, err }
 	if out.ArtifactHash != artifactHash || out.SignerID != signerID { return protocol.KMSSignedArtifact{}, errors.New("KMS returned mismatched abstraction signer response") }
 	return out, nil
