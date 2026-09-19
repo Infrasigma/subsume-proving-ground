@@ -113,12 +113,10 @@ func AbstractionAdmissionHash(r AbstractionAdmissionReceipt) (string, error) {
 		PreviousAdmissionHash string `json:"previous_admission_hash"`
 		CreatedAtUnix int64 `json:"created_at_unix"`
 	}{r.ArtifactHash,r.SignerID,r.PublicKeyB64,r.SignatureB64,r.LedgerAdmissionRef,r.PreviousAdmissionHash,r.CreatedAtUnix}
-	b, err := json.Marshal(unsigned)
-	if err != nil { return "", err }
 	canonical, err := c14n.Canonicalize(unsigned)
 	if err != nil { return "", err }
-	_ = b
-	return hex.EncodeToString(PayloadHash(canonical)[:]), nil
+	digest := PayloadHash(canonical)
+	return hex.EncodeToString(digest[:]), nil
 }
 
 func VerifyAbstractionAdmissionReceipt(r AbstractionAdmissionReceipt, trustedPublicKeyB64 string) error {
