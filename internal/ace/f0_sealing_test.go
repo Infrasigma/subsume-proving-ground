@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"fmt"
 	"strings"
 	"testing"
 	
@@ -60,4 +61,33 @@ func testAdmitAbstraction(t *testing.T, a AcquiredAbstraction) AcquiredAbstracti
 	a.LedgerPreviousAdmissionHash = receipt.PreviousAdmissionHash
 	a.LedgerCreatedAtUnix = receipt.CreatedAtUnix
 	return a
+}
+
+
+type testAbstractionKMS struct { signerID string; privateKey ed25519.PrivateKey }
+
+func (k testAbstractionKMS) SignAbstractionHash(ctx context.Context, artifactHash, signerID string) (protocol.KMSSignedArtifact, error) {
+	if signerID != k.signerID { return protocol.KMSSignedArtifact{}, fmt.Errorf("unexpected test signer %q", signerID) }
+	return protocol.SignAbstractionHash(artifactHash, signerID, k.privateKey)
+}
+
+type testAdmissionLedger struct { store *ledger.Ledger }
+
+func (l *testAdmissionLedger) AppendAbstractionAdmission(ctx context.Context, r protocol.AbstractionAdmissionReceipt) (protocol.AbstractionAdmissionReceipt, error) {
+	return l.store.AppendAbstractionAdmission(ctx, r)
+}
+
+func newF0TestRuntime(t *testing.T) AdaptiveAcquisitionRuntime {
+	t.Helper()
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil { t.Fatal(err) }
+	store, err := ledger.Open(t.TempDir() + "/f0-admissions.db")
+	if err != nil { t.Fatal(err) }
+	t.Cleanup(func(){ _ = store.Close() })
+	const signerID = "test-runtime-kms"
+	return AdaptiveAcquisitionRuntime{
+		AbstractionKMS: testAbstractionKMS{signerID: signerID, privateKey: priv},
+		AdmissionLedger: &testAdmissionLedger{store: store},
+		KMSSignerID: signerID,
+	}
 }
