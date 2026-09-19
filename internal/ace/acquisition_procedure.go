@@ -157,6 +157,10 @@ func executeSearchProcedureWithLibraryState(p AcquisitionProcedure, cs []Archite
 			if !ok {
 				return nil, fmt.Errorf("unknown acquired abstraction %q", s.Ref)
 			}
+			trusted := ""; if lib.TrustedSigners != nil { trusted = lib.TrustedSigners[a.KMSSignature.SignerID] }
+			if err := a.VerifyAdmission(trusted); err != nil {
+				return nil, fmt.Errorf("cryptographic abstraction admission rejected for %q: %w", s.Ref, err)
+			}
 			callStack[s.Ref] = true
 			var err error
 			cur, err = executeSearchProcedureWithLibraryState(a.Procedure, cur, lib, callStack, steps)
