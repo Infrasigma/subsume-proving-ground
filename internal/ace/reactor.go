@@ -174,8 +174,7 @@ func (l *fileReactorLease) Fail(taskErr error) error {
 		if taskErr != nil {
 			message = taskErr.Error()
 		}
-		l.err = os.WriteFile(dst+".error.txt", []byte(message+"
-"), 0600)
+		l.err = os.WriteFile(dst+".error.txt", []byte(message+"\\n"), 0600)
 	})
 	return l.err
 }
