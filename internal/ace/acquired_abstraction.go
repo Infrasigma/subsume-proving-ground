@@ -1,12 +1,17 @@
 package ace
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/Infrasigma/subsume-proving-ground/internal/c14n"
+	"github.com/Infrasigma/subsume-proving-ground/internal/protocol"
 )
 
 type AbstractionContract struct {
@@ -35,11 +40,52 @@ type AcquiredAbstraction struct {
 	CostHistory  []ResourceVector
 	Verification VerificationResult
 	Provenance   Provenance
+	ArtifactHash string `json:"artifact_hash"`
+	KMSSignature protocol.KMSSignedArtifact `json:"kms_signature"`
+	LedgerAdmissionRef string `json:"ledger_admission_ref"`
+	LedgerAdmissionHash string `json:"ledger_admission_hash"`
+	LedgerPreviousAdmissionHash string `json:"ledger_previous_admission_hash"`
+	LedgerCreatedAtUnix int64 `json:"ledger_created_at_unix"`
 }
 
 type AbstractionLibrary struct {
-	Version      uint64
-	Abstractions []AcquiredAbstraction
+	Version       uint64
+	Abstractions  []AcquiredAbstraction
+	TrustedSigners map[string]string `json:"trusted_signers,omitempty"`
+}
+
+type canonicalAbstractionArtifact struct {
+	ID string `json:"id"`
+	Name string `json:"name"`
+	Procedure AcquisitionProcedure `json:"procedure"`
+	Contract AbstractionContract `json:"contract"`
+	Dependencies []string `json:"dependencies"`
+	Evidence []AbstractionEvidence `json:"evidence"`
+	CostHistory []ResourceVector `json:"cost_history"`
+	Verification VerificationResult `json:"verification"`
+	Provenance Provenance `json:"provenance"`
+}
+
+func (a AcquiredAbstraction) canonicalArtifact() (string, []byte, error) {
+	v := canonicalAbstractionArtifact{a.ID,a.Name,a.Procedure,a.Contract,append([]string(nil),a.Dependencies...),append([]AbstractionEvidence(nil),a.Evidence...),append([]ResourceVector(nil),a.CostHistory...),a.Verification,a.Provenance}
+	canonical, err := c14n.Canonicalize(v)
+	if err != nil { return "", nil, err }
+	digest := sha256.Sum256(canonical)
+	return hex.EncodeToString(digest[:]), canonical, nil
+}
+
+func (a AcquiredAbstraction) VerifyAdmission(trustedPublicKeyB64 string) error {
+	h, _, err := a.canonicalArtifact()
+	if err != nil { return err }
+	if a.ArtifactHash == "" || h != a.ArtifactHash { return fmt.Errorf("abstraction artifact hash mismatch") }
+	r := protocol.AbstractionAdmissionReceipt{KMSSignedArtifact:a.KMSSignature, LedgerAdmissionRef:a.LedgerAdmissionRef, LedgerAdmissionHash:a.LedgerAdmissionHash, PreviousAdmissionHash:a.LedgerPreviousAdmissionHash, CreatedAtUnix:a.LedgerCreatedAtUnix}
+	if r.ArtifactHash != a.ArtifactHash { return fmt.Errorf("KMS signature artifact hash mismatch") }
+	return protocol.VerifyAbstractionAdmissionReceipt(r, trustedPublicKeyB64)
+}
+
+func (l *AbstractionLibrary) ConfigureTrustedSigner(signerID, publicKeyB64 string) {
+	if l.TrustedSigners == nil { l.TrustedSigners = map[string]string{} }
+	l.TrustedSigners[signerID] = publicKeyB64
 }
 
 func (l *AbstractionLibrary) Find(id string) (AcquiredAbstraction, bool) {
@@ -64,9 +110,10 @@ func (l *AbstractionLibrary) Install(a AcquiredAbstraction) error {
 	if !a.Verification.Independent || a.Verification.Status != "verified" {
 		return errors.New("acquired abstraction lacks independent verification")
 	}
-	if len(a.Evidence) == 0 {
-		return errors.New("acquired abstraction lacks evidence")
-	}
+	if len(a.Evidence) == 0 { return errors.New("acquired abstraction lacks evidence") }
+	trusted := ""; if l.TrustedSigners != nil { trusted = l.TrustedSigners[a.KMSSignature.SignerID] }
+	if trusted == "" { return errors.New("acquired abstraction has no trusted KMS signer") }
+	if err := a.VerifyAdmission(trusted); err != nil { return err }
 	for _, dep := range abstractionDependencies(a.Procedure) {
 		if dep == a.ID {
 			return errors.New("acquired abstraction cannot depend on itself")
