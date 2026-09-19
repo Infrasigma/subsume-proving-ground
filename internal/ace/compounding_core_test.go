@@ -34,10 +34,9 @@ func TestRecursiveCapabilityCompoundingCore(t *testing.T) {
 		VerificationOutcomes: []string{"forced-composition-heldout"},
 		Cost:                ResourceVector{Compute: 5, ExperimentBudget: 2},
 	}
-	rt := AdaptiveAcquisitionRuntime{
-		MaxCompoundingIterations: 3,
-		CompoundingTimeout:       90 * time.Second,
-	}
+	rt := newF0TestRuntime(t)
+	rt.MaxCompoundingIterations = 3
+	rt.CompoundingTimeout = 90 * time.Second
 	result, err := rt.ImproveAndAcquire(telemetry, spec, hidden, hiddenSpec, hidden)
 	if err != nil {
 		t.Fatal(err)

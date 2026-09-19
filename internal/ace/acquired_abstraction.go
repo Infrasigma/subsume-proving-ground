@@ -1,12 +1,18 @@
 package ace
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/Infrasigma/subsume-proving-ground/internal/c14n"
+	"github.com/Infrasigma/subsume-proving-ground/internal/protocol"
 )
 
 type AbstractionContract struct {
@@ -35,11 +41,58 @@ type AcquiredAbstraction struct {
 	CostHistory  []ResourceVector
 	Verification VerificationResult
 	Provenance   Provenance
+	ArtifactHash string `json:"artifact_hash"`
+	KMSSignature protocol.KMSSignedArtifact `json:"kms_signature"`
+	LedgerAdmissionRef string `json:"ledger_admission_ref"`
+	LedgerAdmissionHash string `json:"ledger_admission_hash"`
+	LedgerPreviousAdmissionHash string `json:"ledger_previous_admission_hash"`
+	LedgerCreatedAtUnix int64 `json:"ledger_created_at_unix"`
 }
 
 type AbstractionLibrary struct {
-	Version      uint64
-	Abstractions []AcquiredAbstraction
+	Version       uint64
+	Abstractions  []AcquiredAbstraction
+	TrustedSigners map[string]string `json:"trusted_signers,omitempty"`
+}
+
+type canonicalAbstractionArtifact struct {
+	ID string `json:"id"`
+	Name string `json:"name"`
+	Procedure AcquisitionProcedure `json:"procedure"`
+	Contract AbstractionContract `json:"contract"`
+	Dependencies []string `json:"dependencies"`
+	Evidence []AbstractionEvidence `json:"evidence"`
+	CostHistory []ResourceVector `json:"cost_history"`
+	Verification VerificationResult `json:"verification"`
+	Provenance Provenance `json:"provenance"`
+}
+
+func (a AcquiredAbstraction) canonicalArtifact() (string, []byte, error) {
+	v := canonicalAbstractionArtifact{a.ID,a.Name,a.Procedure,a.Contract,append([]string(nil),a.Dependencies...),append([]AbstractionEvidence(nil),a.Evidence...),append([]ResourceVector(nil),a.CostHistory...),a.Verification,a.Provenance}
+	encoded, err := json.Marshal(v)
+	if err != nil { return "", nil, err }
+	dec := json.NewDecoder(bytes.NewReader(encoded))
+	dec.UseNumber()
+	var value any
+	if err := dec.Decode(&value); err != nil { return "", nil, err }
+	canonical, err := c14n.Canonicalize(value)
+	if err != nil { return "", nil, err }
+	digest := sha256.Sum256(canonical)
+	return hex.EncodeToString(digest[:]), canonical, nil
+}
+
+func (a AcquiredAbstraction) VerifyAdmission(trustedPublicKeyB64 string) error {
+	h, _, err := a.canonicalArtifact()
+	if err != nil { return err }
+	if a.ArtifactHash == "" || h != a.ArtifactHash { return fmt.Errorf("abstraction artifact hash mismatch") }
+	r := protocol.AbstractionAdmissionReceipt{KMSSignedArtifact:a.KMSSignature, LedgerAdmissionRef:a.LedgerAdmissionRef, LedgerAdmissionHash:a.LedgerAdmissionHash, PreviousAdmissionHash:a.LedgerPreviousAdmissionHash, CreatedAtUnix:a.LedgerCreatedAtUnix}
+	if r.ArtifactHash != a.ArtifactHash { return fmt.Errorf("KMS signature artifact hash mismatch") }
+	return protocol.VerifyAbstractionAdmissionReceipt(r, trustedPublicKeyB64)
+}
+
+func (l *AbstractionLibrary) ConfigureTrustedSigner(signerID, publicKeyB64 string) {
+	if l.TrustedSigners == nil { l.TrustedSigners = map[string]string{} }
+	l.TrustedSigners[signerID] = publicKeyB64
 }
 
 func (l *AbstractionLibrary) Find(id string) (AcquiredAbstraction, bool) {
@@ -64,9 +117,10 @@ func (l *AbstractionLibrary) Install(a AcquiredAbstraction) error {
 	if !a.Verification.Independent || a.Verification.Status != "verified" {
 		return errors.New("acquired abstraction lacks independent verification")
 	}
-	if len(a.Evidence) == 0 {
-		return errors.New("acquired abstraction lacks evidence")
-	}
+	if len(a.Evidence) == 0 { return errors.New("acquired abstraction lacks evidence") }
+	trusted := ""; if l.TrustedSigners != nil { trusted = l.TrustedSigners[a.KMSSignature.SignerID] }
+	if trusted == "" { return errors.New("acquired abstraction has no trusted KMS signer") }
+	if err := a.VerifyAdmission(trusted); err != nil { return err }
 	for _, dep := range abstractionDependencies(a.Procedure) {
 		if dep == a.ID {
 			return errors.New("acquired abstraction cannot depend on itself")
@@ -275,12 +329,12 @@ func referenceProcedure(p AcquisitionProcedure, cs []ArchitectureCandidate, lib 
 func equalMechanismOrders(a,b []ArchitectureCandidate)bool{if len(a)!=len(b){return false};for i:=range a{if a[i].Mechanism!=b[i].Mechanism{return false}};return true}
 func namesToCandidates(names []string)[]ArchitectureCandidate{out:=make([]ArchitectureCandidate,len(names));for i,name:=range names{out[i]=ArchitectureCandidate{Mechanism:name}};return out}
 
-func enumerateProcedureAtoms(lib *AbstractionLibrary) []ProcedureStep {atoms:=[]ProcedureStep{{Op:"identity"},{Op:"reverse"},{Op:"dedupe"},{Op:"sort-cost"},{Op:"take",Arg:1},{Op:"rotate",Arg:1}};if lib!=nil{for _,id:=range lib.IDs(){atoms=append(atoms,ProcedureStep{Op:"call",Ref:id})}};return atoms}
+func enumerateProcedureAtoms(lib *AbstractionLibrary) []ProcedureStep {atoms:=[]ProcedureStep{{Op:"identity"},{Op:"rotate",Arg:1},{Op:"reverse"},{Op:"dedupe"},{Op:"sort-cost"},{Op:"take",Arg:1}};if lib!=nil{for _,id:=range lib.IDs(){atoms=append(atoms,ProcedureStep{Op:"call",Ref:id})}};return atoms}
 func ProcedureLibrarySearchCost(maxSteps int,lib *AbstractionLibrary)int{if maxSteps<1{return 0};n:=len(enumerateProcedureAtoms(lib));total:=0;power:=1;for d:=1;d<=maxSteps;d++{power*=n;total+=power};return total}
 func ExecuteAcquiredAbstraction(a AcquiredAbstraction,cs []ArchitectureCandidate,lib *AbstractionLibrary)([]ArchitectureCandidate,error){if lib==nil{return nil,errors.New("abstraction execution requires a library")};return executeSearchProcedureWithLibrary(a.Procedure,cs,lib)}
 
-type persistedAbstractions struct{Version uint64 `json:"version"`;Abstractions []AcquiredAbstraction `json:"abstractions"`}
+type persistedAbstractions struct{Version uint64 `json:"version"`;Abstractions []AcquiredAbstraction `json:"abstractions"`;TrustedSigners map[string]string `json:"trusted_signers,omitempty"`}
 type PersistentAbstractionLibrary struct{Path string;Data persistedAbstractions}
 func NewPersistentAbstractionLibrary(path string)(*PersistentAbstractionLibrary,error){p:=&PersistentAbstractionLibrary{Path:path};b,err:=os.ReadFile(path);if err==nil{if err=json.Unmarshal(b,&p.Data);err!=nil{return nil,err}}else if !errors.Is(err,os.ErrNotExist){return nil,err};return p,nil}
-func(p *PersistentAbstractionLibrary)Save(l *AbstractionLibrary)error{if l==nil{return errors.New("nil abstraction library")};p.Data=persistedAbstractions{Version:l.Version,Abstractions:append([]AcquiredAbstraction(nil),l.Abstractions...)};if p.Path==""{return nil};if err:=os.MkdirAll(filepath.Dir(p.Path),0755);err!=nil{return err};b,err:=json.MarshalIndent(p.Data,"","  ");if err!=nil{return err};tmp:=p.Path+".tmp";if err=os.WriteFile(tmp,b,0600);err!=nil{return err};return os.Rename(tmp,p.Path)}
-func(p *PersistentAbstractionLibrary)Restore(dst *AbstractionLibrary)error{if dst==nil{return errors.New("nil abstraction library destination")};for _,a:=range p.Data.Abstractions{if err:=dst.Install(a);err!=nil{return err}};return nil}
+func(p *PersistentAbstractionLibrary)Save(l *AbstractionLibrary)error{if l==nil{return errors.New("nil abstraction library")};trusted:=map[string]string{};for id,key:=range l.TrustedSigners{trusted[id]=key};p.Data=persistedAbstractions{Version:l.Version,Abstractions:append([]AcquiredAbstraction(nil),l.Abstractions...),TrustedSigners:trusted};if p.Path==""{return nil};if err:=os.MkdirAll(filepath.Dir(p.Path),0755);err!=nil{return err};b,err:=json.MarshalIndent(p.Data,"","  ");if err!=nil{return err};tmp:=p.Path+".tmp";if err=os.WriteFile(tmp,b,0600);err!=nil{return err};return os.Rename(tmp,p.Path)}
+func(p *PersistentAbstractionLibrary)Restore(dst *AbstractionLibrary)error{if dst==nil{return errors.New("nil abstraction library destination")};if p.Data.TrustedSigners!=nil{dst.TrustedSigners=map[string]string{};for id,key:=range p.Data.TrustedSigners{dst.TrustedSigners[id]=key}};for _,a:=range p.Data.Abstractions{if err:=dst.Install(a);err!=nil{return err}};return nil}

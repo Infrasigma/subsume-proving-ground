@@ -99,7 +99,9 @@ func TestLayerCAdaptiveRuntimeTelemetry(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	telemetry := AcquisitionTelemetry{TaskID: "diagnostic-c-failure", TaskStructure: []string{"scalar", "conditional"}, KnownExamples: len(failed), CandidateCount: 1, CandidateFailures: []string{"counterexample"}, Counterexamples: 1, Representation: []string{"scalar-input-output"}, SearchPath: []string{"base"}, VerificationOutcomes: []string{"heldout-failure"}, Cost: ResourceVector{Compute: 2, ExperimentBudget: 2}}
 	log := &DiagnosticLog{}
-	rt := AdaptiveAcquisitionRuntime{EnableAbstractionLearning: true, Diagnostics: log}
+	rt := newF0TestRuntime(t)
+	rt.EnableAbstractionLearning = true
+	rt.Diagnostics = log
 	result, err := rt.ImproveAndAcquire(telemetry, spec, hidden, future, hidden)
 	t.Logf("Layer C runtime state: err=%v method_id=%q procedure=%q abstractions=%d abstraction_history=%d", err, result.Method.ID, result.Method.Procedure, len(rt.Abstractions.Abstractions), len(rt.AbstractionHistory))
 	var buf bytes.Buffer

@@ -129,7 +129,9 @@ func TestBootstrapExpansionB0ToB1CausalAndIndependent(t *testing.T) {
 	if !reflect.DeepEqual(abstractionDependencies(verified.Procedure), []string{}) {
 		t.Fatalf("B1 abstraction unexpectedly depends on a prior abstraction: %v", abstractionDependencies(verified.Procedure))
 	}
+	verified = testAdmitAbstraction(t, verified)
 	library := &AbstractionLibrary{}
+	library.ConfigureTrustedSigner(verified.KMSSignature.SignerID, verified.KMSSignature.PublicKeyB64)
 	if err := library.Install(verified); err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +192,9 @@ func TestBootstrapExpansionRecursiveLibraryRestartAndAblation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	l1 = testAdmitAbstraction(t, l1)
 	library := &AbstractionLibrary{}
+	library.ConfigureTrustedSigner(l1.KMSSignature.SignerID, l1.KMSSignature.PublicKeyB64)
 	if err := library.Install(l1); err != nil {
 		t.Fatal(err)
 	}
@@ -210,6 +214,8 @@ func TestBootstrapExpansionRecursiveLibraryRestartAndAblation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	l2 = testAdmitAbstraction(t, l2)
+	library.ConfigureTrustedSigner(l2.KMSSignature.SignerID, l2.KMSSignature.PublicKeyB64)
 	if err := library.Install(l2); err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +232,7 @@ func TestBootstrapExpansionRecursiveLibraryRestartAndAblation(t *testing.T) {
 	if !reflect.DeepEqual(mechanismOrder(got), mechanismOrder(ref)) {
 		t.Fatalf("independent verifier disagrees on recursive abstraction: got=%v ref=%v", mechanismOrder(got), mechanismOrder(ref))
 	}
-	withoutL1 := &AbstractionLibrary{Version: 1, Abstractions: []AcquiredAbstraction{l2}}
+	withoutL1 := &AbstractionLibrary{Version: 1, Abstractions: []AcquiredAbstraction{l2}, TrustedSigners: map[string]string{l2.KMSSignature.SignerID: l2.KMSSignature.PublicKeyB64}}
 	if _, err := ExecuteAcquiredAbstraction(l2, stream, withoutL1); err == nil {
 		t.Fatal("L2 unexpectedly executed after causal removal of dependency L1")
 	}

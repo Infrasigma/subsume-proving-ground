@@ -20,7 +20,7 @@ func TestAdaptiveAcquisitionRuntimeCausalCompounding(t *testing.T) {
 		Representation: []string{"scalar-input-output"}, SearchPath: []string{"parameterized-add", "parameterized-mul"},
 		VerificationOutcomes: []string{"failed-independent-boundary"}, Cost: ResourceVector{Compute: 1, ExperimentBudget: 1},
 	}
-	rt := AdaptiveAcquisitionRuntime{}
+	rt := newF0TestRuntime(t)
 	result, err := rt.ImproveAndAcquire(telemetry, failedSpec, methodHidden, futureSpec, futureCases)
 	if err != nil { t.Fatal(err) }
 	if result.Diagnosis.Class != BottleneckSearchSpace { t.Fatalf("unexpected diagnosis: %s", result.Diagnosis.Class) }
@@ -38,7 +38,8 @@ func TestAdaptiveAcquisitionRuntimeEndogenousAbstractionLearning(t *testing.T) {
 	future, err := GeneralCapabilitySpecification(Task{ID: "learn-future", Goal: "classify", Requirements: []string{"x"}, Structure: []string{"scalar", "piecewise", "conditional"}, Budget: ResourceVector{Compute: 200, Memory: 100, TimeMS: 5000, ExperimentBudget: 50}}, hidden)
 	if err != nil { t.Fatal(err) }
 	telemetry := AcquisitionTelemetry{TaskID: "learn-failure", TaskStructure: []string{"scalar", "conditional"}, KnownExamples: len(failed), CandidateCount: 1, CandidateFailures: []string{"counterexample"}, Counterexamples: 1, Representation: []string{"scalar-input-output"}, SearchPath: []string{"base"}, VerificationOutcomes: []string{"heldout-failure"}, Cost: ResourceVector{Compute: 2, ExperimentBudget: 2}}
-	rt := AdaptiveAcquisitionRuntime{EnableAbstractionLearning: true}
+	rt := newF0TestRuntime(t)
+	rt.EnableAbstractionLearning = true
 	result, err := rt.ImproveAndAcquire(telemetry, spec, hidden, future, hidden)
 	if err != nil { t.Fatal(err) }
 	if len(rt.Abstractions.Abstractions) != 1 { t.Fatalf("expected runtime to install one abstraction from verified experience, got %d", len(rt.Abstractions.Abstractions)) }

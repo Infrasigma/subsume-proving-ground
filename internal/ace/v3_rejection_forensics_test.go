@@ -107,7 +107,9 @@ func v3MakeA1(t *testing.T) *AbstractionLibrary {
 	if err != nil { t.Fatal(err) }
 	verified, err := VerifyAcquiredAbstraction(proposal,&AbstractionLibrary{},[]AbstractionVerificationCase{{Input:candidateStream("S","B","C"),Expected:[]string{"B","S","C"}},{Input:candidateStream("C","B","S"),Expected:[]string{"B","C","S"}}})
 	if err != nil { t.Fatal(err) }
+	verified = testAdmitAbstraction(t, verified)
 	lib := &AbstractionLibrary{}
+	lib.ConfigureTrustedSigner(verified.KMSSignature.SignerID, verified.KMSSignature.PublicKeyB64)
 	if err := lib.Install(verified); err != nil { t.Fatal(err) }
 	return lib
 }
@@ -133,7 +135,7 @@ func TestV3CandidateRejectionForensics(t *testing.T) {
 	callRec:=v3EvaluateCandidate(callMethod,spec,hidden,nil,a1lib); report.CandidateGeneratorEmitsCallA1=false;for _,c:=range k1{p,_:=decodeAcquisitionProcedure(c.Artifact.Procedure);for _,s:=range p.Steps{if s.Op=="call"&&s.Ref==callID{report.CandidateGeneratorEmitsCallA1=true}}}
 	withA1,withErr:=executeSearchProcedureWithLibrary(callProc,[]ArchitectureCandidate{{Mechanism:"universal:straight-line"},{Mechanism:"universal:branching"},{Mechanism:"universal:compositional"}},a1lib)
 	_,withoutErr:=executeSearchProcedureWithLibrary(callProc,[]ArchitectureCandidate{{Mechanism:"universal:straight-line"},{Mechanism:"universal:branching"},{Mechanism:"universal:compositional"}},&AbstractionLibrary{})
-	irrelevant:=v3MakeA1(t); irrelevant.Abstractions[0].ID="irrelevant-a1-control"; irrelevant.Abstractions[0].Name="irrelevant-a1-control"; _,irrelevantErr:=executeSearchProcedureWithLibrary(callProc,[]ArchitectureCandidate{{Mechanism:"universal:straight-line"},{Mechanism:"universal:branching"},{Mechanism:"universal:compositional"}},irrelevant)
+	irrelevant:=v3MakeA1(t); ia:=irrelevant.Abstractions[0]; ia.ID="irrelevant-a1-control"; ia.Name="irrelevant-a1-control"; ia=testAdmitAbstraction(t, ia); irrelevant=&AbstractionLibrary{TrustedSigners:map[string]string{ia.KMSSignature.SignerID:ia.KMSSignature.PublicKeyB64},Abstractions:[]AcquiredAbstraction{ia}}; _,irrelevantErr:=executeSearchProcedureWithLibrary(callProc,[]ArchitectureCandidate{{Mechanism:"universal:straight-line"},{Mechanism:"universal:branching"},{Mechanism:"universal:compositional"}},irrelevant)
 	report.CandidateExecutionResolvesCallA1=withErr==nil
 	report.A1Removal=map[string]any{"a1_id":callID,"candidate":callRec,"with_A1":map[string]any{"error":errString(withErr),"output_count":len(withA1)},"without_A1":map[string]any{"error":errString(withoutErr)},"irrelevant_abstraction":map[string]any{"error":errString(irrelevantErr)}}
 	v3WriteArtifact(t,"ACE_V3_REJECTION_MATRIX.json",report)

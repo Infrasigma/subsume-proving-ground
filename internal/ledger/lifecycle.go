@@ -2,6 +2,8 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -65,6 +67,39 @@ func (l *Ledger) AppendTerminal(ctx context.Context, executionID, status string,
 	_, err := l.Append(ctx, lifecycleEventID(), executionID, eventType, payload)
 	return err
 }
+
+
+
+// AppendAbstractionAdmission durably commits the KMS-signed abstraction admission before installation.
+func (l *Ledger) AppendAbstractionAdmission(ctx context.Context, r protocol.AbstractionAdmissionReceipt) (protocol.AbstractionAdmissionReceipt, error) {
+	if r.ArtifactHash == "" || r.SignerID == "" || r.PublicKeyB64 == "" || r.SignatureB64 == "" { return protocol.AbstractionAdmissionReceipt{}, fmt.Errorf("incomplete abstraction admission signature") }
+	if r.LedgerAdmissionRef != "" || r.LedgerAdmissionHash != "" || r.CreatedAtUnix != 0 { return protocol.AbstractionAdmissionReceipt{}, fmt.Errorf("ledger admission fields must be empty before append") }
+	if err := protocol.VerifyKMSSignedArtifact(r.KMSSignedArtifact, r.PublicKeyB64); err != nil { return protocol.AbstractionAdmissionReceipt{}, err }
+	if err := l.OpenOrMigrateAbstractionAdmissions(ctx); err != nil { return protocol.AbstractionAdmissionReceipt{}, err }
+	var previous string
+	err := l.db.QueryRowContext(ctx, `SELECT admission_hash FROM abstraction_admissions ORDER BY rowid DESC LIMIT 1`).Scan(&previous)
+	if errors.Is(err, sql.ErrNoRows) { previous = GenesisHash } else if err != nil { return protocol.AbstractionAdmissionReceipt{}, err }
+	r.LedgerAdmissionRef = newID(); r.PreviousAdmissionHash = previous; r.CreatedAtUnix = time.Now().UTC().Unix()
+	h, err := protocol.AbstractionAdmissionHash(r); if err != nil { return protocol.AbstractionAdmissionReceipt{}, err }; r.LedgerAdmissionHash = h
+	tx, err := l.db.BeginTx(ctx, nil); if err != nil { return protocol.AbstractionAdmissionReceipt{}, err }; defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `INSERT INTO abstraction_admissions(admission_id, artifact_hash, signer_id, public_key_b64, signature_b64, previous_admission_hash, admission_hash, created_at_unix) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, r.LedgerAdmissionRef, r.ArtifactHash, r.SignerID, r.PublicKeyB64, r.SignatureB64, r.PreviousAdmissionHash, r.LedgerAdmissionHash, r.CreatedAtUnix)
+	if err != nil { return protocol.AbstractionAdmissionReceipt{}, err }
+	if err := tx.Commit(); err != nil { return protocol.AbstractionAdmissionReceipt{}, err }
+	return r, nil
+}
+
+func (l *Ledger) OpenOrMigrateAbstractionAdmissions(ctx context.Context) error { _, err := l.db.ExecContext(ctx, reconciliationAdmissionSchema); return err }
+
+var reconciliationAdmissionSchema = `CREATE TABLE IF NOT EXISTS abstraction_admissions (
+    admission_id TEXT PRIMARY KEY,
+    artifact_hash TEXT NOT NULL UNIQUE,
+    signer_id TEXT NOT NULL,
+    public_key_b64 TEXT NOT NULL,
+    signature_b64 TEXT NOT NULL,
+    previous_admission_hash TEXT NOT NULL,
+    admission_hash TEXT NOT NULL UNIQUE,
+    created_at_unix INTEGER NOT NULL
+);`
 
 func lifecycleEventID() string {
 	var b [16]byte
