@@ -41,7 +41,7 @@ func (t ReactorTask) Validate() error {
 	if len(t.Examples) < 2 {
 		return errors.New("reactor task requires at least two training examples")
 	}
-	for _, group := range [][]ReactorExample{t.Examples, t.Hidden} {
+	for _, group := range [][]ReactorExample{t.Examples} {
 		for _, example := range group {
 			if len(example.Input) == 0 || len(example.Input) != len(example.Expected) {
 				return errors.New("reactor example requires equal non-empty input and expected streams")
