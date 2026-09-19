@@ -1,7 +1,6 @@
 package ace
 
 import (
-	"encoding/hex"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -48,7 +47,7 @@ func testAdmitAbstraction(t *testing.T, a AcquiredAbstraction) AcquiredAbstracti
 	_ = pub
 	hash, _, err := a.canonicalArtifact()
 	if err != nil { t.Fatal(err) }
-	signerID := "test-kms-" + hex.EncodeToString(hash[:4])
+	signerID := "test-kms-" + hash[:8]
 	signed, err := protocol.SignAbstractionHash(hash, signerID, priv)
 	if err != nil { t.Fatal(err) }
 	store, err := ledger.Open(t.TempDir() + "/admission.db")
