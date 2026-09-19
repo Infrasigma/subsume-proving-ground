@@ -76,6 +76,7 @@ func main() {
 		PersistentLibrary:   persistent,
 		TrustedSignerID:     signerID,
 		TrustedPublicKeyB64: trustedPublicKey,
+		Verifier:            ace.DefaultT2ReactorVerifier(),
 		MaxTasks:            *maxTasks,
 		Logf:                log.Printf,
 	}
