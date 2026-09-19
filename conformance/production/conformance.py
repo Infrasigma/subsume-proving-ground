@@ -41,7 +41,8 @@ def alpha(rule):
     mapping={x:ROLES[i] for i,x in enumerate(used)}
     return {"atoms":[{"predicate":a["predicate"],"args":[mapping.get(x,x) for x in a["args"]]} for a in rule["atoms"]],"consequence":rule["consequence"]}
 def canonical(rule):
-    r=alpha(rule); atoms=sorted({cj(atom(a)).decode() for a in r["atoms"]})
+    r={"atoms":[atom(a) for a in rule["atoms"]],"consequence":rule["consequence"]}
+    atoms=sorted({cj(a).decode() for a in r["atoms"]})
     return {"atoms":[json.loads(x) for x in atoms],"consequence":r["consequence"]}
 def validate_rule(r):
     if r.get("consequence") not in CONSEQUENCES: return False
@@ -130,7 +131,7 @@ def attribution(e):
     return "KA_TRANSFER" if need<=s else "UNATTRIBUTABLE"
 def cost(attempts,terminal): return attempts if terminal in {"SUCCESS","INTERACTION_CAP_EXHAUSTED","DECISION_CUTOFF_EXHAUSTED"} else None
 def novelty(a,b):
-    A=[cj(x) for x in a];B=[cj(x) for x in b];ca={x:A.count(x) for x in set(A)};cb={x:B.count(x) for x in set(B)};keys=set(ca)|set(cb);u=sum(max(ca.get(k,0),cb.get(k,0)) for k in keys);i=sum(min(ca.get(k,0),cb.get(k,0)) for k in keys);return 1.0 if u==0 else 1.0-i/u
+    A=[cj(x) for x in a];B=[cj(x) for x in b];ca={x:A.count(x) for x in set(A)};cb={x:B.count(x) for x in set(B)};keys=set(ca)|set(cb);u=sum(max(ca.get(k,0),cb.get(k,0)) for k in keys);i=sum(min(ca.get(k,0),cb.get(k,0)) for k in keys);v=1.0 if u==0 else 1.0-i/u;return int(v) if float(v).is_integer() else v
 def controls(history):
     actions=history[-1]["available_actions"] if history else []; first=sorted(actions)[0] if actions else None
     return {"K0":first,"KR":first,"KS":first,"KP":first,"REPLAY":None}

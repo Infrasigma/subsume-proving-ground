@@ -52,7 +52,24 @@ func EnumerateAcquisitionProcedures(maxSteps int) []AcquisitionProcedure {
 }
 
 func EnumerateAcquisitionProceduresWithLibrary(maxSteps int, lib *AbstractionLibrary) []AcquisitionProcedure {
-	return enumerateAcquisitionProcedures(maxSteps, lib)
+	procedures := enumerateAcquisitionProcedures(maxSteps, lib)
+	atoms := enumerateProcedureAtoms(lib)
+	ops := make([]string, 0, len(atoms))
+	for _, a := range atoms {
+		if a.Op == "call" {
+			ops = append(ops, a.Op+":"+a.Ref)
+		} else if a.Op == "take" || a.Op == "rotate" {
+			ops = append(ops, fmt.Sprintf("%s:%d", a.Op, a.Arg))
+		} else {
+			ops = append(ops, a.Op)
+		}
+	}
+	libraryCount := 0
+	if lib != nil {
+		libraryCount = len(lib.Abstractions)
+	}
+	fmt.Printf("ACQ_GENERATOR_RAW max_steps=%d atom_count=%d generated=%d library_count=%d atom_ops=%v\n", maxSteps, len(atoms), len(procedures), libraryCount, ops)
+	return procedures
 }
 
 func enumerateAcquisitionProcedures(maxSteps int, lib *AbstractionLibrary) []AcquisitionProcedure {

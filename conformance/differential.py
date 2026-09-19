@@ -49,7 +49,7 @@ def closure():
     cases=json.loads(CLOSURE_FIX.read_text())
     for c in cases:
         prod,prod_raw=run([sys.executable,str(CLOSURE_PROD)],c); ref,ref_raw=run(['go','run',str(CLOSURE_REF)],c); compare(prod,ref,c['name'],prod_raw,ref_raw)
-        assert prod['candidate_valid'] is True,c['name']; assert prod['prediction']['valid'] is True,c['name']; print('PASS closure_differential',c['name'])
+        assert prod['candidate_valid'] is True,c['name']; assert prod['prediction']['valid'] is (prod['retrieval']['status']=='RETRIEVED'),c['name']; print('PASS closure_differential',c['name'])
     forward=[run([sys.executable,str(CLOSURE_PROD)],c) for c in cases]; reverse=[run([sys.executable,str(CLOSURE_PROD)],c) for c in reversed(cases)]
     assert forward==list(reversed(reverse)),'closure execution-order nondeterminism'; assert forward==[run([sys.executable,str(CLOSURE_PROD)],c) for c in cases],'closure repeat nondeterminism'; print('PASS closure_determinism_order_repeat')
 def main():

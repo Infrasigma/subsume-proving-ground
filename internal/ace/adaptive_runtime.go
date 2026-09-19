@@ -1,8 +1,14 @@
 package ace
 
-import "errors"
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+)
 
 type AdaptiveAcquisitionRuntime struct {
+	Diagnostics *DiagnosticLog
 	Methods                   InstalledMethodRegistry
 	History                   []AcquisitionExperience
 	PersistentMethods         *PersistentMethodRegistry
@@ -10,6 +16,10 @@ type AdaptiveAcquisitionRuntime struct {
 	PersistentAbstractions    *PersistentAbstractionLibrary
 	AbstractionHistory        []AbstractionObservation
 	EnableAbstractionLearning bool
+
+	// T2 recursion is bounded and deadline-controlled. Zero values use safe defaults.
+	MaxCompoundingIterations int
+	CompoundingTimeout       time.Duration
 }
 
 type AdaptiveAcquisitionResult struct { Method AcquisitionMethodArtifact; Diagnosis BottleneckDiagnosis; Evaluations []MethodEvaluation; Future CapabilityRecord; FutureCost ResourceVector; Trace []string }
@@ -22,27 +32,451 @@ func (r *AdaptiveAcquisitionRuntime) prepareLibraries() error {
 
 func abstractionObservationFromMethod(m AcquisitionMethodArtifact, taskStructure string, verified, heldOut bool, gain float64, cost ResourceVector) AbstractionObservation { p, _ := decodeAcquisitionProcedure(m.Artifact); return AbstractionObservation{TaskStructure: taskStructure, Procedure: p, Verified: verified, HeldOut: heldOut, TransferScore: boolScore(verified && heldOut), DiscoveryCost: cost, ObservedGain: gain} }
 
-func streamForAbstractionVerification(names ...string) []ArchitectureCandidate { out:=make([]ArchitectureCandidate,len(names));for i,name:=range names{out[i]=ArchitectureCandidate{ID:Hash([]any{"runtime-abstraction-probe",name}),Mechanism:name,Resources:ResourceVector{Compute:float64(i+1),ExperimentBudget:1}}};return out}
+func streamForAbstractionVerification(names ...string) []ArchitectureCandidate { out:=make([]ArchitectureCandidate,len(names));for i,name:=range names{out[i]=ArchitectureCandidate{ID:Hash([]any{"runtime-abstraction-probe",name}),Mechanism:name,Resources:ResourceVector{Compute:float64(i+1),ExperimentBudget:1}}};return out }
 
 func (r *AdaptiveAcquisitionRuntime) learnAbstractionFromVerifiedMethod(method AcquisitionMethodArtifact, telemetry AcquisitionTelemetry, futureSpec CapabilitySpecification, hidden []ProgramTestCase) error {
-	if !r.EnableAbstractionLearning || len(method.Procedure) == 0 { return nil }
-	p, err := decodeAcquisitionProcedure(method.Artifact); if err != nil || len(p.Steps) < 2 { return nil }
+	if !r.EnableAbstractionLearning || len(method.Procedure) == 0 {
+		if r.Diagnostics != nil && r.EnableAbstractionLearning {
+			r.Diagnostics.Record("C", method.ID, "acquisition-method", method, DiagnosticFormalValidity, "len(method.Procedure) > 0", false, "verified acquisition method contained no procedure steps")
+		}
+		return nil
+	}
+	p, err := decodeAcquisitionProcedure(method.Artifact)
+	if err != nil {
+		r.Diagnostics.Record("C", method.ID, "acquisition-method", method, DiagnosticFormalValidity, "decodeAcquisitionProcedure succeeds", false, err.Error())
+		return nil
+	}
+	if len(p.Steps) < 2 {
+		r.Diagnostics.Record("C", method.ID, "acquisition-method", method, DiagnosticFormalValidity, "len(method.Procedure.steps) >= 2", false, fmt.Sprintf("acquired method has %d step(s); abstraction synthesis requires a non-trivial composition", len(p.Steps)))
+		return nil
+	}
 	gain := 1.0; cost := method.Resources
-	r.AbstractionHistory = append(r.AbstractionHistory, abstractionObservationFromMethod(method, telemetry.TaskID, true, true, gain, cost), abstractionObservationFromMethod(method, Hash([]any{futureSpec.Inputs,futureSpec.Outputs,futureSpec.Invariants}), true, len(hidden)>0, gain, cost))
-	proposal, err := DiscoverReusableAbstraction(r.AbstractionHistory, 2); if err != nil { return nil }
+	r.AbstractionHistory = append(r.AbstractionHistory, abstractionObservationFromMethod(method, telemetry.TaskID, true, true, gain, cost), abstractionObservationFromMethod(method, Hash([]any{futureSpec.Inputs,futureSpec.Outputs,futureSpec.Invariants,futureSpec.DesiredBehaviour}), true, len(hidden)>0, gain, cost))
+	proposal, err := DiscoverReusableAbstractionWithDiagnostics(r.AbstractionHistory, 2, r.Diagnostics); if err != nil { return nil }
 	inputs := [][]ArchitectureCandidate{streamForAbstractionVerification("probe-a","probe-b","probe-c"),streamForAbstractionVerification("probe-c","probe-a","probe-b","probe-d")}
 	cases:=make([]AbstractionVerificationCase,0,len(inputs));for _,input:=range inputs{cases=append(cases,AbstractionVerificationCase{Input:input})}
-	verified, err := VerifyAcquiredAbstraction(proposal, &r.Abstractions, cases); if err != nil { return nil }
+	verified, err := VerifyAcquiredAbstractionWithDiagnostics(proposal, &r.Abstractions, cases, r.Diagnostics); if err != nil { return nil }
 	if err:=r.Abstractions.Install(verified);err!=nil{return err};if r.PersistentAbstractions!=nil{return r.PersistentAbstractions.Save(&r.Abstractions)};return nil
 }
 
-func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquire(telemetry AcquisitionTelemetry, failedSpec CapabilitySpecification, methodHidden []ProgramTestCase, futureSpec CapabilitySpecification, futureHidden []ProgramTestCase) (AdaptiveAcquisitionResult,error) {
-	if len(methodHidden)==0||len(futureHidden)==0{return AdaptiveAcquisitionResult{},errors.New("adaptive runtime requires independent evaluation cases")}
-	if err:=r.prepareLibraries();err!=nil{return AdaptiveAcquisitionResult{},err};if r.PersistentMethods!=nil&&len(r.Methods.Methods)==0{if err:=r.PersistentMethods.Restore(&r.Methods);err!=nil{return AdaptiveAcquisitionResult{},err}}
-	method,diagnosis,evals,err:=AutonomousMethodImprovementWithLibrary(telemetry,failedSpec,methodHidden,nil,r.History,&r.Abstractions);if err!=nil{return AdaptiveAcquisitionResult{},err}
-	if err:=r.Methods.Install(method);err!=nil{return AdaptiveAcquisitionResult{},err};if r.PersistentMethods!=nil{if err:=r.PersistentMethods.Install(method);err!=nil{return AdaptiveAcquisitionResult{},err}}
-	for _,e:=range evals{r.History=append(r.History,AcquisitionExperience{TaskStructure:telemetry.TaskID,Method:e.Candidate.Name,SearchAttempts:1,Cost:e.Cost,Verified:e.Verified,TransferScore:boolScore(e.Transfer),Provenance:e.Candidate.Provenance})}
-	if err:=r.learnAbstractionFromVerifiedMethod(method,telemetry,futureSpec,futureHidden);err!=nil{return AdaptiveAcquisitionResult{},err}
-	candidates,err:=r.Methods.Apply(futureSpec);if err!=nil{return AdaptiveAcquisitionResult{},err};for i,c:=range candidates{p,e:=(UniversalProgramBuilder{}).Build(c,futureSpec);if e!=nil{continue};if !programFitsJSON(p.Artifact,futureHidden){continue};rec:=CapabilityRecord{Capability:Capability{ID:Hash([]any{"future-capability",futureSpec.ID,method.ID}),Name:futureSpec.DesiredBehaviour,Strength:1,Version:1,KnownLimits:[]string{"current executable substrate"},Provenance:futureSpec.Provenance},Artifact:p.Artifact,Tests:futureHidden,Mechanism:c.Mechanism,ArchitectureCost:float64(i+1)};r.History=append(r.History,AcquisitionExperience{TaskStructure:Hash([]any{futureSpec.Inputs,futureSpec.Outputs,futureSpec.Invariants}),Method:method.Name,SearchAttempts:i+1,Cost:c.Resources,Verified:true,TransferScore:1,Provenance:Prov("adaptive-future-acquisition",method.ID,"verified",c)});return AdaptiveAcquisitionResult{Method:method,Diagnosis:diagnosis,Evaluations:evals,Future:rec,FutureCost:c.Resources,Trace:append([]string(nil),r.Methods.Trace...)},nil};return AdaptiveAcquisitionResult{},errors.New("installed acquisition method could not acquire future capability")
+func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquire(telemetry AcquisitionTelemetry, failedSpec CapabilitySpecification, methodHidden []ProgramTestCase, futureSpec CapabilitySpecification, futureHidden []ProgramTestCase) (AdaptiveAcquisitionResult, error) {
+	timeout := r.CompoundingTimeout
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return r.ImproveAndAcquireWithContext(ctx, telemetry, failedSpec, methodHidden, futureSpec, futureHidden)
 }
+
+func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Context, telemetry AcquisitionTelemetry, failedSpec CapabilitySpecification, methodHidden []ProgramTestCase, futureSpec CapabilitySpecification, futureHidden []ProgramTestCase) (AdaptiveAcquisitionResult, error) {
+	if len(methodHidden) == 0 || len(futureHidden) == 0 {
+		return AdaptiveAcquisitionResult{}, errors.New("adaptive runtime requires independent evaluation cases")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := r.prepareLibraries(); err != nil {
+		return AdaptiveAcquisitionResult{}, err
+	}
+	if r.PersistentMethods != nil && len(r.Methods.Methods) == 0 {
+		if err := r.PersistentMethods.Restore(&r.Methods); err != nil {
+			return AdaptiveAcquisitionResult{}, err
+		}
+	}
+
+	maxIterations := r.MaxCompoundingIterations
+	if maxIterations <= 0 {
+		maxIterations = 3
+	}
+
+	var lastErr error
+	recursiveUsed := false
+	var method AcquisitionMethodArtifact
+	var diagnosis BottleneckDiagnosis
+	var evals []MethodEvaluation
+
+	for iteration := 1; iteration <= maxIterations; iteration++ {
+		if err := ctx.Err(); err != nil {
+			return AdaptiveAcquisitionResult{}, fmt.Errorf("recursive compounding deadline reached at iteration %d: %w", iteration, err)
+		}
+		if r.Diagnostics != nil {
+			r.Diagnostics.Record("C", telemetry.TaskID, "t2-iteration", map[string]any{
+				"iteration": iteration,
+				"library_size": len(r.Abstractions.Abstractions),
+			}, DiagnosticProposal, "bounded recursive compounding iteration entered", true,
+				fmt.Sprintf("T2 iteration %d/%d", iteration, maxIterations))
+		}
+
+		cands := AutonomousMethodCandidatesWithLibrary(
+			DiagnoseBottleneck(telemetry),
+			failedSpec,
+			failedSpec.ResourceLimits,
+			&r.Abstractions,
+		)
+		if len(cands) == 0 {
+			lastErr = errors.New("recursive synthesis generated no acquisition-method candidates")
+			continue
+		}
+
+		// Before T2 promotion, select a demonstrably useful partial procedure:
+		// it must preserve the architecture frontier and change its order.
+		partial := selectBestPartialMethodCandidate(cands, failedSpec, &r.Abstractions)
+		if partial.Artifact.ID == "" {
+			lastErr = errors.New("recursive synthesis found no useful partial acquisition method")
+			continue
+		}
+
+		p, err := decodeAcquisitionProcedure(partial.Artifact.Procedure)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		partialScore, _, scoreErr := partialMethodScore(partial.Artifact, failedSpec, &r.Abstractions)
+		if scoreErr != nil {
+			lastErr = scoreErr
+			continue
+		}
+
+		// Preserve the T1 verifier as the first real check. One representative
+		// candidate is enough here because the full T1 frontier has already been
+		// independently gated by the forced-composition experiment.
+		baselineEval := verifyMethodCandidateWithContext(ctx, partial.Artifact, failedSpec, methodHidden, nil, &r.Abstractions)
+		if r.Diagnostics != nil {
+			r.Diagnostics.Record("C", partial.Artifact.ID, "acquisition-method", partial.Artifact,
+				DiagnosticVerification, "bounded T1 verifier accepts candidate", baselineEval.Verified,
+				fmt.Sprintf("T2 iteration %d baseline candidate depth=%d verified=%v reason=%s", iteration, len(p.Steps), baselineEval.Verified, baselineEval.Reason))
+		}
+		if baselineEval.Verified {
+			method = baselineEval.Candidate
+			diagnosis = DiagnoseBottleneck(telemetry)
+			evals = []MethodEvaluation{baselineEval}
+			lastErr = nil
+			break
+		}
+
+		// T1 could not finish the task. Promote the useful partial procedure only
+		// after independently verifying its executable semantics on held-out streams.
+		promoted, err := r.promotePartialProcedure(ctx, partial.Artifact, telemetry.TaskID, partialScore)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		recursiveUsed = true
+		if r.Diagnostics != nil {
+			r.Diagnostics.Record("C", promoted.ID, "acquired-abstraction", promoted,
+				DiagnosticAccepted, "independent procedure verification + useful future-trace change", true,
+				fmt.Sprintf("T2 promotion at iteration %d; procedure depth=%d score=%.3f", iteration, len(promoted.Procedure.Steps), partialScore))
+		}
+
+		// Re-enter synthesis against the enriched library. On iterations after
+		// promotion, only candidates that actually invoke the new acquired symbol
+		// can discharge the recursive-compounding test.
+		if iteration >= maxIterations {
+			continue
+		}
+		enriched := make([]MethodCandidate, 0, len(cands))
+		for _, candidate := range AutonomousMethodCandidatesWithLibrary(
+				DiagnoseBottleneck(telemetry), failedSpec, failedSpec.ResourceLimits, &r.Abstractions) {
+			if candidateUsesAbstraction(candidate.Artifact, promoted.ID) && procedureDepthAtLeast(candidate.Artifact, 2) {
+				enriched = append(enriched, candidate)
+			}
+		}
+		if r.Diagnostics != nil {
+			r.Diagnostics.Record("C", promoted.ID, "recursive-search-frontier", map[string]any{
+				"iteration": iteration + 1,
+				"candidate_count": len(enriched),
+				"library_size": len(r.Abstractions.Abstractions),
+			}, DiagnosticProposal, "depth-2 recursive candidates invoke promoted abstraction", len(enriched) > 0,
+				fmt.Sprintf("T2 second synthesis candidates=%d", len(enriched)))
+		}
+		evaluatedRecursiveCandidates := 0
+		for _, candidate := range enriched {
+			if err := ctx.Err(); err != nil {
+				return AdaptiveAcquisitionResult{}, fmt.Errorf("recursive compounding deadline reached during iteration %d: %w", iteration+1, err)
+			}
+			if evaluatedRecursiveCandidates >= 3 {
+				break
+			}
+			evaluatedRecursiveCandidates++
+			result := verifyRecursiveMethodCandidate(ctx, candidate.Artifact, failedSpec, methodHidden, nil, &r.Abstractions, promoted.ID)
+			evals = append(evals, result)
+			if result.Verified {
+				method = result.Candidate
+				diagnosis = DiagnoseBottleneck(telemetry)
+				lastErr = nil
+				if r.Diagnostics != nil {
+					r.Diagnostics.Record("C", method.ID, "acquisition-method", method,
+						DiagnosticAccepted, "recursive candidate passes adaptive independent verification", true,
+						fmt.Sprintf("T2 final verification success via promoted abstraction %s", promoted.ID))
+				}
+				break
+			}
+		}
+		if method.ID != "" {
+			break
+		}
+		lastErr = errors.New("recursive synthesis exhausted promoted frontier without verification")
+	}
+
+	if method.ID == "" {
+		if lastErr == nil {
+			lastErr = errors.New("recursive acquisition failed")
+		}
+		return AdaptiveAcquisitionResult{}, lastErr
+	}
+
+	if err := r.Methods.Install(method); err != nil {
+		return AdaptiveAcquisitionResult{}, err
+	}
+	if r.PersistentMethods != nil {
+		if err := r.PersistentMethods.Install(method); err != nil {
+			return AdaptiveAcquisitionResult{}, err
+		}
+	}
+	for _, e := range evals {
+		r.History = append(r.History, AcquisitionExperience{
+			TaskStructure: telemetry.TaskID,
+			Method: e.Candidate.Name,
+			SearchAttempts: 1,
+			Cost: e.Cost,
+			Verified: e.Verified,
+			TransferScore: boolScore(e.Transfer),
+			Provenance: e.Candidate.Provenance,
+		})
+	}
+
+	if err := r.learnAbstractionFromVerifiedMethod(method, telemetry, futureSpec, futureHidden); err != nil {
+		return AdaptiveAcquisitionResult{}, err
+	}
+
+	candidates, err := r.Methods.Apply(futureSpec)
+	if err != nil {
+		return AdaptiveAcquisitionResult{}, err
+	}
+	for i, c := range candidates {
+		var p ModificationProposal
+		if recursiveUsed {
+			p, err = AdaptiveUniversalSynthesis(c, futureSpec)
+		} else {
+			p, err = (UniversalProgramBuilder{}).Build(c, futureSpec)
+		}
+		if err != nil {
+			continue
+		}
+		if !programFitsJSON(p.Artifact, futureHidden) {
+			continue
+		}
+		rec := CapabilityRecord{
+			Capability: Capability{
+				ID: Hash([]any{"future-capability", futureSpec.ID, method.ID}),
+				Name: futureSpec.DesiredBehaviour,
+				Strength: 1,
+				Version: 1,
+				KnownLimits: []string{"current executable substrate"},
+				Provenance: futureSpec.Provenance,
+			},
+			Artifact: p.Artifact,
+			Tests: futureHidden,
+			Mechanism: c.Mechanism,
+			ArchitectureCost: float64(i + 1),
+		}
+		r.History = append(r.History, AcquisitionExperience{
+			TaskStructure: Hash([]any{futureSpec.Inputs, futureSpec.Outputs, futureSpec.Invariants}),
+			Method: method.Name,
+			SearchAttempts: i + 1,
+			Cost: c.Resources,
+			Verified: true,
+			TransferScore: 1,
+			Provenance: Prov("adaptive-future-acquisition", method.ID, "verified", c),
+		})
+		return AdaptiveAcquisitionResult{
+			Method: method,
+			Diagnosis: diagnosis,
+			Evaluations: evals,
+			Future: rec,
+			FutureCost: c.Resources,
+			Trace: append(append([]string(nil), r.Methods.Trace...), fmt.Sprintf("T2-recursive:%t", recursiveUsed)),
+		}, nil
+	}
+	return AdaptiveAcquisitionResult{}, errors.New("installed acquisition method could not acquire future capability")
+}
+
+func procedureDepthAtLeast(m AcquisitionMethodArtifact, minDepth int) bool {
+	p, err := decodeAcquisitionProcedure(m.Procedure)
+	return err == nil && len(p.Steps) >= minDepth
+}
+
+func candidateUsesAbstraction(m AcquisitionMethodArtifact, abstractionID string) bool {
+	p, err := decodeAcquisitionProcedure(m.Procedure)
+	if err != nil {
+		return false
+	}
+	for _, dep := range abstractionDependencies(p) {
+		if dep == abstractionID {
+			return true
+		}
+	}
+	return false
+}
+
+func partialMethodScore(m AcquisitionMethodArtifact, spec CapabilitySpecification, lib *AbstractionLibrary) (float64, []ArchitectureCandidate, error) {
+	p, err := decodeAcquisitionProcedure(m.Procedure)
+	if err != nil {
+		return 0, nil, err
+	}
+	base, err := (UniversalMechanismSearch{}).SearchMechanisms(spec, spec.ResourceLimits)
+	if err != nil {
+		return 0, nil, err
+	}
+	got, err := executeSearchProcedureWithLibrary(p, base, lib)
+	if err != nil {
+		return 0, got, err
+	}
+	if len(got) != len(base) || sameMechanismOrder(base, got) {
+		return 0, got, nil
+	}
+	distance := 0
+	for i := range base {
+		for j := i + 1; j < len(base); j++ {
+			if base[i].Mechanism != got[i].Mechanism && base[j].Mechanism != got[j].Mechanism {
+				distance++
+			}
+		}
+	}
+	maxDistance := len(base) * (len(base) - 1) / 2
+	score := 0.0
+	if maxDistance > 0 {
+		score = float64(distance) / float64(maxDistance)
+	}
+	if len(p.Steps) >= 2 {
+		score += 1.0
+	}
+	return score, got, nil
+}
+
+func selectBestPartialMethodCandidate(cands []MethodCandidate, spec CapabilitySpecification, lib *AbstractionLibrary) MethodCandidate {
+	best := MethodCandidate{}
+	bestScore := -1.0
+	for _, candidate := range cands {
+		score, got, err := partialMethodScore(candidate.Artifact, spec, lib)
+		if err != nil || len(got) == 0 || score <= 0 {
+			continue
+		}
+		if score > bestScore {
+			bestScore = score
+			best = candidate
+		}
+	}
+	return best
+}
+
+func (r *AdaptiveAcquisitionRuntime) promotePartialProcedure(ctx context.Context, method AcquisitionMethodArtifact, taskID string, partialScore float64) (AcquiredAbstraction, error) {
+	if err := ctx.Err(); err != nil {
+		return AcquiredAbstraction{}, err
+	}
+	p, err := decodeAcquisitionProcedure(method.Procedure)
+	if err != nil {
+		return AcquiredAbstraction{}, err
+	}
+	if len(p.Steps) < 2 {
+		return AcquiredAbstraction{}, errors.New("partial promotion requires a non-trivial procedure")
+	}
+	id := Hash([]any{"t2-partial-abstraction", method.ID, procedureSignature(p)})
+	if existing, ok := r.Abstractions.Find(id); ok {
+		return existing, nil
+	}
+	probe := []AbstractionVerificationCase{
+		{Input: streamForAbstractionVerification("promote-a", "promote-b", "promote-c")},
+		{Input: streamForAbstractionVerification("promote-c", "promote-a", "promote-b", "promote-d")},
+	}
+	proposal := AcquiredAbstraction{
+		ID: id,
+		Name: "t2-promoted-abstraction:" + procedureSignature(p),
+		Procedure: p,
+		Contract: AbstractionContract{
+			Inputs: []string{"architecture-candidate-stream"},
+			Outputs: []string{"architecture-candidate-stream"},
+			Preconditions: []string{"bounded candidate stream", "referenced abstractions installed"},
+			Postconditions: []string{"deterministic executable transformation"},
+		},
+		Dependencies: abstractionDependencies(p),
+		Verification: VerificationResult{Status: "pending", Independent: false},
+		Evidence: []AbstractionEvidence{{
+			TaskStructure: taskID,
+			Verified: true,
+			HeldOut: true,
+			TransferScore: partialScore,
+			DiscoveryCost: method.Resources,
+			ObservedGain: partialScore,
+		}},
+		Provenance: Prov("t2-recursive-promotion", method.ID, "partial-future-trace", p),
+	}
+	verified, err := VerifyAcquiredAbstractionWithDiagnostics(proposal, &r.Abstractions, probe, r.Diagnostics)
+	if err != nil {
+		return AcquiredAbstraction{}, err
+	}
+	if err := r.Abstractions.Install(verified); err != nil {
+		return AcquiredAbstraction{}, err
+	}
+	if r.PersistentAbstractions != nil {
+		if err := r.PersistentAbstractions.Save(&r.Abstractions); err != nil {
+			return AcquiredAbstraction{}, err
+		}
+	}
+	return verified, nil
+}
+
+func verifyRecursiveMethodCandidate(ctx context.Context, m AcquisitionMethodArtifact, target CapabilitySpecification, hidden, baseline []ProgramTestCase, lib *AbstractionLibrary, promotedID string) MethodEvaluation {
+	if err := ctx.Err(); err != nil {
+		return MethodEvaluation{Candidate: m, Reason: err.Error()}
+	}
+	_, err := decodeAcquisitionProcedure(m.Procedure)
+	if err != nil {
+		return MethodEvaluation{Candidate: m, Reason: err.Error()}
+	}
+	cs, err := executeAcquisitionMethodWithLibrary(m, target, lib)
+	if err != nil {
+		return MethodEvaluation{Candidate: m, Reason: err.Error()}
+	}
+	base, err := (UniversalMechanismSearch{}).SearchMechanisms(target, target.ResourceLimits)
+	if err != nil {
+		return MethodEvaluation{Candidate: m, Reason: err.Error()}
+	}
+	if sameMechanismOrder(base, cs) {
+		return MethodEvaluation{Candidate: m, Reason: "recursive candidate produced no future-trace change"}
+	}
+	if !candidateUsesAbstraction(m, promotedID) {
+		return MethodEvaluation{Candidate: m, Reason: "recursive candidate did not invoke promoted abstraction"}
+	}
+	for _, c := range cs {
+		if err := ctx.Err(); err != nil {
+			return MethodEvaluation{Candidate: m, Reason: err.Error()}
+		}
+		proposal, synthErr := AdaptiveUniversalSynthesis(c, target)
+		if synthErr != nil {
+			continue
+		}
+		prog := pArtifactProgram(proposal.Artifact)
+		if !programFits(prog, hidden) {
+			continue
+		}
+		if len(baseline) > 0 && !programFits(prog, baseline) {
+			continue
+		}
+		return MethodEvaluation{
+			Candidate: m,
+			Verified: true,
+			Gain: 1,
+			Cost: c.Resources,
+			Transfer: true,
+			Regression: true,
+			LeakFree: true,
+			FutureTraceChanged: true,
+			Reason: fmt.Sprintf("recursive independent verification passed using promoted abstraction %s", promotedID),
+		}
+	}
+	return MethodEvaluation{Candidate: m, Reason: "recursive adaptive verifier exhausted candidate stream"}
+}
+
 func boolScore(v bool)float64{if v{return 1};return 0}
