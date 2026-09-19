@@ -26,7 +26,6 @@ type ReactorTask struct {
 	Family                 string         `json:"family"`
 	Description            string         `json:"description"`
 	Examples               []ReactorExample `json:"examples"`
-	Hidden                 []ReactorExample `json:"hidden"`
 	MaxSearchDepth         int            `json:"max_search_depth"`
 	MinProcedureSteps      int            `json:"min_procedure_steps"`
 	AdmitAsAbstraction     bool           `json:"admit_as_abstraction"`
@@ -39,8 +38,8 @@ func (t ReactorTask) Validate() error {
 	if t.ID == "" || t.Family == "" || t.Description == "" {
 		return errors.New("reactor task requires id, family, and description")
 	}
-	if len(t.Examples) < 2 || len(t.Hidden) < 2 {
-		return errors.New("reactor task requires at least two train and two hidden examples")
+	if len(t.Examples) < 2 {
+		return errors.New("reactor task requires at least two training examples")
 	}
 	for _, group := range [][]ReactorExample{t.Examples, t.Hidden} {
 		for _, example := range group {
@@ -258,6 +257,28 @@ func (q *FileReactorTaskQueue) Next(ctx context.Context) (ReactorTaskLease, erro
 	}
 }
 
+type ReactorVerifier interface {
+	Verify(context.Context, ReactorTask, AcquisitionProcedure, *AbstractionLibrary) error
+}
+
+type StaticReactorVerifier struct {
+	HiddenByTask map[string][]ReactorExample
+}
+
+func (v StaticReactorVerifier) Verify(ctx context.Context, task ReactorTask, procedure AcquisitionProcedure, lib *AbstractionLibrary) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	examples, ok := v.HiddenByTask[task.ID]
+	if !ok || len(examples) < 2 {
+		return fmt.Errorf("no evaluator-owned hidden fixture for task %q", task.ID)
+	}
+	if procedureFitsReactorExamples(procedure, examples, lib) {
+		return nil
+	}
+	return errors.New("independent hidden verification rejected candidate")
+}
+
 type AbstractionAdmissionSource interface {
 	GetAbstractionAdmission(context.Context, string) (protocol.AbstractionAdmissionReceipt, error)
 }
@@ -269,12 +290,18 @@ type ParameterizedReactorSearchResult struct {
 	UsedAbstractionID   string
 }
 
-func ParameterizedMechanismSearchWithLibrary(task ReactorTask, lib *AbstractionLibrary) (ParameterizedReactorSearchResult, error) {
+func ParameterizedMechanismSearchWithLibrary(ctx context.Context, task ReactorTask, lib *AbstractionLibrary, verifier ReactorVerifier) (ParameterizedReactorSearchResult, error) {
 	if err := task.Validate(); err != nil {
 		return ParameterizedReactorSearchResult{}, err
 	}
 	if lib == nil {
 		return ParameterizedReactorSearchResult{}, errors.New("reactor search requires abstraction library")
+	}
+	if verifier == nil {
+		return ParameterizedReactorSearchResult{}, errors.New("reactor search requires an evaluator-owned verifier")
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	evaluated := 0
 	for depth := task.MinProcedureSteps; depth <= task.MaxSearchDepth; depth++ {
@@ -287,8 +314,11 @@ func ParameterizedMechanismSearchWithLibrary(task ReactorTask, lib *AbstractionL
 				continue
 			}
 			evaluated++
+			if err := ctx.Err(); err != nil {
+				return ParameterizedReactorSearchResult{}, err
+			}
 			if procedureFitsReactorExamples(procedure, task.Examples, lib) &&
-				procedureFitsReactorExamples(procedure, task.Hidden, lib) {
+				verifier.Verify(ctx, task, procedure, lib) == nil {
 				return ParameterizedReactorSearchResult{
 					Procedure:           procedure,
 					EvaluatedCandidates: evaluated,
@@ -363,6 +393,7 @@ type ContinuousReactor struct {
 	Queue               ReactorTaskQueue
 	Admissions          AbstractionAdmissionSource
 	PersistentLibrary   *PersistentAbstractionLibrary
+	Verifier            ReactorVerifier
 	TrustedSignerID     string
 	TrustedPublicKeyB64 string
 	MaxTasks             int
@@ -378,7 +409,7 @@ func (r *ContinuousReactor) logf(format string, args ...any) {
 }
 
 func (r *ContinuousReactor) Hydrate(ctx context.Context) error {
-	if r.Runtime == nil || r.Queue == nil || r.PersistentLibrary == nil || r.Admissions == nil {
+	if r.Runtime == nil || r.Queue == nil || r.PersistentLibrary == nil || r.Admissions == nil || r.Verifier == nil {
 		return errors.New("continuous reactor requires runtime, queue, persistent library, and admission source")
 	}
 	if r.TrustedSignerID == "" || r.TrustedPublicKeyB64 == "" {
@@ -458,7 +489,7 @@ func (r *ContinuousReactor) runOne(ctx context.Context, task ReactorTask) Reacto
 	if requireID != "" {
 		task.RequireAbstractionID = requireID
 	}
-	searchResult, err := ParameterizedMechanismSearchWithLibrary(task, &r.Runtime.Abstractions)
+	searchResult, err := ParameterizedMechanismSearchWithLibrary(ctx, task, &r.Runtime.Abstractions, r.Verifier)
 	if err != nil {
 		result.Error = err.Error()
 		return result
