@@ -1,6 +1,6 @@
 package ace
 
-import("crypto/sha256";"encoding/hex";"encoding/json";"fmt";"os";"os/exec";"sort";"strings";"testing")
+import("crypto/sha256";"encoding/hex";"encoding/json";"fmt";"os";"os/exec";"path/filepath";"sort";"strings";"testing")
 type oiExpr struct{Kind string `json:"kind"`;Value int `json:"value,omitempty"`;Left,Right *oiExpr `json:"left,omitempty"`}
 type oiCandidate struct{ID string `json:"candidate_id"`;Representation any `json:"representation"`;Semantics string `json:"executable_semantics"`;Construction []string `json:"construction_provenance"`;Inputs []int `json:"behavioral_probe_inputs"`;Outputs []int `json:"behavioral_probe_outputs"`;Signature string `json:"behavioral_signature"`;BaselineMembership string `json:"baseline_membership"`;VerificationStatus string `json:"independent_verification_status"`;VerificationResult bool `json:"verification_result"`;HeldOut bool `json:"heldout_performance"`;Resource map[string]int `json:"resource_consumption"`;Terminal string `json:"terminal_classification"`;Reason string `json:"rejection_acceptance_reason"`}
 type oiFrontier struct{Commit string `json:"commit"`;Parent string `json:"parent"`;Budget map[string]int `json:"budget"`;LanguageDefinition string `json:"language_definition"`;LanguageHash string `json:"language_hash"`;Complete bool `json:"complete"`;CandidateCount int `json:"complete_candidate_count"`;BehaviorClasses []string `json:"canonical_behavior_classes"`;Candidates []oiCandidate `json:"candidates"`;Digest string `json:"frontier_digest"`}
