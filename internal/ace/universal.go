@@ -1,6 +1,6 @@
 package ace
 
-import("encoding/json";"errors";"fmt";"strconv";"strings")
+import("context";"encoding/json";"errors";"fmt";"strconv";"strings")
 type UExpr struct{Kind string `json:"kind"`;Value string `json:"value,omitempty"`;Left *UExpr `json:"left,omitempty"`;Right *UExpr `json:"right,omitempty"`}
 type UStmt struct{Kind string `json:"kind"`;Target string `json:"target,omitempty"`;Expr *UExpr `json:"expr,omitempty"`;Cond *UExpr `json:"cond,omitempty"`;Then []UStmt `json:"then,omitempty"`;Else []UStmt `json:"else,omitempty"`;Body []UStmt `json:"body,omitempty"`;Count int `json:"count,omitempty"`}
 type UniversalProgram struct{Statements []UStmt `json:"statements"`}
@@ -19,3 +19,98 @@ type UniversalProgramBuilder struct{}
 func(UniversalProgramBuilder)Build(c ArchitectureCandidate,s CapabilitySpecification)(ModificationProposal,error){if len(s.KnownExamples)<2||len(s.Inputs)==0||len(s.Outputs)==0{return ModificationProposal{},errors.New("insufficient behavioral evidence")};vars,out:=append([]string{},s.Inputs...),s.Outputs[0];if strings.HasPrefix(c.Mechanism,"universal:branching")||strings.HasPrefix(c.Mechanism,"universal:compositional"){branchExprs:=expressionFrontier(vars,1);for _,v:=range vars{for _,cmp:=range []string{"lt","eq"}{for _,rhs:=range branchExprs{cond:=UExpr{Kind:cmp,Left:&UExpr{Kind:"var",Value:v},Right:cloneExpr(rhs)};for _,te:=range branchExprs{for _,ee:=range branchExprs{p:=UniversalProgram{Statements:[]UStmt{{Kind:"if",Cond:&cond,Then:[]UStmt{{Kind:"assign",Target:out,Expr:cloneExpr(te)}},Else:[]UStmt{{Kind:"assign",Target:out,Expr:cloneExpr(ee)}}}}};if programFits(p,s.KnownExamples){return encodeUniversal(p,s,c)}}}}}}};for _,e:=range expressionFrontier(vars,2){p:=UniversalProgram{Statements:[]UStmt{{Kind:"assign",Target:out,Expr:cloneExpr(e)}}};if programFits(p,s.KnownExamples){return encodeUniversal(p,s,c)}};return ModificationProposal{},errors.New("universal synthesis exhausted search space")}
 func encodeUniversal(p UniversalProgram,s CapabilitySpecification,c ArchitectureCandidate)(ModificationProposal,error){b,err:=json.Marshal(p);if err!=nil{return ModificationProposal{},err};var q UniversalProgram;if err:=json.Unmarshal(b,&q);err!=nil||!programFits(q,s.KnownExamples){return ModificationProposal{},errors.New("serialized artifact failed behavioral validation")};return ModificationProposal{ID:Hash([]any{c,s,p}),Capability:s,Candidate:c,Artifact:string(b),Provenance:Prov("mechanism-builder",c.ID,"synthesize-universal-program",p)},nil}
 func GenerateAdversarialCases(s CapabilitySpecification)[]ProgramTestCase{out:=make([]ProgramTestCase,0,8);for _,c:=range s.KnownExamples{for k,v:=range c.Input{n,err:=strconv.Atoi(v);if err!=nil{continue};for _,d:=range []int{-1,1}{in:=map[string]string{};for ik,iv:=range c.Input{in[ik]=iv};in[k]=strconv.Itoa(n+d);out=append(out,ProgramTestCase{Input:in})}}};return out}
+
+
+func expressionFrontierWithContext(ctx context.Context, vars []string, maxDepth int) ([]UExpr, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	base := make([]UExpr, 0, len(vars)+5)
+	for _, v := range vars {
+		base = append(base, UExpr{Kind: "var", Value: v})
+	}
+	for n := -2; n <= 2; n++ {
+		base = append(base, UExpr{Kind: "const", Value: strconv.Itoa(n)})
+	}
+	front := append([]UExpr(nil), base...)
+	prev := base
+	for depth := 1; depth <= maxDepth; depth++ {
+		next := make([]UExpr, 0, len(prev)*len(prev)*5)
+		for i := range prev {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			for j := range prev {
+				if (j & 255) == 0 {
+					if err := ctx.Err(); err != nil {
+						return nil, err
+					}
+				}
+				a, b := &prev[i], &prev[j]
+				next = append(next,
+					UExpr{Kind: "add", Left: a, Right: b},
+					UExpr{Kind: "sub", Left: a, Right: b},
+					UExpr{Kind: "mul", Left: a, Right: b},
+					UExpr{Kind: "lt", Left: a, Right: b},
+					UExpr{Kind: "eq", Left: a, Right: b},
+				)
+			}
+		}
+		front = append(front, next...)
+		prev = next
+	}
+	return front, nil
+}
+
+func (UniversalProgramBuilder) BuildWithContext(ctx context.Context, c ArchitectureCandidate, s CapabilitySpecification) (ModificationProposal, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if len(s.KnownExamples) < 2 || len(s.Inputs) == 0 || len(s.Outputs) == 0 {
+		return ModificationProposal{}, errors.New("insufficient behavioral evidence")
+	}
+	if err := ctx.Err(); err != nil {
+		return ModificationProposal{}, err
+	}
+	vars, out := append([]string{}, s.Inputs...), s.Outputs[0]
+	if strings.HasPrefix(c.Mechanism, "universal:branching") || strings.HasPrefix(c.Mechanism, "universal:compositional") {
+		branchExprs, err := expressionFrontierWithContext(ctx, vars, 1)
+		if err != nil {
+			return ModificationProposal{}, err
+		}
+		for _, v := range vars {
+			for _, cmp := range []string{"lt", "eq"} {
+				for _, rhs := range branchExprs {
+					if err := ctx.Err(); err != nil {
+						return ModificationProposal{}, err
+					}
+					cond := UExpr{Kind: cmp, Left: &UExpr{Kind: "var", Value: v}, Right: cloneExpr(rhs)}
+					for _, te := range branchExprs {
+						for _, ee := range branchExprs {
+							p := UniversalProgram{Statements: []UStmt{{Kind: "if", Cond: &cond, Then: []UStmt{{Kind: "assign", Target: out, Expr: cloneExpr(te)}}, Else: []UStmt{{Kind: "assign", Target: out, Expr: cloneExpr(ee)}}}}}
+							if programFits(p, s.KnownExamples) {
+								return encodeUniversal(p, s, c)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	exprs, err := expressionFrontierWithContext(ctx, vars, 2)
+	if err != nil {
+		return ModificationProposal{}, err
+	}
+	for i, e := range exprs {
+		if (i & 255) == 0 {
+			if err := ctx.Err(); err != nil {
+				return ModificationProposal{}, err
+			}
+		}
+		p := UniversalProgram{Statements: []UStmt{{Kind: "assign", Target: out, Expr: cloneExpr(e)}}}
+		if programFits(p, s.KnownExamples) {
+			return encodeUniversal(p, s, c)
+		}
+	}
+	return ModificationProposal{}, errors.New("universal synthesis exhausted search space")
+}

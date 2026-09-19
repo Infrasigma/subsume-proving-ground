@@ -3,6 +3,7 @@ package ace
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -122,6 +123,14 @@ func abstractionDependencies(p AcquisitionProcedure) []string {
 }
 
 func DiscoverReusableAbstraction(observations []AbstractionObservation, minDistinctStructures int) (AcquiredAbstraction, error) {
+	return discoverReusableAbstraction(observations, minDistinctStructures, nil)
+}
+
+func DiscoverReusableAbstractionWithDiagnostics(observations []AbstractionObservation, minDistinctStructures int, log *DiagnosticLog) (AcquiredAbstraction, error) {
+	return discoverReusableAbstraction(observations, minDistinctStructures, log)
+}
+
+func discoverReusableAbstraction(observations []AbstractionObservation, minDistinctStructures int, log *DiagnosticLog) (AcquiredAbstraction, error) {
 	if minDistinctStructures < 2 {
 		minDistinctStructures = 2
 	}
@@ -131,11 +140,21 @@ func DiscoverReusableAbstraction(observations []AbstractionObservation, minDisti
 		structures   map[string]bool
 	}
 	buckets := map[string]*bucket{}
-	for _, o := range observations {
-		if !o.Verified || !o.HeldOut || len(o.Procedure.Steps) < 2 {
+	for i, o := range observations {
+		rawID := fmt.Sprintf("observation-%d", i)
+		switch {
+		case !o.Verified:
+			log.Record("C", rawID, "abstraction-observation", o, DiagnosticEvidenceGate, "observation.Verified == true", false, "candidate observation rejected before proposal")
+			continue
+		case !o.HeldOut:
+			log.Record("C", rawID, "abstraction-observation", o, DiagnosticEvidenceGate, "observation.HeldOut == true", false, "candidate observation rejected before proposal")
+			continue
+		case len(o.Procedure.Steps) < 2:
+			log.Record("C", rawID, "abstraction-observation", o, DiagnosticFormalValidity, "len(procedure.Steps) >= 2", false, "procedure is not a non-trivial composition")
 			continue
 		}
 		sig := procedureSignature(o.Procedure)
+		log.Record("C", sig, "abstraction-candidate", o.Procedure, DiagnosticProposal, "verified + held-out + non-trivial composition", true, "candidate entered abstraction bucket")
 		b := buckets[sig]
 		if b == nil {
 			b = &bucket{procedure: o.Procedure, structures: map[string]bool{}}
@@ -148,8 +167,9 @@ func DiscoverReusableAbstraction(observations []AbstractionObservation, minDisti
 	}
 	var best *bucket
 	bestScore := -1.0
-	for _, b := range buckets {
+	for sig, b := range buckets {
 		if len(b.structures) < minDistinctStructures {
+			log.Record("C", sig, "abstraction-candidate", b.procedure, DiagnosticEvidenceGate, fmt.Sprintf("distinct_task_structures >= %d", minDistinctStructures), false, fmt.Sprintf("only %d distinct task structures", len(b.structures)))
 			continue
 		}
 		score := 0.0
@@ -162,8 +182,10 @@ func DiscoverReusableAbstraction(observations []AbstractionObservation, minDisti
 		}
 	}
 	if best == nil {
+		log.Record("C", "", "abstraction-selection", map[string]any{"candidate_buckets": len(buckets), "min_distinct_structures": minDistinctStructures}, DiagnosticSelection, "exists candidate bucket with sufficient cross-structure evidence", false, "all proposed candidates died at the evidence gate")
 		return AcquiredAbstraction{}, errors.New("no reusable abstraction has cross-structure evidence")
 	}
+	log.Record("C", procedureSignature(best.procedure), "abstraction-candidate", best.procedure, DiagnosticSelection, "score is maximal among candidates passing evidence gate", true, "candidate selected for independent verification")
 	first := best.observations[0]
 	for _, o := range best.observations[1:] {
 		if o.DiscoveryCost.Compute < first.DiscoveryCost.Compute {
@@ -192,18 +214,37 @@ func DiscoverReusableAbstraction(observations []AbstractionObservation, minDisti
 }
 
 func VerifyAcquiredAbstraction(a AcquiredAbstraction, lib *AbstractionLibrary, cases []AbstractionVerificationCase) (AcquiredAbstraction, error) {
+	return verifyAcquiredAbstraction(a, lib, cases, nil)
+}
+
+func VerifyAcquiredAbstractionWithDiagnostics(a AcquiredAbstraction, lib *AbstractionLibrary, cases []AbstractionVerificationCase, log *DiagnosticLog) (AcquiredAbstraction, error) {
+	return verifyAcquiredAbstraction(a, lib, cases, log)
+}
+
+func verifyAcquiredAbstraction(a AcquiredAbstraction, lib *AbstractionLibrary, cases []AbstractionVerificationCase, log *DiagnosticLog) (AcquiredAbstraction, error) {
 	if lib == nil {
+		log.Record("C", a.ID, "abstraction-candidate", a, DiagnosticFormalValidity, "verification library != nil", false, "independent verification cannot execute")
 		return a, errors.New("abstraction verification requires a library")
 	}
 	if len(cases) < 2 {
+		log.Record("C", a.ID, "abstraction-candidate", a, DiagnosticEvidenceGate, "len(verification cases) >= 2", false, "insufficient independent verification cases")
 		return a, errors.New("abstraction verification requires at least two independent cases")
 	}
 	for _, tc := range cases {
 		got, err := ExecuteAcquiredAbstraction(a, tc.Input, lib)
-		if err != nil { return a, err }
+		if err != nil {
+			log.Record("C", a.ID, "abstraction-candidate", a, DiagnosticFormalValidity, "executable candidate completes without runtime error", false, err.Error())
+			return a, err
+		}
 		want := referenceProcedure(a.Procedure, tc.Input, lib, map[string]bool{})
-		if !equalMechanismOrders(got, want) { return a, errors.New("independent abstraction reference disagrees with executable semantics") }
-		if len(tc.Expected) > 0 && !equalMechanismOrders(got, namesToCandidates(tc.Expected)) { return a, errors.New("independent abstraction verifier rejected expected held-out behavior") }
+		if !equalMechanismOrders(got, want) {
+			log.Record("C", a.ID, "abstraction-candidate", a, DiagnosticEnvironmental, "executable output == independent reference output", false, "differential execution mismatch")
+			return a, errors.New("independent abstraction reference disagrees with executable semantics")
+		}
+		if len(tc.Expected) > 0 && !equalMechanismOrders(got, namesToCandidates(tc.Expected)) {
+			log.Record("C", a.ID, "abstraction-candidate", a, DiagnosticEvidenceGate, "executable output == held-out expected output", false, "held-out behavior mismatch")
+			return a, errors.New("independent abstraction verifier rejected expected held-out behavior")
+		}
 	}
 	a.Verification = VerificationResult{Status:"verified",Independent:true,Expected:[]string{"held-out procedure behavior when supplied","independent reference agreement"},Observed:[]string{"independent reference interpreter agreement"},Provenance:Prov("independent-abstraction-verifier",a.ID,"differential-reference-execution",cases)}
 	return a, nil
