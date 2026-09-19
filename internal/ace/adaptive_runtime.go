@@ -50,7 +50,7 @@ func abstractionObservationFromMethod(m AcquisitionMethodArtifact, taskStructure
 
 func streamForAbstractionVerification(names ...string) []ArchitectureCandidate { out:=make([]ArchitectureCandidate,len(names));for i,name:=range names{out[i]=ArchitectureCandidate{ID:Hash([]any{"runtime-abstraction-probe",name}),Mechanism:name,Resources:ResourceVector{Compute:float64(i+1),ExperimentBudget:1}}};return out }
 
-func (r *AdaptiveAcquisitionRuntime) learnAbstractionFromVerifiedMethod(method AcquisitionMethodArtifact, telemetry AcquisitionTelemetry, futureSpec CapabilitySpecification, hidden []ProgramTestCase) error {
+func (r *AdaptiveAcquisitionRuntime) learnAbstractionFromVerifiedMethod(ctx context.Context, method AcquisitionMethodArtifact, telemetry AcquisitionTelemetry, futureSpec CapabilitySpecification, hidden []ProgramTestCase) error {
 	if !r.EnableAbstractionLearning || len(method.Procedure) == 0 {
 		if r.Diagnostics != nil && r.EnableAbstractionLearning {
 			r.Diagnostics.Record("C", method.ID, "acquisition-method", method, DiagnosticFormalValidity, "len(method.Procedure) > 0", false, "verified acquisition method contained no procedure steps")
@@ -72,7 +72,13 @@ func (r *AdaptiveAcquisitionRuntime) learnAbstractionFromVerifiedMethod(method A
 	inputs := [][]ArchitectureCandidate{streamForAbstractionVerification("probe-a","probe-b","probe-c"),streamForAbstractionVerification("probe-c","probe-a","probe-b","probe-d")}
 	cases:=make([]AbstractionVerificationCase,0,len(inputs));for _,input:=range inputs{cases=append(cases,AbstractionVerificationCase{Input:input})}
 	verified, err := VerifyAcquiredAbstractionWithDiagnostics(proposal, &r.Abstractions, cases, r.Diagnostics); if err != nil { return nil }
-	if err:=r.Abstractions.Install(verified);err!=nil{return err};if r.PersistentAbstractions!=nil{return r.PersistentAbstractions.Save(&r.Abstractions)};return nil
+	verifiedScore, _, scoreErr := partialMethodScore(method, futureSpec, &r.Abstractions)
+	if scoreErr != nil { verifiedScore = 1 }
+	sealed, err := r.admitAbstraction(ctx, verified, verifiedScore)
+	if err != nil { return err }
+	if r.PersistentAbstractions != nil { return r.PersistentAbstractions.Save(&r.Abstractions) }
+	_ = sealed
+	return nil
 }
 
 func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquire(telemetry AcquisitionTelemetry, failedSpec CapabilitySpecification, methodHidden []ProgramTestCase, futureSpec CapabilitySpecification, futureHidden []ProgramTestCase) (AdaptiveAcquisitionResult, error) {
@@ -262,7 +268,7 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 		})
 	}
 
-	if err := r.learnAbstractionFromVerifiedMethod(method, telemetry, futureSpec, futureHidden); err != nil {
+	if err := r.learnAbstractionFromVerifiedMethod(ctx, method, telemetry, futureSpec, futureHidden); err != nil {
 		return AdaptiveAcquisitionResult{}, err
 	}
 
@@ -387,6 +393,35 @@ func selectBestPartialMethodCandidate(cands []MethodCandidate, spec CapabilitySp
 	return best
 }
 
+func (r *AdaptiveAcquisitionRuntime) admitAbstraction(ctx context.Context, a AcquiredAbstraction, evidenceScore float64) (AcquiredAbstraction, error) {
+	if r.AbstractionKMS == nil || r.AdmissionLedger == nil || r.KMSSignerID == "" {
+		return AcquiredAbstraction{}, errors.New("F0 abstraction admission requires KMS, admission ledger, and signer identity")
+	}
+	if err := ctx.Err(); err != nil { return AcquiredAbstraction{}, err }
+	artifactHash, _, err := a.canonicalArtifact()
+	if err != nil { return AcquiredAbstraction{}, fmt.Errorf("canonicalize abstraction before sealing: %w", err) }
+	signed, err := r.AbstractionKMS.SignAbstractionHash(ctx, artifactHash, r.KMSSignerID)
+	if err != nil { return AcquiredAbstraction{}, fmt.Errorf("KMS abstraction signing failed: %w", err) }
+	if signed.ArtifactHash != artifactHash || signed.SignerID != r.KMSSignerID || signed.PublicKeyB64 == "" {
+		return AcquiredAbstraction{}, errors.New("KMS returned an invalid abstraction seal")
+	}
+	receipt, err := r.AdmissionLedger.AppendAbstractionAdmission(ctx, protocol.AbstractionAdmissionReceipt{KMSSignedArtifact:signed})
+	if err != nil { return AcquiredAbstraction{}, fmt.Errorf("durable abstraction admission failed: %w", err) }
+	a.ArtifactHash = artifactHash
+	a.KMSSignature = receipt.KMSSignedArtifact
+	a.LedgerAdmissionRef = receipt.LedgerAdmissionRef
+	a.LedgerAdmissionHash = receipt.LedgerAdmissionHash
+	a.LedgerPreviousAdmissionHash = receipt.PreviousAdmissionHash
+	a.LedgerCreatedAtUnix = receipt.CreatedAtUnix
+	r.Abstractions.ConfigureTrustedSigner(receipt.SignerID, signed.PublicKeyB64)
+	if err := a.VerifyAdmission(signed.PublicKeyB64); err != nil {
+		return AcquiredAbstraction{}, fmt.Errorf("post-ledger admission receipt verification failed: %w", err)
+	}
+	if err := r.Abstractions.Install(a); err != nil { return AcquiredAbstraction{}, err }
+	_ = evidenceScore
+	return a, nil
+}
+
 func (r *AdaptiveAcquisitionRuntime) promotePartialProcedure(ctx context.Context, method AcquisitionMethodArtifact, taskID string, partialScore float64) (AcquiredAbstraction, error) {
 	if err := ctx.Err(); err != nil {
 		return AcquiredAbstraction{}, err
@@ -432,36 +467,8 @@ func (r *AdaptiveAcquisitionRuntime) promotePartialProcedure(ctx context.Context
 	if err != nil {
 		return AcquiredAbstraction{}, err
 	}
-	if r.AbstractionKMS == nil || r.AdmissionLedger == nil || r.KMSSignerID == "" {
-		return AcquiredAbstraction{}, errors.New("F0 abstraction admission requires KMS, admission ledger, and signer identity")
-	}
-	artifactHash, _, err := verified.canonicalArtifact()
+	sealed, err := r.admitAbstraction(ctx, verified, partialScore)
 	if err != nil {
-		return AcquiredAbstraction{}, fmt.Errorf("canonicalize promoted abstraction: %w", err)
-	}
-	signed, err := r.AbstractionKMS.SignAbstractionHash(ctx, artifactHash, r.KMSSignerID)
-	if err != nil {
-		return AcquiredAbstraction{}, fmt.Errorf("KMS abstraction signing failed: %w", err)
-	}
-	if signed.ArtifactHash != artifactHash || signed.SignerID != r.KMSSignerID {
-		return AcquiredAbstraction{}, errors.New("KMS returned an invalid abstraction seal")
-	}
-	trustedKey := signed.PublicKeyB64
-	receipt, err := r.AdmissionLedger.AppendAbstractionAdmission(ctx, protocol.AbstractionAdmissionReceipt{KMSSignedArtifact:signed})
-	if err != nil {
-		return AcquiredAbstraction{}, fmt.Errorf("durable abstraction admission failed: %w", err)
-	}
-	verified.ArtifactHash = artifactHash
-	verified.KMSSignature = receipt.KMSSignedArtifact
-	verified.LedgerAdmissionRef = receipt.LedgerAdmissionRef
-	verified.LedgerAdmissionHash = receipt.LedgerAdmissionHash
-	verified.LedgerPreviousAdmissionHash = receipt.PreviousAdmissionHash
-	verified.LedgerCreatedAtUnix = receipt.CreatedAtUnix
-	r.Abstractions.ConfigureTrustedSigner(receipt.SignerID, trustedKey)
-	if err := verified.VerifyAdmission(trustedKey); err != nil {
-		return AcquiredAbstraction{}, fmt.Errorf("post-ledger admission receipt verification failed: %w", err)
-	}
-	if err := r.Abstractions.Install(verified); err != nil {
 		return AcquiredAbstraction{}, err
 	}
 	if r.PersistentAbstractions != nil {
@@ -469,7 +476,7 @@ func (r *AdaptiveAcquisitionRuntime) promotePartialProcedure(ctx context.Context
 			return AcquiredAbstraction{}, err
 		}
 	}
-	return verified, nil
+	return sealed, nil
 }
 
 func verifyRecursiveMethodCandidate(ctx context.Context, m AcquisitionMethodArtifact, target CapabilitySpecification, hidden, baseline []ProgramTestCase, lib *AbstractionLibrary, promotedID string) MethodEvaluation {
