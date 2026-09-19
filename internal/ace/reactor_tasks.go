@@ -17,10 +17,6 @@ func DefaultT2ReactorTasks() []ReactorTask {
 				{Input: []string{"high", "mid", "low"}, Expected: []string{"low", "mid", "high"}},
 				{Input: []string{"four", "three", "two", "one"}, Expected: []string{"one", "two", "three", "four"}},
 			},
-			Hidden: []ReactorExample{
-				{Input: []string{"e", "d", "c", "b", "a"}, Expected: []string{"a", "b", "c", "d", "e"}},
-				{Input: []string{"z", "y", "x"}, Expected: []string{"x", "y", "z"}},
-			},
 			MaxSearchDepth:     2,
 			MinProcedureSteps:  2,
 			AdmitAsAbstraction: true,
@@ -34,14 +30,25 @@ func DefaultT2ReactorTasks() []ReactorTask {
 				{Input: []string{"m11", "m12", "m21", "m22"}, Expected: []string{"m22", "m21", "m12", "m11"}},
 				{Input: []string{"a", "b", "c", "d"}, Expected: []string{"d", "c", "b", "a"}},
 			},
-			Hidden: []ReactorExample{
-				{Input: []string{"r11", "r12", "r21", "r22"}, Expected: []string{"r22", "r21", "r12", "r11"}},
-				{Input: []string{"q1", "q2", "q3", "q4"}, Expected: []string{"q4", "q3", "q2", "q1"}},
-			},
 			MaxSearchDepth:         2,
 			MinProcedureSteps:      2,
 			RequireLatestAdmission: true,
 			Budget:                 budget,
+		},
+	}
+}
+
+func DefaultT2ReactorVerifier() ReactorVerifier {
+	return StaticReactorVerifier{
+		HiddenByTask: map[string][]ReactorExample{
+			"01-sequence-monotonic-normalization": {
+				{Input: []string{"e", "d", "c", "b", "a"}, Expected: []string{"a", "b", "c", "d", "e"}},
+				{Input: []string{"z", "y", "x"}, Expected: []string{"x", "y", "z"}},
+			},
+			"02-matrix-row-major-reversal": {
+				{Input: []string{"r11", "r12", "r21", "r22"}, Expected: []string{"r22", "r21", "r12", "r11"}},
+				{Input: []string{"q1", "q2", "q3", "q4"}, Expected: []string{"q4", "q3", "q2", "q1"}},
+			},
 		},
 	}
 }
