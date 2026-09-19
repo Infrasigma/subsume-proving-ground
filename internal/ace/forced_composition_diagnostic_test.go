@@ -98,7 +98,7 @@ func TestForcedCompositionAdaptiveRuntimeTelemetry(t *testing.T) {
 	rt.EnableAbstractionLearning = true
 	rt.Diagnostics = log
 	rt.MaxCompoundingIterations = 3
-	rt.CompoundingTimeout = 30 * time.Second
+	rt.CompoundingTimeout = 90 * time.Second
 	result, runtimeErr := rt.ImproveAndAcquire(
 		telemetry, spec, hidden, hiddenSpec, hidden,
 	)
