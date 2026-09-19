@@ -329,7 +329,7 @@ func referenceProcedure(p AcquisitionProcedure, cs []ArchitectureCandidate, lib 
 func equalMechanismOrders(a,b []ArchitectureCandidate)bool{if len(a)!=len(b){return false};for i:=range a{if a[i].Mechanism!=b[i].Mechanism{return false}};return true}
 func namesToCandidates(names []string)[]ArchitectureCandidate{out:=make([]ArchitectureCandidate,len(names));for i,name:=range names{out[i]=ArchitectureCandidate{Mechanism:name}};return out}
 
-func enumerateProcedureAtoms(lib *AbstractionLibrary) []ProcedureStep {atoms:=[]ProcedureStep{{Op:"identity"},{Op:"reverse"},{Op:"dedupe"},{Op:"sort-cost"},{Op:"take",Arg:1},{Op:"rotate",Arg:1}};if lib!=nil{for _,id:=range lib.IDs(){atoms=append(atoms,ProcedureStep{Op:"call",Ref:id})}};return atoms}
+func enumerateProcedureAtoms(lib *AbstractionLibrary) []ProcedureStep {atoms:=[]ProcedureStep{{Op:"identity"},{Op:"rotate",Arg:1},{Op:"reverse"},{Op:"dedupe"},{Op:"sort-cost"},{Op:"take",Arg:1}};if lib!=nil{for _,id:=range lib.IDs(){atoms=append(atoms,ProcedureStep{Op:"call",Ref:id})}};return atoms}
 func ProcedureLibrarySearchCost(maxSteps int,lib *AbstractionLibrary)int{if maxSteps<1{return 0};n:=len(enumerateProcedureAtoms(lib));total:=0;power:=1;for d:=1;d<=maxSteps;d++{power*=n;total+=power};return total}
 func ExecuteAcquiredAbstraction(a AcquiredAbstraction,cs []ArchitectureCandidate,lib *AbstractionLibrary)([]ArchitectureCandidate,error){if lib==nil{return nil,errors.New("abstraction execution requires a library")};return executeSearchProcedureWithLibrary(a.Procedure,cs,lib)}
 
