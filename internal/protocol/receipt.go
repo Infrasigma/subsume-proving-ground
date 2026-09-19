@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Infrasigma/subsume-proving-ground/internal/c14n"
@@ -111,7 +112,7 @@ func AbstractionAdmissionHash(r AbstractionAdmissionReceipt) (string, error) {
 		"signature_b64": r.SignatureB64,
 		"ledger_admission_ref": r.LedgerAdmissionRef,
 		"previous_admission_hash": r.PreviousAdmissionHash,
-		"created_at_unix": r.CreatedAtUnix,
+		"created_at_unix": json.Number(strconv.FormatInt(r.CreatedAtUnix, 10)),
 	}
 	canonical, err := c14n.Canonicalize(unsigned)
 	if err != nil { return "", err }
