@@ -229,8 +229,10 @@ func (ProcfsInfrastructureAttestor) VerifyAbsent(ctx context.Context, c protocol
 	if err != nil {
 		return "", err
 	}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
 	var value any
-	if err := json.Unmarshal(b, &value); err != nil {
+	if err := dec.Decode(&value); err != nil {
 		return "", err
 	}
 	canonical, err := c14n.Canonicalize(value)
@@ -531,8 +533,10 @@ func hashObserved(v ObservedResource) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
 	var value any
-	if err := json.Unmarshal(b, &value); err != nil {
+	if err := dec.Decode(&value); err != nil {
 		return "", err
 	}
 	canonical, err := c14n.Canonicalize(value)
