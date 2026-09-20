@@ -94,14 +94,16 @@ func main() {
 			failed++
 		}
 	}
-	log.Printf("T2_REACTOR_EXIT processed=%d failed=%d continuous=%t", len(results), failed, *maxTasks == 0)
+	log.Printf("T2_T3_REACTOR_EXIT processed=%d failed=%d continuous=%t", len(results), failed, *maxTasks == 0)
 }
 
 func seedDefaultTasks(dir string) error {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
-	for i, task := range ace.DefaultT2ReactorTasks() {
+	tasks := append([]ace.ReactorTask{}, ace.DefaultT2ReactorTasks()...)
+	tasks = append(tasks, ace.DefaultT3DomainEscapeTasks()...)
+	for i, task := range tasks {
 		path := filepath.Join(dir, fmt.Sprintf("%02d-%s.json", i+1, task.ID))
 		if _, err := os.Stat(path); err == nil {
 			continue
