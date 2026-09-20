@@ -83,30 +83,21 @@ func (g MetaGrammarTaskGenerator) GenerateDyckTask(maxDepth int) (Task, []Progra
 }
 
 type ASTMutationProposal struct {
-	ID         string
-	NodeKind   string
-	GrammarDelta []string
-	Trigger    BottleneckDiagnosis
+	ID              string
+	NodeKind        string
+	GrammarDelta    []string
+	Trigger         BottleneckDiagnosis
+	GeneratedSource string
+	Compiled        bool
+	HiddenVerified  bool
+	EvaluationTrace string
 }
 
-// MutateASTDefinition is the explicit escape-hatch seam. It proposes, but does
-// not silently install, a new recursive/stateful grammar primitive.
-func MutateASTDefinition(d BottleneckDiagnosis, spec CapabilitySpecification) (ASTMutationProposal, error) {
-	if d.Class != BottleneckSearchSpace {
-		return ASTMutationProposal{}, fmt.Errorf("AST mutation requires BottleneckSearchSpace, got %s", d.Class)
-	}
-	return ASTMutationProposal{
-		ID: fmt.Sprintf("ast-mutation:%s", Hash([]any{spec.ID, d.Reason})),
-		NodeKind: "recursive-stack-machine",
-		GrammarDelta: []string{
-			"scan-string-symbol",
-			"push-stack-symbol",
-			"pop-stack-symbol",
-			"conditional-underflow-reject",
-			"recursive-loop-until-input-exhausted",
-		},
-		Trigger: d,
-	}, nil
+// MutateASTDefinition is the meta-synthesis seam. It contains no pre-authored
+// task-solving topology; the generated source is supplied by the synthesizer,
+// compiled, and evaluated against the evaluator-owned hidden set.
+func MutateASTDefinition(ctx context.Context, synth MetaSynthesizer, task Task, telemetry AcquisitionTelemetry, d BottleneckDiagnosis, train []ProgramTestCase, hidden []ProgramTestCase) (ASTMutationProposal, error) {
+	return MetaSynthesizeASTMutation(ctx, synth, task, telemetry, d, train, hidden)
 }
 
 // RunMetaGrammarCrucible executes the sealed grammar against the alien task.
@@ -162,9 +153,13 @@ func RunMetaGrammarCrucible(ctx context.Context, seed int64, maxDepth int) (Bott
 		Cost:                 ResourceVector{Compute: 50_000_000, ExperimentBudget: float64(len(candidates))},
 	}
 	diagnosis := DiagnoseAdaptiveBoundary(telemetry)
-	mutation, err := MutateASTDefinition(diagnosis, spec)
+	synth, err := NewHTTPMetaSynthesizerFromEnv()
 	if err != nil {
-		return diagnosis, ASTMutationProposal{}, fmt.Errorf("alien task reached diagnosis %s but escape hatch was not admissible: %w", diagnosis.Class, err)
+		return diagnosis, ASTMutationProposal{}, fmt.Errorf("alien task reached diagnosis %s but no meta-synthesis provider is configured: %w", diagnosis.Class, err)
+	}
+	mutation, err := MutateASTDefinition(ctx, synth, task, telemetry, diagnosis, train, hidden)
+	if err != nil {
+		return diagnosis, ASTMutationProposal{}, fmt.Errorf("meta-synthesis mutation failed after diagnosis %s: %w", diagnosis.Class, err)
 	}
 	return diagnosis, mutation, nil
 }
