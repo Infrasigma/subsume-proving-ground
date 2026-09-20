@@ -42,6 +42,11 @@ type AdaptiveAcquisitionRuntime struct {
 	// loaded only from an independently admitted artifact and swapped after
 	// verification; the interpreter remains bounded and reorder-only.
 	ActiveSearchHeuristic *SearchHeuristicProgram
+
+	// Optional counterfactual experimenter. When ordinary telemetry cannot
+	// discriminate the bottleneck, this runner may fork the failed execution,
+	// test single-factor hypotheses, and return a uniquely supported diagnosis.
+	CounterfactualRunner CounterfactualRunner
 }
 
 type AdaptiveAcquisitionResult struct { Method AcquisitionMethodArtifact; Diagnosis BottleneckDiagnosis; Evaluations []MethodEvaluation; Future CapabilityRecord; FutureCost ResourceVector; Trace []string }
@@ -121,8 +126,32 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 	var lastErr error
 	recursiveUsed := false
 	var method AcquisitionMethodArtifact
-	var diagnosis BottleneckDiagnosis
+	diagnosis := DiagnoseAdaptiveBoundary(telemetry)
 	var evals []MethodEvaluation
+
+	if diagnosis.Class == BottleneckUnknown && r.CounterfactualRunner != nil {
+		projected := ProjectAcquisitionTelemetry(telemetry)
+		counterfactual, err := RunDiscriminatingBottleneckExperiments(ctx, projected, nil, r.CounterfactualRunner)
+		if err != nil {
+			return AdaptiveAcquisitionResult{}, fmt.Errorf("counterfactual bottleneck experiment failed: %w", err)
+		}
+		diagnosis = counterfactual.Diagnosis
+		if r.Diagnostics != nil {
+			r.Diagnostics.Record(
+				"C",
+				telemetry.TaskID,
+				"counterfactual-diagnosis",
+				counterfactual,
+				DiagnosticSelection,
+				"unique independently verified counterfactual hypothesis",
+				counterfactual.Discriminated,
+				counterfactual.Diagnosis.Reason,
+			)
+		}
+	}
+	if diagnosis.Class == BottleneckUnknown {
+		return AdaptiveAcquisitionResult{Diagnosis: diagnosis}, errors.New("adaptive runtime has no discriminating bottleneck diagnosis")
+	}
 
 	for iteration := 1; iteration <= maxIterations; iteration++ {
 		if err := ctx.Err(); err != nil {
@@ -137,7 +166,7 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 		}
 
 		cands := AutonomousMethodCandidatesWithLibrary(
-			DiagnoseAdaptiveBoundary(telemetry),
+			diagnosis,
 			failedSpec,
 			failedSpec.ResourceLimits,
 			&r.Abstractions,
@@ -205,7 +234,7 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 		}
 		enriched := make([]MethodCandidate, 0, len(cands))
 		for _, candidate := range AutonomousMethodCandidatesWithLibrary(
-				DiagnoseAdaptiveBoundary(telemetry), failedSpec, failedSpec.ResourceLimits, &r.Abstractions) {
+				diagnosis, failedSpec, failedSpec.ResourceLimits, &r.Abstractions) {
 			if candidateUsesAbstraction(candidate.Artifact, promoted.ID) && procedureDepthAtLeast(candidate.Artifact, 2) {
 				enriched = append(enriched, candidate)
 			}
