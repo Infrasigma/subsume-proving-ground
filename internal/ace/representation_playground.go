@@ -212,6 +212,8 @@ func (RepresentationPlaygroundRunner) ForkAndRun(
 					fmt.Sprintf("block=%s", block.Name),
 					fmt.Sprintf("candidate=%s", candidate.Mechanism),
 				}
+				promoted := block
+				result.PromotedRepresentation = &promoted
 				result.Telemetry.RequiredRepresentationFeatures = []string{"derived-feature", block.Name}
 				result.Telemetry.SupportedRepresentationFeatures = []string{"scalar", "derived-feature"}
 				result.Telemetry.SearchExhausted = false
