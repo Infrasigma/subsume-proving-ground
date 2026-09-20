@@ -141,12 +141,17 @@ func learnBlindBootstrap(ctx context.Context) ([]retainedUnaryCapability, error)
 			input:  "x",
 			output: "h",
 			train: []ProgramTestCase{
+				{Input: map[string]string{"x": "-11"}, Expected: map[string]string{"h": "11"}},
+				{Input: map[string]string{"x": "-7"}, Expected: map[string]string{"h": "7"}},
 				{Input: map[string]string{"x": "-3"}, Expected: map[string]string{"h": "3"}},
+				{Input: map[string]string{"x": "-1"}, Expected: map[string]string{"h": "1"}},
+				{Input: map[string]string{"x": "0"}, Expected: map[string]string{"h": "0"}},
 				{Input: map[string]string{"x": "4"}, Expected: map[string]string{"h": "4"}},
+				{Input: map[string]string{"x": "7"}, Expected: map[string]string{"h": "7"}},
 			},
 			hidden: []ProgramTestCase{
-				{Input: map[string]string{"x": "-11"}, Expected: map[string]string{"h": "11"}},
-				{Input: map[string]string{"x": "7"}, Expected: map[string]string{"h": "7"}},
+				{Input: map[string]string{"x": "-13"}, Expected: map[string]string{"h": "13"}},
+				{Input: map[string]string{"x": "5"}, Expected: map[string]string{"h": "5"}},
 			},
 		},
 		{
