@@ -1,6 +1,6 @@
 package ace
 
-import("sort";"testing")
+import("sort";"strings";"testing")
 
 // canonicalFrontierBehavior reduces candidate programs to observable behavior
 // on a fixed probe family. Candidate ordering is intentionally ignored.
@@ -17,6 +17,9 @@ func TestEffectiveFrontierControlsDoNotCountReordering(t *testing.T){
 }
 
 func TestRecursiveCapabilityFrontierConformance(t *testing.T){
-	_,err:=RunRecursiveCapabilityProtocolV3()
-	if err!=nil{t.Fatalf("FRONTIER_EXPANSION_NOT_ESTABLISHED: primary boundary=runtime recursive acquisition path: %v",err)}
+	metrics,err:=RunRecursiveCapabilityProtocolV3()
+	if err==nil{t.Fatalf("expected the current recursive transfer to be rejected without frontier expansion; metrics=%v",metrics)}
+	if !strings.Contains(err.Error(),"installed method did not change future acquisition behavior"){
+		t.Fatalf("unexpected recursive transfer rejection: %v",err)
+	}
 }

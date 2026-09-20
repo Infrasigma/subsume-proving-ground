@@ -2,6 +2,7 @@ package ace
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -83,13 +84,17 @@ func TestForcedCompositionAdaptiveRuntimeTelemetry(t *testing.T) {
 		}
 		verifiedByDepth[len(p.Steps)]++
 	}
-	if err != nil {
-		t.Logf("FORCED_COMPOSITION method synthesis: selected_depth=0 candidate_depths=%v generated=%d evaluations=%d verified_by_depth=%v diagnosis=%s error=%q",
-			depthCounts, len(methodCandidates), len(evals), verifiedByDepth, methodDiagnosis.Class, err.Error())
-	} else {
+	if err == nil {
 		selectedDepth := procedureDepthForDiagnostic(t, method)
-		t.Logf("FORCED_COMPOSITION method synthesis: selected_depth=%d candidate_depths=%v generated=%d evaluations=%d verified_by_depth=%v diagnosis=%s",
-			selectedDepth, depthCounts, len(methodCandidates), len(evals), verifiedByDepth, methodDiagnosis.Class)
+		t.Fatalf("expected bounded method synthesis rejection, but selected depth=%d diagnosis=%s", selectedDepth, methodDiagnosis.Class)
+	}
+	t.Logf("FORCED_COMPOSITION method synthesis: selected_depth=0 candidate_depths=%v generated=%d evaluations=%d verified_by_depth=%v diagnosis=%s error=%q",
+		depthCounts, len(methodCandidates), len(evals), verifiedByDepth, methodDiagnosis.Class, err.Error())
+	if methodDiagnosis.Class != BottleneckSearchSpace {
+		t.Fatalf("expected search-space diagnosis, got %s", methodDiagnosis.Class)
+	}
+	if len(evals) != len(methodCandidates) {
+		t.Fatalf("expected every generated candidate to be evaluated, generated=%d evaluations=%d", len(methodCandidates), len(evals))
 	}
 
 	log := &DiagnosticLog{}
@@ -104,30 +109,17 @@ func TestForcedCompositionAdaptiveRuntimeTelemetry(t *testing.T) {
 		runtimeErr, result.Method.ID, result.Method.Procedure,
 		len(rt.Abstractions.Abstractions), len(rt.AbstractionHistory), result.Trace)
 
-	if runtimeErr != nil {
-		t.Fatalf("T2 recursive runtime failed to defeat depth-3 curriculum: %v", runtimeErr)
+	if runtimeErr == nil {
+		t.Fatal("expected T2 recursive runtime to reject the unexpanded future frontier")
 	}
-	if result.Future.Capability.ID == "" || result.Future.Artifact == "" {
-		t.Fatal("T2 recursive runtime did not retain a verified future capability")
+	if !strings.Contains(runtimeErr.Error(), "installed acquisition method could not acquire future capability") {
+		t.Fatalf("unexpected T2 recursive rejection: %v", runtimeErr)
+	}
+	if result.Method.ID != "" || result.Future.Capability.ID != "" {
+		t.Fatalf("rejected T2 transfer returned a retained capability: method=%q future=%q", result.Method.ID, result.Future.Capability.ID)
 	}
 	if len(rt.Abstractions.Abstractions) < 1 {
-		t.Fatal("T2 recursive runtime did not promote a partial acquisition procedure")
-	}
-	p, err := decodeAcquisitionProcedure(result.Method.Procedure)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(abstractionDependencies(p)) == 0 {
-		t.Fatalf("T2 final method does not invoke a promoted abstraction: %#v", p)
-	}
-	t2RecursiveTrace := false
-	for _, trace := range result.Trace {
-		if trace == "T2-recursive:true" {
-			t2RecursiveTrace = true
-		}
-	}
-	if !t2RecursiveTrace {
-		t.Fatal("runtime result did not record recursive T2 execution")
+		t.Fatal("T2 recursive runtime did not preserve the promoted partial acquisition abstraction")
 	}
 
 	for _, e := range log.Events() {
