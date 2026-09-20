@@ -219,7 +219,6 @@ func (r SwarmConsensusReceipt) Verify(rootKey []byte, threshold int) error {
 		return ErrSwarmConsensusRejected
 	}
 	seen := make(map[string]bool, len(r.Workers))
-	coverage := make([]int, 0, len(r.Workers)*2)
 	unsigned := make([]SwarmWorkerReceipt, len(r.Workers))
 	copy(unsigned, r.Workers)
 	for i, worker := range r.Workers {
@@ -240,7 +239,6 @@ func (r SwarmConsensusReceipt) Verify(rootKey []byte, threshold int) error {
 			}
 		}
 		seen[worker.WorkerID] = true
-		coverage = append(coverage, worker.Start, worker.End)
 		unsigned[i].AuthTagB64 = ""
 	}
 	if unsigned[0].Start != 0 {
