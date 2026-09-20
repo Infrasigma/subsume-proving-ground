@@ -333,7 +333,7 @@ func SynthesizeDomainEscapeWithHeuristic(ctx context.Context, task ReactorTask, 
 	if len(task.Examples) < 2 {
 		return SynthesizedProgram{}, HeuristicSearchStats{}, errors.New("synthesized program search requires at least two training examples")
 	}
-	candidateNames := []string{"identity", "reverse", "upper", "lower", "upper-vowels", "lower-vowels"}
+	candidateNames := []string{"identity", "reverse", "upper", "lower", "upper-vowels", "lower-vowels", "reverse-upper-vowels"}
 	orderedNames, err := orderStringCandidateNames(candidateNames, heuristic)
 	if err != nil {
 		return SynthesizedProgram{}, HeuristicSearchStats{}, fmt.Errorf("string search heuristic rejected frontier: %w", err)
@@ -344,7 +344,8 @@ func SynthesizeDomainEscapeWithHeuristic(ctx context.Context, task ReactorTask, 
 		"upper":         buildUpperProgram,
 		"lower":         buildLowerProgram,
 		"upper-vowels":  buildUpperVowelsProgram,
-		"lower-vowels":  buildLowerVowelsProgram,
+		"lower-vowels":          buildLowerVowelsProgram,
+		"reverse-upper-vowels": buildReverseThenUpperVowelsProgram,
 	}
 	stats := HeuristicSearchStats{}
 	for _, name := range orderedNames {
@@ -404,6 +405,65 @@ func buildUpperVowelsProgram() SynthesizedProgram {
 
 func buildLowerVowelsProgram() SynthesizedProgram {
 	return buildCharMapProgram("lower", "vowels")
+}
+
+func buildReverseThenUpperVowelsProgram() SynthesizedProgram {
+	return buildReverseThenCharMapProgram("upper", "vowels")
+}
+
+func buildReverseThenCharMapProgram(transform, predicate string) SynthesizedProgram {
+	if transform != "upper" && transform != "lower" {
+		panic("unsupported synthesized char transform")
+	}
+	if predicate != "all" && predicate != "vowels" {
+		panic("unsupported synthesized char predicate")
+	}
+	instructions := []SynthesizedInstruction{
+		{Op: "input", A: 0},
+		{Op: "newbuf", A: 1},
+		{Op: "const", A: 2, B: 0},
+		{Op: "len", A: 3, B: 0},
+		{Op: "const", A: 4, B: 1},
+		{Op: "lt", A: 5, B: 2, C: 3},
+		{Op: "jump_if_false", A: 5, B: 0},
+		{Op: "sub", A: 6, B: 3, C: 4},
+		{Op: "sub", A: 6, B: 6, C: 2},
+		{Op: "char", A: 7, B: 0, C: 6},
+	}
+	if predicate == "vowels" {
+		instructions = append(instructions,
+			SynthesizedInstruction{Op: "is_vowel", A: 8, B: 7},
+			SynthesizedInstruction{Op: "jump_if_false", A: 8, B: 0},
+		)
+	}
+	instructions = append(instructions,
+		SynthesizedInstruction{Op: transform, A: 7, B: 7},
+		SynthesizedInstruction{Op: "append", A: 1, B: 7},
+		SynthesizedInstruction{Op: "add", A: 2, B: 2, C: 4},
+		SynthesizedInstruction{Op: "jump", A: 5},
+		SynthesizedInstruction{Op: "emit", A: 1},
+		SynthesizedInstruction{Op: "halt"},
+	)
+	end := len(instructions) - 2
+	instructions[6].B = end
+	if predicate == "vowels" {
+		appendIndex := -1
+		for i, ins := range instructions {
+			if ins.Op == "append" {
+				appendIndex = i
+				break
+			}
+		}
+		if appendIndex < 0 {
+			panic("synthesized reverse char-map program missing append")
+		}
+		for i, ins := range instructions {
+			if ins.Op == "jump_if_false" && ins.A == 8 {
+				instructions[i].B = appendIndex
+			}
+		}
+	}
+	return mustBuildSynthProgram(instructions)
 }
 
 func buildReverseProgram() SynthesizedProgram {
