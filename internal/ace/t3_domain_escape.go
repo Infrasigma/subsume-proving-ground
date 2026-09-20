@@ -53,16 +53,16 @@ func (p SynthesizedProgram) Validate() error {
 	for i, ins := range p.Instructions {
 		switch ins.Op {
 		case "input", "newbuf":
-			validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
+			if err := validateRegister(ins.A, fmt.Sprintf("instruction %d", i)); err != nil { return err }
 		case "const":
 			validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
 		case "len":
 			validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
-			validateRegister(ins.B, fmt.Sprintf("instruction %d", i))
+			if err := validateRegister(ins.B, fmt.Sprintf("instruction %d", i)); err != nil { return err }
 		case "lt", "add", "sub":
 			validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
 			validateRegister(ins.B, fmt.Sprintf("instruction %d", i))
-			validateRegister(ins.C, fmt.Sprintf("instruction %d", i))
+			if err := validateRegister(ins.C, fmt.Sprintf("instruction %d", i)); err != nil { return err }
 		case "char":
 			validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
 			validateRegister(ins.B, fmt.Sprintf("instruction %d", i))
@@ -106,10 +106,11 @@ func (p SynthesizedProgram) Validate() error {
 	return nil
 }
 
-func validateRegister(v int, context string) {
+func validateRegister(v int, context string) error {
 	if v < 0 || v >= maxSynthRegisters {
-		panic(fmt.Sprintf("%s register %d out of range", context, v))
+		return fmt.Errorf("%s register %d out of range", context, v)
 	}
+	return nil
 }
 
 func DisassembleSynthesizedProgram(instructions []SynthesizedInstruction) string {
@@ -401,33 +402,26 @@ func buildReverseProgram() SynthesizedProgram {
 		{Op: "len", A: 3, B: 0},
 		{Op: "const", A: 4, B: 1},
 		{Op: "lt", A: 5, B: 2, C: 3},
-		{Op: "jump_if_false", A: 5, B: 14},
+		{Op: "jump_if_false", A: 5, B: 13},
 		{Op: "sub", A: 6, B: 3, C: 4},
 		{Op: "sub", A: 6, B: 6, C: 2},
 		{Op: "char", A: 7, B: 0, C: 6},
 		{Op: "append", A: 1, B: 7},
 		{Op: "add", A: 2, B: 2, C: 4},
-		{Op: "jump", A: 6},
+		{Op: "jump", A: 5},
 		{Op: "emit", A: 1},
-		{Op: "halt"},
 		{Op: "halt"},
 	}
 	return mustBuildSynthProgram(instructions)
 }
 
 func buildCharMapProgram(transform, predicate string) SynthesizedProgram {
-	return mustBuildSynthProgram(commonCharLoop(transform + ":" + predicate))
-}
-
-func commonCharLoop(mode string) []SynthesizedInstruction {
-	parts := strings.Split(mode, ":")
-	transform, predicate := parts[0], "all"
-	if len(parts) == 2 {
-		predicate = parts[1]
+	if transform != "upper" && transform != "lower" {
+		panic("unsupported synthesized char transform")
 	}
-	// Register layout:
-	// r0=input, r1=output buffer, r2=index, r3=length, r4=one,
-	// r5=condition, r6=char, r7=predicate result.
+	if predicate != "all" && predicate != "vowels" {
+		panic("unsupported synthesized char predicate")
+	}
 	instructions := []SynthesizedInstruction{
 		{Op: "input", A: 0},
 		{Op: "newbuf", A: 1},
@@ -435,33 +429,17 @@ func commonCharLoop(mode string) []SynthesizedInstruction {
 		{Op: "len", A: 3, B: 0},
 		{Op: "const", A: 4, B: 1},
 		{Op: "lt", A: 5, B: 2, C: 3},
-		{Op: "jump_if_false", A: 5, B: 0}, // patched below
+		{Op: "jump_if_false", A: 5, B: 0},
 		{Op: "char", A: 6, B: 0, C: 2},
 	}
 	if predicate == "vowels" {
 		instructions = append(instructions,
 			SynthesizedInstruction{Op: "is_vowel", A: 7, B: 6},
-			SynthesizedInstruction{Op: "jump_if_false", A: 7, B: 0}, // patched
+			SynthesizedInstruction{Op: "jump_if_false", A: 7, B: 0},
 		)
-	}
-	if predicate == "all" {
-		// Always transform the current rune.
-		instructions = append(instructions, SynthesizedInstruction{Op: transform, A: 6, B: 6})
-	} else {
-		instructions = append(instructions, SynthesizedInstruction{Op: "jump", A: 0}) // patched to body transform
-		transformJumpIndex := len(instructions) - 1
-		instructions = append(instructions,
-			SynthesizedInstruction{Op: transform, A: 6, B: 6},
-		)
-		afterTransform := len(instructions)
-		instructions[9].B = afterTransform
-		_ = transformJumpIndex
-	}
-	if predicate == "vowels" {
-		// The false predicate target is the append step.
-		instructions[9].B = len(instructions)
 	}
 	instructions = append(instructions,
+		SynthesizedInstruction{Op: transform, A: 6, B: 6},
 		SynthesizedInstruction{Op: "append", A: 1, B: 6},
 		SynthesizedInstruction{Op: "add", A: 2, B: 2, C: 4},
 		SynthesizedInstruction{Op: "jump", A: 5},
@@ -471,30 +449,23 @@ func commonCharLoop(mode string) []SynthesizedInstruction {
 	end := len(instructions) - 2
 	instructions[6].B = end
 	if predicate == "vowels" {
-		instructions[9].B = len(instructions) - 4
-	}
-	return patchPredicateProgram(instructions, predicate)
-}
-
-func patchPredicateProgram(instructions []SynthesizedInstruction, predicate string) []SynthesizedInstruction {
-	if predicate != "vowels" {
-		return instructions
-	}
-	// Layout after the fixed prefix:
-	// 8 is is_vowel, 9 is the conditional jump, then transform,
-	// append/increment/jump.
-	for i := range instructions {
-		if instructions[i].Op == "jump_if_false" && instructions[i].A == 7 {
-			// Find the following append instruction as the false target.
-			for j := i + 1; j < len(instructions); j++ {
-				if instructions[j].Op == "append" {
-					instructions[i].B = j
-					break
-				}
+		appendIndex := -1
+		for i, ins := range instructions {
+			if ins.Op == "append" {
+				appendIndex = i
+				break
+			}
+		}
+		if appendIndex < 0 {
+			panic("synthesized char-map program missing append")
+		}
+		for i, ins := range instructions {
+			if ins.Op == "jump_if_false" && ins.A == 7 {
+				instructions[i].B = appendIndex
 			}
 		}
 	}
-	return instructions
+	return mustBuildSynthProgram(instructions)
 }
 
 func mustBuildSynthProgram(instructions []SynthesizedInstruction) SynthesizedProgram {
