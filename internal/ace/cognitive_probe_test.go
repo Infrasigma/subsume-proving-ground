@@ -7,7 +7,7 @@ import (
 )
 
 func TestCognitiveProbeCompositionExceedsDirectFrontier(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	result, err := RunCognitiveProbe(ctx)
