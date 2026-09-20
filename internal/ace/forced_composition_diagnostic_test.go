@@ -3,7 +3,6 @@ package ace
 import (
 	"bytes"
 	"testing"
-	"time"
 )
 
 func procedureDepthForDiagnostic(t *testing.T, artifact AcquisitionMethodArtifact) int {
@@ -98,7 +97,6 @@ func TestForcedCompositionAdaptiveRuntimeTelemetry(t *testing.T) {
 	rt.EnableAbstractionLearning = true
 	rt.Diagnostics = log
 	rt.MaxCompoundingIterations = 3
-	rt.CompoundingTimeout = 90 * time.Second
 	result, runtimeErr := rt.ImproveAndAcquire(
 		telemetry, spec, hidden, hiddenSpec, hidden,
 	)

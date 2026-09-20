@@ -2,7 +2,6 @@ package ace
 
 import (
 	"testing"
-	"time"
 )
 
 func TestRecursiveCapabilityCompoundingCore(t *testing.T) {
@@ -36,7 +35,6 @@ func TestRecursiveCapabilityCompoundingCore(t *testing.T) {
 	}
 	rt := newF0TestRuntime(t)
 	rt.MaxCompoundingIterations = 3
-	rt.CompoundingTimeout = 90 * time.Second
 	result, err := rt.ImproveAndAcquire(telemetry, spec, hidden, hiddenSpec, hidden)
 	if err != nil {
 		t.Fatal(err)

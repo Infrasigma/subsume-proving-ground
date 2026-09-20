@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/Infrasigma/subsume-proving-ground/internal/protocol"
 )
@@ -27,9 +26,8 @@ type AdaptiveAcquisitionRuntime struct {
 	AbstractionHistory        []AbstractionObservation
 	EnableAbstractionLearning bool
 
-	// T2 recursion is bounded and deadline-controlled. Zero values use safe defaults.
+	// T2 recursion is bounded by deterministic architectural budgets.
 	MaxCompoundingIterations int
-	CompoundingTimeout       time.Duration
 
 	// F0 admission plane. Both dependencies are mandatory whenever a newly
 	// promoted abstraction is admitted; absence is fail-closed.
@@ -103,13 +101,11 @@ func (r *AdaptiveAcquisitionRuntime) learnAbstractionFromVerifiedMethod(ctx cont
 }
 
 func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquire(telemetry AcquisitionTelemetry, failedSpec CapabilitySpecification, methodHidden []ProgramTestCase, futureSpec CapabilitySpecification, futureHidden []ProgramTestCase) (AdaptiveAcquisitionResult, error) {
-	timeout := r.CompoundingTimeout
-	if timeout <= 0 {
-		timeout = 10 * time.Second
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	return r.ImproveAndAcquireWithContext(ctx, telemetry, failedSpec, methodHidden, futureSpec, futureHidden)
+	// The runtime itself imposes no wall-clock deadline. Deterministic
+	// architectural budgets (iterations, synthesis expansions, and program
+	// step limits) bound the work; callers that require cancellation may use
+	// ImproveAndAcquireWithContext with their own explicit context.
+	return r.ImproveAndAcquireWithContext(context.Background(), telemetry, failedSpec, methodHidden, futureSpec, futureHidden)
 }
 
 func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Context, telemetry AcquisitionTelemetry, failedSpec CapabilitySpecification, methodHidden []ProgramTestCase, futureSpec CapabilitySpecification, futureHidden []ProgramTestCase) (AdaptiveAcquisitionResult, error) {
@@ -221,7 +217,7 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 
 	for iteration := 1; iteration <= maxIterations; iteration++ {
 		if err := ctx.Err(); err != nil {
-			return AdaptiveAcquisitionResult{}, fmt.Errorf("recursive compounding deadline reached at iteration %d: %w", iteration, err)
+			return AdaptiveAcquisitionResult{}, fmt.Errorf("recursive compounding context cancelled at iteration %d: %w", iteration, err)
 		}
 		if r.Diagnostics != nil {
 			r.Diagnostics.Record("C", telemetry.TaskID, "t2-iteration", map[string]any{
@@ -316,7 +312,7 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 		evaluatedRecursiveCandidates := 0
 		for _, candidate := range enriched {
 			if err := ctx.Err(); err != nil {
-				return AdaptiveAcquisitionResult{}, fmt.Errorf("recursive compounding deadline reached during iteration %d: %w", iteration+1, err)
+				return AdaptiveAcquisitionResult{}, fmt.Errorf("recursive compounding context cancelled during iteration %d: %w", iteration+1, err)
 			}
 			if evaluatedRecursiveCandidates >= 3 {
 				break
