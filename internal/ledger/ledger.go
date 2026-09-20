@@ -90,6 +90,7 @@ CREATE INDEX IF NOT EXISTS idx_events_execution_sequence ON events(execution_id,
 CREATE TABLE IF NOT EXISTS abstraction_admissions (
     admission_id TEXT PRIMARY KEY,
     artifact_hash TEXT NOT NULL UNIQUE,
+    artifact_type TEXT NOT NULL DEFAULT 'AcquiredAbstraction',
     signer_id TEXT NOT NULL,
     public_key_b64 TEXT NOT NULL,
     signature_b64 TEXT NOT NULL,
