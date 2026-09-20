@@ -58,7 +58,7 @@ func expressionFrontierWithContextBudget(ctx context.Context, vars []string, max
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	base := make([]UExpr, 0, len(vars)+5)
+	base := make([]UExpr, 0, len(vars)+7)
 	for _, v := range vars {
 		if err := budget.consume(); err != nil {
 			// Preserve every shallow expression already constructed so callers
@@ -67,7 +67,7 @@ func expressionFrontierWithContextBudget(ctx context.Context, vars []string, max
 		}
 		base = append(base, UExpr{Kind: "var", Value: v})
 	}
-	for n := -2; n <= 2; n++ {
+	for _, n := range []int{3, 2, 1, 0, -1, -2, -3} {
 		if err := budget.consume(); err != nil {
 			return append([]UExpr(nil), base...), err
 		}
@@ -112,6 +112,17 @@ func expressionFrontierWithContextBudget(ctx context.Context, vars []string, max
 	return front, nil
 }
 
+func shallowExpressionSet(vars []string) []UExpr {
+	out := make([]UExpr, 0, len(vars)+7)
+	for _, v := range vars {
+		out = append(out, UExpr{Kind: "var", Value: v})
+	}
+	for _, n := range []int{3, 2, 1, 0, -1, -2, -3} {
+		out = append(out, UExpr{Kind: "const", Value: strconv.Itoa(n)})
+	}
+	return out
+}
+
 func (b UniversalProgramBuilder) BuildWithContext(ctx context.Context, c ArchitectureCandidate, s CapabilitySpecification) (ModificationProposal, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -126,8 +137,30 @@ func (b UniversalProgramBuilder) BuildWithContext(ctx context.Context, c Archite
 
 	if strings.HasPrefix(c.Mechanism, "universal:branching") || strings.HasPrefix(c.Mechanism, "universal:compositional") {
 		branchBudget := newSynthesisBudget(b.MaxSynthesisExpansions)
+		shallow := shallowExpressionSet(vars)
+		shallowExhausted := false
+	shallowLoop:
+		for _, v := range vars {
+			for _, cmp := range []string{"lt", "eq"} {
+				for _, rhs := range shallow {
+					cond := UExpr{Kind: cmp, Left: &UExpr{Kind: "var", Value: v}, Right: cloneExpr(rhs)}
+					for _, te := range shallow {
+						for _, ee := range shallow {
+							if err := branchBudget.consume(); err != nil {
+								shallowExhausted = true
+								break shallowLoop
+							}
+							p := UniversalProgram{Statements: []UStmt{{Kind: "if", Cond: &cond, Then: []UStmt{{Kind: "assign", Target: out, Expr: cloneExpr(te)}}, Else: []UStmt{{Kind: "assign", Target: out, Expr: cloneExpr(ee)}}}}}
+							if programFits(p, s.KnownExamples) {
+								return encodeUniversal(p, s, c)
+							}
+						}
+					}
+				}
+			}
+		}
 		branchExprs, frontierErr := expressionFrontierWithContextBudget(ctx, vars, 1, branchBudget)
-		if frontierErr == nil {
+		if !shallowExhausted && frontierErr == nil {
 			branchExhausted := false
 		branchLoop:
 			for _, v := range vars {
@@ -163,9 +196,19 @@ func (b UniversalProgramBuilder) BuildWithContext(ctx context.Context, c Archite
 	if frontierErr != nil && !errors.Is(frontierErr, ErrSynthesisExpansionLimit) {
 		return ModificationProposal{}, frontierErr
 	}
-	// Always verify the shallow frontier that was already constructed. A
-	// derived representation may be sufficient at depth 0 even when a deeper
-	// frontier would exceed the global expansion budget.
+	// Always verify the shallow frontier first. This makes a retained derived
+	// representation executable without paying for a deeper Cartesian frontier.
+	for _, e := range shallowExpressionSet(vars) {
+		if err := ctx.Err(); err != nil {
+			return ModificationProposal{}, err
+		}
+		p := UniversalProgram{Statements: []UStmt{{Kind: "assign", Target: out, Expr: cloneExpr(e)}}}
+		if programFits(p, s.KnownExamples) {
+			return encodeUniversal(p, s, c)
+		}
+	}
+	// Also verify every complete shallow/depth-1 expression already constructed
+	// before treating a deeper expansion limit as terminal.
 	for _, e := range exprs {
 		if err := ctx.Err(); err != nil {
 			return ModificationProposal{}, err
