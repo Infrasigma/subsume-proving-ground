@@ -16,6 +16,9 @@ func procedureDepthForDiagnostic(t *testing.T, artifact AcquisitionMethodArtifac
 }
 
 func TestForcedCompositionAdaptiveRuntimeTelemetry(t *testing.T) {
+	previousSynthesisBudget := AdaptiveUniversalSynthesisMaxExpansions
+	AdaptiveUniversalSynthesisMaxExpansions = 500_000
+	t.Cleanup(func() { AdaptiveUniversalSynthesisMaxExpansions = previousSynthesisBudget })
 	task, train, _, err := DeepCompositionFamily{}.Generate(1, false)
 	if err != nil {
 		t.Fatal(err)

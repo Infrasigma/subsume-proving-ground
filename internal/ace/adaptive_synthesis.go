@@ -9,7 +9,7 @@ func AdaptiveUniversalSynthesis(c ArchitectureCandidate,s CapabilitySpecificatio
 	return AdaptiveUniversalSynthesisWithContext(context.Background(), c, s, AdaptiveUniversalSynthesisMaxExpansions)
 }
 
-const AdaptiveUniversalSynthesisMaxExpansions = 50_000_000
+var AdaptiveUniversalSynthesisMaxExpansions = 50_000_000
 
 // AdaptiveUniversalSynthesisWithContext hands the post-acquisition candidate
 // directly to the universal builder. The candidate therefore remains part of

@@ -34,6 +34,9 @@ func TestAdaptiveAcquisitionRuntimeCausalCompounding(t *testing.T) {
 }
 
 func TestAdaptiveAcquisitionRuntimeEndogenousAbstractionLearning(t *testing.T) {
+	previousSynthesisBudget := AdaptiveUniversalSynthesisMaxExpansions
+	AdaptiveUniversalSynthesisMaxExpansions = 500_000
+	t.Cleanup(func() { AdaptiveUniversalSynthesisMaxExpansions = previousSynthesisBudget })
 	failed := thresholdCases(1, []int{-4, 0, 3, 7})
 	hidden := thresholdCases(1, []int{-9, -2, 2, 6, 15})
 	spec, err := GeneralCapabilitySpecification(Task{ID: "learn-failure", Goal: "classify", Requirements: []string{"x"}, Structure: []string{"scalar", "conditional"}, Budget: ResourceVector{Compute: 200, Memory: 100, TimeMS: 5000, ExperimentBudget: 50}}, failed)
