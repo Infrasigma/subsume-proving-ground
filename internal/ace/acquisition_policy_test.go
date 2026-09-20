@@ -2,6 +2,7 @@ package ace
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 )
 
@@ -131,5 +132,58 @@ func TestCounterfactualRepresentationPromotesGeneratorAndRebalancesPolicy(t *tes
 		if programFits(pArtifactProgram(proposal.Artifact), hidden) {
 			t.Fatalf("baseline scalar generator solved target through %q after promotion", candidate.Mechanism)
 		}
+	}
+}
+
+
+func TestAcquisitionPolicyPersistsGeneratorExpansion(t *testing.T) {
+	failure := FailureTelemetry{
+		TaskID:                         "persisted-policy",
+		EvidenceCount:                  3,
+		MinimumEvidence:                1,
+		SearchExhausted:                true,
+		AllCandidateFamiliesExhausted:  true,
+		CurrentRepresentation:          "scalar-expression",
+		SupportedRepresentationFeatures: []string{"scalar"},
+		RequiredRepresentationFeatures: []string{"derived-feature"},
+	}
+	block := RepresentationBlock{
+		ID:       Hash([]any{"persisted-block"}),
+		Name:     "derived-program:persisted",
+		Op:       "program",
+		Input:    "x",
+		Output:   "__derived_output",
+		Artifact: `{"statements":[{"kind":"assign","target":"__derived_output","expr":{"kind":"var","value":"x"}}]}`,
+	}
+	policy := AcquisitionPolicy{}
+	if err := policy.MutateGeneratorSpace(block, []string{"held-out verification"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := policy.BindPrimitiveToFailureTopology(FailureTopologySignature(failure), block.ID, 0.5); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "acquisition-policy.json")
+	store, err := NewPersistentAcquisitionPolicy(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(&policy); err != nil {
+		t.Fatal(err)
+	}
+
+	restored := AcquisitionPolicy{}
+	loaded, err := NewPersistentAcquisitionPolicy(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := loaded.Restore(&restored); err != nil {
+		t.Fatal(err)
+	}
+	if len(restored.Primitives) != 1 || len(restored.Bindings) != 1 {
+		t.Fatalf("restored policy lost generator expansion: %#v", restored)
+	}
+	if got := restored.Weight(FailureTopologySignature(failure), block.ID); got != 0.5 {
+		t.Fatalf("restored search weight %.2f want 0.50", got)
 	}
 }
