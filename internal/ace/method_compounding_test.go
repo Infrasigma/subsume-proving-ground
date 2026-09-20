@@ -12,3 +12,14 @@ func TestAutonomousMethodImprovementFromTelemetry(t *testing.T){
 	registry:=InstalledMethodRegistry{};if err:=registry.Install(method);err!=nil{t.Fatal(err)};cs,err:=registry.Apply(spec);if err!=nil{t.Fatal(err)};if len(cs)==0||cs[0].Mechanism=="universal:straight-line"{t.Fatalf("installed acquired procedure did not change future search order: %#v",cs)};if len(registry.Trace)<2{t.Fatalf("missing before/after execution trace: %#v",registry.Trace)}
 	transfer:=thresholdCases(1,[]int{-20,-2,3,17,31});transferSpec:=spec;transferSpec.ID="opaque-threshold-transfer";transferSpec.KnownExamples=transfer;transferCS,err:=registry.Apply(transferSpec);if err!=nil{t.Fatal(err)};verified:=false;for _,c:=range transferCS{p,e:=(UniversalProgramBuilder{}).Build(c,transferSpec);if e==nil&&programFits(pArtifactProgram(p.Artifact),transfer){verified=true;break}};if !verified{t.Fatal("installed acquired procedure did not transfer to a held-out input distribution")}
 }
+
+func TestCandidateStreamStructuralDifferenceIsNotCollapsedToMechanismOrder(t *testing.T) {
+	base := []ArchitectureCandidate{{ID:"a", Mechanism:"universal:test", Advantage:"baseline"}}
+	changed := []ArchitectureCandidate{{ID:"a", Mechanism:"universal:test", Advantage:"structurally-distinct"}}
+	if !sameMechanismOrder(base, changed) {
+		t.Fatal("mechanism-order helper should see the same mechanism order")
+	}
+	if sameCandidateState(base, changed) {
+		t.Fatal("full candidate state unexpectedly collapsed a structural difference")
+	}
+}

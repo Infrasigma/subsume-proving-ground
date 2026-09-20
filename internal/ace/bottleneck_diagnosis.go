@@ -63,9 +63,31 @@ func ProjectAcquisitionTelemetry(t AcquisitionTelemetry) FailureTelemetry {
 }
 
 func DiagnoseFailureTelemetry(t FailureTelemetry) BottleneckDiagnosis {
-	// An explicitly exhausted candidate frontier takes precedence over a
-	// minority verifier rejection so one overfit candidate cannot mask a
-	// distribution-level search-space failure.
+	// Strict causal hierarchy:
+	// 1. insufficient evidence => unknown
+	// 2. unsupported required representation => representation
+	// 3. exhausted candidate frontier => search space
+	// 4. otherwise, verified-candidate rejection => weak verification
+	if t.EvidenceCount < t.MinimumEvidence {
+		return BottleneckDiagnosis{
+			Class: BottleneckUnknown,
+			Reason: "insufficient discriminating evidence",
+			Confidence: 0.98,
+			Evidence: []string{"evidence-count below minimum"},
+		}
+	}
+
+	if t.CurrentRepresentation != "" &&
+		len(t.RequiredRepresentationFeatures) > 0 &&
+		!containsAllStrings(t.SupportedRepresentationFeatures, t.RequiredRepresentationFeatures) {
+		return BottleneckDiagnosis{
+			Class: BottleneckRepresentation,
+			Reason: "required representation features exceed supported features",
+			Confidence: 0.90,
+			Evidence: []string{"required representation features exceed supported features"},
+		}
+	}
+
 	if t.SearchExhausted && t.AllCandidateFamiliesExhausted {
 		return BottleneckDiagnosis{
 			Class: BottleneckSearchSpace,
@@ -81,15 +103,6 @@ func DiagnoseFailureTelemetry(t FailureTelemetry) BottleneckDiagnosis {
 			Reason: "candidate reached independent verification and was rejected",
 			Confidence: 0.95,
 			Evidence: []string{"verifier reached", "independent verifier rejected candidate"},
-		}
-	}
-
-	if t.EvidenceCount < t.MinimumEvidence {
-		return BottleneckDiagnosis{
-			Class: BottleneckUnknown,
-			Reason: "insufficient discriminating evidence",
-			Confidence: 0.98,
-			Evidence: []string{"evidence-count below minimum"},
 		}
 	}
 

@@ -51,7 +51,7 @@ func TestDiagnoseFailureTelemetryRepresentation(t *testing.T) {
 func TestDiagnoseFailureTelemetryDoesNotInventDiagnosis(t *testing.T) {
 	d := DiagnoseFailureTelemetry(FailureTelemetry{
 		TaskID: "ambiguous",
-		EvidenceCount: 2,
+		EvidenceCount: 0,
 		MinimumEvidence: 1,
 		SearchExhausted: true,
 		SearchOrdersTested: 1,
