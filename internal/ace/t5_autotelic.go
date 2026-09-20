@@ -119,6 +119,14 @@ func (g AutotelicTaskGenerator) Generate(ctx context.Context, lib *AbstractionLi
 	}, nil
 }
 
+func (a AcquiredAbstraction) GapClass() string {
+	const prefix = "autotelic:"
+	if !strings.HasPrefix(a.Name, prefix) {
+		return ""
+	}
+	return strings.TrimPrefix(a.Name, prefix)
+}
+
 func autotelicCapabilityBoundary(lib *AbstractionLibrary, heuristic *SearchHeuristicProgram) int {
 	boundary := 0
 	if heuristic != nil {
