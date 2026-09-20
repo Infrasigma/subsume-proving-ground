@@ -184,7 +184,23 @@ func (p ExecutionControlPlane) Validate() error {
 	if p.TraceBackend != "ebpf-hook" {
 		return fmt.Errorf("unsupported trace backend %q", p.TraceBackend)
 	}
-	if p.MCPProtocol != "mcp-hook-v1" {
+	switch p.MCPProtocol {
+	case "mcp-hook-v1":
+	case "mcp-jsonrpc-v1":
+		if len(p.ExternalSideEffects) == 0 {
+			return errors.New("MCP JSON-RPC execution plane requires at least one external side-effect receipt")
+		}
+		for i, receipt := range p.ExternalSideEffects {
+			if err := receipt.Verify(nil); err != nil {
+				return fmt.Errorf("external side-effect receipt %d rejected: %w", i, err)
+			}
+		}
+		for i, patch := range p.ReallocationPatches {
+			if err := patch.Validate(p.MaxWorkers); err != nil {
+				return fmt.Errorf("reallocation patch %d rejected: %w", i, err)
+			}
+		}
+	default:
 		return fmt.Errorf("unsupported MCP control protocol %q", p.MCPProtocol)
 	}
 	if err := p.Consensus.Verify(nil, p.Consensus.Threshold); err != nil {
