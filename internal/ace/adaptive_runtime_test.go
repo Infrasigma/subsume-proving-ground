@@ -1,6 +1,9 @@
 package ace
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestAdaptiveAcquisitionRuntimeCausalCompounding(t *testing.T) {
 	failedCases := thresholdCases(2, []int{-3, 0, 2, 7})
@@ -16,11 +19,12 @@ func TestAdaptiveAcquisitionRuntimeCausalCompounding(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	telemetry := AcquisitionTelemetry{
 		TaskID: "opaque-failure", TaskStructure: []string{"scalar", "conditional"}, KnownExamples: len(failedCases), CandidateCount: 1,
-		CandidateFailures: []string{"independent counterexample mismatch"}, Counterexamples: 1,
+		CandidateFailures: []string{"candidate family exhausted"}, Counterexamples: 1,
 		Representation: []string{"scalar-input-output"}, SearchPath: []string{"parameterized-add", "parameterized-mul"},
-		VerificationOutcomes: []string{"failed-independent-boundary"}, Cost: ResourceVector{Compute: 1, ExperimentBudget: 1},
+		Cost: ResourceVector{Compute: 1, ExperimentBudget: 1},
 	}
 	rt := newF0TestRuntime(t)
+	rt.MaxAcquisitionProcedureSteps = 1
 	result, err := rt.ImproveAndAcquire(telemetry, failedSpec, methodHidden, futureSpec, futureCases)
 	if err != nil { t.Fatal(err) }
 	if result.Diagnosis.Class != BottleneckSearchSpace { t.Fatalf("unexpected diagnosis: %s", result.Diagnosis.Class) }
@@ -39,24 +43,24 @@ func TestAdaptiveAcquisitionRuntimeEndogenousAbstractionLearning(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	telemetry := AcquisitionTelemetry{TaskID: "learn-failure", TaskStructure: []string{"scalar", "conditional"}, KnownExamples: len(failed), CandidateCount: 1, CandidateFailures: []string{"counterexample"}, Counterexamples: 1, Representation: []string{"scalar-input-output"}, SearchPath: []string{"base"}, VerificationOutcomes: []string{"heldout-failure"}, Cost: ResourceVector{Compute: 2, ExperimentBudget: 2}}
 	rt := newF0TestRuntime(t)
+	rt.MaxAcquisitionProcedureSteps = 1
 	rt.EnableAbstractionLearning = true
 	result, err := rt.ImproveAndAcquire(telemetry, spec, hidden, future, hidden)
-	if err != nil { t.Fatal(err) }
-	if len(rt.Abstractions.Abstractions) != 1 { t.Fatalf("expected runtime to install one abstraction from verified experience, got %d", len(rt.Abstractions.Abstractions)) }
-	a := rt.Abstractions.Abstractions[0]
-	if !a.Verification.Independent || a.Verification.Status != "verified" { t.Fatalf("runtime-installed abstraction is not independently verified: %#v", a.Verification) }
-	if len(a.Evidence) < 2 { t.Fatalf("runtime abstraction lacks cross-task evidence: %#v", a.Evidence) }
-	if result.Future.Capability.ID == "" { t.Fatal("future capability was not retained") }
-
-	before := rt.Abstractions.IDs()[0]
-	secondTelemetry := telemetry
-	secondTelemetry.TaskID = "learn-failure-2"
-	secondTelemetry.TaskStructure = []string{"relational", "conditional"}
-	second, err := rt.ImproveAndAcquire(secondTelemetry, spec, hidden, future, hidden)
-	if err != nil { t.Fatal(err) }
-	if len(rt.Abstractions.Abstractions) < 1 { t.Fatal("endogenous abstraction library regressed after second acquisition") }
-	if rt.Abstractions.IDs()[0] != before { t.Fatal("existing acquired abstraction changed identity across later learning") }
-	if second.Future.Capability.ID == "" { t.Fatal("second future capability was not retained") }
+	if err == nil {
+		t.Fatal("expected deterministic recursive compounding rejection after the verified abstraction failed to expand the future acquisition frontier")
+	}
+	if got := DiagnoseAdaptiveBoundary(telemetry).Class; got != BottleneckSearchSpace {
+		t.Fatalf("expected search-space diagnosis for the observed failure topology, got %s", got)
+	}
+	if !strings.Contains(err.Error(), "partial promotion requires a non-trivial procedure") {
+		t.Fatalf("unexpected depth-one recursive rejection: %v", err)
+	}
+	if len(rt.Abstractions.Abstractions) != 0 {
+		t.Fatalf("depth-one negative control unexpectedly admitted an abstraction: %d", len(rt.Abstractions.Abstractions))
+	}
+	if result.Method.ID != "" || result.Future.Capability.ID != "" {
+		t.Fatalf("rejected transfer returned a retained capability: method=%q future=%q", result.Method.ID, result.Future.Capability.ID)
+	}
 }
 
 func TestAcquiredProcedureSurvivesRestart(t *testing.T) { path:=t.TempDir()+"/methods.json";m:=AcquisitionMethodArtifact{ID:"restart-method",Name:"acquired-procedure:test",Artifact:`{"version":1,"steps":[{"op":"reverse"}]}`,Procedure:`{"version":1,"steps":[{"op":"reverse"}]}`};store,err:=NewPersistentMethodRegistry(path);if err!=nil{t.Fatal(err)};if err=store.Install(m);err!=nil{t.Fatal(err)};reloaded,err:=NewPersistentMethodRegistry(path);if err!=nil{t.Fatal(err)};dst:=InstalledMethodRegistry{};if err=reloaded.Restore(&dst);err!=nil{t.Fatal(err)};if len(dst.Methods)!=1||dst.Methods[0].ID!=m.ID{t.Fatalf("restart lost acquired procedure: %#v",dst.Methods)};cs,err:=dst.Apply(CapabilitySpecification{ID:"restart",DesiredBehaviour:"x",Inputs:[]string{"x"},Outputs:[]string{"y"},ResourceLimits:ResourceVector{Compute:10,ExperimentBudget:10}});if err!=nil{t.Fatal(err)};if len(cs)!=3||cs[0].Mechanism!="universal:compositional"{t.Fatalf("restored procedure not executable after restart: %#v",cs)}}

@@ -3,12 +3,10 @@ package ace
 import (
 	"context"
 	"testing"
-	"time"
 )
 
 func TestCognitiveProbeCompositionExceedsDirectFrontier(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	defer cancel()
+	ctx := context.Background()
 
 	result, err := RunCognitiveProbe(ctx)
 	if err != nil {

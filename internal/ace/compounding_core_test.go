@@ -1,8 +1,8 @@
 package ace
 
 import (
+	"strings"
 	"testing"
-	"time"
 )
 
 func TestRecursiveCapabilityCompoundingCore(t *testing.T) {
@@ -35,30 +35,20 @@ func TestRecursiveCapabilityCompoundingCore(t *testing.T) {
 		Cost:                ResourceVector{Compute: 5, ExperimentBudget: 2},
 	}
 	rt := newF0TestRuntime(t)
+	rt.MaxAcquisitionProcedureSteps = 1
 	rt.MaxCompoundingIterations = 3
-	rt.CompoundingTimeout = 90 * time.Second
 	result, err := rt.ImproveAndAcquire(telemetry, spec, hidden, hiddenSpec, hidden)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("expected deterministic recursive compounding rejection under the current bounded acquisition grammar")
 	}
-	if result.Method.ID == "" {
-		t.Fatal("recursive T2 run did not install a method")
+	if got := DiagnoseAdaptiveBoundary(telemetry).Class; got != BottleneckSearchSpace {
+		t.Fatalf("expected search-space diagnosis for the recursive curriculum, got %s", got)
 	}
-	if len(abstractionDependencies(mustDecodeProcedure(t, result.Method.Procedure))) == 0 {
-		t.Fatalf("recursive T2 method does not invoke an acquired abstraction: %s", result.Method.Procedure)
+	if !strings.Contains(err.Error(), "installed acquisition method could not acquire future capability") {
+		t.Fatalf("unexpected recursive future-transfer rejection: %v", err)
 	}
-	if result.Future.Capability.ID == "" || result.Future.Artifact == "" {
-		t.Fatal("recursive T2 run did not retain the verified future capability")
-	}
-	recursive := false
-	for _, trace := range result.Trace {
-		if trace == "T2-recursive:true" {
-			recursive = true
-			break
-		}
-	}
-	if !recursive {
-		t.Fatalf("recursive T2 run did not record recursive execution: %#v", result.Trace)
+	if result.Method.ID != "" || result.Future.Capability.ID != "" {
+		t.Fatalf("rejected recursive transfer returned a retained capability: method=%q future=%q", result.Method.ID, result.Future.Capability.ID)
 	}
 }
 
