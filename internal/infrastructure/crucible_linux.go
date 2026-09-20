@@ -94,15 +94,21 @@ func (LocalSubprocessProvider) Reclaim(ctx context.Context, h ResourceHandle) er
 			return err
 		}
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	_ = p.Kill()
 	waitDone := make(chan error, 1)
 	go func() { waitDone <- p.Wait() }()
 	select {
 	case err := <-waitDone:
-		if err != nil && !errors.Is(err, os.ErrProcessDone) {
-			return err
+		if err == nil || errors.Is(err, os.ErrProcessDone) {
+			return nil
 		}
-		return nil
+		if _, ok := err.(*exec.ExitError); ok {
+			return nil
+		}
+		return err
 	case <-ctx.Done():
 		return ctx.Err()
 	}
