@@ -33,6 +33,9 @@ type ReactorTask struct {
 	RequireLatestAdmission bool           `json:"require_latest_admission"`
 	RequireAbstractionID   string         `json:"require_abstraction_id,omitempty"`
 	MetaKind               string         `json:"meta_kind,omitempty"`
+	Autotelic              bool           `json:"autotelic,omitempty"`
+	ComplexityScore        int            `json:"complexity_score,omitempty"`
+	GapClass               string         `json:"gap_class,omitempty"`
 	Budget                 ResourceVector `json:"budget"`
 }
 
@@ -61,6 +64,9 @@ func (t ReactorTask) Validate() error {
 	}
 	if t.MinProcedureSteps <= 0 || t.MinProcedureSteps > t.MaxSearchDepth {
 		return errors.New("reactor task has invalid procedure depth bounds")
+	}
+	if t.Autotelic && (t.ComplexityScore < 2 || t.GapClass == "") {
+		return errors.New("autotelic task requires non-trivial complexity and a gap class")
 	}
 	return nil
 }
@@ -133,6 +139,12 @@ func (q *InMemoryReactorTaskQueue) Next(ctx context.Context) (ReactorTaskLease, 
 	task := q.tasks[q.next]
 	q.next++
 	return &inMemoryReactorLease{task: task, queue: q}, nil
+}
+
+func (q *InMemoryReactorTaskQueue) Empty() bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.next >= len(q.tasks)
 }
 
 func (q *InMemoryReactorTaskQueue) AcknowledgedIDs() []string {
@@ -214,6 +226,19 @@ func NewFileReactorTaskQueue(root string, pollInterval time.Duration) (*FileReac
 		}
 	}
 	return q, nil
+}
+
+func (q *FileReactorTaskQueue) Empty() bool {
+	entries, err := os.ReadDir(q.Root)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".json" {
+			return false
+		}
+	}
+	return true
 }
 
 func (q *FileReactorTaskQueue) Next(ctx context.Context) (ReactorTaskLease, error) {
@@ -456,6 +481,7 @@ type ReactorTaskResult struct {
 	DiscoveredAbstractionID string
 	AdmissionRef            string
 	Error                   string
+	Autotelic               bool
 }
 
 type ContinuousReactor struct {
@@ -467,6 +493,8 @@ type ContinuousReactor struct {
 	TrustedSignerID     string
 	TrustedPublicKeyB64 string
 	MaxTasks             int
+	AutotelicGenerator   *AutotelicTaskGenerator
+	MaxAutotelicTasks    int
 	Logf                func(string, ...any)
 }
 
@@ -506,7 +534,37 @@ func (r *ContinuousReactor) Run(ctx context.Context) ([]ReactorTaskResult, error
 		return nil, err
 	}
 	results := []ReactorTaskResult{}
+	autotelicGenerated := 0
+	autotelicLimit := r.MaxAutotelicTasks
+	if autotelicLimit <= 0 {
+		autotelicLimit = 1
+	}
 	for r.MaxTasks <= 0 || len(results) < r.MaxTasks {
+		if r.AutotelicGenerator != nil && autotelicGenerated < autotelicLimit {
+			if queue, ok := r.Queue.(interface{ Empty() bool }); ok && queue.Empty() {
+				bundle, genErr := r.AutotelicGenerator.Generate(ctx, &r.Runtime.Abstractions, r.Runtime.ActiveSearchHeuristic)
+				if errors.Is(genErr, ErrNoAutotelicGap) {
+					return results, nil
+				}
+				if genErr != nil {
+					return results, fmt.Errorf("autotelic task generation failed: %w", genErr)
+				}
+				if bundle.Complexity != bundle.BoundaryScore+1 {
+					return results, fmt.Errorf("autotelic complexity gate violated: boundary=%d complexity=%d", bundle.BoundaryScore, bundle.Complexity)
+				}
+				verifier := newAutotelicHiddenVerifier(r.Verifier, bundle)
+				result := r.runOneWithVerifier(ctx, bundle.Task, verifier)
+				result.Autotelic = true
+				results = append(results, result)
+				autotelicGenerated++
+				r.logf("T5_AUTOTELIC task=%s gap=%s solved=%t boundary=%d complexity=%d candidates=%d error=%q", bundle.Task.ID, bundle.GapClass, result.Solved, bundle.BoundaryScore, bundle.Complexity, result.EvaluatedCandidates, result.Error)
+				if !result.Solved {
+					return results, fmt.Errorf("autotelic task %s failed: %s", bundle.Task.ID, result.Error)
+				}
+				continue
+			}
+		}
+
 		lease, err := r.Queue.Next(ctx)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -556,6 +614,10 @@ func latestCapabilityAbstractionID(lib AbstractionLibrary) string {
 }
 
 func (r *ContinuousReactor) runOne(ctx context.Context, task ReactorTask) ReactorTaskResult {
+	return r.runOneWithVerifier(ctx, task, r.Verifier)
+}
+
+func (r *ContinuousReactor) runOneWithVerifier(ctx context.Context, task ReactorTask, verifier ReactorVerifier) ReactorTaskResult {
 	result := ReactorTaskResult{TaskID: task.ID, Family: task.Family}
 	if err := task.Validate(); err != nil {
 		result.Error = err.Error()
@@ -575,7 +637,7 @@ func (r *ContinuousReactor) runOne(ctx context.Context, task ReactorTask) Reacto
 	if requireID != "" {
 		task.RequireAbstractionID = requireID
 	}
-	searchResult, err := ParameterizedMechanismSearchWithHeuristic(ctx, task, &r.Runtime.Abstractions, r.Verifier, r.Runtime.ActiveSearchHeuristic)
+	searchResult, err := ParameterizedMechanismSearchWithHeuristic(ctx, task, &r.Runtime.Abstractions, verifier, r.Runtime.ActiveSearchHeuristic)
 	if err != nil {
 		result.Error = err.Error()
 		return result
@@ -590,9 +652,15 @@ func (r *ContinuousReactor) runOne(ctx context.Context, task ReactorTask) Reacto
 			return result
 		}
 		program := *searchResult.SynthesizedProgram
+		artifactIDPrefix := "t3-domain-escape"
+		artifactName := "t3-domain-escape:" + task.Family + ":" + task.ID
+		if task.Autotelic {
+			artifactIDPrefix = "autotelic-domain-escape"
+			artifactName = "autotelic:" + task.GapClass
+		}
 		abstraction := AcquiredAbstraction{
-			ID:               Hash([]any{"t3-domain-escape", task.ID, program}),
-			Name:             "t3-domain-escape:" + task.Family + ":" + task.ID,
+			ID:               Hash([]any{artifactIDPrefix, task.ID, program}),
+			Name:             artifactName,
 			ArtifactType:     SynthesizedProgramArtifactType,
 			SynthesizedProgram: &program,
 			Contract: AbstractionContract{
