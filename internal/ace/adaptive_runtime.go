@@ -143,6 +143,7 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 	if diagnosis.Class == BottleneckUnknown && r.CounterfactualRunner != nil {
 		projected := ProjectAcquisitionTelemetry(telemetry)
 		var opaqueState []byte
+		var err error
 		if snapshotBuilder, ok := r.CounterfactualRunner.(CounterfactualSnapshotBuilder); ok {
 			opaqueState, err = snapshotBuilder.BuildCounterfactualState(failedSpec, methodHidden)
 			if err != nil {
