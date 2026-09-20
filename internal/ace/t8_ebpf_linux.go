@@ -47,9 +47,9 @@ func NewLinuxEBPFProbe() *LinuxEBPFProbe { return &LinuxEBPFProbe{counts: make(m
 func t8ProgramSpec(name string, kind uint32, events *ebpf.Map) *ebpf.ProgramSpec {
 	ins := asm.Instructions{
 		asm.FnGetCurrentPidTgid.Call(),
-		asm.Rsh.Imm(asm.R0, 32),
+		asm.RSh.Imm(asm.R0, 32),
 		asm.StoreMem(asm.RFP, -16, asm.R0, asm.Word),
-		asm.Mov.Imm(asm.R2, int64(kind)),
+		asm.Mov.Imm(asm.R2, int32(kind)),
 		asm.StoreMem(asm.RFP, -12, asm.R2, asm.Word),
 		asm.FnKtimeGetNs.Call(),
 		asm.StoreMem(asm.RFP, -8, asm.R0, asm.DWord),
