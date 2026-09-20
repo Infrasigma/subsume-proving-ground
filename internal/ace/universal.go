@@ -61,13 +61,15 @@ func expressionFrontierWithContextBudget(ctx context.Context, vars []string, max
 	base := make([]UExpr, 0, len(vars)+5)
 	for _, v := range vars {
 		if err := budget.consume(); err != nil {
-			return nil, err
+			// Preserve every shallow expression already constructed so callers
+			// can verify them before treating the expansion limit as terminal.
+			return append([]UExpr(nil), base...), err
 		}
 		base = append(base, UExpr{Kind: "var", Value: v})
 	}
 	for n := -2; n <= 2; n++ {
 		if err := budget.consume(); err != nil {
-			return nil, err
+			return append([]UExpr(nil), base...), err
 		}
 		base = append(base, UExpr{Kind: "const", Value: strconv.Itoa(n)})
 	}
@@ -77,12 +79,12 @@ func expressionFrontierWithContextBudget(ctx context.Context, vars []string, max
 		next := make([]UExpr, 0)
 		for i := range prev {
 			if err := ctx.Err(); err != nil {
-				return nil, err
+				return front, err
 			}
 			for j := range prev {
 				if (j & 255) == 0 {
 					if err := ctx.Err(); err != nil {
-						return nil, err
+						return front, err
 					}
 				}
 				a, b := &prev[i], &prev[j]
@@ -95,7 +97,10 @@ func expressionFrontierWithContextBudget(ctx context.Context, vars []string, max
 				}
 				for _, expr := range exprs {
 					if err := budget.consume(); err != nil {
-						return nil, err
+						// The previous complete depth is still a valid bounded
+						// search frontier; return it with an explicit exhaustion
+						// error instead of returning a malformed partial program.
+						return front, err
 					}
 					next = append(next, expr)
 				}
@@ -154,21 +159,24 @@ func (b UniversalProgramBuilder) BuildWithContext(ctx context.Context, c Archite
 	}
 
 	straightBudget := newSynthesisBudget(b.MaxSynthesisExpansions)
-	exprs, err := expressionFrontierWithContextBudget(ctx, vars, 2, straightBudget)
-	if err != nil {
-		return ModificationProposal{}, err
+	exprs, frontierErr := expressionFrontierWithContextBudget(ctx, vars, 2, straightBudget)
+	if frontierErr != nil && !errors.Is(frontierErr, ErrSynthesisExpansionLimit) {
+		return ModificationProposal{}, frontierErr
 	}
+	// Always verify the shallow frontier that was already constructed. A
+	// derived representation may be sufficient at depth 0 even when a deeper
+	// frontier would exceed the global expansion budget.
 	for _, e := range exprs {
 		if err := ctx.Err(); err != nil {
-			return ModificationProposal{}, err
-		}
-		if err := straightBudget.consume(); err != nil {
 			return ModificationProposal{}, err
 		}
 		p := UniversalProgram{Statements: []UStmt{{Kind: "assign", Target: out, Expr: cloneExpr(e)}}}
 		if programFits(p, s.KnownExamples) {
 			return encodeUniversal(p, s, c)
 		}
+	}
+	if frontierErr != nil {
+		return ModificationProposal{}, frontierErr
 	}
 	return ModificationProposal{}, errors.New("universal synthesis exhausted search space")
 }
