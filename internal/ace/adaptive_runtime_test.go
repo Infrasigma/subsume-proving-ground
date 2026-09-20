@@ -52,11 +52,11 @@ func TestAdaptiveAcquisitionRuntimeEndogenousAbstractionLearning(t *testing.T) {
 	if got := DiagnoseAdaptiveBoundary(telemetry).Class; got != BottleneckSearchSpace {
 		t.Fatalf("expected search-space diagnosis for the observed failure topology, got %s", got)
 	}
-	if !strings.Contains(err.Error(), "recursive synthesis exhausted promoted frontier without verification") {
-		t.Fatalf("unexpected recursive rejection: %v", err)
+	if !strings.Contains(err.Error(), "partial promotion requires a non-trivial procedure") {
+		t.Fatalf("unexpected depth-one recursive rejection: %v", err)
 	}
-	if len(rt.Abstractions.Abstractions) != 1 {
-		t.Fatalf("expected the partial abstraction to be admitted before transfer rejection, got %d", len(rt.Abstractions.Abstractions))
+	if len(rt.Abstractions.Abstractions) != 0 {
+		t.Fatalf("depth-one negative control unexpectedly admitted an abstraction: %d", len(rt.Abstractions.Abstractions))
 	}
 	if result.Method.ID != "" || result.Future.Capability.ID != "" {
 		t.Fatalf("rejected transfer returned a retained capability: method=%q future=%q", result.Method.ID, result.Future.Capability.ID)

@@ -60,7 +60,7 @@ func TestForcedCompositionAdaptiveRuntimeTelemetry(t *testing.T) {
 	}
 	diagnosis := DiagnoseBottleneck(telemetry)
 
-	methodCandidates := AutonomousMethodCandidates(diagnosis, spec, spec.ResourceLimits)
+	methodCandidates := AutonomousMethodCandidatesWithLibraryDepth(diagnosis, spec, spec.ResourceLimits, nil, 1)
 	depthCounts := map[int]int{}
 	for _, c := range methodCandidates {
 		p, err := decodeAcquisitionProcedure(c.Artifact.Procedure)
