@@ -25,6 +25,7 @@ import (
 type ResourceHandle struct {
 	ResourceID string
 	PID        int
+	process    *os.Process
 }
 
 type ObservedResource struct {
@@ -78,36 +79,32 @@ func (LocalSubprocessProvider) Provision(ctx context.Context, c protocol.Infrast
 	if err := cmd.Start(); err != nil {
 		return ResourceHandle{}, fmt.Errorf("start local resource: %w", err)
 	}
-	return ResourceHandle{ResourceID: c.ExpectedEffect.ResourceID, PID: cmd.Process.Pid}, nil
+	return ResourceHandle{ResourceID: c.ExpectedEffect.ResourceID, PID: cmd.Process.Pid, process: cmd.Process}, nil
 }
 
 func (LocalSubprocessProvider) Reclaim(ctx context.Context, h ResourceHandle) error {
 	if h.PID <= 0 {
 		return errors.New("invalid resource pid")
 	}
-	p, err := os.FindProcess(h.PID)
-	if err != nil {
-		return err
-	}
-	_ = p.Kill()
-	if err := waitProcessGone(ctx, p.Pid); err != nil {
-		return err
-	}
-	return nil
-}
-
-func waitProcessGone(ctx context.Context, pid int) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	for {
-		if err := ctx.Err(); err != nil {
+	p := h.process
+	if p == nil {
+		var err error
+		p, err = os.FindProcess(h.PID)
+		if err != nil {
 			return err
 		}
-		if !processExists(pid) {
-			return nil
+	}
+	_ = p.Kill()
+	waitDone := make(chan error, 1)
+	go func() { waitDone <- p.Wait() }()
+	select {
+	case err := <-waitDone:
+		if err != nil && !errors.Is(err, os.ErrProcessDone) {
+			return err
 		}
-		time.Sleep(10 * time.Millisecond)
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
