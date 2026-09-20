@@ -46,7 +46,13 @@ func (t ReactorTask) Validate() error {
 			if len(example.Input) == 0 || len(example.Input) != len(example.Expected) {
 				return errors.New("reactor example requires equal non-empty input and expected streams")
 			}
+			if t.InputKind == "string" && (len(example.Input) != 1 || len(example.Expected) != 1) {
+				return errors.New("string reactor tasks require exactly one input and one expected string")
+			}
 		}
+	}
+	if t.InputKind != "" && t.InputKind != "string" && t.InputKind != "architecture-candidate-stream" {
+		return fmt.Errorf("unsupported reactor input kind %q", t.InputKind)
 	}
 	if t.MaxSearchDepth <= 0 {
 		return errors.New("reactor task max_search_depth must be positive")
@@ -261,6 +267,10 @@ type ReactorVerifier interface {
 	Verify(context.Context, ReactorTask, AcquisitionProcedure, *AbstractionLibrary) error
 }
 
+type SynthesizedProgramReactorVerifier interface {
+	VerifySynthesizedProgram(context.Context, ReactorTask, SynthesizedProgram) error
+}
+
 type StaticReactorVerifier struct {
 	HiddenByTask map[string][]ReactorExample
 }
@@ -279,12 +289,39 @@ func (v StaticReactorVerifier) Verify(ctx context.Context, task ReactorTask, pro
 	return errors.New("independent hidden verification rejected candidate")
 }
 
+func (v StaticReactorVerifier) VerifySynthesizedProgram(ctx context.Context, task ReactorTask, program SynthesizedProgram) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	examples, ok := v.HiddenByTask[task.ID]
+	if !ok || len(examples) < 2 {
+		return fmt.Errorf("no evaluator-owned hidden fixture for task %q", task.ID)
+	}
+	if err := program.Validate(); err != nil {
+		return fmt.Errorf("synthesized program rejected before hidden verification: %w", err)
+	}
+	for _, example := range examples {
+		if len(example.Input) != 1 || len(example.Expected) != 1 {
+			return errors.New("synthesized hidden fixture must contain one input and one expected output")
+		}
+		got, err := program.Execute(ctx, example.Input[0])
+		if err != nil {
+			return fmt.Errorf("synthesized hidden execution failed: %w", err)
+		}
+		if got != example.Expected[0] {
+			return fmt.Errorf("synthesized hidden verification mismatch: got %q want %q", got, example.Expected[0])
+		}
+	}
+	return nil
+}
+
 type AbstractionAdmissionSource interface {
 	GetAbstractionAdmission(context.Context, string) (protocol.AbstractionAdmissionReceipt, error)
 }
 
 type ParameterizedReactorSearchResult struct {
 	Procedure           AcquisitionProcedure
+	SynthesizedProgram  *SynthesizedProgram
 	EvaluatedCandidates int
 	Depth               int
 	UsedAbstractionID   string
@@ -327,6 +364,24 @@ func ParameterizedMechanismSearchWithLibrary(ctx context.Context, task ReactorTa
 				}, nil
 			}
 		}
+	}
+	if task.InputKind == "string" {
+		programVerifier, ok := verifier.(SynthesizedProgramReactorVerifier)
+		if !ok {
+			return ParameterizedReactorSearchResult{}, errors.New("string domain escape requires synthesized-program verification support")
+		}
+		program, err := SynthesizeDomainEscape(ctx, task)
+		if err != nil {
+			return ParameterizedReactorSearchResult{}, fmt.Errorf("domain-escape synthesis failed after primitive exhaustion: %w", err)
+		}
+		if err := programVerifier.VerifySynthesizedProgram(ctx, task, program); err != nil {
+			return ParameterizedReactorSearchResult{}, fmt.Errorf("domain-escape hidden verification rejected candidate: %w", err)
+		}
+		return ParameterizedReactorSearchResult{
+			SynthesizedProgram:  &program,
+			EvaluatedCandidates: evaluated + 1,
+			Depth:               1,
+		}, nil
 	}
 	return ParameterizedReactorSearchResult{}, fmt.Errorf(
 		"parameterized reactor search exhausted depth=%d..%d candidates=%d",
@@ -498,6 +553,64 @@ func (r *ContinuousReactor) runOne(ctx context.Context, task ReactorTask) Reacto
 	result.EvaluatedCandidates = searchResult.EvaluatedCandidates
 	result.SearchDepth = searchResult.Depth
 	result.UsedAbstractionID = searchResult.UsedAbstractionID
+
+	if searchResult.SynthesizedProgram != nil {
+		if !task.AdmitAsAbstraction {
+			return result
+		}
+		program := *searchResult.SynthesizedProgram
+		abstraction := AcquiredAbstraction{
+			ID:               Hash([]any{"t3-domain-escape", task.ID, program}),
+			Name:             "t3-domain-escape:" + task.Family + ":" + task.ID,
+			ArtifactType:     SynthesizedProgramArtifactType,
+			SynthesizedProgram: &program,
+			Contract: AbstractionContract{
+				Inputs:         []string{task.InputKind},
+				Outputs:        []string{"string"},
+				Preconditions:  []string{"bounded UTF-8 input", "sandbox fuel limit enforced"},
+				Postconditions: []string{"deterministic output under independently verified program semantics"},
+			},
+			Evidence: []AbstractionEvidence{{
+				TaskStructure: task.Family,
+				Verified:      true,
+				HeldOut:       true,
+				TransferScore: 1,
+				DiscoveryCost: ResourceVector{
+					ExperimentBudget: float64(searchResult.EvaluatedCandidates),
+					TimeMS:            1,
+				},
+				ObservedGain: 1,
+			}},
+			CostHistory: []ResourceVector{{
+				ExperimentBudget: float64(searchResult.EvaluatedCandidates),
+				TimeMS:            1,
+			}},
+			Verification: VerificationResult{
+				Status:      "verified",
+				Independent: true,
+				Expected:    []string{"training examples preserved", "evaluator-owned holdout behavior"},
+				Observed:    []string{"sandbox execution agreement", "independent hidden verification agreement"},
+				Provenance:  Prov("t3-domain-escape-verifier", task.ID, "sandboxed-program-plus-hidden-reference", program),
+			},
+			Provenance: Prov("t3-domain-escape", task.ID, "synthesized-program-admission", program),
+		}
+		sealed, err := r.Runtime.admitAbstraction(ctx, abstraction, 1)
+		if err != nil {
+			result.Solved = false
+			result.Error = err.Error()
+			return result
+		}
+		result.DiscoveredAbstractionID = sealed.ID
+		result.AdmissionRef = sealed.LedgerAdmissionRef
+		if r.PersistentLibrary != nil {
+			if err := r.PersistentLibrary.Save(&r.Runtime.Abstractions); err != nil {
+				result.Solved = false
+				result.Error = fmt.Sprintf("persist admitted T3 program library: %v", err)
+				return result
+			}
+		}
+		return result
+	}
 
 	if !task.AdmitAsAbstraction {
 		return result
