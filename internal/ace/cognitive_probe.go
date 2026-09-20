@@ -27,23 +27,33 @@ func RunCognitiveProbe(ctx context.Context) (CognitiveProbeResult, error) {
 
 	// Primitive A: absolute value.
 	trainA := []ProgramTestCase{
+		{Input: map[string]string{"x": "-11"}, Expected: map[string]string{"h": "11"}},
+		{Input: map[string]string{"x": "-7"}, Expected: map[string]string{"h": "7"}},
 		{Input: map[string]string{"x": "-3"}, Expected: map[string]string{"h": "3"}},
+		{Input: map[string]string{"x": "-1"}, Expected: map[string]string{"h": "1"}},
+		{Input: map[string]string{"x": "0"}, Expected: map[string]string{"h": "0"}},
 		{Input: map[string]string{"x": "4"}, Expected: map[string]string{"h": "4"}},
+		{Input: map[string]string{"x": "7"}, Expected: map[string]string{"h": "7"}},
 	}
 	hiddenA := []ProgramTestCase{
-		{Input: map[string]string{"x": "-7"}, Expected: map[string]string{"h": "7"}},
+		{Input: map[string]string{"x": "-13"}, Expected: map[string]string{"h": "13"}},
 		{Input: map[string]string{"x": "5"}, Expected: map[string]string{"h": "5"}},
 	}
+
 
 	// Primitive B: max(h, 2).
 	trainB := []ProgramTestCase{
 		{Input: map[string]string{"h": "0"}, Expected: map[string]string{"y": "2"}},
+		{Input: map[string]string{"h": "1"}, Expected: map[string]string{"y": "2"}},
 		{Input: map[string]string{"h": "5"}, Expected: map[string]string{"y": "5"}},
+		{Input: map[string]string{"h": "8"}, Expected: map[string]string{"y": "8"}},
 	}
 	hiddenB := []ProgramTestCase{
-		{Input: map[string]string{"h": "1"}, Expected: map[string]string{"y": "2"}},
+		{Input: map[string]string{"h": "2"}, Expected: map[string]string{"y": "2"}},
 		{Input: map[string]string{"h": "7"}, Expected: map[string]string{"y": "7"}},
 	}
+
+
 
 	specA, err := GeneralCapabilitySpecification(
 		Task{ID: "cognition-a", Goal: "h equals abs(x)"},
@@ -79,10 +89,13 @@ func RunCognitiveProbe(ctx context.Context) (CognitiveProbeResult, error) {
 	// The target requires two conditional boundaries:
 	// max(abs(x), 2) has three behavioural regions.
 	targetTrain := []ProgramTestCase{
+		{Input: map[string]string{"x": "-5"}, Expected: map[string]string{"y": "5"}},
 		{Input: map[string]string{"x": "-1"}, Expected: map[string]string{"y": "2"}},
+		{Input: map[string]string{"x": "0"}, Expected: map[string]string{"y": "2"}},
 		{Input: map[string]string{"x": "3"}, Expected: map[string]string{"y": "3"}},
 		{Input: map[string]string{"x": "5"}, Expected: map[string]string{"y": "5"}},
 	}
+
 	targetHidden := []ProgramTestCase{
 		{Input: map[string]string{"x": "-8"}, Expected: map[string]string{"y": "8"}},
 		{Input: map[string]string{"x": "1"}, Expected: map[string]string{"y": "2"}},
