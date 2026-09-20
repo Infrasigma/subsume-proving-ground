@@ -136,7 +136,6 @@ func (p SynthesizedProgram) Execute(ctx context.Context, input string) (string, 
 	memory := make([]int64, maxSynthMemoryCells)
 	pc := 0
 	var fuel = p.Fuel
-	var output string
 
 	getInt := func(v any) (int64, error) {
 		x, ok := v.(int64)
