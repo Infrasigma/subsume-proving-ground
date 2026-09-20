@@ -347,36 +347,26 @@ func ParameterizedMechanismSearchWithHeuristic(ctx context.Context, task Reactor
 		ctx = context.Background()
 	}
 	evaluated := 0
-	for depth := task.MinProcedureSteps; depth <= task.MaxSearchDepth; depth++ {
-		procedures := EnumerateAcquisitionProceduresWithLibrary(depth, lib)
-		orderedProcedures, err := orderAcquisitionProcedureCandidates(procedures, heuristic)
-		if err != nil {
-			return ParameterizedReactorSearchResult{}, fmt.Errorf("active search heuristic rejected procedure frontier: %w", err)
-		}
-		for _, procedure := range orderedProcedures {
-			if len(procedure.Steps) != depth {
-				continue
-			}
-			if task.RequireAbstractionID != "" && !procedureCallsAbstraction(procedure, task.RequireAbstractionID) {
-				continue
-			}
-			evaluated++
-			if err := ctx.Err(); err != nil {
-				return ParameterizedReactorSearchResult{}, err
-			}
-			if procedureFitsReactorExamples(procedure, task.Examples, lib) &&
-				verifier.Verify(ctx, task, procedure, lib) == nil {
-				return ParameterizedReactorSearchResult{
-					Procedure:           procedure,
-					EvaluatedCandidates: evaluated,
-					Depth:               depth,
-					UsedAbstractionID:   task.RequireAbstractionID,
-				}, nil
-			}
-		}
-	}
 	if task.InputKind == "string" {
 		programVerifier, ok := verifier.(SynthesizedProgramReactorVerifier)
+		if !ok {
+			return ParameterizedReactorSearchResult{}, errors.New("string domain escape requires synthesized-program verification support")
+		}
+		program, stats, err := SynthesizeDomainEscapeWithHeuristic(ctx, task, heuristic)
+		if err != nil {
+			return ParameterizedReactorSearchResult{}, fmt.Errorf("domain-escape synthesis failed after primitive exhaustion: %w", err)
+		}
+		if err := programVerifier.VerifySynthesizedProgram(ctx, task, program); err != nil {
+			return ParameterizedReactorSearchResult{}, fmt.Errorf("domain-escape hidden verification rejected candidate: %w", err)
+		}
+		return ParameterizedReactorSearchResult{
+			SynthesizedProgram:  &program,
+			EvaluatedCandidates: stats.CandidatesEvaluated,
+			Depth:               1,
+		}, nil
+	}
+
+	for depth := task.MinProcedureSteps;		programVerifier, ok := verifier.(SynthesizedProgramReactorVerifier)
 		if !ok {
 			return ParameterizedReactorSearchResult{}, errors.New("string domain escape requires synthesized-program verification support")
 		}
