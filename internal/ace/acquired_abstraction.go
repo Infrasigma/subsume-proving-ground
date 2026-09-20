@@ -38,6 +38,7 @@ type AcquiredAbstraction struct {
 	ArtifactType string `json:"artifact_type,omitempty"`
 	Procedure    AcquisitionProcedure
 	SynthesizedProgram *SynthesizedProgram `json:"synthesized_program,omitempty"`
+	SearchHeuristic *SearchHeuristicProgram `json:"search_heuristic,omitempty"`
 	Contract     AbstractionContract
 	Dependencies []string
 	Evidence     []AbstractionEvidence
@@ -64,6 +65,7 @@ type canonicalAbstractionArtifact struct {
 	ArtifactType string `json:"artifact_type,omitempty"`
 	Procedure AcquisitionProcedure `json:"procedure"`
 	SynthesizedProgram *SynthesizedProgram `json:"synthesized_program,omitempty"`
+	SearchHeuristic *SearchHeuristicProgram `json:"search_heuristic,omitempty"`
 	Contract AbstractionContract `json:"contract"`
 	Dependencies []string `json:"dependencies"`
 	Evidence []AbstractionEvidence `json:"evidence"`
@@ -164,11 +166,24 @@ func (l *AbstractionLibrary) Install(a AcquiredAbstraction) error {
 		if a.SynthesizedProgram == nil {
 			return errors.New("synthesized-program abstraction is missing its program payload")
 		}
+		if a.SearchHeuristic != nil {
+			return errors.New("synthesized-program abstraction cannot carry a search heuristic")
+		}
 		if len(a.Procedure.Steps) != 0 {
 			return errors.New("synthesized-program abstraction cannot carry an acquisition procedure")
 		}
 		if err := a.SynthesizedProgram.Validate(); err != nil {
 			return fmt.Errorf("synthesized-program abstraction is invalid: %w", err)
+		}
+	case SearchHeuristicArtifactType:
+		if a.SearchHeuristic == nil {
+			return errors.New("search-heuristic abstraction is missing its program payload")
+		}
+		if a.SynthesizedProgram != nil || len(a.Procedure.Steps) != 0 {
+			return errors.New("search-heuristic abstraction cannot carry T2/T3 executable payloads")
+		}
+		if err := a.SearchHeuristic.Validate(); err != nil {
+			return fmt.Errorf("search-heuristic abstraction is invalid: %w", err)
 		}
 	default:
 		return fmt.Errorf("unsupported acquired abstraction type %q", a.ArtifactType)
