@@ -137,7 +137,7 @@ func compileAndRunGeneratedNode(ctx context.Context, source string, hidden []Pro
 	if !strings.Contains(source, "package main") || !strings.Contains(source, "type Node") || !strings.Contains(source, "Classify(") {
 		return generatedMetaResult{}, "", errors.New("generated Go does not expose the required Node/Classify contract")
 	}
-	for _, forbidden := range []string{""os"", ""os/exec"", ""net/http"", ""net"", ""syscall"", ""plugin"", ""unsafe""} {
+	for _, forbidden := range []string{"os", "os/exec", "net/http", "net", "syscall", "plugin", "unsafe"} {
 		if strings.Contains(source, forbidden) {
 			return generatedMetaResult{}, "", fmt.Errorf("generated Go contains forbidden dependency %s", forbidden)
 		}
