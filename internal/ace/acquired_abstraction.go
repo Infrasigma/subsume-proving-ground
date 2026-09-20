@@ -39,6 +39,7 @@ type AcquiredAbstraction struct {
 	Procedure    AcquisitionProcedure
 	SynthesizedProgram *SynthesizedProgram `json:"synthesized_program,omitempty"`
 	SearchHeuristic *SearchHeuristicProgram `json:"search_heuristic,omitempty"`
+	ExecutionControlPlane *ExecutionControlPlane `json:"execution_control_plane,omitempty"`
 	Contract     AbstractionContract
 	Dependencies []string
 	Evidence     []AbstractionEvidence
@@ -66,6 +67,7 @@ type canonicalAbstractionArtifact struct {
 	Procedure AcquisitionProcedure `json:"procedure"`
 	SynthesizedProgram *SynthesizedProgram `json:"synthesized_program,omitempty"`
 	SearchHeuristic *SearchHeuristicProgram `json:"search_heuristic,omitempty"`
+	ExecutionControlPlane *ExecutionControlPlane `json:"execution_control_plane,omitempty"`
 	Contract AbstractionContract `json:"contract"`
 	Dependencies []string `json:"dependencies"`
 	Evidence []AbstractionEvidence `json:"evidence"`
@@ -81,6 +83,7 @@ func (a AcquiredAbstraction) canonicalArtifact() (string, []byte, error) {
 		ArtifactType: a.ArtifactType,
 		Procedure: a.Procedure,
 		SynthesizedProgram: a.SynthesizedProgram,
+		ExecutionControlPlane: a.ExecutionControlPlane,
 		Contract: a.Contract,
 		Dependencies: append([]string(nil), a.Dependencies...),
 		Evidence: append([]AbstractionEvidence(nil), a.Evidence...),
@@ -182,11 +185,21 @@ func (l *AbstractionLibrary) Install(a AcquiredAbstraction) error {
 		if a.SearchHeuristic == nil {
 			return errors.New("search-heuristic abstraction is missing its program payload")
 		}
-		if a.SynthesizedProgram != nil || len(a.Procedure.Steps) != 0 {
-			return errors.New("search-heuristic abstraction cannot carry T2/T3 executable payloads")
+		if a.SynthesizedProgram != nil || a.ExecutionControlPlane != nil || len(a.Procedure.Steps) != 0 {
+			return errors.New("search-heuristic abstraction cannot carry T2/T3/substrate executable payloads")
 		}
 		if err := a.SearchHeuristic.Validate(); err != nil {
 			return fmt.Errorf("search-heuristic abstraction is invalid: %w", err)
+		}
+	case ExecutionControlPlaneArtifactType:
+		if a.ExecutionControlPlane == nil {
+			return errors.New("execution-control-plane abstraction is missing its payload")
+		}
+		if a.SynthesizedProgram != nil || a.SearchHeuristic != nil || len(a.Procedure.Steps) != 0 {
+			return errors.New("execution-control-plane abstraction cannot carry T2/T3 executable payloads")
+		}
+		if err := a.ExecutionControlPlane.Validate(); err != nil {
+			return fmt.Errorf("execution-control-plane abstraction is invalid: %w", err)
 		}
 	default:
 		return fmt.Errorf("unsupported acquired abstraction type %q", a.ArtifactType)

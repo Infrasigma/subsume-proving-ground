@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -61,6 +62,14 @@ func main() {
 		log.Fatal(err)
 	}
 
+	var substrateEscape *ace.AxonSubstrateController
+	if encoded := os.Getenv("T6_SWARM_ROOT_KEY_B64"); encoded != "" {
+		rootKey, decodeErr := base64.StdEncoding.DecodeString(encoded)
+		if decodeErr != nil {
+			log.Fatalf("decode T6_SWARM_ROOT_KEY_B64: %v", decodeErr)
+		}
+		substrateEscape = ace.DefaultAxonSubstrateController(rootKey)
+	}
 	runtime := &ace.AdaptiveAcquisitionRuntime{
 		Abstractions:            ace.AbstractionLibrary{},
 		PersistentAbstractions:  persistent,
@@ -80,6 +89,8 @@ func main() {
 		MaxTasks:            *maxTasks,
 		AutotelicGenerator:  ace.DefaultAutotelicTaskGenerator(),
 		MaxAutotelicTasks:   1,
+		SubstrateEscape:      substrateEscape,
+		MaxSubstrateEscapes:  1,
 		Logf:                log.Printf,
 	}
 
