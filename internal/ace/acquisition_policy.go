@@ -125,12 +125,20 @@ func (p AcquisitionPolicy) ActivePrimitiveForFailure(signature string) (Represen
 	var best RepresentationGeneratorPrimitive
 	bestWeight := 0.0
 	found := false
-	for _, primitive := range p.Primitives {
-		weight := p.Weight(signature, primitive.ID)
-		if !found || weight < bestWeight || (weight == bestWeight && primitive.ID < best.ID) {
-			best = primitive
-			bestWeight = weight
-			found = true
+	for _, binding := range p.Bindings {
+		if binding.FailureTopology != signature {
+			continue
+		}
+		for _, primitive := range p.Primitives {
+			if primitive.ID != binding.PrimitiveID {
+				continue
+			}
+			weight := binding.SearchWeight
+			if !found || weight < bestWeight || (weight == bestWeight && primitive.ID < best.ID) {
+				best = primitive
+				bestWeight = weight
+				found = true
+			}
 		}
 	}
 	if !found {
