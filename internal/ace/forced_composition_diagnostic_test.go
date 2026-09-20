@@ -119,8 +119,10 @@ func TestForcedCompositionAdaptiveRuntimeTelemetry(t *testing.T) {
 	if result.Method.ID != "" || result.Future.Capability.ID != "" {
 		t.Fatalf("rejected T2 transfer returned a retained capability: method=%q future=%q", result.Method.ID, result.Future.Capability.ID)
 	}
-	if len(rt.Abstractions.Abstractions) < 1 {
-		t.Fatal("T2 recursive runtime did not preserve the promoted partial acquisition abstraction")
+	// This depth-one runtime is an intentional negative control: the bounded
+	// candidate stream exhausts without admitting a recursive abstraction.
+	if len(rt.Abstractions.Abstractions) != 0 {
+		t.Fatalf("depth-one negative control unexpectedly admitted an abstraction: %d", len(rt.Abstractions.Abstractions))
 	}
 
 	for _, e := range log.Events() {
