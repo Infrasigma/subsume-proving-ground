@@ -48,11 +48,20 @@ type AdaptiveAcquisitionRuntime struct {
 	// test single-factor hypotheses, and return a uniquely supported diagnosis.
 	CounterfactualRunner CounterfactualRunner
 	AcquisitionPolicy   *AcquisitionPolicy
+	PersistentAcquisitionPolicy *PersistentAcquisitionPolicy
 }
 
 type AdaptiveAcquisitionResult struct { Method AcquisitionMethodArtifact; Diagnosis BottleneckDiagnosis; Evaluations []MethodEvaluation; Future CapabilityRecord; FutureCost ResourceVector; Trace []string; PolicyMutation *GeneratorSpaceMutation }
 
 func (r *AdaptiveAcquisitionRuntime) prepareLibraries() error {
+	if r.AcquisitionPolicy == nil {
+		r.AcquisitionPolicy = &AcquisitionPolicy{}
+	}
+	if r.PersistentAcquisitionPolicy != nil && len(r.AcquisitionPolicy.Primitives) == 0 && len(r.AcquisitionPolicy.Bindings) == 0 {
+		if err := r.PersistentAcquisitionPolicy.Restore(r.AcquisitionPolicy); err != nil {
+			return err
+		}
+	}
 	r.Methods.Abstractions = &r.Abstractions
 	if r.PersistentAbstractions != nil && len(r.Abstractions.Abstractions) == 0 { if err := r.PersistentAbstractions.Restore(&r.Abstractions); err != nil { return err } }
 	return nil
@@ -170,6 +179,11 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 				return AdaptiveAcquisitionResult{}, fmt.Errorf("representation promotion rejected: %w", promoteErr)
 			}
 			policyMutation = &mutation
+			if r.PersistentAcquisitionPolicy != nil {
+				if err := r.PersistentAcquisitionPolicy.Save(r.AcquisitionPolicy); err != nil {
+					return AdaptiveAcquisitionResult{}, fmt.Errorf("persisting acquisition policy mutation failed: %w", err)
+				}
+			}
 
 			// Re-enter acquisition through the newly expanded generator space.
 			// Only one topology-matched primitive is activated to avoid feature
