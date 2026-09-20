@@ -60,6 +60,7 @@ type KMSSignedArtifact struct {
 
 type AbstractionAdmissionReceipt struct {
 	KMSSignedArtifact
+	ArtifactType string `json:"artifact_type,omitempty"`
 	LedgerAdmissionRef string `json:"ledger_admission_ref"`
 	LedgerAdmissionHash string `json:"ledger_admission_hash"`
 	PreviousAdmissionHash string `json:"previous_admission_hash"`
@@ -113,6 +114,11 @@ func AbstractionAdmissionHash(r AbstractionAdmissionReceipt) (string, error) {
 		"ledger_admission_ref": r.LedgerAdmissionRef,
 		"previous_admission_hash": r.PreviousAdmissionHash,
 		"created_at_unix": json.Number(strconv.FormatInt(r.CreatedAtUnix, 10)),
+	}
+	// Legacy admissions omit artifact_type. New admissions bind the artifact
+	// kind into the durable admission-chain hash.
+	if r.ArtifactType != "" {
+		unsigned["artifact_type"] = r.ArtifactType
 	}
 	canonical, err := c14n.Canonicalize(unsigned)
 	if err != nil { return "", err }
