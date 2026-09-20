@@ -28,6 +28,8 @@ type AdaptiveAcquisitionRuntime struct {
 
 	// T2 recursion is bounded by deterministic architectural budgets.
 	MaxCompoundingIterations int
+	// MaxAcquisitionProcedureSteps controls candidate-stream enumeration depth.
+	// Zero preserves the production default of two steps.
 
 	// F0 admission plane. Both dependencies are mandatory whenever a newly
 	// promoted abstraction is admitted; absence is fail-closed.
@@ -227,11 +229,16 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 				fmt.Sprintf("T2 iteration %d/%d", iteration, maxIterations))
 		}
 
-		cands := AutonomousMethodCandidatesWithLibrary(
+		maxProcedureSteps := r.MaxAcquisitionProcedureSteps
+		if maxProcedureSteps <= 0 {
+			maxProcedureSteps = defaultAcquisitionProcedureMaxSteps
+		}
+		cands := AutonomousMethodCandidatesWithLibraryDepth(
 			diagnosis,
 			failedSpec,
 			failedSpec.ResourceLimits,
 			&r.Abstractions,
+			maxProcedureSteps,
 		)
 		if len(cands) == 0 {
 			lastErr = errors.New("recursive synthesis generated no acquisition-method candidates")
@@ -295,8 +302,8 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 			continue
 		}
 		enriched := make([]MethodCandidate, 0, len(cands))
-		for _, candidate := range AutonomousMethodCandidatesWithLibrary(
-				diagnosis, failedSpec, failedSpec.ResourceLimits, &r.Abstractions) {
+		for _, candidate := range AutonomousMethodCandidatesWithLibraryDepth(
+				diagnosis, failedSpec, failedSpec.ResourceLimits, &r.Abstractions, maxProcedureSteps) {
 			if candidateUsesAbstraction(candidate.Artifact, promoted.ID) && procedureDepthAtLeast(candidate.Artifact, 2) {
 				enriched = append(enriched, candidate)
 			}

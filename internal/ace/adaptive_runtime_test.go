@@ -24,6 +24,7 @@ func TestAdaptiveAcquisitionRuntimeCausalCompounding(t *testing.T) {
 		Cost: ResourceVector{Compute: 1, ExperimentBudget: 1},
 	}
 	rt := newF0TestRuntime(t)
+	rt.MaxAcquisitionProcedureSteps = 1
 	result, err := rt.ImproveAndAcquire(telemetry, failedSpec, methodHidden, futureSpec, futureCases)
 	if err != nil { t.Fatal(err) }
 	if result.Diagnosis.Class != BottleneckSearchSpace { t.Fatalf("unexpected diagnosis: %s", result.Diagnosis.Class) }
@@ -34,9 +35,6 @@ func TestAdaptiveAcquisitionRuntimeCausalCompounding(t *testing.T) {
 }
 
 func TestAdaptiveAcquisitionRuntimeEndogenousAbstractionLearning(t *testing.T) {
-	previousSynthesisBudget := AdaptiveUniversalSynthesisMaxExpansions
-	AdaptiveUniversalSynthesisMaxExpansions = 500_000
-	t.Cleanup(func() { AdaptiveUniversalSynthesisMaxExpansions = previousSynthesisBudget })
 	failed := thresholdCases(1, []int{-4, 0, 3, 7})
 	hidden := thresholdCases(1, []int{-9, -2, 2, 6, 15})
 	spec, err := GeneralCapabilitySpecification(Task{ID: "learn-failure", Goal: "classify", Requirements: []string{"x"}, Structure: []string{"scalar", "conditional"}, Budget: ResourceVector{Compute: 200, Memory: 100, TimeMS: 5000, ExperimentBudget: 50}}, failed)
@@ -45,6 +43,7 @@ func TestAdaptiveAcquisitionRuntimeEndogenousAbstractionLearning(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	telemetry := AcquisitionTelemetry{TaskID: "learn-failure", TaskStructure: []string{"scalar", "conditional"}, KnownExamples: len(failed), CandidateCount: 1, CandidateFailures: []string{"counterexample"}, Counterexamples: 1, Representation: []string{"scalar-input-output"}, SearchPath: []string{"base"}, VerificationOutcomes: []string{"heldout-failure"}, Cost: ResourceVector{Compute: 2, ExperimentBudget: 2}}
 	rt := newF0TestRuntime(t)
+	rt.MaxAcquisitionProcedureSteps = 1
 	rt.EnableAbstractionLearning = true
 	result, err := rt.ImproveAndAcquire(telemetry, spec, hidden, future, hidden)
 	if err == nil {

@@ -6,9 +6,6 @@ import (
 )
 
 func TestRecursiveCapabilityCompoundingCore(t *testing.T) {
-	previousSynthesisBudget := AdaptiveUniversalSynthesisMaxExpansions
-	AdaptiveUniversalSynthesisMaxExpansions = 500_000
-	t.Cleanup(func() { AdaptiveUniversalSynthesisMaxExpansions = previousSynthesisBudget })
 	task, train, _, err := DeepCompositionFamily{}.Generate(1, false)
 	if err != nil {
 		t.Fatal(err)
@@ -38,6 +35,7 @@ func TestRecursiveCapabilityCompoundingCore(t *testing.T) {
 		Cost:                ResourceVector{Compute: 5, ExperimentBudget: 2},
 	}
 	rt := newF0TestRuntime(t)
+	rt.MaxAcquisitionProcedureSteps = 1
 	rt.MaxCompoundingIterations = 3
 	result, err := rt.ImproveAndAcquire(telemetry, spec, hidden, hiddenSpec, hidden)
 	if err == nil {

@@ -17,10 +17,7 @@ func TestEffectiveFrontierControlsDoNotCountReordering(t *testing.T){
 }
 
 func TestRecursiveCapabilityFrontierConformance(t *testing.T){
-	previousSynthesisBudget := AdaptiveUniversalSynthesisMaxExpansions
-	AdaptiveUniversalSynthesisMaxExpansions = 500_000
-	t.Cleanup(func() { AdaptiveUniversalSynthesisMaxExpansions = previousSynthesisBudget })
-	metrics,err:=RunRecursiveCapabilityProtocolV3()
+	metrics,err:=runRecursiveCapabilityProtocolV3WithLibraryAndDepth(&AbstractionLibrary{},1)
 	if err==nil{t.Fatalf("expected the current recursive transfer to be rejected without frontier expansion; metrics=%v",metrics)}
 	if !strings.Contains(err.Error(),"installed method did not change future acquisition behavior"){
 		t.Fatalf("unexpected recursive transfer rejection: %v",err)

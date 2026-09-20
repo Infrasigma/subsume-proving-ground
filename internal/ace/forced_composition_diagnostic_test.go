@@ -16,9 +16,6 @@ func procedureDepthForDiagnostic(t *testing.T, artifact AcquisitionMethodArtifac
 }
 
 func TestForcedCompositionAdaptiveRuntimeTelemetry(t *testing.T) {
-	previousSynthesisBudget := AdaptiveUniversalSynthesisMaxExpansions
-	AdaptiveUniversalSynthesisMaxExpansions = 500_000
-	t.Cleanup(func() { AdaptiveUniversalSynthesisMaxExpansions = previousSynthesisBudget })
 	task, train, _, err := DeepCompositionFamily{}.Generate(1, false)
 	if err != nil {
 		t.Fatal(err)
@@ -73,8 +70,8 @@ func TestForcedCompositionAdaptiveRuntimeTelemetry(t *testing.T) {
 		depthCounts[len(p.Steps)]++
 	}
 
-	method, methodDiagnosis, evals, err := AutonomousMethodImprovement(
-		telemetry, spec, hidden, nil, nil,
+	method, methodDiagnosis, evals, err := AutonomousMethodImprovementDepth(
+		telemetry, spec, hidden, nil, nil, 1,
 	)
 	verifiedByDepth := map[int]int{}
 	for _, e := range evals {
@@ -102,6 +99,7 @@ func TestForcedCompositionAdaptiveRuntimeTelemetry(t *testing.T) {
 
 	log := &DiagnosticLog{}
 	rt := newF0TestRuntime(t)
+	rt.MaxAcquisitionProcedureSteps = 1
 	rt.EnableAbstractionLearning = true
 	rt.Diagnostics = log
 	rt.MaxCompoundingIterations = 3
