@@ -12,8 +12,8 @@ func TestDiagnoseFailureTelemetryComputeBoundary(t *testing.T) {
 			{Multiplier: 2, Solved: true},
 		},
 	})
-	if d.Class != BottleneckSearchSpace {
-		t.Fatalf("got %q want %q", d.Class, BottleneckSearchSpace)
+	if d.Class != BottleneckResource {
+		t.Fatalf("got %q want %q", d.Class, BottleneckResource)
 	}
 }
 
