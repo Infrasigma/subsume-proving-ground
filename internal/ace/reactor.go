@@ -346,7 +346,10 @@ func ParameterizedMechanismSearchWithHeuristic(ctx context.Context, task Reactor
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	evaluated := 0
+
+	// String tasks are outside the ArchitectureCandidate vocabulary. Dispatch
+	// directly to the T3 synthesized-program frontier rather than spending
+	// iterations on an inapplicable T2 procedure grammar.
 	if task.InputKind == "string" {
 		programVerifier, ok := verifier.(SynthesizedProgramReactorVerifier)
 		if !ok {
@@ -366,22 +369,34 @@ func ParameterizedMechanismSearchWithHeuristic(ctx context.Context, task Reactor
 		}, nil
 	}
 
-	for depth := task.MinProcedureSteps;		programVerifier, ok := verifier.(SynthesizedProgramReactorVerifier)
-		if !ok {
-			return ParameterizedReactorSearchResult{}, errors.New("string domain escape requires synthesized-program verification support")
-		}
-		program, _, err := SynthesizeDomainEscapeWithHeuristic(ctx, task, heuristic)
+	evaluated := 0
+	for depth := task.MinProcedureSteps; depth <= task.MaxSearchDepth; depth++ {
+		procedures := EnumerateAcquisitionProceduresWithLibrary(depth, lib)
+		orderedProcedures, err := orderAcquisitionProcedureCandidates(procedures, heuristic)
 		if err != nil {
-			return ParameterizedReactorSearchResult{}, fmt.Errorf("domain-escape synthesis failed after primitive exhaustion: %w", err)
+			return ParameterizedReactorSearchResult{}, fmt.Errorf("active search heuristic rejected procedure frontier: %w", err)
 		}
-		if err := programVerifier.VerifySynthesizedProgram(ctx, task, program); err != nil {
-			return ParameterizedReactorSearchResult{}, fmt.Errorf("domain-escape hidden verification rejected candidate: %w", err)
+		for _, procedure := range orderedProcedures {
+			if len(procedure.Steps) != depth {
+				continue
+			}
+			if task.RequireAbstractionID != "" && !procedureCallsAbstraction(procedure, task.RequireAbstractionID) {
+				continue
+			}
+			evaluated++
+			if err := ctx.Err(); err != nil {
+				return ParameterizedReactorSearchResult{}, err
+			}
+			if procedureFitsReactorExamples(procedure, task.Examples, lib) &&
+				verifier.Verify(ctx, task, procedure, lib) == nil {
+				return ParameterizedReactorSearchResult{
+					Procedure:           procedure,
+					EvaluatedCandidates: evaluated,
+					Depth:               depth,
+					UsedAbstractionID:   task.RequireAbstractionID,
+				}, nil
+			}
 		}
-		return ParameterizedReactorSearchResult{
-			SynthesizedProgram:  &program,
-			EvaluatedCandidates: evaluated + 1,
-			Depth:               1,
-		}, nil
 	}
 	return ParameterizedReactorSearchResult{}, fmt.Errorf(
 		"parameterized reactor search exhausted depth=%d..%d candidates=%d",
