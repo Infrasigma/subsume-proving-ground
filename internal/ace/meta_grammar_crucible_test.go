@@ -5,7 +5,8 @@ import (
 	"testing"
 )
 
-// Initial failure trace is admissible evidence only; this test does not install the proposed grammar mutation.\nfunc TestMetaGrammarCrucibleInitialFailure(t *testing.T) {
+// Initial failure trace is admissible evidence only; this test does not install the proposed grammar mutation.
+func TestMetaGrammarCrucibleInitialFailure(t *testing.T) {
 	ctx := context.Background()
 	diagnosis, mutation, err := RunMetaGrammarCrucible(ctx, 20260921, 8)
 	if err != nil {
