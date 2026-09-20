@@ -206,7 +206,7 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 		}
 		if baselineEval.Verified {
 			method = baselineEval.Candidate
-			diagnosis = DiagnoseAdaptiveBoundary(telemetry)
+			// Preserve the causally established diagnosis through candidate verification.
 			evals = []MethodEvaluation{baselineEval}
 			lastErr = nil
 			break
@@ -260,7 +260,7 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 			evals = append(evals, result)
 			if result.Verified {
 				method = result.Candidate
-				diagnosis = DiagnoseAdaptiveBoundary(telemetry)
+				// Preserve the causally established diagnosis through candidate verification.
 				lastErr = nil
 				if r.Diagnostics != nil {
 					r.Diagnostics.Record("C", method.ID, "acquisition-method", method,
