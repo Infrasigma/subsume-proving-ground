@@ -78,6 +78,8 @@ func main() {
 		TrustedPublicKeyB64: trustedPublicKey,
 		Verifier:            ace.DefaultT3DomainEscapeVerifier(),
 		MaxTasks:            *maxTasks,
+		AutotelicGenerator:  ace.DefaultAutotelicTaskGenerator(),
+		MaxAutotelicTasks:   1,
 		Logf:                log.Printf,
 	}
 
