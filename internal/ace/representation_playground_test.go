@@ -2,6 +2,7 @@ package ace
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 )
 
@@ -27,6 +28,23 @@ func TestRepresentationPlaygroundCounterfactualFindsVerifiedDerivedFeature(t *te
 		t.Fatal(err)
 	}
 
+	// Keep this plumbing test intentionally tiny: the production search grammar
+	// is exercised by its own tests. Here we inject exactly one executable
+	// representation primitive so the test proves promotion/verification/policy
+	// plumbing without conflating it with blind representation discovery.
+	absProgram := UniversalProgram{Statements: []UStmt{{
+		Kind: "if",
+		Cond: &UExpr{Kind: "lt", Left: &UExpr{Kind: "var", Value: "x"}, Right: &UExpr{Kind: "const", Value: "0"}},
+		Then: []UStmt{{Kind: "assign", Target: "__derived_output", Expr: &UExpr{
+			Kind: "sub", Left: &UExpr{Kind: "const", Value: "0"}, Right: &UExpr{Kind: "var", Value: "x"},
+		}}},
+		Else: []UStmt{{Kind: "assign", Target: "__derived_output", Expr: &UExpr{Kind: "var", Value: "x"}}},
+	}}}
+	absArtifact, err := json.Marshal(absProgram)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Establish the baseline failure using the same builder that the
 	// counterfactual runner will use. This keeps the representation gate
 	// downstream of the existing executable substrate rather than inventing
@@ -48,9 +66,14 @@ func TestRepresentationPlaygroundCounterfactualFindsVerifiedDerivedFeature(t *te
 	state := RepresentationPlaygroundState{
 		Spec:   spec,
 		Hidden: hidden,
-		// Leave the candidate vocabulary empty: the fork must generate its
-		// representation programs from the bounded structural grammar itself.
-		Blocks: nil,
+		Blocks: []RepresentationBlock{{
+			ID:       Hash([]any{"test-abs-representation", spec.ID}),
+			Name:     "test-abs-representation",
+			Op:       "program",
+			Input:    "x",
+			Output:   "__derived_output",
+			Artifact: string(absArtifact),
+		}},
 	}
 	opaque, err := EncodeRepresentationPlaygroundState(state)
 	if err != nil {

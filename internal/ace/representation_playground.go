@@ -338,7 +338,12 @@ func (RepresentationPlaygroundRunner) ForkAndRun(
 				proposal, err := builder.BuildWithContext(ctx, candidate, enriched)
 				if err != nil {
 					if errors.Is(err, ErrSynthesisExpansionLimit) {
-						return CounterfactualRunResult{}, fmt.Errorf("%w: synthesis expansion limit exhausted: %v", ErrRepresentationSearchExhausted, err)
+						result.Telemetry.SearchExhausted = true
+						result.Evidence = append(result.Evidence,
+							fmt.Sprintf("candidate=%s exhausted synthesis budget", candidate.Mechanism),
+							"representation intervention remained unverified",
+						)
+						continue
 					}
 					continue
 				}
