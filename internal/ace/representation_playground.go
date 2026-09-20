@@ -131,6 +131,17 @@ func cloneStringMap(src map[string]string) map[string]string {
 // inside the runner boundary.
 type RepresentationPlaygroundRunner struct{}
 
+func (RepresentationPlaygroundRunner) BuildCounterfactualState(
+	spec CapabilitySpecification,
+	hidden []ProgramTestCase,
+) ([]byte, error) {
+	return EncodeRepresentationPlaygroundState(RepresentationPlaygroundState{
+		Spec:   spec,
+		Hidden: hidden,
+		Blocks: DefaultRepresentationBlocks(spec),
+	})
+}
+
 func (RepresentationPlaygroundRunner) ForkAndRun(
 	ctx context.Context,
 	state ForkExecutionState,
