@@ -332,7 +332,7 @@ func (RepresentationPlaygroundRunner) ForkAndRun(
 				if err := ctx.Err(); err != nil {
 					return CounterfactualRunResult{}, err
 				}
-				builder := UniversalProgramBuilder{}
+				builder := UniversalProgramBuilder{MaxSynthesisExpansions: 5000}
 				proposal, err := builder.BuildWithContext(ctx, candidate, enriched)
 				if err != nil {
 					continue
