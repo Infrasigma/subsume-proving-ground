@@ -2,9 +2,9 @@ package ace
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 )
 
 // CognitiveProbeResult is a bounded empirical probe for abstraction,
@@ -19,39 +19,41 @@ type CognitiveProbeResult struct {
 
 // RunCognitiveProbe learns two independent unary transformations from examples,
 // verifies each on held-out examples, and composes them to solve a target whose
-// expression depth exceeds the direct universal synthesis frontier.
+// nested control flow exceeds the direct one-branch synthesis frontier.
 func RunCognitiveProbe(ctx context.Context) (CognitiveProbeResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
+	// Primitive A: absolute value.
 	trainA := []ProgramTestCase{
-		{Input: map[string]string{"x": "-3"}, Expected: map[string]string{"h": "-1"}},
-		{Input: map[string]string{"x": "4"}, Expected: map[string]string{"h": "6"}},
+		{Input: map[string]string{"x": "-3"}, Expected: map[string]string{"h": "3"}},
+		{Input: map[string]string{"x": "4"}, Expected: map[string]string{"h": "4"}},
 	}
 	hiddenA := []ProgramTestCase{
-		{Input: map[string]string{"x": "7"}, Expected: map[string]string{"h": "9"}},
-		{Input: map[string]string{"x": "12"}, Expected: map[string]string{"h": "14"}},
+		{Input: map[string]string{"x": "-7"}, Expected: map[string]string{"h": "7"}},
+		{Input: map[string]string{"x": "5"}, Expected: map[string]string{"h": "5"}},
 	}
 
+	// Primitive B: max(h, 2).
 	trainB := []ProgramTestCase{
-		{Input: map[string]string{"h": "-2"}, Expected: map[string]string{"y": "-3"}},
-		{Input: map[string]string{"h": "3"}, Expected: map[string]string{"y": "7"}},
+		{Input: map[string]string{"h": "0"}, Expected: map[string]string{"y": "2"}},
+		{Input: map[string]string{"h": "5"}, Expected: map[string]string{"y": "5"}},
 	}
 	hiddenB := []ProgramTestCase{
-		{Input: map[string]string{"h": "5"}, Expected: map[string]string{"y": "11"}},
-		{Input: map[string]string{"h": "11"}, Expected: map[string]string{"y": "23"}},
+		{Input: map[string]string{"h": "1"}, Expected: map[string]string{"y": "2"}},
+		{Input: map[string]string{"h": "7"}, Expected: map[string]string{"y": "7"}},
 	}
 
 	specA, err := GeneralCapabilitySpecification(
-		Task{ID: "cognition-a", Goal: "h equals x plus 2"},
+		Task{ID: "cognition-a", Goal: "h equals abs(x)"},
 		trainA,
 	)
 	if err != nil {
 		return CognitiveProbeResult{}, err
 	}
 	specB, err := GeneralCapabilitySpecification(
-		Task{ID: "cognition-b", Goal: "y equals h times 2 plus 1"},
+		Task{ID: "cognition-b", Goal: "y equals max(h,2)"},
 		trainB,
 	)
 	if err != nil {
@@ -74,17 +76,21 @@ func RunCognitiveProbe(ctx context.Context) (CognitiveProbeResult, error) {
 		return CognitiveProbeResult{}, fmt.Errorf("primitive B hidden verification failed: %w", err)
 	}
 
+	// The target requires two conditional boundaries:
+	// max(abs(x), 2) has three behavioural regions.
 	targetTrain := []ProgramTestCase{
-		{Input: map[string]string{"x": "-1"}, Expected: map[string]string{"y": "3"}},
-		{Input: map[string]string{"x": "2"}, Expected: map[string]string{"y": "9"}},
+		{Input: map[string]string{"x": "-1"}, Expected: map[string]string{"y": "2"}},
+		{Input: map[string]string{"x": "3"}, Expected: map[string]string{"y": "3"}},
+		{Input: map[string]string{"x": "5"}, Expected: map[string]string{"y": "5"}},
 	}
 	targetHidden := []ProgramTestCase{
-		{Input: map[string]string{"x": "5"}, Expected: map[string]string{"y": "15"}},
-		{Input: map[string]string{"x": "11"}, Expected: map[string]string{"y": "27"}},
+		{Input: map[string]string{"x": "-8"}, Expected: map[string]string{"y": "8"}},
+		{Input: map[string]string{"x": "1"}, Expected: map[string]string{"y": "2"}},
+		{Input: map[string]string{"x": "9"}, Expected: map[string]string{"y": "9"}},
 	}
 
 	targetSpec, err := GeneralCapabilitySpecification(
-		Task{ID: "cognition-target", Goal: "y equals (x plus 2) times 2 plus 1"},
+		Task{ID: "cognition-target", Goal: "y equals max(abs(x),2)"},
 		targetTrain,
 	)
 	if err != nil {
@@ -109,7 +115,7 @@ func RunCognitiveProbe(ctx context.Context) (CognitiveProbeResult, error) {
 		PrimitiveBHiddenVerified: true,
 		DirectTargetSolved:       directSolved,
 		ComposedTargetSolved:     true,
-		CompositionDepth:         3,
+		CompositionDepth:         2,
 	}, nil
 }
 
@@ -131,7 +137,7 @@ func learnUniversalProgram(ctx context.Context, spec CapabilitySpecification) (U
 			continue
 		}
 		var program UniversalProgram
-		if err := unmarshalUniversal(proposal.Artifact, &program); err != nil {
+		if err := json.Unmarshal([]byte(proposal.Artifact), &program); err != nil {
 			continue
 		}
 		if !programFits(program, spec.KnownExamples) {
@@ -158,13 +164,6 @@ func verifyUniversalProgram(ctx context.Context, program UniversalProgram, cases
 		}
 	}
 	return nil
-}
-
-func unmarshalUniversal(artifact string, dst *UniversalProgram) error {
-	if artifact == "" {
-		return errors.New("empty universal artifact")
-	}
-	return jsonUnmarshal([]byte(artifact), dst)
 }
 
 func composeUnaryUniversalPrograms(
@@ -245,7 +244,3 @@ func renameExprVar(e *UExpr, from, to string) *UExpr {
 	}
 	return out
 }
-
-// Keep strconv referenced in this file's public compilation surface so the
-// probe remains explicit about numeric latent transformations in diagnostics.
-var _ = strconv.IntSize
