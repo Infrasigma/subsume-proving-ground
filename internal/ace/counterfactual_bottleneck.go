@@ -35,11 +35,12 @@ type ForkExecutionState struct {
 }
 
 type CounterfactualRunResult struct {
-	Solved               bool
-	IndependentlyVerified bool
-	Cost                 ResourceVector
-	Evidence             []string
-	Telemetry            FailureTelemetry
+	Solved                  bool
+	IndependentlyVerified   bool
+	Cost                    ResourceVector
+	Evidence                []string
+	Telemetry               FailureTelemetry
+	PromotedRepresentation  *RepresentationBlock
 }
 
 type CounterfactualRunner interface {
