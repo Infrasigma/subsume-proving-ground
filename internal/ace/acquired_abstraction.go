@@ -35,7 +35,9 @@ type AbstractionEvidence struct {
 type AcquiredAbstraction struct {
 	ID           string
 	Name         string
+	ArtifactType string `json:"artifact_type,omitempty"`
 	Procedure    AcquisitionProcedure
+	SynthesizedProgram *SynthesizedProgram `json:"synthesized_program,omitempty"`
 	Contract     AbstractionContract
 	Dependencies []string
 	Evidence     []AbstractionEvidence
@@ -69,7 +71,19 @@ type canonicalAbstractionArtifact struct {
 }
 
 func (a AcquiredAbstraction) canonicalArtifact() (string, []byte, error) {
-	v := canonicalAbstractionArtifact{a.ID,a.Name,a.Procedure,a.Contract,append([]string(nil),a.Dependencies...),append([]AbstractionEvidence(nil),a.Evidence...),append([]ResourceVector(nil),a.CostHistory...),a.Verification,a.Provenance}
+	v := canonicalAbstractionArtifact{
+		ID: a.ID,
+		Name: a.Name,
+		ArtifactType: a.ArtifactType,
+		Procedure: a.Procedure,
+		SynthesizedProgram: a.SynthesizedProgram,
+		Contract: a.Contract,
+		Dependencies: append([]string(nil), a.Dependencies...),
+		Evidence: append([]AbstractionEvidence(nil), a.Evidence...),
+		CostHistory: append([]ResourceVector(nil), a.CostHistory...),
+		Verification: a.Verification,
+		Provenance: a.Provenance,
+	}
 	encoded, err := json.Marshal(v)
 	if err != nil { return "", nil, err }
 	dec := json.NewDecoder(bytes.NewReader(encoded))
@@ -86,7 +100,14 @@ func (a AcquiredAbstraction) VerifyAdmission(trustedPublicKeyB64 string) error {
 	h, _, err := a.canonicalArtifact()
 	if err != nil { return err }
 	if a.ArtifactHash == "" || h != a.ArtifactHash { return fmt.Errorf("abstraction artifact hash mismatch") }
-	r := protocol.AbstractionAdmissionReceipt{KMSSignedArtifact:a.KMSSignature, LedgerAdmissionRef:a.LedgerAdmissionRef, LedgerAdmissionHash:a.LedgerAdmissionHash, PreviousAdmissionHash:a.LedgerPreviousAdmissionHash, CreatedAtUnix:a.LedgerCreatedAtUnix}
+	r := protocol.AbstractionAdmissionReceipt{
+		KMSSignedArtifact: a.KMSSignature,
+		ArtifactType: a.ArtifactType,
+		LedgerAdmissionRef: a.LedgerAdmissionRef,
+		LedgerAdmissionHash: a.LedgerAdmissionHash,
+		PreviousAdmissionHash: a.LedgerPreviousAdmissionHash,
+		CreatedAtUnix: a.LedgerCreatedAtUnix,
+	}
 	if r.ArtifactHash != a.ArtifactHash { return fmt.Errorf("KMS signature artifact hash mismatch") }
 	return protocol.VerifyAbstractionAdmissionReceipt(r, trustedPublicKeyB64)
 }
@@ -109,11 +130,32 @@ func (l *AbstractionLibrary) Install(a AcquiredAbstraction) error {
 	if a.ID == "" || a.Name == "" {
 		return errors.New("incomplete acquired abstraction")
 	}
-	if len(a.Procedure.Steps) < 2 {
-		return errors.New("acquired abstraction must compress a non-trivial composition")
+	if a.ArtifactType == "" {
+		a.ArtifactType = "AcquiredAbstraction"
 	}
-	if _, err := a.Procedure.Marshal(); err != nil {
-		return err
+	switch a.ArtifactType {
+	case "AcquiredAbstraction":
+		if len(a.Procedure.Steps) < 2 {
+			return errors.New("acquired abstraction must compress a non-trivial composition")
+		}
+		if a.SynthesizedProgram != nil {
+			return errors.New("acquired abstraction cannot carry a synthesized program")
+		}
+		if _, err := a.Procedure.Marshal(); err != nil {
+			return err
+		}
+	case SynthesizedProgramArtifactType:
+		if a.SynthesizedProgram == nil {
+			return errors.New("synthesized-program abstraction is missing its program payload")
+		}
+		if len(a.Procedure.Steps) != 0 {
+			return errors.New("synthesized-program abstraction cannot carry an acquisition procedure")
+		}
+		if err := a.SynthesizedProgram.Validate(); err != nil {
+			return fmt.Errorf("synthesized-program abstraction is invalid: %w", err)
+		}
+	default:
+		return fmt.Errorf("unsupported acquired abstraction type %q", a.ArtifactType)
 	}
 	if !a.Verification.Independent || a.Verification.Status != "verified" {
 		return errors.New("acquired abstraction lacks independent verification")
@@ -359,8 +401,13 @@ func (p *PersistentAbstractionLibrary) RestoreWithTrustedAdmissions(ctx context.
 		if err != nil {
 			return fmt.Errorf("load ledger admission %q: %w", a.LedgerAdmissionRef, err)
 		}
+		artifactType := a.ArtifactType
+		if artifactType == "" {
+			artifactType = "AcquiredAbstraction"
+		}
 		persisted := protocol.AbstractionAdmissionReceipt{
 			KMSSignedArtifact:       a.KMSSignature,
+			ArtifactType:            artifactType,
 			LedgerAdmissionRef:      a.LedgerAdmissionRef,
 			LedgerAdmissionHash:     a.LedgerAdmissionHash,
 			PreviousAdmissionHash:   a.LedgerPreviousAdmissionHash,
