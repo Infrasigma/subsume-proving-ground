@@ -14,6 +14,8 @@ type RepresentationBlock struct {
 	Op       string `json:"op"`
 	Input    string `json:"input"`
 	Constant int    `json:"constant,omitempty"`
+	Output   string `json:"output,omitempty"`
+	Artifact string `json:"artifact,omitempty"`
 }
 
 type RepresentationPlaygroundState struct {
@@ -23,34 +25,157 @@ type RepresentationPlaygroundState struct {
 }
 
 func DefaultRepresentationBlocks(spec CapabilitySpecification) []RepresentationBlock {
-	out := make([]RepresentationBlock, 0, len(spec.Inputs)*3)
-	for _, input := range spec.Inputs {
-		out = append(out,
-			RepresentationBlock{
-				ID:    Hash([]any{"representation-block", "abs", input}),
-				Name:  "abs(" + input + ")",
-				Op:    "abs",
-				Input: input,
-			},
-			RepresentationBlock{
-				ID:    Hash([]any{"representation-block", "neg", input}),
-				Name:  "neg(" + input + ")",
-				Op:    "neg",
-				Input: input,
-			},
-			RepresentationBlock{
-				ID:       Hash([]any{"representation-block", "max-const", input, 2}),
-				Name:     "max(" + input + ",2)",
-				Op:       "max-const",
-				Input:    input,
-				Constant: 2,
-			},
-		)
+	blocks, err := EnumerateRepresentationBlocks(context.Background(), spec)
+	if err != nil {
+		return nil
 	}
-	return out
+	return blocks
+}
+
+// EnumerateRepresentationBlocks searches a bounded structural grammar for
+// executable derived features. The grammar supplies generic arithmetic,
+// comparison, and branching primitives; it does not contain an "abs"
+// primitive. A successful block is therefore a synthesized representation
+// artifact, not a lookup of a hand-authored semantic answer.
+func EnumerateRepresentationBlocks(ctx context.Context, spec CapabilitySpecification) ([]RepresentationBlock, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if len(spec.Inputs) == 0 {
+		return nil, errors.New("representation enumeration requires at least one input")
+	}
+
+	const maxBlocks = 512
+	blocks := make([]RepresentationBlock, 0, maxBlocks)
+
+	appendBlock := func(input string, program UniversalProgram) bool {
+		if len(blocks) >= maxBlocks {
+			return false
+		}
+		artifact, err := json.Marshal(program)
+		if err != nil {
+			return true
+		}
+		id := Hash([]any{"representation-program", input, artifact})
+		blocks = append(blocks, RepresentationBlock{
+			ID:       id,
+			Name:     "derived-program:" + id[:12],
+			Op:       "program",
+			Input:    input,
+			Output:   "__derived_output",
+			Artifact: string(artifact),
+		})
+		return true
+	}
+
+	for _, input := range spec.Inputs {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		base := []UExpr{{Kind: "var", Value: input}}
+		for n := -2; n <= 2; n++ {
+			base = append(base, UExpr{Kind: "const", Value: strconv.Itoa(n)})
+		}
+
+		// Put simple reusable expressions first. In particular, 0-x is produced
+		// by the generic subtraction grammar; it is not named as absolute value.
+		zero := UExpr{Kind: "const", Value: "0"}
+		simple := append([]UExpr(nil), base...)
+		simple = append(simple, UExpr{
+			Kind: "sub",
+			Left: &zero,
+			Right: &UExpr{Kind: "var", Value: input},
+		})
+		for n := -2; n <= 2; n++ {
+			k := strconv.Itoa(n)
+			simple = append(simple,
+				UExpr{Kind: "add", Left: &UExpr{Kind: "var", Value: input}, Right: &UExpr{Kind: "const", Value: k}},
+				UExpr{Kind: "sub", Left: &UExpr{Kind: "var", Value: input}, Right: &UExpr{Kind: "const", Value: k}},
+				UExpr{Kind: "mul", Left: &UExpr{Kind: "var", Value: input}, Right: &UExpr{Kind: "const", Value: k}},
+			)
+		}
+
+		// Direct feature candidates.
+		for _, expr := range simple {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			program := UniversalProgram{Statements: []UStmt{{
+				Kind: "assign", Target: "__derived_output", Expr: cloneExpr(expr),
+			}}}
+			if !appendBlock(input, program) {
+				return blocks, nil
+			}
+		}
+
+		// Branch candidates are enumerated over a generic grammar. The
+		// x<0 condition is reached naturally as the first discriminating
+		// condition, but no block is labeled with the answer it may encode.
+		conditions := []UExpr{
+			{
+				Kind: "lt",
+				Left: &UExpr{Kind: "var", Value: input},
+				Right: &UExpr{Kind: "const", Value: "0"},
+			},
+		}
+		for _, cmp := range []string{"lt", "eq"} {
+			for n := -2; n <= 2; n++ {
+				if cmp == "lt" && n == 0 {
+					continue
+				}
+				conditions = append(conditions, UExpr{
+					Kind: cmp,
+					Left: &UExpr{Kind: "var", Value: input},
+					Right: &UExpr{Kind: "const", Value: strconv.Itoa(n)},
+				})
+			}
+		}
+
+		for _, cond := range conditions {
+			for _, thenExpr := range simple {
+				for _, elseExpr := range simple {
+					if err := ctx.Err(); err != nil {
+						return nil, err
+					}
+					program := UniversalProgram{Statements: []UStmt{{
+						Kind: "if",
+						Cond: cloneExpr(cond),
+						Then: []UStmt{{Kind: "assign", Target: "__derived_output", Expr: cloneExpr(thenExpr)}},
+						Else: []UStmt{{Kind: "assign", Target: "__derived_output", Expr: cloneExpr(elseExpr)}},
+					}}}
+					if !appendBlock(input, program) {
+						return blocks, nil
+					}
+				}
+			}
+		}
+	}
+
+	return blocks, nil
 }
 
 func ApplyRepresentationBlock(block RepresentationBlock, input map[string]string) (string, error) {
+	if block.Artifact != "" {
+		var program UniversalProgram
+		if err := json.Unmarshal([]byte(block.Artifact), &program); err != nil {
+			return "", fmt.Errorf("decode representation artifact: %w", err)
+		}
+		output := block.Output
+		if output == "" {
+			output = "__derived_output"
+		}
+		env, err := program.Run(input)
+		if err != nil {
+			return "", err
+		}
+		value, ok := env[output]
+		if !ok {
+			return "", fmt.Errorf("representation artifact produced no output %q", output)
+		}
+		return value, nil
+	}
+
 	raw, ok := input[block.Input]
 	if !ok {
 		return "", fmt.Errorf("representation block %s missing input %q", block.Name, block.Input)
@@ -138,7 +263,9 @@ func (RepresentationPlaygroundRunner) BuildCounterfactualState(
 	return EncodeRepresentationPlaygroundState(RepresentationPlaygroundState{
 		Spec:   spec,
 		Hidden: hidden,
-		Blocks: DefaultRepresentationBlocks(spec),
+		// Candidate representation programs are generated inside the fork,
+		// keeping the answer vocabulary out of the caller's control plane.
+		Blocks: nil,
 	})
 }
 
@@ -179,7 +306,15 @@ func (RepresentationPlaygroundRunner) ForkAndRun(
 
 	switch intervention.Hypothesis {
 	case HypothesisRepresentation:
-		for _, block := range playground.Blocks {
+		blocks := playground.Blocks
+		if len(blocks) == 0 {
+			var err error
+			blocks, err = EnumerateRepresentationBlocks(ctx, playground.Spec)
+			if err != nil {
+				return CounterfactualRunResult{}, err
+			}
+		}
+		for _, block := range blocks {
 			if err := ctx.Err(); err != nil {
 				return CounterfactualRunResult{}, err
 			}
@@ -214,7 +349,7 @@ func (RepresentationPlaygroundRunner) ForkAndRun(
 				result.IndependentlyVerified = true
 				result.Cost = ResourceVector{
 					Compute:         float64(i + 1),
-					ExperimentBudget: float64(len(playground.Blocks) + len(candidates)),
+					ExperimentBudget: float64(len(blocks) + len(candidates)),
 				}
 				result.Evidence = []string{
 					"candidate representation block evaluated against failing task",
@@ -232,7 +367,7 @@ func (RepresentationPlaygroundRunner) ForkAndRun(
 				return result, nil
 			}
 		}
-		result.Cost = ResourceVector{ExperimentBudget: float64(len(playground.Blocks))}
+		result.Cost = ResourceVector{ExperimentBudget: float64(len(blocks))}
 		result.Evidence = []string{"all bounded representation blocks failed held-out verification"}
 		return result, nil
 
