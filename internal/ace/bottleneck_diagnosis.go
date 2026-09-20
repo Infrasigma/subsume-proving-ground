@@ -64,6 +64,7 @@ func ProjectAcquisitionTelemetry(t AcquisitionTelemetry) FailureTelemetry {
 
 func DiagnoseFailureTelemetry(t FailureTelemetry) BottleneckDiagnosis {
 	if t.CandidateReachedVerifier && t.IndependentVerifierRejected {
+		fmt.Printf("\n[DIAGNOSTIC PROBE] Diagnosis=weak-verification\nFailureTelemetry=%+v\n\n", t)
 		return BottleneckDiagnosis{
 			Class: BottleneckVerification,
 			Reason: "candidate reached independent verification and was rejected",
