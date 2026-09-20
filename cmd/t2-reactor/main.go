@@ -76,7 +76,7 @@ func main() {
 		PersistentLibrary:   persistent,
 		TrustedSignerID:     signerID,
 		TrustedPublicKeyB64: trustedPublicKey,
-		Verifier:            ace.DefaultT2ReactorVerifier(),
+		Verifier:            ace.DefaultT3DomainEscapeVerifier(),
 		MaxTasks:            *maxTasks,
 		Logf:                log.Printf,
 	}
@@ -102,7 +102,7 @@ func seedDefaultTasks(dir string) error {
 		return err
 	}
 	tasks := append([]ace.ReactorTask{}, ace.DefaultT2ReactorTasks()...)
-	tasks = append(tasks, ace.DefaultT3DomainEscapeTasks()...)
+	tasks = append(tasks, ace.DefaultT4MetacognitiveTasks()...)
 	for i, task := range tasks {
 		path := filepath.Join(dir, fmt.Sprintf("%02d-%s.json", i+1, task.ID))
 		if _, err := os.Stat(path); err == nil {

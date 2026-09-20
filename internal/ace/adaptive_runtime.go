@@ -37,6 +37,11 @@ type AdaptiveAcquisitionRuntime struct {
 	AdmissionLedger     AbstractionAdmissionLedger
 	KMSSignerID         string
 	TrustedKMSPublicKeyB64 string
+
+	// T4: the active search policy is data, not executable Go logic. It is
+	// loaded only from an independently admitted artifact and swapped after
+	// verification; the interpreter remains bounded and reorder-only.
+	ActiveSearchHeuristic *SearchHeuristicProgram
 }
 
 type AdaptiveAcquisitionResult struct { Method AcquisitionMethodArtifact; Diagnosis BottleneckDiagnosis; Evaluations []MethodEvaluation; Future CapabilityRecord; FutureCost ResourceVector; Trace []string }

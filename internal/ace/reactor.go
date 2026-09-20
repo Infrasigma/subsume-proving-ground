@@ -32,6 +32,7 @@ type ReactorTask struct {
 	AdmitAsAbstraction     bool           `json:"admit_as_abstraction"`
 	RequireLatestAdmission bool           `json:"require_latest_admission"`
 	RequireAbstractionID   string         `json:"require_abstraction_id,omitempty"`
+	MetaKind               string         `json:"meta_kind,omitempty"`
 	Budget                 ResourceVector `json:"budget"`
 }
 
@@ -329,6 +330,10 @@ type ParameterizedReactorSearchResult struct {
 }
 
 func ParameterizedMechanismSearchWithLibrary(ctx context.Context, task ReactorTask, lib *AbstractionLibrary, verifier ReactorVerifier) (ParameterizedReactorSearchResult, error) {
+	return ParameterizedMechanismSearchWithHeuristic(ctx, task, lib, verifier, nil)
+}
+
+func ParameterizedMechanismSearchWithHeuristic(ctx context.Context, task ReactorTask, lib *AbstractionLibrary, verifier ReactorVerifier, heuristic *SearchHeuristicProgram) (ParameterizedReactorSearchResult, error) {
 	if err := task.Validate(); err != nil {
 		return ParameterizedReactorSearchResult{}, err
 	}
@@ -341,10 +346,37 @@ func ParameterizedMechanismSearchWithLibrary(ctx context.Context, task ReactorTa
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
+	// String tasks are outside the ArchitectureCandidate vocabulary. Dispatch
+	// directly to the T3 synthesized-program frontier rather than spending
+	// iterations on an inapplicable T2 procedure grammar.
+	if task.InputKind == "string" {
+		programVerifier, ok := verifier.(SynthesizedProgramReactorVerifier)
+		if !ok {
+			return ParameterizedReactorSearchResult{}, errors.New("string domain escape requires synthesized-program verification support")
+		}
+		program, stats, err := SynthesizeDomainEscapeWithHeuristic(ctx, task, heuristic)
+		if err != nil {
+			return ParameterizedReactorSearchResult{}, fmt.Errorf("domain-escape synthesis failed after primitive exhaustion: %w", err)
+		}
+		if err := programVerifier.VerifySynthesizedProgram(ctx, task, program); err != nil {
+			return ParameterizedReactorSearchResult{}, fmt.Errorf("domain-escape hidden verification rejected candidate: %w", err)
+		}
+		return ParameterizedReactorSearchResult{
+			SynthesizedProgram:  &program,
+			EvaluatedCandidates: stats.CandidatesEvaluated,
+			Depth:               1,
+		}, nil
+	}
+
 	evaluated := 0
 	for depth := task.MinProcedureSteps; depth <= task.MaxSearchDepth; depth++ {
 		procedures := EnumerateAcquisitionProceduresWithLibrary(depth, lib)
-		for _, procedure := range procedures {
+		orderedProcedures, err := orderAcquisitionProcedureCandidates(procedures, heuristic)
+		if err != nil {
+			return ParameterizedReactorSearchResult{}, fmt.Errorf("active search heuristic rejected procedure frontier: %w", err)
+		}
+		for _, procedure := range orderedProcedures {
 			if len(procedure.Steps) != depth {
 				continue
 			}
@@ -365,24 +397,6 @@ func ParameterizedMechanismSearchWithLibrary(ctx context.Context, task ReactorTa
 				}, nil
 			}
 		}
-	}
-	if task.InputKind == "string" {
-		programVerifier, ok := verifier.(SynthesizedProgramReactorVerifier)
-		if !ok {
-			return ParameterizedReactorSearchResult{}, errors.New("string domain escape requires synthesized-program verification support")
-		}
-		program, err := SynthesizeDomainEscape(ctx, task)
-		if err != nil {
-			return ParameterizedReactorSearchResult{}, fmt.Errorf("domain-escape synthesis failed after primitive exhaustion: %w", err)
-		}
-		if err := programVerifier.VerifySynthesizedProgram(ctx, task, program); err != nil {
-			return ParameterizedReactorSearchResult{}, fmt.Errorf("domain-escape hidden verification rejected candidate: %w", err)
-		}
-		return ParameterizedReactorSearchResult{
-			SynthesizedProgram:  &program,
-			EvaluatedCandidates: evaluated + 1,
-			Depth:               1,
-		}, nil
 	}
 	return ParameterizedReactorSearchResult{}, fmt.Errorf(
 		"parameterized reactor search exhausted depth=%d..%d candidates=%d",
@@ -476,12 +490,15 @@ func (r *ContinuousReactor) Hydrate(ctx context.Context) error {
 		return fmt.Errorf("runtime signer %q differs from reactor trusted signer %q", r.Runtime.KMSSignerID, r.TrustedSignerID)
 	}
 	r.Runtime.KMSSignerID = r.TrustedSignerID
-	return r.PersistentLibrary.RestoreWithTrustedAdmissions(
+	if err := r.PersistentLibrary.RestoreWithTrustedAdmissions(
 		ctx,
 		&r.Runtime.Abstractions,
 		map[string]string{r.TrustedSignerID: r.TrustedPublicKeyB64},
 		r.Admissions,
-	)
+	); err != nil {
+		return err
+	}
+	return r.Runtime.ensureActiveSearchHeuristic(ctx, r.PersistentLibrary)
 }
 
 func (r *ContinuousReactor) Run(ctx context.Context) ([]ReactorTaskResult, error) {
@@ -528,24 +545,37 @@ func (r *ContinuousReactor) Run(ctx context.Context) ([]ReactorTaskResult, error
 	return results, nil
 }
 
+func latestCapabilityAbstractionID(lib AbstractionLibrary) string {
+	for i := len(lib.Abstractions) - 1; i >= 0; i-- {
+		if lib.Abstractions[i].ArtifactType == SearchHeuristicArtifactType {
+			continue
+		}
+		return lib.Abstractions[i].ID
+	}
+	return ""
+}
+
 func (r *ContinuousReactor) runOne(ctx context.Context, task ReactorTask) ReactorTaskResult {
 	result := ReactorTaskResult{TaskID: task.ID, Family: task.Family}
 	if err := task.Validate(); err != nil {
 		result.Error = err.Error()
 		return result
 	}
+	if task.MetaKind != "" {
+		return r.runMetaTask(ctx, task)
+	}
 	requireID := task.RequireAbstractionID
 	if task.RequireLatestAdmission {
-		if len(r.Runtime.Abstractions.Abstractions) == 0 {
-			result.Error = "task requires a previous admitted abstraction, but the library is empty"
+		requireID = latestCapabilityAbstractionID(r.Runtime.Abstractions)
+		if requireID == "" {
+			result.Error = "task requires a previous admitted capability abstraction, but none is installed"
 			return result
 		}
-		requireID = r.Runtime.Abstractions.Abstractions[len(r.Runtime.Abstractions.Abstractions)-1].ID
 	}
 	if requireID != "" {
 		task.RequireAbstractionID = requireID
 	}
-	searchResult, err := ParameterizedMechanismSearchWithLibrary(ctx, task, &r.Runtime.Abstractions, r.Verifier)
+	searchResult, err := ParameterizedMechanismSearchWithHeuristic(ctx, task, &r.Runtime.Abstractions, r.Verifier, r.Runtime.ActiveSearchHeuristic)
 	if err != nil {
 		result.Error = err.Error()
 		return result

@@ -83,10 +83,13 @@ func DefaultT3DomainEscapeTasks() []ReactorTask {
 
 func DefaultT3DomainEscapeVerifier() ReactorVerifier {
 	hidden := DefaultT2ReactorVerifier().(StaticReactorVerifier).HiddenByTask
-	hidden["03-string-uppercase-vowels"] = []ReactorExample{
+	hiddenCases := []ReactorExample{
 		{Input: []string{"functional verification"}, Expected: []string{"fUnctIOnAl vErIfIcAtIOn"}},
 		{Input: []string{"zero trust daemon"}, Expected: []string{"zErO trUst dAEmOn"}},
 		{Input: []string{"cryptographic ledger"}, Expected: []string{"cryptOgrAphIc lEdgEr"}},
 	}
+	hidden["03-string-uppercase-vowels"] = hiddenCases
+	hidden[MetaSearchHeuristicTaskID] = hiddenCases
+	hidden[PostHotSwapTaskID] = hiddenCases
 	return StaticReactorVerifier{HiddenByTask: hidden}
 }

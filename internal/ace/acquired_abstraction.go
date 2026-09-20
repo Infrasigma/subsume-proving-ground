@@ -38,6 +38,7 @@ type AcquiredAbstraction struct {
 	ArtifactType string `json:"artifact_type,omitempty"`
 	Procedure    AcquisitionProcedure
 	SynthesizedProgram *SynthesizedProgram `json:"synthesized_program,omitempty"`
+	SearchHeuristic *SearchHeuristicProgram `json:"search_heuristic,omitempty"`
 	Contract     AbstractionContract
 	Dependencies []string
 	Evidence     []AbstractionEvidence
@@ -64,6 +65,7 @@ type canonicalAbstractionArtifact struct {
 	ArtifactType string `json:"artifact_type,omitempty"`
 	Procedure AcquisitionProcedure `json:"procedure"`
 	SynthesizedProgram *SynthesizedProgram `json:"synthesized_program,omitempty"`
+	SearchHeuristic *SearchHeuristicProgram `json:"search_heuristic,omitempty"`
 	Contract AbstractionContract `json:"contract"`
 	Dependencies []string `json:"dependencies"`
 	Evidence []AbstractionEvidence `json:"evidence"`
@@ -151,6 +153,9 @@ func (l *AbstractionLibrary) Install(a AcquiredAbstraction) error {
 	}
 	switch artifactType {
 	case "AcquiredAbstraction":
+		if a.SynthesizedProgram != nil || a.SearchHeuristic != nil {
+			return errors.New("acquired abstraction cannot carry T3/T4 executable payloads")
+		}
 		if len(a.Procedure.Steps) < 2 {
 			return errors.New("acquired abstraction must compress a non-trivial composition")
 		}
@@ -164,11 +169,24 @@ func (l *AbstractionLibrary) Install(a AcquiredAbstraction) error {
 		if a.SynthesizedProgram == nil {
 			return errors.New("synthesized-program abstraction is missing its program payload")
 		}
+		if a.SearchHeuristic != nil {
+			return errors.New("synthesized-program abstraction cannot carry a search heuristic")
+		}
 		if len(a.Procedure.Steps) != 0 {
 			return errors.New("synthesized-program abstraction cannot carry an acquisition procedure")
 		}
 		if err := a.SynthesizedProgram.Validate(); err != nil {
 			return fmt.Errorf("synthesized-program abstraction is invalid: %w", err)
+		}
+	case SearchHeuristicArtifactType:
+		if a.SearchHeuristic == nil {
+			return errors.New("search-heuristic abstraction is missing its program payload")
+		}
+		if a.SynthesizedProgram != nil || len(a.Procedure.Steps) != 0 {
+			return errors.New("search-heuristic abstraction cannot carry T2/T3 executable payloads")
+		}
+		if err := a.SearchHeuristic.Validate(); err != nil {
+			return fmt.Errorf("search-heuristic abstraction is invalid: %w", err)
 		}
 	default:
 		return fmt.Errorf("unsupported acquired abstraction type %q", a.ArtifactType)
@@ -388,7 +406,7 @@ func referenceProcedure(p AcquisitionProcedure, cs []ArchitectureCandidate, lib 
 func equalMechanismOrders(a,b []ArchitectureCandidate)bool{if len(a)!=len(b){return false};for i:=range a{if a[i].Mechanism!=b[i].Mechanism{return false}};return true}
 func namesToCandidates(names []string)[]ArchitectureCandidate{out:=make([]ArchitectureCandidate,len(names));for i,name:=range names{out[i]=ArchitectureCandidate{Mechanism:name}};return out}
 
-func enumerateProcedureAtoms(lib *AbstractionLibrary) []ProcedureStep {atoms:=[]ProcedureStep{{Op:"identity"},{Op:"rotate",Arg:1},{Op:"reverse"},{Op:"dedupe"},{Op:"sort-cost"},{Op:"take",Arg:1}};if lib!=nil{for _,id:=range lib.IDs(){atoms=append(atoms,ProcedureStep{Op:"call",Ref:id})}};return atoms}
+func enumerateProcedureAtoms(lib *AbstractionLibrary) []ProcedureStep {atoms:=[]ProcedureStep{{Op:"identity"},{Op:"rotate",Arg:1},{Op:"reverse"},{Op:"dedupe"},{Op:"sort-cost"},{Op:"take",Arg:1}};if lib!=nil{for _,a:=range lib.Abstractions{if a.ArtifactType==SearchHeuristicArtifactType||len(a.Procedure.Steps)==0{continue};atoms=append(atoms,ProcedureStep{Op:"call",Ref:a.ID})}};return atoms}
 func ProcedureLibrarySearchCost(maxSteps int,lib *AbstractionLibrary)int{if maxSteps<1{return 0};n:=len(enumerateProcedureAtoms(lib));total:=0;power:=1;for d:=1;d<=maxSteps;d++{power*=n;total+=power};return total}
 func ExecuteAcquiredAbstraction(a AcquiredAbstraction,cs []ArchitectureCandidate,lib *AbstractionLibrary)([]ArchitectureCandidate,error){if lib==nil{return nil,errors.New("abstraction execution requires a library")};return executeSearchProcedureWithLibrary(a.Procedure,cs,lib)}
 
