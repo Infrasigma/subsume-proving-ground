@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"time"
+	"strings"
 
 	"github.com/Infrasigma/subsume-proving-ground/internal/protocol"
 )
@@ -73,6 +74,8 @@ func (l *Ledger) AppendTerminal(ctx context.Context, executionID, status string,
 // AppendAbstractionAdmission durably commits the KMS-signed abstraction admission before installation.
 func (l *Ledger) AppendAbstractionAdmission(ctx context.Context, r protocol.AbstractionAdmissionReceipt) (protocol.AbstractionAdmissionReceipt, error) {
 	if r.ArtifactHash == "" || r.SignerID == "" || r.PublicKeyB64 == "" || r.SignatureB64 == "" { return protocol.AbstractionAdmissionReceipt{}, fmt.Errorf("incomplete abstraction admission signature") }
+	if r.ArtifactType == "" { r.ArtifactType = "AcquiredAbstraction" }
+	if r.ArtifactType != "AcquiredAbstraction" && r.ArtifactType != "SynthesizedProgram" { return protocol.AbstractionAdmissionReceipt{}, fmt.Errorf("unsupported abstraction artifact type %q", r.ArtifactType) }
 	if r.LedgerAdmissionRef != "" || r.LedgerAdmissionHash != "" || r.CreatedAtUnix != 0 { return protocol.AbstractionAdmissionReceipt{}, fmt.Errorf("ledger admission fields must be empty before append") }
 	if err := protocol.VerifyKMSSignedArtifact(r.KMSSignedArtifact, r.PublicKeyB64); err != nil { return protocol.AbstractionAdmissionReceipt{}, err }
 	if err := l.OpenOrMigrateAbstractionAdmissions(ctx); err != nil { return protocol.AbstractionAdmissionReceipt{}, err }
@@ -82,17 +85,28 @@ func (l *Ledger) AppendAbstractionAdmission(ctx context.Context, r protocol.Abst
 	r.LedgerAdmissionRef = newID(); r.PreviousAdmissionHash = previous; r.CreatedAtUnix = time.Now().UTC().Unix()
 	h, err := protocol.AbstractionAdmissionHash(r); if err != nil { return protocol.AbstractionAdmissionReceipt{}, err }; r.LedgerAdmissionHash = h
 	tx, err := l.db.BeginTx(ctx, nil); if err != nil { return protocol.AbstractionAdmissionReceipt{}, err }; defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, `INSERT INTO abstraction_admissions(admission_id, artifact_hash, signer_id, public_key_b64, signature_b64, previous_admission_hash, admission_hash, created_at_unix) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, r.LedgerAdmissionRef, r.ArtifactHash, r.SignerID, r.PublicKeyB64, r.SignatureB64, r.PreviousAdmissionHash, r.LedgerAdmissionHash, r.CreatedAtUnix)
+	_, err = tx.ExecContext(ctx, `INSERT INTO abstraction_admissions(admission_id, artifact_hash, artifact_type, signer_id, public_key_b64, signature_b64, previous_admission_hash, admission_hash, created_at_unix) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, r.LedgerAdmissionRef, r.ArtifactHash, r.ArtifactType, r.SignerID, r.PublicKeyB64, r.SignatureB64, r.PreviousAdmissionHash, r.LedgerAdmissionHash, r.CreatedAtUnix)
 	if err != nil { return protocol.AbstractionAdmissionReceipt{}, err }
 	if err := tx.Commit(); err != nil { return protocol.AbstractionAdmissionReceipt{}, err }
 	return r, nil
 }
 
-func (l *Ledger) OpenOrMigrateAbstractionAdmissions(ctx context.Context) error { _, err := l.db.ExecContext(ctx, reconciliationAdmissionSchema); return err }
+func (l *Ledger) OpenOrMigrateAbstractionAdmissions(ctx context.Context) error {
+	if _, err := l.db.ExecContext(ctx, reconciliationAdmissionSchema); err != nil {
+		return err
+	}
+	if _, err := l.db.ExecContext(ctx, `ALTER TABLE abstraction_admissions ADD COLUMN artifact_type TEXT NOT NULL DEFAULT 'AcquiredAbstraction'`); err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return err
+		}
+	}
+	return nil
+}
 
 var reconciliationAdmissionSchema = `CREATE TABLE IF NOT EXISTS abstraction_admissions (
     admission_id TEXT PRIMARY KEY,
     artifact_hash TEXT NOT NULL UNIQUE,
+    artifact_type TEXT NOT NULL DEFAULT 'AcquiredAbstraction',
     signer_id TEXT NOT NULL,
     public_key_b64 TEXT NOT NULL,
     signature_b64 TEXT NOT NULL,
@@ -121,12 +135,13 @@ func (l *Ledger) GetAbstractionAdmission(ctx context.Context, admissionRef strin
 	}
 	var r protocol.AbstractionAdmissionReceipt
 	err := l.db.QueryRowContext(ctx, `
-		SELECT artifact_hash, signer_id, public_key_b64, signature_b64,
+		SELECT artifact_hash, artifact_type, signer_id, public_key_b64, signature_b64,
 		       admission_id, admission_hash, previous_admission_hash, created_at_unix
 		FROM abstraction_admissions
 		WHERE admission_id = ?
 	`, admissionRef).Scan(
 		&r.ArtifactHash,
+		&r.ArtifactType,
 		&r.SignerID,
 		&r.PublicKeyB64,
 		&r.SignatureB64,
