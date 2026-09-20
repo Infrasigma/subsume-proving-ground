@@ -140,7 +140,7 @@ func learnUniversalProgram(ctx context.Context, spec CapabilitySpecification) (U
 	if err != nil {
 		return UniversalProgram{}, err
 	}
-	const cognitiveProbeSynthesisBudget = 100_000
+	const cognitiveProbeSynthesisBudget = 50_000_000
 
 	builder := UniversalProgramBuilder{MaxSynthesisExpansions: cognitiveProbeSynthesisBudget}
 	for _, candidate := range candidates {
