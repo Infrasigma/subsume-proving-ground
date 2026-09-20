@@ -1,6 +1,6 @@
 package ace
 
-import("strconv";"strings")
+import("context";"strconv";"strings")
 
 type synthesisError string
 func(e synthesisError)Error()string{return string(e)}
