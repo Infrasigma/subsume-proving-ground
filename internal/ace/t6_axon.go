@@ -46,6 +46,9 @@ type ExecutionControlPlane struct {
 	KeyDerivation       string               `json:"key_derivation"`
 	TraceBackend        string               `json:"trace_backend"`
 	MCPProtocol         string               `json:"mcp_protocol"`
+	GovernanceProtocol  string               `json:"governance_protocol,omitempty"`
+	KernelTelemetryReceipts []KernelTelemetryReceipt `json:"kernel_telemetry_receipts,omitempty"`
+	ResourceGovernancePatches []ResourceGovernancePatch `json:"resource_governance_patches,omitempty"`
 	AllowedCapabilities []string                     `json:"allowed_capabilities"`
 	ExternalSideEffects []ExternalSideEffectReceipt  `json:"external_side_effects,omitempty"`
 	ReallocationPatches []SwarmReallocationPatch    `json:"reallocation_patches,omitempty"`
@@ -183,7 +186,26 @@ func (p ExecutionControlPlane) Validate() error {
 	if p.KeyDerivation != "HMAC-SHA256/worker-v1" {
 		return fmt.Errorf("unsupported worker key derivation %q", p.KeyDerivation)
 	}
-	if p.TraceBackend != "ebpf-hook" {
+	switch p.TraceBackend {
+	case "ebpf-hook":
+	case T8EBPFTraceBackend:
+		if p.GovernanceProtocol != T8EBPFGovernanceProtocol {
+			return fmt.Errorf("unsupported governance protocol %q", p.GovernanceProtocol)
+		}
+		if len(p.KernelTelemetryReceipts) == 0 || len(p.ResourceGovernancePatches) == 0 {
+			return errors.New("eBPF governance execution plane requires kernel telemetry receipt and resource governance patch")
+		}
+		for i, receipt := range p.KernelTelemetryReceipts {
+			if err := receipt.Verify(nil); err != nil {
+				return fmt.Errorf("kernel telemetry receipt %d rejected: %w", i, err)
+			}
+		}
+		for i, patch := range p.ResourceGovernancePatches {
+			if err := patch.Validate(p.MaxWorkers); err != nil {
+				return fmt.Errorf("resource governance patch %d rejected: %w", i, err)
+			}
+		}
+	default:
 		return fmt.Errorf("unsupported trace backend %q", p.TraceBackend)
 	}
 	switch p.MCPProtocol {
