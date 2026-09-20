@@ -451,37 +451,54 @@ func verifyCapability(env protocol.Envelope, signerID string, publicKey ed25519.
 }
 
 func findResourcePID(resourceID string) (int, error) {
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return 0, err
-	}
-	var matches []int
-	for _, entry := range entries {
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil || pid <= 0 {
-			continue
-		}
-		environ, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "environ"))
+	const maxAttempts = 5
+	const retryBackoff = 200 * time.Millisecond
+
+	want := "ACE_T10_RESOURCE_ID=" + resourceID
+	var readErrors []error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		entries, err := os.ReadDir("/proc")
 		if err != nil {
-			continue
-		}
-		want := "ACE_T10_RESOURCE_ID=" + resourceID
-		for _, item := range bytes.Split(environ, []byte{0}) {
-			if string(item) == want {
-				matches = append(matches, pid)
-				break
+			readErrors = append(readErrors, fmt.Errorf("attempt %d: read /proc: %w", attempt, err))
+		} else {
+			var matches []int
+			for _, entry := range entries {
+				pid, err := strconv.Atoi(entry.Name())
+				if err != nil || pid <= 0 {
+					continue
+				}
+				environ, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "environ"))
+				if err != nil {
+					readErrors = append(readErrors, fmt.Errorf("attempt %d: read /proc/%s/environ: %w", attempt, entry.Name(), err))
+					continue
+				}
+				for _, item := range bytes.Split(environ, []byte{0}) {
+					if string(item) == want {
+						matches = append(matches, pid)
+						break
+					}
+				}
+			}
+
+			sort.Ints(matches)
+			switch len(matches) {
+			case 1:
+				return matches[0], nil
+			case 2:
+				return 0, fmt.Errorf("multiple processes claim infrastructure resource %q: %v", resourceID, matches)
 			}
 		}
+
+		if attempt < maxAttempts {
+			time.Sleep(retryBackoff)
+		}
 	}
-	sort.Ints(matches)
-	switch len(matches) {
-	case 1:
-		return matches[0], nil
-	case 0:
-		return 0, os.ErrNotExist
-	default:
-		return 0, fmt.Errorf("multiple processes claim infrastructure resource %q: %v", resourceID, matches)
+
+	if len(readErrors) > 0 {
+		return 0, fmt.Errorf("resource %q not found after %d retries; transient procfs read errors: %v: %w", resourceID, maxAttempts, readErrors, os.ErrNotExist)
 	}
+	return 0, os.ErrNotExist
 }
 
 func processExists(pid int) bool {
