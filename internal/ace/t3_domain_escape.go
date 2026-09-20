@@ -119,7 +119,7 @@ func DisassembleSynthesizedProgram(instructions []SynthesizedInstruction) string
 	for i, ins := range instructions {
 		fmt.Fprintf(&b, "%03d %s %d %d %d\\n", i, ins.Op, ins.A, ins.B, ins.C)
 	}
-	return b.String(); err != nil { return err }
+	return b.String()
 }
 
 func (p SynthesizedProgram) Execute(ctx context.Context, input string) (string, error) {
@@ -134,7 +134,6 @@ func (p SynthesizedProgram) Execute(ctx context.Context, input string) (string, 
 	}
 	reg := make([]any, maxSynthRegisters)
 	memory := make([]int64, maxSynthMemoryCells)
-	runes := []rune(input)
 	pc := 0
 	var fuel = p.Fuel
 	var output string
