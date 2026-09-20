@@ -453,7 +453,7 @@ func partialMethodScore(m AcquisitionMethodArtifact, spec CapabilitySpecificatio
 	if err != nil {
 		return 0, got, err
 	}
-	if len(got) != len(base) || sameMechanismOrder(base, got) {
+	if len(got) != len(base) || sameCandidateState(base, got) {
 		return 0, got, nil
 	}
 	distance := 0
@@ -603,7 +603,7 @@ func verifyRecursiveMethodCandidate(ctx context.Context, m AcquisitionMethodArti
 	if err != nil {
 		return MethodEvaluation{Candidate: m, Reason: err.Error()}
 	}
-	if sameMechanismOrder(base, cs) {
+	if sameCandidateState(base, cs) {
 		return MethodEvaluation{Candidate: m, Reason: "recursive candidate produced no future-trace change"}
 	}
 	if !candidateUsesAbstraction(m, promotedID) {
