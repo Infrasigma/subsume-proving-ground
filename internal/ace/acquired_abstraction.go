@@ -61,7 +61,9 @@ type AbstractionLibrary struct {
 type canonicalAbstractionArtifact struct {
 	ID string `json:"id"`
 	Name string `json:"name"`
+	ArtifactType string `json:"artifact_type,omitempty"`
 	Procedure AcquisitionProcedure `json:"procedure"`
+	SynthesizedProgram *SynthesizedProgram `json:"synthesized_program,omitempty"`
 	Contract AbstractionContract `json:"contract"`
 	Dependencies []string `json:"dependencies"`
 	Evidence []AbstractionEvidence `json:"evidence"`
