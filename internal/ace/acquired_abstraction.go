@@ -1,6 +1,7 @@
 package ace
 
 import (
+	"context"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -338,3 +339,47 @@ type PersistentAbstractionLibrary struct{Path string;Data persistedAbstractions}
 func NewPersistentAbstractionLibrary(path string)(*PersistentAbstractionLibrary,error){p:=&PersistentAbstractionLibrary{Path:path};b,err:=os.ReadFile(path);if err==nil{if err=json.Unmarshal(b,&p.Data);err!=nil{return nil,err}}else if !errors.Is(err,os.ErrNotExist){return nil,err};return p,nil}
 func(p *PersistentAbstractionLibrary)Save(l *AbstractionLibrary)error{if l==nil{return errors.New("nil abstraction library")};trusted:=map[string]string{};for id,key:=range l.TrustedSigners{trusted[id]=key};p.Data=persistedAbstractions{Version:l.Version,Abstractions:append([]AcquiredAbstraction(nil),l.Abstractions...),TrustedSigners:trusted};if p.Path==""{return nil};if err:=os.MkdirAll(filepath.Dir(p.Path),0755);err!=nil{return err};b,err:=json.MarshalIndent(p.Data,"","  ");if err!=nil{return err};tmp:=p.Path+".tmp";if err=os.WriteFile(tmp,b,0600);err!=nil{return err};return os.Rename(tmp,p.Path)}
 func(p *PersistentAbstractionLibrary)Restore(dst *AbstractionLibrary)error{if dst==nil{return errors.New("nil abstraction library destination")};if p.Data.TrustedSigners!=nil{dst.TrustedSigners=map[string]string{};for id,key:=range p.Data.TrustedSigners{dst.TrustedSigners[id]=key}};for _,a:=range p.Data.Abstractions{if err:=dst.Install(a);err!=nil{return err}};return nil}
+
+func (p *PersistentAbstractionLibrary) RestoreWithTrustedAdmissions(ctx context.Context, dst *AbstractionLibrary, trusted map[string]string, source AbstractionAdmissionSource) error {
+	if p == nil || dst == nil {
+		return errors.New("persistent abstraction library and destination are required")
+	}
+	if source == nil {
+		return errors.New("abstraction admission source is required")
+	}
+	if len(trusted) == 0 {
+		return errors.New("external trusted signer set is required")
+	}
+	dst.TrustedSigners = map[string]string{}
+	for signerID, publicKey := range trusted {
+		dst.TrustedSigners[signerID] = publicKey
+	}
+	for _, a := range p.Data.Abstractions {
+		receipt, err := source.GetAbstractionAdmission(ctx, a.LedgerAdmissionRef)
+		if err != nil {
+			return fmt.Errorf("load ledger admission %q: %w", a.LedgerAdmissionRef, err)
+		}
+		persisted := protocol.AbstractionAdmissionReceipt{
+			KMSSignedArtifact:       a.KMSSignature,
+			LedgerAdmissionRef:      a.LedgerAdmissionRef,
+			LedgerAdmissionHash:     a.LedgerAdmissionHash,
+			PreviousAdmissionHash:   a.LedgerPreviousAdmissionHash,
+			CreatedAtUnix:            a.LedgerCreatedAtUnix,
+		}
+		if persisted != receipt {
+			return fmt.Errorf("persisted abstraction admission %q does not match durable ledger receipt", a.LedgerAdmissionRef)
+		}
+		trustedKey := trusted[a.KMSSignature.SignerID]
+		if trustedKey == "" {
+			return fmt.Errorf("persisted abstraction %q has no external trusted signer", a.ID)
+		}
+		if err := a.VerifyAdmission(trustedKey); err != nil {
+			return fmt.Errorf("persisted abstraction %q failed admission verification: %w", a.ID, err)
+		}
+		if err := dst.Install(a); err != nil {
+			return fmt.Errorf("persisted abstraction %q failed installation: %w", a.ID, err)
+		}
+	}
+	dst.Version = p.Data.Version
+	return nil
+}

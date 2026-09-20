@@ -108,3 +108,38 @@ func lifecycleEventID() string {
 	}
 	return fmt.Sprintf("event-%d", time.Now().UnixNano())
 }
+
+func (l *Ledger) GetAbstractionAdmission(ctx context.Context, admissionRef string) (protocol.AbstractionAdmissionReceipt, error) {
+	if l == nil || l.db == nil {
+		return protocol.AbstractionAdmissionReceipt{}, fmt.Errorf("ledger is unavailable")
+	}
+	if admissionRef == "" {
+		return protocol.AbstractionAdmissionReceipt{}, fmt.Errorf("admission_ref is required")
+	}
+	if err := l.OpenOrMigrateAbstractionAdmissions(ctx); err != nil {
+		return protocol.AbstractionAdmissionReceipt{}, err
+	}
+	var r protocol.AbstractionAdmissionReceipt
+	err := l.db.QueryRowContext(ctx, `
+		SELECT artifact_hash, signer_id, public_key_b64, signature_b64,
+		       admission_id, admission_hash, previous_admission_hash, created_at_unix
+		FROM abstraction_admissions
+		WHERE admission_id = ?
+	`, admissionRef).Scan(
+		&r.ArtifactHash,
+		&r.SignerID,
+		&r.PublicKeyB64,
+		&r.SignatureB64,
+		&r.LedgerAdmissionRef,
+		&r.LedgerAdmissionHash,
+		&r.PreviousAdmissionHash,
+		&r.CreatedAtUnix,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return protocol.AbstractionAdmissionReceipt{}, fmt.Errorf("abstraction admission %q not found", admissionRef)
+		}
+		return protocol.AbstractionAdmissionReceipt{}, err
+	}
+	return r, nil
+}
