@@ -24,6 +24,7 @@ type ReactorExample struct {
 type ReactorTask struct {
 	ID                     string         `json:"id"`
 	Family                 string         `json:"family"`
+	InputKind              string         `json:"input_kind,omitempty"`
 	Description            string         `json:"description"`
 	Examples               []ReactorExample `json:"examples"`
 	MaxSearchDepth         int            `json:"max_search_depth"`
