@@ -47,6 +47,10 @@ type CounterfactualRunner interface {
 	ForkAndRun(context.Context, ForkExecutionState, CounterfactualIntervention) (CounterfactualRunResult, error)
 }
 
+type CounterfactualSnapshotBuilder interface {
+	BuildCounterfactualState(CapabilitySpecification, []ProgramTestCase) ([]byte, error)
+}
+
 type CounterfactualTrial struct {
 	Hypothesis   CounterfactualHypothesis
 	Intervention CounterfactualIntervention
