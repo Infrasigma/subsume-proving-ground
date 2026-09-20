@@ -98,17 +98,32 @@ func (LocalSubprocessProvider) Reclaim(ctx context.Context, h ResourceHandle) er
 		ctx = context.Background()
 	}
 	_ = p.Kill()
-	waitDone := make(chan error, 1)
-	go func() { waitDone <- p.Wait() }()
+	waitDone := make(chan struct {
+		state *os.ProcessState
+		err   error
+	}, 1)
+	go func() {
+		state, err := p.Wait()
+		waitDone <- struct {
+			state *os.ProcessState
+			err   error
+		}{state: state, err: err}
+	}()
 	select {
-	case err := <-waitDone:
-		if err == nil || errors.Is(err, os.ErrProcessDone) {
+	case result := <-waitDone:
+		if result.err == nil || errors.Is(result.err, os.ErrProcessDone) {
 			return nil
 		}
-		if _, ok := err.(*exec.ExitError); ok {
+		if _, ok := result.err.(*exec.ExitError); ok {
+			if result.state == nil {
+				return result.err
+			}
+			if result.state.ExitCode() != 0 {
+				return nil
+			}
 			return nil
 		}
-		return err
+		return result.err
 	case <-ctx.Done():
 		return ctx.Err()
 	}
