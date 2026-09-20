@@ -111,6 +111,19 @@ func (a AcquiredAbstraction) VerifyAdmission(trustedPublicKeyB64 string) error {
 		CreatedAtUnix: a.LedgerCreatedAtUnix,
 	}
 	if r.ArtifactHash != a.ArtifactHash { return fmt.Errorf("KMS signature artifact hash mismatch") }
+	if err := protocol.VerifyAbstractionAdmissionReceipt(r, trustedPublicKeyB64); err == nil {
+		return nil
+	}
+	// Legacy T2 artifacts were admitted before artifact_type was part of the
+	// admission-chain hash. Preserve verification of those rows while requiring
+	// new admissions to bind an explicit artifact type.
+	if a.ArtifactType == "" {
+		legacy := r
+		legacy.ArtifactType = "AcquiredAbstraction"
+		if err := protocol.VerifyAbstractionAdmissionReceipt(legacy, trustedPublicKeyB64); err == nil {
+			return nil
+		}
+	}
 	return protocol.VerifyAbstractionAdmissionReceipt(r, trustedPublicKeyB64)
 }
 
