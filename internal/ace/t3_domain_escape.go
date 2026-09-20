@@ -55,16 +55,16 @@ func (p SynthesizedProgram) Validate() error {
 		case "input", "newbuf":
 			if err := validateRegister(ins.A, fmt.Sprintf("instruction %d", i)); err != nil { return err }
 		case "const":
-			validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
+			if err := validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
 		case "len":
-			validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
+			validateRegister(ins.A, fmt.Sprintf("instruction %d", i)); err != nil { return err }
 			if err := validateRegister(ins.B, fmt.Sprintf("instruction %d", i)); err != nil { return err }
 		case "lt", "add", "sub":
-			validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
-			validateRegister(ins.B, fmt.Sprintf("instruction %d", i))
+			if err := validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
+			validateRegister(ins.B, fmt.Sprintf("instruction %d", i)); err != nil { return err }
 			if err := validateRegister(ins.C, fmt.Sprintf("instruction %d", i)); err != nil { return err }
 		case "char":
-			validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
+			if err := validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
 			validateRegister(ins.B, fmt.Sprintf("instruction %d", i))
 			validateRegister(ins.C, fmt.Sprintf("instruction %d", i))
 		case "is_vowel", "upper", "lower":
@@ -116,10 +116,9 @@ func validateRegister(v int, context string) error {
 func DisassembleSynthesizedProgram(instructions []SynthesizedInstruction) string {
 	var b strings.Builder
 	for i, ins := range instructions {
-		fmt.Fprintf(&b, "%03d %s %d %d %d
-", i, ins.Op, ins.A, ins.B, ins.C)
+		fmt.Fprintf(&b, "%03d %s %d %d %d\\n", i, ins.Op, ins.A, ins.B, ins.C)
 	}
-	return b.String()
+	return b.String(); err != nil { return err }
 }
 
 func (p SynthesizedProgram) Execute(ctx context.Context, input string) (string, error) {
