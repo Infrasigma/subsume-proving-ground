@@ -197,8 +197,16 @@ func (ProcfsInfrastructureAttestor) Verify(ctx context.Context, c protocol.Infra
 	if err != nil {
 		return err
 	}
-	if repeat.PID != observed.PID || repeat.StateHash != observed.StateHash {
-		return errors.New("independent read-back was not stable")
+	if repeat.ResourceID != observed.ResourceID ||
+		repeat.PID != observed.PID ||
+		repeat.ResourceType != observed.ResourceType ||
+		repeat.State != observed.State ||
+		repeat.Command != observed.Command ||
+		repeat.StateHash == "" {
+		return errors.New("independent read-back identity/state was not stable")
+	}
+	if repeat.RSSBytes > uint64(c.MaxMemoryBytes) {
+		return fmt.Errorf("independent read-back RSS %d exceeds contract memory limit %d", repeat.RSSBytes, c.MaxMemoryBytes)
 	}
 	return nil
 }
