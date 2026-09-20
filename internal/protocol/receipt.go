@@ -130,6 +130,9 @@ func VerifyAbstractionAdmissionReceipt(r AbstractionAdmissionReceipt, trustedPub
 	if r.LedgerAdmissionRef == "" || r.LedgerAdmissionHash == "" || r.PreviousAdmissionHash == "" || r.CreatedAtUnix <= 0 {
 		return fmt.Errorf("incomplete abstraction admission receipt")
 	}
+	if r.ArtifactType != "" && r.ArtifactType != "AcquiredAbstraction" && r.ArtifactType != "SynthesizedProgram" {
+		return fmt.Errorf("unsupported abstraction artifact type %q", r.ArtifactType)
+	}
 	if err := VerifyKMSSignedArtifact(r.KMSSignedArtifact, trustedPublicKeyB64); err != nil { return err }
 	computed, err := AbstractionAdmissionHash(r)
 	if err != nil { return err }
