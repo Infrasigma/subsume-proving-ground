@@ -84,8 +84,8 @@ func DiagnoseFailureTelemetry(t FailureTelemetry) BottleneckDiagnosis {
 	for _, trial := range t.BudgetTrials {
 		if trial.Multiplier > 1 && trial.Solved {
 			return BottleneckDiagnosis{
-				Class: BottleneckSearchSpace,
-				Reason: "failure disappears only under increased resource budget; compute is the supported explanation boundary",
+				Class: BottleneckResource,
+				Reason: "failure disappears only under increased resource budget; resource is the supported explanation boundary",
 				Confidence: 0.90,
 				Evidence: []string{"baseline budget failed", "larger controlled budget succeeded"},
 			}
@@ -94,7 +94,7 @@ func DiagnoseFailureTelemetry(t FailureTelemetry) BottleneckDiagnosis {
 
 	if t.StepsUsed >= t.StepLimit && t.StepLimit > 0 {
 		return BottleneckDiagnosis{
-			Class: BottleneckSearchSpace,
+			Class: BottleneckResource,
 			Reason: "execution reached the declared step limit",
 			Confidence: 0.90,
 			Evidence: []string{"step limit reached"},
@@ -103,7 +103,7 @@ func DiagnoseFailureTelemetry(t FailureTelemetry) BottleneckDiagnosis {
 
 	if t.MemoryLimit > 0 && t.MemoryUsed >= t.MemoryLimit {
 		return BottleneckDiagnosis{
-			Class: BottleneckSearchSpace,
+			Class: BottleneckResource,
 			Reason: "execution reached the declared memory limit",
 			Confidence: 0.90,
 			Evidence: []string{"memory limit reached"},
