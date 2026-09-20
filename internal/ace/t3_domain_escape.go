@@ -322,28 +322,48 @@ func BuildSynthesizedProgram(instructions []SynthesizedInstruction, fuel uint64,
 }
 
 func SynthesizeDomainEscape(ctx context.Context, task ReactorTask) (SynthesizedProgram, error) {
+	program, _, err := SynthesizeDomainEscapeWithHeuristic(ctx, task, nil)
+	return program, err
+}
+
+func SynthesizeDomainEscapeWithHeuristic(ctx context.Context, task ReactorTask, heuristic *SearchHeuristicProgram) (SynthesizedProgram, HeuristicSearchStats, error) {
 	if task.InputKind != "string" {
-		return SynthesizedProgram{}, fmt.Errorf("no synthesized program grammar for input kind %q", task.InputKind)
+		return SynthesizedProgram{}, HeuristicSearchStats{}, fmt.Errorf("no synthesized program grammar for input kind %q", task.InputKind)
 	}
 	if len(task.Examples) < 2 {
-		return SynthesizedProgram{}, errors.New("synthesized program search requires at least two training examples")
+		return SynthesizedProgram{}, HeuristicSearchStats{}, errors.New("synthesized program search requires at least two training examples")
 	}
-	candidates := []SynthesizedProgram{
-		buildIdentityProgram(),
-		buildReverseProgram(),
-		buildUpperProgram(),
-		buildLowerProgram(),
-		buildUpperVowelsProgram(),
-		buildLowerVowelsProgram(),
+	candidateNames := []string{"identity", "reverse", "upper", "lower", "upper-vowels", "lower-vowels"}
+	orderedNames, err := orderStringCandidateNames(candidateNames, heuristic)
+	if err != nil {
+		return SynthesizedProgram{}, HeuristicSearchStats{}, fmt.Errorf("string search heuristic rejected frontier: %w", err)
 	}
-	for _, candidate := range candidates {
+	builders := map[string]func() SynthesizedProgram{
+		"identity":      buildIdentityProgram,
+		"reverse":       buildReverseProgram,
+		"upper":         buildUpperProgram,
+		"lower":         buildLowerProgram,
+		"upper-vowels":  buildUpperVowelsProgram,
+		"lower-vowels":  buildLowerVowelsProgram,
+	}
+	stats := HeuristicSearchStats{}
+	for _, name := range orderedNames {
+		if err := ctx.Err(); err != nil {
+			return SynthesizedProgram{}, stats, err
+		}
+		builder, ok := builders[name]
+		if !ok {
+			return SynthesizedProgram{}, stats, fmt.Errorf("unknown synthesized-program candidate %q", name)
+		}
+		candidate := builder()
+		stats.CandidatesEvaluated++
 		if err := candidate.Validate(); err != nil {
 			continue
 		}
-		ok := true
+		ok = true
 		for _, example := range task.Examples {
 			if err := ctx.Err(); err != nil {
-				return SynthesizedProgram{}, err
+				return SynthesizedProgram{}, stats, err
 			}
 			if len(example.Input) != 1 || len(example.Expected) != 1 {
 				ok = false
@@ -356,10 +376,10 @@ func SynthesizeDomainEscape(ctx context.Context, task ReactorTask) (SynthesizedP
 			}
 		}
 		if ok {
-			return candidate, nil
+			return candidate, stats, nil
 		}
 	}
-	return SynthesizedProgram{}, errors.New("domain-escape synthesis exhausted bounded generic string program grammar")
+	return SynthesizedProgram{}, stats, errors.New("domain-escape synthesis exhausted bounded generic string program grammar")
 }
 
 func buildIdentityProgram() SynthesizedProgram {
