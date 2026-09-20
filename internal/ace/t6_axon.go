@@ -1,6 +1,7 @@
 package ace
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -15,6 +16,20 @@ import (
 )
 
 const ExecutionControlPlaneArtifactType = "ExecutionControlPlane"
+
+func canonicalizeAXONJSON(v any) ([]byte, error) {
+	encoded, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	dec := json.NewDecoder(bytes.NewReader(encoded))
+	dec.UseNumber()
+	var value any
+	if err := dec.Decode(&value); err != nil {
+		return nil, err
+	}
+	return c14n.Canonicalize(value)
+}
 
 var (
 	ErrSingleSubstrateFuelExhausted = errors.New("single substrate fuel budget exhausted before task completion")
@@ -185,7 +200,7 @@ func deriveAxonWorkerKey(root []byte, workerID string) []byte {
 	return mac.Sum(nil)
 }
 
-func workerReceiptMessage(r SwarmWorkerReceipt) []byte {
+func workerReceiptMessage(r SwarmWorkerReceipt) ([]byte, error) {
 	unsigned := struct {
 		WorkerID   string `json:"worker_id"`
 		TaskID     string `json:"task_id"`
@@ -197,15 +212,21 @@ func workerReceiptMessage(r SwarmWorkerReceipt) []byte {
 	}{
 		r.WorkerID, r.TaskID, r.Start, r.End, r.Cells, r.ResultHash, r.KeyID,
 	}
-	b, _ := json.Marshal(unsigned)
-	canonical, _ := c14n.Canonicalize(b)
-	return canonical
+	canonical, err := canonicalizeAXONJSON(unsigned)
+	if err != nil {
+		return nil, err
+	}
+	return canonical, nil
 }
 
-func signWorkerReceipt(r SwarmWorkerReceipt, key []byte) string {
+func signWorkerReceipt(r SwarmWorkerReceipt, key []byte) (string, error) {
+	message, err := workerReceiptMessage(r)
+	if err != nil {
+		return "", err
+	}
 	mac := hmac.New(sha256.New, key)
-	_, _ = mac.Write(workerReceiptMessage(r))
-	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
+	_, _ = mac.Write(message)
+	return base64.StdEncoding.EncodeToString(mac.Sum(nil)), nil
 }
 
 func (r SwarmConsensusReceipt) Verify(rootKey []byte, threshold int) error {
@@ -233,8 +254,8 @@ func (r SwarmConsensusReceipt) Verify(rootKey []byte, threshold int) error {
 		}
 		if len(rootKey) > 0 {
 			key := deriveAxonWorkerKey(rootKey, worker.WorkerID)
-			expected := signWorkerReceipt(worker, key)
-			if !hmac.Equal([]byte(expected), []byte(worker.AuthTagB64)) {
+			expected, err := signWorkerReceipt(worker, key)
+			if err != nil || !hmac.Equal([]byte(expected), []byte(worker.AuthTagB64)) {
 				return ErrSwarmConsensusRejected
 			}
 		}
@@ -263,7 +284,7 @@ func (r SwarmConsensusReceipt) Verify(rootKey []byte, threshold int) error {
 	if expectedAggregate != r.AggregatedResultHash {
 		return ErrSwarmConsensusRejected
 	}
-	canonical, err := c14n.Canonicalize(mustJSON(unsigned))
+	canonical, err := canonicalizeAXONJSON(unsigned)
 	if err != nil {
 		return err
 	}
@@ -362,7 +383,11 @@ func (e *AxonSubstrateController) Execute(ctx context.Context, task MatrixCrypto
 				ResultHash: digest,
 				KeyID: "AXON/worker/" + id,
 			}
-			receipt.AuthTagB64 = signWorkerReceipt(receipt, key)
+			receipt.AuthTagB64, err = signWorkerReceipt(receipt, key)
+			if err != nil {
+				results <- workerResult{err: err}
+				return
+			}
 			if e.Tracer != nil {
 				e.Tracer.Observe(AxonTraceEvent{WorkerID: id, Event: "sandbox-complete", TaskID: task.ID})
 			}
@@ -411,7 +436,7 @@ func (e *AxonSubstrateController) Execute(ctx context.Context, task MatrixCrypto
 	for i := range withoutTags {
 		withoutTags[i].AuthTagB64 = ""
 	}
-	canonical, err := c14n.Canonicalize(mustJSON(withoutTags))
+	canonical, err := canonicalizeAXONJSON(withoutTags)
 	if err != nil {
 		return AxonSwarmExecution{}, err
 	}
