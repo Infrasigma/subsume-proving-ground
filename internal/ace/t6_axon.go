@@ -46,8 +46,10 @@ type ExecutionControlPlane struct {
 	KeyDerivation       string               `json:"key_derivation"`
 	TraceBackend        string               `json:"trace_backend"`
 	MCPProtocol         string               `json:"mcp_protocol"`
-	AllowedCapabilities []string             `json:"allowed_capabilities"`
-	Consensus           SwarmConsensusReceipt `json:"consensus"`
+	AllowedCapabilities []string                     `json:"allowed_capabilities"`
+	ExternalSideEffects []ExternalSideEffectReceipt  `json:"external_side_effects,omitempty"`
+	ReallocationPatches []SwarmReallocationPatch    `json:"reallocation_patches,omitempty"`
+	Consensus           SwarmConsensusReceipt        `json:"consensus"`
 }
 
 type MatrixCryptoTask struct {
