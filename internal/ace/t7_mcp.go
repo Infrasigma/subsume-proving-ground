@@ -17,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Infrasigma/subsume-proving-ground/internal/c14n"
 )
 
 const (
@@ -505,9 +504,15 @@ func (e *AxonSubstrateController) RunT7TelemetryCrucible(ctx context.Context, ru
 			Independent: true,
 			Expected: []string{"MCP response bound to authenticated swarm worker", "telemetry obeys safety bounds", "reallocation patch follows fixed decision rule"},
 			Observed: []string{"Ed25519 external side-effect receipt", "deterministic telemetry-to-worker reallocation patch"},
-			Provenance: Prov("t7-independent-mcp-verifier", task.ID, receipt, patch),
+			Provenance: Prov("t7-independent-mcp-verifier", task.ID, "receipt-and-reallocation", map[string]any{
+					"external_receipt": receipt,
+					"reallocation_patch": patch,
+				}),
 		},
-		Provenance: Prov("t7-axon-mcp-actuation", task.ID, "f0-controlled-external-io", receipt, patch),
+		Provenance: Prov("t7-axon-mcp-actuation", task.ID, "f0-controlled-external-io", map[string]any{
+				"external_receipt": receipt,
+				"reallocation_patch": patch,
+		}),
 	}
 	sealed, err := runtime.admitAbstraction(ctx, artifact, 1)
 	if err != nil {
