@@ -409,7 +409,14 @@ func (r *AdaptiveAcquisitionRuntime) admitAbstraction(ctx context.Context, a Acq
 	if r.TrustedKMSPublicKeyB64 != "" && signed.PublicKeyB64 != r.TrustedKMSPublicKeyB64 {
 		return AcquiredAbstraction{}, errors.New("KMS returned a public key outside the configured trust root")
 	}
-	receipt, err := r.AdmissionLedger.AppendAbstractionAdmission(ctx, protocol.AbstractionAdmissionReceipt{KMSSignedArtifact:signed})
+	artifactType := a.ArtifactType
+	if artifactType == "" {
+		artifactType = "AcquiredAbstraction"
+	}
+	receipt, err := r.AdmissionLedger.AppendAbstractionAdmission(ctx, protocol.AbstractionAdmissionReceipt{
+		KMSSignedArtifact: signed,
+		ArtifactType: artifactType,
+	})
 	if err != nil { return AcquiredAbstraction{}, fmt.Errorf("durable abstraction admission failed: %w", err) }
 	a.ArtifactHash = artifactHash
 	a.KMSSignature = receipt.KMSSignedArtifact
