@@ -47,9 +47,10 @@ type AdaptiveAcquisitionRuntime struct {
 	// discriminate the bottleneck, this runner may fork the failed execution,
 	// test single-factor hypotheses, and return a uniquely supported diagnosis.
 	CounterfactualRunner CounterfactualRunner
+	AcquisitionPolicy   *AcquisitionPolicy
 }
 
-type AdaptiveAcquisitionResult struct { Method AcquisitionMethodArtifact; Diagnosis BottleneckDiagnosis; Evaluations []MethodEvaluation; Future CapabilityRecord; FutureCost ResourceVector; Trace []string }
+type AdaptiveAcquisitionResult struct { Method AcquisitionMethodArtifact; Diagnosis BottleneckDiagnosis; Evaluations []MethodEvaluation; Future CapabilityRecord; FutureCost ResourceVector; Trace []string; PolicyMutation *GeneratorSpaceMutation }
 
 func (r *AdaptiveAcquisitionRuntime) prepareLibraries() error {
 	r.Methods.Abstractions = &r.Abstractions
@@ -126,6 +127,7 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 	var lastErr error
 	recursiveUsed := false
 	var method AcquisitionMethodArtifact
+	var policyMutation *GeneratorSpaceMutation
 	diagnosis := DiagnoseAdaptiveBoundary(telemetry)
 	var evals []MethodEvaluation
 
@@ -147,6 +149,48 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 				counterfactual.Discriminated,
 				counterfactual.Diagnosis.Reason,
 			)
+		}
+
+		// A representation diagnosis becomes a policy mutation only after the
+		// counterfactual runner returns the exact verified semantic primitive.
+		if diagnosis.Class == BottleneckRepresentation && r.AcquisitionPolicy != nil {
+			mutation, promoteErr := PromoteCounterfactualRepresentation(
+				r.AcquisitionPolicy,
+				projected,
+				counterfactual,
+			)
+			if promoteErr != nil {
+				return AdaptiveAcquisitionResult{}, fmt.Errorf("representation promotion rejected: %w", promoteErr)
+			}
+			policyMutation = &mutation
+
+			// Re-enter acquisition through the newly expanded generator space.
+			// Only one topology-matched primitive is activated to avoid feature
+			// combinatorial explosion.
+			preparedSpec, preparedHidden, _, prepareErr := PrepareCapabilityWithAcquisitionPolicy(
+				failedSpec,
+				methodHidden,
+				projected,
+				*r.AcquisitionPolicy,
+			)
+			if prepareErr != nil {
+				return AdaptiveAcquisitionResult{}, fmt.Errorf("policy-conditioned representation preparation failed: %w", prepareErr)
+			}
+			failedSpec = preparedSpec
+			methodHidden = preparedHidden
+
+			if r.Diagnostics != nil {
+				r.Diagnostics.Record(
+					"C",
+					mutation.PrimitiveID,
+					"generator-space-mutation",
+					mutation,
+					DiagnosticAccepted,
+					"unique verified representation survivor promoted and bound to failure topology",
+					true,
+					fmt.Sprintf("search weight %.3f topology=%s", mutation.SearchWeight, mutation.FailureTopology),
+				)
+			}
 		}
 	}
 	if diagnosis.Class == BottleneckUnknown {
@@ -354,6 +398,7 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 			Future: rec,
 			FutureCost: c.Resources,
 			Trace: append(append([]string(nil), r.Methods.Trace...), fmt.Sprintf("T2-recursive:%t", recursiveUsed)),
+			PolicyMutation: policyMutation,
 		}, nil
 	}
 	return AdaptiveAcquisitionResult{}, errors.New("installed acquisition method could not acquire future capability")
