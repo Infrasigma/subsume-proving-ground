@@ -48,7 +48,9 @@ func TestRepresentationPlaygroundCounterfactualFindsVerifiedDerivedFeature(t *te
 	state := RepresentationPlaygroundState{
 		Spec:   spec,
 		Hidden: hidden,
-		Blocks: DefaultRepresentationBlocks(spec),
+		// Leave the candidate vocabulary empty: the fork must generate its
+		// representation programs from the bounded structural grammar itself.
+		Blocks: nil,
 	}
 	opaque, err := EncodeRepresentationPlaygroundState(state)
 	if err != nil {
@@ -94,6 +96,13 @@ func TestRepresentationPlaygroundCounterfactualFindsVerifiedDerivedFeature(t *te
 	}
 	if !representationTrial.Result.Solved || !representationTrial.Result.IndependentlyVerified {
 		t.Fatalf("representation intervention was not independently verified: %#v", representationTrial.Result)
+	}
+	if representationTrial.Result.PromotedRepresentation == nil {
+		t.Fatal("representation trial did not return the exact verified primitive")
+	}
+	if representationTrial.Result.PromotedRepresentation.Op != "program" ||
+		representationTrial.Result.PromotedRepresentation.Artifact == "" {
+		t.Fatalf("promoted primitive was not an executable synthesized artifact: %#v", representationTrial.Result.PromotedRepresentation)
 	}
 	if len(representationTrial.Result.Evidence) < 4 {
 		t.Fatalf("representation trial did not record semantic delta evidence: %#v", representationTrial.Result.Evidence)
