@@ -30,6 +30,7 @@ type AdaptiveAcquisitionRuntime struct {
 	MaxCompoundingIterations int
 	// MaxAcquisitionProcedureSteps controls candidate-stream enumeration depth.
 	// Zero preserves the production default of two steps.
+	MaxAcquisitionProcedureSteps int
 
 	// F0 admission plane. Both dependencies are mandatory whenever a newly
 	// promoted abstraction is admitted; absence is fail-closed.
