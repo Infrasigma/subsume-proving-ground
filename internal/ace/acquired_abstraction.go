@@ -130,10 +130,11 @@ func (l *AbstractionLibrary) Install(a AcquiredAbstraction) error {
 	if a.ID == "" || a.Name == "" {
 		return errors.New("incomplete acquired abstraction")
 	}
-	if a.ArtifactType == "" {
-		a.ArtifactType = "AcquiredAbstraction"
+	artifactType := a.ArtifactType
+	if artifactType == "" {
+		artifactType = "AcquiredAbstraction"
 	}
-	switch a.ArtifactType {
+	switch artifactType {
 	case "AcquiredAbstraction":
 		if len(a.Procedure.Steps) < 2 {
 			return errors.New("acquired abstraction must compress a non-trivial composition")
