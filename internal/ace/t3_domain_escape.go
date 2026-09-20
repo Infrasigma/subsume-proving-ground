@@ -51,45 +51,46 @@ func (p SynthesizedProgram) Validate() error {
 	}
 	emits, halts := 0, 0
 	for i, ins := range p.Instructions {
+		check := func(register int) error {
+			return validateRegister(register, fmt.Sprintf("instruction %d", i))
+		}
 		switch ins.Op {
-		case "input", "newbuf":
-			if err := validateRegister(ins.A, fmt.Sprintf("instruction %d", i)); err != nil { return err }
-		case "const":
-			if err := validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
-		case "len":
-			validateRegister(ins.A, fmt.Sprintf("instruction %d", i)); err != nil { return err }
-			if err := validateRegister(ins.B, fmt.Sprintf("instruction %d", i)); err != nil { return err }
-		case "lt", "add", "sub":
-			if err := validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
-			validateRegister(ins.B, fmt.Sprintf("instruction %d", i)); err != nil { return err }
-			if err := validateRegister(ins.C, fmt.Sprintf("instruction %d", i)); err != nil { return err }
-		case "char":
-			if err := validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
-			validateRegister(ins.B, fmt.Sprintf("instruction %d", i))
-			validateRegister(ins.C, fmt.Sprintf("instruction %d", i))
-		case "is_vowel", "upper", "lower":
-			validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
-			validateRegister(ins.B, fmt.Sprintf("instruction %d", i))
-		case "append":
-			validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
-			validateRegister(ins.B, fmt.Sprintf("instruction %d", i))
-		case "cell_get":
-			validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
-			validateRegister(ins.B, fmt.Sprintf("instruction %d", i))
-		case "cell_set":
-			validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
-			validateRegister(ins.B, fmt.Sprintf("instruction %d", i))
+		case "input", "newbuf", "const":
+			if err := check(ins.A); err != nil {
+				return err
+			}
+		case "len", "is_vowel", "upper", "lower", "append", "cell_get", "cell_set":
+			if err := check(ins.A); err != nil {
+				return err
+			}
+			if err := check(ins.B); err != nil {
+				return err
+			}
+		case "lt", "add", "sub", "char":
+			if err := check(ins.A); err != nil {
+				return err
+			}
+			if err := check(ins.B); err != nil {
+				return err
+			}
+			if err := check(ins.C); err != nil {
+				return err
+			}
 		case "jump":
 			if ins.A < 0 || ins.A >= len(p.Instructions) {
 				return fmt.Errorf("instruction %d jump target out of range", i)
 			}
 		case "jump_if_false":
-			validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
+			if err := check(ins.A); err != nil {
+				return err
+			}
 			if ins.B < 0 || ins.B >= len(p.Instructions) {
 				return fmt.Errorf("instruction %d conditional jump target out of range", i)
 			}
 		case "emit":
-			validateRegister(ins.A, fmt.Sprintf("instruction %d", i))
+			if err := check(ins.A); err != nil {
+				return err
+			}
 			emits++
 		case "halt":
 			halts++
