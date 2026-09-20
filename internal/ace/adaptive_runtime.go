@@ -376,7 +376,7 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 	for i, c := range candidates {
 		var p ModificationProposal
 		if recursiveUsed {
-			p, err = AdaptiveUniversalSynthesis(c, futureSpec)
+			p, err = AdaptiveUniversalSynthesisWithContext(ctx, c, futureSpec, AdaptiveUniversalSynthesisMaxExpansions)
 		} else {
 			p, err = (UniversalProgramBuilder{}).Build(c, futureSpec)
 		}
@@ -613,7 +613,7 @@ func verifyRecursiveMethodCandidate(ctx context.Context, m AcquisitionMethodArti
 		if err := ctx.Err(); err != nil {
 			return MethodEvaluation{Candidate: m, Reason: err.Error()}
 		}
-		proposal, synthErr := AdaptiveUniversalSynthesis(c, target)
+		proposal, synthErr := AdaptiveUniversalSynthesisWithContext(ctx, c, target, AdaptiveUniversalSynthesisMaxExpansions)
 		if synthErr != nil {
 			continue
 		}
