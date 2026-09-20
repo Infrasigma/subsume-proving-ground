@@ -32,6 +32,7 @@ type ReactorTask struct {
 	AdmitAsAbstraction     bool           `json:"admit_as_abstraction"`
 	RequireLatestAdmission bool           `json:"require_latest_admission"`
 	RequireAbstractionID   string         `json:"require_abstraction_id,omitempty"`
+	MetaKind               string         `json:"meta_kind,omitempty"`
 	Budget                 ResourceVector `json:"budget"`
 }
 
