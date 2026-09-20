@@ -32,5 +32,7 @@ jobs:
         with:
           name: generated-go-sum
           path: /tmp/go-sum.tgz
-      - name: Isolated recursive compounding diagnostics
-        run: go test -v -timeout 45m -run 'TestAdaptiveAcquisitionRuntimeCausalCompounding|TestRecursiveCapabilityCompoundingCore' ./internal/ace
+      - run: go test -timeout 45m ./...
+      - run: go test -race -timeout 45m ./...
+      - run: go vet ./...
+      - run: go build ./cmd/ace

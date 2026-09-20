@@ -63,8 +63,19 @@ func ProjectAcquisitionTelemetry(t AcquisitionTelemetry) FailureTelemetry {
 }
 
 func DiagnoseFailureTelemetry(t FailureTelemetry) BottleneckDiagnosis {
+	// An explicitly exhausted candidate frontier takes precedence over a
+	// minority verifier rejection so one overfit candidate cannot mask a
+	// distribution-level search-space failure.
+	if t.SearchExhausted && t.AllCandidateFamiliesExhausted {
+		return BottleneckDiagnosis{
+			Class: BottleneckSearchSpace,
+			Reason: "candidate frontier exhausted across all declared candidate families",
+			Confidence: 0.95,
+			Evidence: []string{"search frontier exhausted", "all candidate families exhausted"},
+		}
+	}
+
 	if t.CandidateReachedVerifier && t.IndependentVerifierRejected {
-		fmt.Printf("\n[DIAGNOSTIC PROBE] Diagnosis=weak-verification\nFailureTelemetry=%+v\n\n", t)
 		return BottleneckDiagnosis{
 			Class: BottleneckVerification,
 			Reason: "candidate reached independent verification and was rejected",

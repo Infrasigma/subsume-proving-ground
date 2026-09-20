@@ -384,7 +384,6 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 			continue
 		}
 		if !programFitsJSON(p.Artifact, futureHidden) {
-			fmt.Printf("\n[DIAGNOSTIC PROBE] Candidate ID: %s\nCandidate: %+v\nAST: %s\nVisible Examples: %+v\nHidden Examples: %+v\nError: visible-fit=true hidden-fit=false\n\n", c.ID, c, p.Artifact, futureSpec.KnownExamples, futureHidden)
 			continue
 		}
 		rec := CapabilityRecord{
@@ -620,7 +619,6 @@ func verifyRecursiveMethodCandidate(ctx context.Context, m AcquisitionMethodArti
 		}
 		prog := pArtifactProgram(proposal.Artifact)
 		if !programFits(prog, hidden) {
-			fmt.Printf("\n[DIAGNOSTIC PROBE] Recursive candidate ID: %s\nCandidate: %+v\nAST: %s\nVisible Examples: %+v\nHidden Examples: %+v\nError: visible-fit=true hidden-fit=false\n\n", c.ID, c, proposal.Artifact, target.KnownExamples, hidden)
 			continue
 		}
 		if len(baseline) > 0 && !programFits(prog, baseline) {

@@ -62,6 +62,21 @@ func TestDiagnoseFailureTelemetryDoesNotInventDiagnosis(t *testing.T) {
 	}
 }
 
+func TestDiagnoseFailureTelemetrySearchSpacePrecedesVerifierMasking(t *testing.T) {
+	d := DiagnoseFailureTelemetry(FailureTelemetry{
+		TaskID: "masking",
+		CandidateReachedVerifier: true,
+		IndependentVerifierRejected: true,
+		SearchExhausted: true,
+		AllCandidateFamiliesExhausted: true,
+		EvidenceCount: 10,
+		MinimumEvidence: 1,
+	})
+	if d.Class != BottleneckSearchSpace {
+		t.Fatalf("got %q want %q", d.Class, BottleneckSearchSpace)
+	}
+}
+
 func TestDiagnoseFailureTelemetryVerification(t *testing.T) {
 	d := DiagnoseFailureTelemetry(FailureTelemetry{
 		TaskID: "verification",

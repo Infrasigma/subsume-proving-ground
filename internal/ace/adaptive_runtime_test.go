@@ -16,9 +16,9 @@ func TestAdaptiveAcquisitionRuntimeCausalCompounding(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	telemetry := AcquisitionTelemetry{
 		TaskID: "opaque-failure", TaskStructure: []string{"scalar", "conditional"}, KnownExamples: len(failedCases), CandidateCount: 1,
-		CandidateFailures: []string{"independent counterexample mismatch"}, Counterexamples: 1,
+		CandidateFailures: []string{"candidate family exhausted"}, Counterexamples: 1,
 		Representation: []string{"scalar-input-output"}, SearchPath: []string{"parameterized-add", "parameterized-mul"},
-		VerificationOutcomes: []string{"failed-independent-boundary"}, Cost: ResourceVector{Compute: 1, ExperimentBudget: 1},
+		Cost: ResourceVector{Compute: 1, ExperimentBudget: 1},
 	}
 	rt := newF0TestRuntime(t)
 	result, err := rt.ImproveAndAcquire(telemetry, failedSpec, methodHidden, futureSpec, futureCases)
