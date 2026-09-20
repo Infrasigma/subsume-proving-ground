@@ -485,7 +485,9 @@ func findResourcePID(resourceID string) (int, error) {
 			switch len(matches) {
 			case 1:
 				return matches[0], nil
-			case 2:
+			case 0:
+				// Retry; the target process may not yet be visible through procfs.
+			default:
 				return 0, fmt.Errorf("multiple processes claim infrastructure resource %q: %v", resourceID, matches)
 			}
 		}
