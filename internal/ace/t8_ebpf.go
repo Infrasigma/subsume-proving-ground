@@ -148,7 +148,7 @@ func (p ResourceGovernancePatch) Validate(maxWorkers int) error {
 	return nil
 }
 
-func SynthesizeResourceGovernancePatch(snapshot KernelTelemetrySnapshot, receipt KernelTelemetryReceipt, currentWorkers, safeMemoryMiB, maxWorkers int) (ResourceGovernancePatch, error) {
+func SynthesizeResourceGovernancePatch(snapshot KernelTelemetrySnapshot, receipt KernelTelemetryReceipt, currentWorkers, maxWorkers int, safeMemoryMiB int64) (ResourceGovernancePatch, error) {
 	if err := receipt.Verify(nil); err != nil { return ResourceGovernancePatch{}, fmt.Errorf("unverified kernel telemetry receipt: %w", err) }
 	if currentWorkers < 1 || maxWorkers < currentWorkers || safeMemoryMiB < 1 { return ResourceGovernancePatch{}, errors.New("invalid governance worker or memory bounds") }
 	pressure := snapshot.CPUPercent
@@ -260,7 +260,7 @@ func (e *AxonSubstrateController) RunT8KernelGovernanceCrucible(ctx context.Cont
 	receipt, err := SignKernelTelemetryReceipt(snapshot, workerID, e.RootKey)
 	if err != nil { return T8GovernanceExecution{}, fmt.Errorf("T8 kernel telemetry receipt signing failed: %w", err) }
 	if err := receipt.Verify(e.RootKey); err != nil { return T8GovernanceExecution{}, fmt.Errorf("T8 kernel telemetry receipt verification failed: %w", err) }
-	patch, err := SynthesizeResourceGovernancePatch(snapshot, receipt, task.InitialWorkers, task.SafeMemoryMiB, task.MaxWorkers)
+	patch, err := SynthesizeResourceGovernancePatch(snapshot, receipt, task.InitialWorkers, task.MaxWorkers, task.SafeMemoryMiB)
 	if err != nil { return T8GovernanceExecution{}, fmt.Errorf("T8 governance synthesis failed: %w", err) }
 	finalDigest, peak, err := executeGovernedMemoryTask(ctx, task, patch)
 	if err != nil { return T8GovernanceExecution{}, fmt.Errorf("T8 governed memory task failed: %w", err) }
