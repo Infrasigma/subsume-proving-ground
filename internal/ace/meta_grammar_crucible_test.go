@@ -5,8 +5,9 @@ import (
 	"testing"
 )
 
-// Initial failure trace is admissible evidence only; this test does not install the proposed grammar mutation.
-func TestMetaGrammarCrucibleInitialFailure(t *testing.T) {
+// This test fails closed when no external meta-synthesis provider is configured.
+// It admits a mutation only after generated Go compiles and solves evaluator-held hidden cases.
+func TestAutonomousMetaGrammarMutation(t *testing.T) {
 	ctx := context.Background()
 	diagnosis, mutation, err := RunMetaGrammarCrucible(ctx, 20260921, 8)
 	if err != nil {
@@ -18,7 +19,13 @@ func TestMetaGrammarCrucibleInitialFailure(t *testing.T) {
 	if diagnosis.Class != BottleneckSearchSpace {
 		t.Fatalf("expected sealed grammar to exhaust the candidate frontier, got %s: %s", diagnosis.Class, diagnosis.Reason)
 	}
-	if mutation.NodeKind != "recursive-stack-machine" {
-		t.Fatalf("expected recursive/stateful AST escape proposal, got %q", mutation.NodeKind)
+	if mutation.NodeKind == "recursive-stack-machine" {
+		t.Fatalf("human-authored escape hatch leaked into mutation output")
 	}
+	if mutation.GeneratedSource == "" || !mutation.Compiled || !mutation.HiddenVerified {
+		t.Fatalf("expected dynamically generated, compiled, hidden-verified node: kind=%q compiled=%v hidden_verified=%v", mutation.NodeKind, mutation.Compiled, mutation.HiddenVerified)
+	}
+	t.Logf("AUTONOMOUS_META_GRAMMAR_MUTATION diagnosis=%s confidence=%.2f node=%q delta=%v compiled=%v hidden_verified=%v source=%s trace=%q",
+		diagnosis.Class, diagnosis.Confidence, mutation.NodeKind, mutation.GrammarDelta,
+		mutation.Compiled, mutation.HiddenVerified, mutation.GeneratedSource, mutation.EvaluationTrace)
 }
