@@ -19,7 +19,12 @@ func TestEffectiveFrontierControlsDoNotCountReordering(t *testing.T){
 func TestRecursiveCapabilityFrontierConformance(t *testing.T){
 	metrics,err:=runRecursiveCapabilityProtocolV3WithLibraryAndDepth(&AbstractionLibrary{},1)
 	if err==nil{t.Fatalf("expected the current recursive transfer to be rejected without frontier expansion; metrics=%v",metrics)}
-	if !strings.Contains(err.Error(),"installed method did not change future acquisition behavior"){
+	if !strings.Contains(err.Error(),"direct baseline solution"){
 		t.Fatalf("unexpected recursive transfer rejection: %v",err)
+	}
+	// Depth one is explicitly classified as a direct baseline, never as recursive
+	// compounding. A valid recursive transfer requires procedure depth >= 2.
+	if err == nil || !strings.Contains(err.Error(),"procedure depth >= 2") {
+		t.Fatalf("depth-one run was not structurally rejected as non-recursive: %v",err)
 	}
 }
