@@ -1,6 +1,6 @@
 package ace
 
-import("context";"strconv";"strings")
+import("context";"fmt";"strconv";"strings")
 
 type synthesisError string
 func(e synthesisError)Error()string{return string(e)}
@@ -18,6 +18,7 @@ const AdaptiveUniversalSynthesisMaxExpansions = 50_000_000
 // introduced at this seam. The previous semantic adaptive search remains as a
 // bounded fallback for candidates the universal builder cannot synthesize.
 func AdaptiveUniversalSynthesisWithContext(ctx context.Context, c ArchitectureCandidate, s CapabilitySpecification, maxExpansions int) (ModificationProposal,error){
+	fmt.Printf("\n[DIAGNOSTIC PROBE] AdaptiveUniversalSynthesis candidate=%+v\nVisibleExamples=%+v\n\n", c, s.KnownExamples)
 	if ctx == nil { ctx = context.Background() }
 	if err := ctx.Err(); err != nil { return ModificationProposal{}, err }
 	builder := UniversalProgramBuilder{MaxSynthesisExpansions: maxExpansions}
