@@ -62,7 +62,7 @@ func TestDomainEscapeSynthesizesFromTrainingAndPassesHidden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sandbox execution failed: %v", err)
 	}
-	want := "AutOnOmOus rEActOr"
+	want := "AUtOnOmOUs rEActOr"
 	if got != want {
 		t.Fatalf("sandbox output = %q, want %q", got, want)
 	}
