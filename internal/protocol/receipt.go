@@ -60,6 +60,7 @@ type KMSSignedArtifact struct {
 
 type AbstractionAdmissionReceipt struct {
 	KMSSignedArtifact
+	ArtifactType string `json:"artifact_type,omitempty"`
 	LedgerAdmissionRef string `json:"ledger_admission_ref"`
 	LedgerAdmissionHash string `json:"ledger_admission_hash"`
 	PreviousAdmissionHash string `json:"previous_admission_hash"`
@@ -114,6 +115,11 @@ func AbstractionAdmissionHash(r AbstractionAdmissionReceipt) (string, error) {
 		"previous_admission_hash": r.PreviousAdmissionHash,
 		"created_at_unix": json.Number(strconv.FormatInt(r.CreatedAtUnix, 10)),
 	}
+	// Legacy admissions omit artifact_type. New admissions bind the artifact
+	// kind into the durable admission-chain hash.
+	if r.ArtifactType != "" {
+		unsigned["artifact_type"] = r.ArtifactType
+	}
 	canonical, err := c14n.Canonicalize(unsigned)
 	if err != nil { return "", err }
 	digest := PayloadHash(canonical)
@@ -123,6 +129,9 @@ func AbstractionAdmissionHash(r AbstractionAdmissionReceipt) (string, error) {
 func VerifyAbstractionAdmissionReceipt(r AbstractionAdmissionReceipt, trustedPublicKeyB64 string) error {
 	if r.LedgerAdmissionRef == "" || r.LedgerAdmissionHash == "" || r.PreviousAdmissionHash == "" || r.CreatedAtUnix <= 0 {
 		return fmt.Errorf("incomplete abstraction admission receipt")
+	}
+	if r.ArtifactType != "" && r.ArtifactType != "AcquiredAbstraction" && r.ArtifactType != "SynthesizedProgram" {
+		return fmt.Errorf("unsupported abstraction artifact type %q", r.ArtifactType)
 	}
 	if err := VerifyKMSSignedArtifact(r.KMSSignedArtifact, trustedPublicKeyB64); err != nil { return err }
 	computed, err := AbstractionAdmissionHash(r)

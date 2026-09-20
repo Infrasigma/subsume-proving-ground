@@ -52,3 +52,41 @@ func DefaultT2ReactorVerifier() ReactorVerifier {
 		},
 	}
 }
+
+
+func DefaultT3DomainEscapeTasks() []ReactorTask {
+	budget := ResourceVector{
+		Compute:          250,
+		Memory:           128,
+		Storage:          32,
+		TimeMS:            5000,
+		ExperimentBudget: 128,
+	}
+	return []ReactorTask{
+		{
+			ID:          "03-string-uppercase-vowels",
+			Family:      "string-transform",
+			InputKind:   "string",
+			Description: "Uppercase every vowel in a UTF-8 text block while leaving every other rune unchanged. This task is outside the ArchitectureCandidate stream vocabulary.",
+			Examples: []ReactorExample{
+				{Input: []string{"hello world"}, Expected: []string{"hEllO wOrld"}},
+				{Input: []string{"ace reactor"}, Expected: []string{"AcE rEActOr"}},
+				{Input: []string{"strict verification"}, Expected: []string{"strIct vErIfIcAtIOn"}},
+			},
+			MaxSearchDepth:     1,
+			MinProcedureSteps:  1,
+			AdmitAsAbstraction: true,
+			Budget:             budget,
+		},
+	}
+}
+
+func DefaultT3DomainEscapeVerifier() ReactorVerifier {
+	hidden := DefaultT2ReactorVerifier().(StaticReactorVerifier).HiddenByTask
+	hidden["03-string-uppercase-vowels"] = []ReactorExample{
+		{Input: []string{"functional verification"}, Expected: []string{"fUnctIOnAl vErIfIcAtIOn"}},
+		{Input: []string{"zero trust daemon"}, Expected: []string{"zErO trUst dAEmOn"}},
+		{Input: []string{"cryptographic ledger"}, Expected: []string{"cryptOgrAphIc lEdgEr"}},
+	}
+	return StaticReactorVerifier{HiddenByTask: hidden}
+}
