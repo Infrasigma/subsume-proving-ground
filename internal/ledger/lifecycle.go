@@ -75,7 +75,7 @@ func (l *Ledger) AppendTerminal(ctx context.Context, executionID, status string,
 func (l *Ledger) AppendAbstractionAdmission(ctx context.Context, r protocol.AbstractionAdmissionReceipt) (protocol.AbstractionAdmissionReceipt, error) {
 	if r.ArtifactHash == "" || r.SignerID == "" || r.PublicKeyB64 == "" || r.SignatureB64 == "" { return protocol.AbstractionAdmissionReceipt{}, fmt.Errorf("incomplete abstraction admission signature") }
 	if r.ArtifactType == "" { r.ArtifactType = "AcquiredAbstraction" }
-	if r.ArtifactType != "AcquiredAbstraction" && r.ArtifactType != "SynthesizedProgram" && r.ArtifactType != "ActiveSearchHeuristic" { return protocol.AbstractionAdmissionReceipt{}, fmt.Errorf("unsupported abstraction artifact type %q", r.ArtifactType) }
+	if r.ArtifactType != "AcquiredAbstraction" && r.ArtifactType != "SynthesizedProgram" && r.ArtifactType != "ActiveSearchHeuristic" && r.ArtifactType != "ExecutionControlPlane" { return protocol.AbstractionAdmissionReceipt{}, fmt.Errorf("unsupported abstraction artifact type %q", r.ArtifactType) }
 	if r.LedgerAdmissionRef != "" || r.LedgerAdmissionHash != "" || r.CreatedAtUnix != 0 { return protocol.AbstractionAdmissionReceipt{}, fmt.Errorf("ledger admission fields must be empty before append") }
 	if err := protocol.VerifyKMSSignedArtifact(r.KMSSignedArtifact, r.PublicKeyB64); err != nil { return protocol.AbstractionAdmissionReceipt{}, err }
 	if err := l.OpenOrMigrateAbstractionAdmissions(ctx); err != nil { return protocol.AbstractionAdmissionReceipt{}, err }

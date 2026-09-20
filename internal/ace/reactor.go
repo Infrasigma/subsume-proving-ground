@@ -495,6 +495,8 @@ type ContinuousReactor struct {
 	MaxTasks             int
 	AutotelicGenerator   *AutotelicTaskGenerator
 	MaxAutotelicTasks    int
+	SubstrateEscape      *AxonSubstrateController
+	MaxSubstrateEscapes  int
 	Logf                func(string, ...any)
 }
 
@@ -535,15 +537,66 @@ func (r *ContinuousReactor) Run(ctx context.Context) ([]ReactorTaskResult, error
 	}
 	results := []ReactorTaskResult{}
 	autotelicGenerated := 0
+	substrateGenerated := 0
 	autotelicLimit := r.MaxAutotelicTasks
 	if autotelicLimit <= 0 {
 		autotelicLimit = 1
 	}
 	for r.MaxTasks <= 0 || len(results) < r.MaxTasks {
+		substrateLimit := r.MaxSubstrateEscapes
+		if substrateLimit <= 0 {
+			substrateLimit = 1
+		}
+		if r.SubstrateEscape != nil && substrateGenerated < substrateLimit && autotelicGenerated >= autotelicLimit {
+			if queue, ok := r.Queue.(interface{ Empty() bool }); ok && queue.Empty() {
+				task, taskErr := r.AutotelicGenerator.GenerateSubstrateEscapeTask(ctx, &r.Runtime.Abstractions, r.Runtime.ActiveSearchHeuristic)
+				if taskErr != nil {
+					return results, fmt.Errorf("substrate escape task generation failed: %w", taskErr)
+				}
+				execution, sealed, runErr := r.SubstrateEscape.RunAndSeal(ctx, r.Runtime, task)
+				if runErr != nil {
+					return results, fmt.Errorf("substrate escape failed: %w", runErr)
+				}
+				results = append(results, ReactorTaskResult{
+					TaskID:                  task.ID,
+					Family:                  "t6-substrate-escape",
+					Solved:                  true,
+					EvaluatedCandidates:     execution.WorkerCount,
+					DiscoveredAbstractionID: sealed.ID,
+					AdmissionRef:            sealed.LedgerAdmissionRef,
+					Autotelic:               true,
+				})
+				substrateGenerated++
+				r.logf("T6_AXON task=%s pivoted=%t workers=%d admission=%s", task.ID, execution.PivotedFromFuel, execution.WorkerCount, sealed.LedgerAdmissionRef)
+				return results, nil
+			}
+		}
 		if r.AutotelicGenerator != nil && autotelicGenerated < autotelicLimit {
 			if queue, ok := r.Queue.(interface{ Empty() bool }); ok && queue.Empty() {
 				bundle, genErr := r.AutotelicGenerator.Generate(ctx, &r.Runtime.Abstractions, r.Runtime.ActiveSearchHeuristic)
 				if errors.Is(genErr, ErrNoAutotelicGap) {
+					if r.SubstrateEscape != nil && substrateGenerated < substrateLimit {
+						task, taskErr := r.AutotelicGenerator.GenerateSubstrateEscapeTask(ctx, &r.Runtime.Abstractions, r.Runtime.ActiveSearchHeuristic)
+						if taskErr != nil {
+							return results, fmt.Errorf("substrate escape task generation failed: %w", taskErr)
+						}
+						execution, sealed, runErr := r.SubstrateEscape.RunAndSeal(ctx, r.Runtime, task)
+						if runErr != nil {
+							return results, fmt.Errorf("substrate escape failed: %w", runErr)
+						}
+						results = append(results, ReactorTaskResult{
+							TaskID:                  task.ID,
+							Family:                  "t6-substrate-escape",
+							Solved:                  true,
+							EvaluatedCandidates:     execution.WorkerCount,
+							DiscoveredAbstractionID: sealed.ID,
+							AdmissionRef:            sealed.LedgerAdmissionRef,
+							Autotelic:               true,
+						})
+						substrateGenerated++
+						r.logf("T6_AXON task=%s pivoted=%t workers=%d admission=%s", task.ID, execution.PivotedFromFuel, execution.WorkerCount, sealed.LedgerAdmissionRef)
+						return results, nil
+					}
 					return results, nil
 				}
 				if genErr != nil {
