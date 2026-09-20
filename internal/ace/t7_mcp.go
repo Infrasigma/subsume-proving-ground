@@ -109,8 +109,7 @@ func (c BoundedMCPJSONRPCClient) Call(ctx context.Context, target, workerID, met
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return MCPCallObservation{}, fmt.Errorf("MCP target must be an absolute http(s) URL")
 	}
-	if strings.ContainsAny(target, "
-") {
+	if strings.ContainsAny(target, "\r\n") {
 		return MCPCallObservation{}, errors.New("MCP target contains prohibited control characters")
 	}
 	maxBytes := c.MaxResponseBytes
