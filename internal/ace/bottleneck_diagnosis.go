@@ -156,7 +156,15 @@ func DiagnoseFailureTelemetry(t FailureTelemetry) BottleneckDiagnosis {
 // DiagnoseAdaptiveBoundary first consumes the separated diagnosis schema. When
 // that projection is insufficient, it falls back to the legacy acquisition
 // telemetry diagnosis rather than fabricating certainty.
-// DiagnoseBottleneck preserves the historical acquisition-telemetry entry point.\n// New code should prefer DiagnoseAdaptiveBoundary or DiagnoseFailureTelemetry so\n// the evidence domain is explicit, but existing scientific controls must remain\n// source-compatible while the diagnosis schema is being migrated.\nfunc DiagnoseBottleneck(t AcquisitionTelemetry) BottleneckDiagnosis {\n\treturn DiagnoseAcquisitionTelemetry(t)\n}\n\nfunc DiagnoseAdaptiveBoundary(t AcquisitionTelemetry) BottleneckDiagnosis {
+// DiagnoseBottleneck preserves the historical acquisition-telemetry entry point.
+// New code should prefer DiagnoseAdaptiveBoundary or DiagnoseFailureTelemetry so
+// the evidence domain is explicit, but existing scientific controls must remain
+// source-compatible while the diagnosis schema is being migrated.
+func DiagnoseBottleneck(t AcquisitionTelemetry) BottleneckDiagnosis {
+	return DiagnoseAcquisitionTelemetry(t)
+}
+
+func DiagnoseAdaptiveBoundary(t AcquisitionTelemetry) BottleneckDiagnosis {
 	projected := ProjectAcquisitionTelemetry(t)
 	d := DiagnoseFailureTelemetry(projected)
 	if d.Class != BottleneckUnknown {
