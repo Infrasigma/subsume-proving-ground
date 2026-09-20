@@ -337,7 +337,6 @@ func SynthesizeDomainEscape(ctx context.Context, task ReactorTask) (SynthesizedP
 		buildLowerProgram(),
 		buildUpperVowelsProgram(),
 		buildLowerVowelsProgram(),
-		buildRemoveVowelsProgram(),
 	}
 	for _, candidate := range candidates {
 		if err := candidate.Validate(); err != nil {
@@ -387,11 +386,6 @@ func buildUpperVowelsProgram() SynthesizedProgram {
 
 func buildLowerVowelsProgram() SynthesizedProgram {
 	return buildCharMapProgram("lower", "vowels")
-}
-
-func buildRemoveVowelsProgram() SynthesizedProgram {
-	instructions := commonCharLoop("remove-vowels")
-	return mustBuildSynthProgram(instructions)
 }
 
 func buildReverseProgram() SynthesizedProgram {
