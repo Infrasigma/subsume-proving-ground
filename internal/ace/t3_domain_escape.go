@@ -294,7 +294,7 @@ func (p SynthesizedProgram) Execute(ctx context.Context, input string) (string, 
 				nextPC = ins.B
 			}
 		case "emit":
-			output, err = getString(reg[ins.A])
+			output, err := getString(reg[ins.A])
 			if err != nil {
 				return "", err
 			}
