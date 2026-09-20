@@ -137,7 +137,7 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 		}
 
 		cands := AutonomousMethodCandidatesWithLibrary(
-			DiagnoseBottleneck(telemetry),
+			DiagnoseAdaptiveBoundary(telemetry),
 			failedSpec,
 			failedSpec.ResourceLimits,
 			&r.Abstractions,
@@ -177,7 +177,7 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 		}
 		if baselineEval.Verified {
 			method = baselineEval.Candidate
-			diagnosis = DiagnoseBottleneck(telemetry)
+			diagnosis = DiagnoseAdaptiveBoundary(telemetry)
 			evals = []MethodEvaluation{baselineEval}
 			lastErr = nil
 			break
@@ -205,7 +205,7 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 		}
 		enriched := make([]MethodCandidate, 0, len(cands))
 		for _, candidate := range AutonomousMethodCandidatesWithLibrary(
-				DiagnoseBottleneck(telemetry), failedSpec, failedSpec.ResourceLimits, &r.Abstractions) {
+				DiagnoseAdaptiveBoundary(telemetry), failedSpec, failedSpec.ResourceLimits, &r.Abstractions) {
 			if candidateUsesAbstraction(candidate.Artifact, promoted.ID) && procedureDepthAtLeast(candidate.Artifact, 2) {
 				enriched = append(enriched, candidate)
 			}
@@ -231,7 +231,7 @@ func (r *AdaptiveAcquisitionRuntime) ImproveAndAcquireWithContext(ctx context.Co
 			evals = append(evals, result)
 			if result.Verified {
 				method = result.Candidate
-				diagnosis = DiagnoseBottleneck(telemetry)
+				diagnosis = DiagnoseAdaptiveBoundary(telemetry)
 				lastErr = nil
 				if r.Diagnostics != nil {
 					r.Diagnostics.Record("C", method.ID, "acquisition-method", method,
