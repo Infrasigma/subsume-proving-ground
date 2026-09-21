@@ -81,26 +81,21 @@ func g14DisturbedState(w g14World,pos,to int,f g14Fault,step int,goal int)(int,b
 	}
 }
 
-func g14IndependentVerify(w g14World,start,goal int,observed []int) bool {
+func g14IndependentVerify(w g14World,start,goal int,observed []int,maxDisturbances int) bool {
 	if len(observed)==0 || observed[0]!=start || observed[len(observed)-1]!=goal { return false }
-	// Independent verifier checks only the externally visible contract:
-	// the run started at start, finished at goal, and every post-recovery
-	// transition is legal. Disturbances are allowed to violate the nominal path.
-	recoveries:=0
+	adj:=map[[2]int]bool{}
+	for _,e:=range w.Edges {
+		adj[e]=true
+		adj[[2]int{e[1],e[0]}]=true
+	}
+	illegal:=0
 	for i:=1;i<len(observed);i++ {
 		if observed[i]==observed[i-1] { continue }
-		legal:=false
-		for _,n:=range g14Neighbors(w,observed[i-1]) {
-			if n==observed[i] { legal=true; break }
+		if !adj[[2]int{observed[i-1],observed[i]}] {
+			illegal++
 		}
-		if !legal {
-			recoveries++
-		} else if recoveries>0 {
-			recoveries--
-		}
-		if recoveries>1 { return false }
 	}
-	return true
+	return illegal<=maxDisturbances
 }
 
 func g14WorldForSeed(seed int) g14World {
@@ -134,7 +129,7 @@ func g14Run(w g14World,start,goal int,faults []g14Fault,closedLoop bool)([]int,i
 		next:=plan[1]; got:=pos
 		if closedLoop {
 			got=next
-			for _,f:=range faults { var ok2 bool; got,ok2=g14DisturbedState(w,pos,next,f,step,goal); if !ok2 { return observed,totalExp,false,detected,replans }; if f.Step==step { break } }
+			for _,f:=range faults { var ok2 bool; got,ok2=g14DisturbedState(w,pos,next,f,step+1,goal); if !ok2 { return observed,totalExp,false,detected,replans }; if f.Step==step { break } }
 			if got!=next { detected++; replans++ }
 		} else {
 			got=next
@@ -175,8 +170,8 @@ func TestG14ClosedLoopExecutionAndRecovery(t *testing.T) {
 			open,oe,ook,_,_:=g14Run(w,start,goal,[]g14Fault{f},false)
 			report.Trials++
 			if detected>0 { report.FaultDetected++ }
-			if !ook || !g14IndependentVerify(w,start,goal,open) { report.OpenLoopFailures++ }
-			if !cok || !g14IndependentVerify(w,start,goal,closed) { t.Fatalf("seed %d single fault %d recovery failed",seed,ti) }
+			if !ook || !g14IndependentVerify(w,start,goal,open,1) { report.OpenLoopFailures++ }
+			if !cok || !g14IndependentVerify(w,start,goal,closed,1) { t.Fatalf("seed %d single fault %d recovery failed",seed,ti) }
 			if detected<1 || replans<1 { t.Fatalf("seed %d single fault %d was not detected/replanned",seed,ti) }
 			report.ClosedLoopRecovered++; report.IndependentVerified++
 			if ce<=baseExp*8+64 { report.BoundedRecoveryPasses++ }
@@ -192,7 +187,7 @@ func TestG14ClosedLoopExecutionAndRecovery(t *testing.T) {
 			{Step:5+(seed%3),Kind:(seed+2)%4},
 		}
 		multi,me,mok,mdetect,mreplans:=g14Run(w,start,goal,faults,true)
-		if !mok || !g14IndependentVerify(w,start,goal,multi) || mdetect<2 || mreplans<2 {
+		if !mok || !g14IndependentVerify(w,start,goal,multi,len(faults)) || mdetect<2 || mreplans<2 {
 			t.Fatalf("seed %d multi-fault recovery failed: detect=%d replans=%d",seed,mdetect,mreplans)
 		}
 		report.MultiFaultRecovered++
@@ -202,7 +197,7 @@ func TestG14ClosedLoopExecutionAndRecovery(t *testing.T) {
 			fcopy:=append([]g14Fault(nil),faults...); rr:=rand.New(rand.NewSource(int64(15000+seed*10+order)))
 			rr.Shuffle(len(fcopy),func(i,j int){fcopy[i],fcopy[j]=fcopy[j],fcopy[i]})
 			rp,_,rok,rd,_:=g14Run(w,start,goal,fcopy,true)
-			if !rok || rd<2 || !g14IndependentVerify(w,start,goal,rp) { t.Fatalf("seed %d fault-order stress failed",seed) }
+			if !rok || rd<2 || !g14IndependentVerify(w,start,goal,rp,len(fcopy)) { t.Fatalf("seed %d fault-order stress failed",seed) }
 		}
 		report.OrderStressPasses++
 
@@ -211,7 +206,7 @@ func TestG14ClosedLoopExecutionAndRecovery(t *testing.T) {
 		p2,_,ok2:=g14Plan(w2,s2,g2); if !ok2 || len(p2)<5 { t.Fatalf("seed %d topology stress nominal failure",seed) }
 		f2:=[]g14Fault{{Step:2,Kind:(seed+3)%4},{Step:4,Kind:(seed+1)%4}}
 		r2,_,ok2d,d2,_:=g14Run(w2,s2,g2,f2,true)
-		if !ok2d || d2<1 || !g14IndependentVerify(w2,s2,g2,r2) { t.Fatalf("seed %d topology recovery failed",seed) }
+		if !ok2d || d2<1 || !g14IndependentVerify(w2,s2,g2,r2,len(f2)) { t.Fatalf("seed %d topology recovery failed",seed) }
 		report.TopologyStressPasses++
 	}
 	report.MeanRecoveryExpansions=float64(sumRecovery)/(float64(seeds*singleTrials))
