@@ -31,6 +31,8 @@ type V8CognitiveEntity struct {
 	Inquiry          InquiryManager
 	PendingIntervention string
 	Evidence         []V8CapabilityEvidence
+	HermeticArtifact []byte
+	HermeticArtifactHash string
 	Version          uint64
 	Failures         []string
 }
