@@ -2,6 +2,7 @@ package acex
 
 import (
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -39,7 +40,7 @@ func (l ImprovementLedger) Latest() (ImprovementReceipt,bool) {
 }
 
 func MakeImprovementReceipt(parent,newVersion uint64,mechanism string,beforeCost,afterCost int,hidden bool) ImprovementReceipt {
-	id:=Hash([]any{"improvement",parent,newVersion,mechanism,beforeCost,afterCost,hidden})
+	id:=hashString(fmt.Sprintf("improvement|%d|%d|%s|%d|%d|%t",parent,newVersion,mechanism,beforeCost,afterCost,hidden))
 	return ImprovementReceipt{
 		ID:id,
 		ParentVersion:parent,
@@ -49,7 +50,7 @@ func MakeImprovementReceipt(parent,newVersion uint64,mechanism string,beforeCost
 		AfterCost:afterCost,
 		HiddenPassed:hidden,
 		Verifier:"independent-hidden-comparison",
-		RollbackID:Hash([]any{"rollback",parent,mechanism}),
+		RollbackID:hashString(fmt.Sprintf("rollback|%d|%s",parent,mechanism)),
 		CreatedUTC:time.Now().UTC().Format(time.RFC3339Nano),
 	}
 }
