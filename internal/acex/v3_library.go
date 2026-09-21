@@ -499,7 +499,7 @@ func V3LearnGeneration(tasks []V3Task, base V3Library, maxSize, beam int) (V3Lib
 			return base, before, before, results, err
 		}
 		if !v3VerifyHoldout(res.Program, task, base) {
-			return base, before, before, results, fmt.Errorf("visible task %s failed independent holdout", task.ID)
+			return base, before, before, results, fmt.Errorf("visible task %s failed independent holdout program=%s size=%d", task.ID, v3Signature(res.Program), res.Size)
 		}
 		before += res.Cost.Total()
 		programs[task.ID] = cloneV3Expr(res.Program)
