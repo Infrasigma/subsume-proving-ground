@@ -1,0 +1,51 @@
+name: ASI Forge
+
+on:
+  push:
+    branches:
+      - exp/recursive-cognitive-compounding-20260921
+  pull_request:
+    paths:
+      - "cmd/asi-forge/**"
+      - "internal/ace/**"
+      - ".github/workflows/asi_forge.yml"
+
+jobs:
+  forge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: Build forge
+        run: go build ./cmd/asi-forge
+      - name: Run F0-F15 forensic forge
+        id: forge
+        run: |
+          set +e
+          ./asi-forge > asi_forge/ARTIFACT_STDOUT.txt
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          cat asi_forge/ARTIFACT_STDOUT.txt
+          exit 0
+      - name: Upload forge artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asi-forge-run
+          path: |
+            asi_forge/artifacts/ASI_FORGE_RUN.json
+            asi_forge/artifacts/ASI_FORGE_RUN.md
+            asi_forge/ARTIFACT_STDOUT.txt
+      - name: Enforce ASI verdict gate
+        run: |
+          python3 - <<'PY'
+          import json
+          with open("asi_forge/artifacts/ASI_FORGE_RUN.json", "r", encoding="utf-8") as f:
+              r=json.load(f)
+          print("VERDICT:", r["Verdict"])
+          if r["Verdict"] != "ASI":
+              raise SystemExit(2)
+          PY
