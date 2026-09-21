@@ -10,6 +10,14 @@ import (
 	"strings"
 )
 
+type V6TaskResult struct {
+	TaskID    string
+	Verified  bool
+	Cost      Resource
+	Accuracy  float64
+	Mechanism string
+}
+
 type V6EquivalenceClass struct {
 	Key         string
 	Represent   V4Expr
@@ -70,7 +78,7 @@ func v6RewriteOnce(e V4Expr) []V4Expr {
 		args[i] = cloneV4Expr(a)
 	}
 	switch e.Kind {
-	case "add", "mul", "max", "min", "and", "or":
+	case "max", "min":
 		if len(args) == 2 {
 			cp := cloneV4Expr(e)
 			cp.Args[0], cp.Args[1] = cp.Args[1], cp.Args[0]
