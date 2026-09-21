@@ -267,7 +267,7 @@ jobs:
 
 
   ace-x-v9-open-representation:
-    if: github.event.pull_request.head.ref == 'ace-x-v9-open-representation-20260921' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    if: (github.event.pull_request.head.ref == 'ace-x-v9-open-representation-20260921' || github.event.pull_request.head.ref == 'ace-x-v9-integrated2-open-representation-20260921') && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
