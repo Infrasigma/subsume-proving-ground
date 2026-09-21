@@ -84,5 +84,6 @@ func TestV2ArchitectureTerminal(t *testing.T) {
 	TestV2PredictiveModelRevisionAndPlanning(t)
 	TestV2RelationalInvariantTransfer(t)
 	TestV2IntegratedCognitiveRuntime(t)
+	TestV2SynthesizesNewSearchLanguage(t)
 	t.Log("ACEX V2 COGNITIVE SUBSTRATE: PASS")
 }
