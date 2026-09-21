@@ -289,7 +289,7 @@ def run_block(seed: int) -> dict:
     # Deletion must materially erase the learned advantage; rehydration restores it.
     d_support = dataset_for_pattern(learned[2].atoms, seed + 10000, 60)
     d_audit = dataset_for_pattern(learned[2].atoms, seed + 11000, 120)
-    _, _, k0_del = fresh_learn(d_support, d_audit)
+    _, k0_del = fresh_learn(d_support, d_audit)
     _, acc_before, k_before = lib.query(d_support, d_audit)
     advantage_before = max(0.0, 1.0 - cost_ratio(k_before + 20 * len(lib.concepts), k0_del))
     serialized = lib.dumps()
