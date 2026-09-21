@@ -252,7 +252,7 @@ func g9Oracle(base []g9Assumption, evidence g9Assumption, rules []g9Rule) g9HitR
 		cost := 0
 		kept := make([]g9Assumption,0,len(all))
 		for i,a := range all {
-			if i < len(base) && mask&(1<<i) != 0 { cost += a.Cost; continue }
+			if i < len(base) && !a.Hard && mask&(1<<i) != 0 { cost += a.Cost; continue }
 			kept=append(kept,a)
 		}
 		if !g9Consistent(kept,rules) { continue }
@@ -372,7 +372,13 @@ func TestG9AssumptionBasedBeliefRevision(t *testing.T) {
 		for update:=0;update<4;update++ {
 			evidenceLiteral,ok:=g9FindContradictoryEvidence(active,rules)
 			if !ok {
-				evidenceLiteral=[]string{"p","!p","q","!q"}[(seed+update)%4]
+				fallbacks:=[]string{"p","!p","q","!q","r","!r","s","!s"}
+			foundFallback:=false
+			for _,lit:=range fallbacks {
+				ev:=g9Assumption{ID:"probe",Literal:lit,Cost:0,Hard:true}
+				if g9Oracle(active,ev,rules).OK { evidenceLiteral=lit; foundFallback=true; break }
+			}
+			if !foundFallback { t.Fatalf("seed %d update %d has no feasible evidence candidate",seed,update) }
 			}
 			evidence:=g9Assumption{ID:"e"+string(rune('0'+update)),Literal:evidenceLiteral,Cost:0,Hard:true}
 			oracle:=g9Oracle(active,evidence,rules)
