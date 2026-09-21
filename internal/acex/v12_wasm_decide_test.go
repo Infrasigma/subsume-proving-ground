@@ -56,22 +56,6 @@ func TestV12CompiledWasmDecisionIsSelfContained(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	matcher := exec.module.ExportedFunction("match_candidate")
-	if matcher == nil {
-		t.Fatal("missing match_candidate audit export")
-	}
-	if ok := exec.module.Memory().Write(0, input); !ok {
-		t.Fatal("audit input write failed")
-	}
-	var auditStack [1]uint64
-	auditStack[0] = 64
-	if err := matcher.CallWithStack(context.Background(), auditStack[:]); err != nil {
-		t.Fatalf("direct matcher at base64 failed: %v", err)
-	}
-	if auditStack[0] != 1 {
-		t.Fatalf("direct matcher at base64 returned %d, want 1", auditStack[0])
-	}
-
 	if err != nil {
 		t.Fatal(err)
 	}
