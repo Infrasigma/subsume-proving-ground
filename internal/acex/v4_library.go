@@ -687,7 +687,9 @@ func v4DiscoverConcept(tasks []V4Task, solved []V4Expr, base V4Library) (V4Conce
 	}
 	savings := before - after
 	if savings <= 0 {
-		return V4Concept{}, fmt.Errorf("concept compression nonpositive before=%d after=%d", before, after)
+		witnesses := make([]string, len(solved))
+		for i, p := range solved { witnesses[i] = v4Signature(p) }
+		return V4Concept{}, fmt.Errorf("concept compression nonpositive before=%d after=%d template=%s witnesses=%s", before, after, v4Signature(template), strings.Join(witnesses, " || "))
 	}
 	return V4Concept{
 		Name: fmt.Sprintf("v4concept-%d", len(base.Concepts)+1),
