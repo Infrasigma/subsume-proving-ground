@@ -535,7 +535,7 @@ func V3LearnTwoGenerations(first, second []V3Task, seedLib V3Library, maxSize, b
 		return V3LearnResult{Library: seedLib, BeforeCost: b1, AfterCost: a1}, err
 	}
 	l1m := l1.Macros[fmt.Sprintf("v3skill-%d", len(seedLib.Macros)+1)]
-	l2, b2, a2, secondResults, err := V3LearnGeneration(second, l1, maxSize, beam)
+	l2, b2, a2, _, err := V3LearnGeneration(second, l1, maxSize, beam)
 	if err != nil {
 		return V3LearnResult{Library: l1, BeforeCost: b1 + b2, AfterCost: a1 + a2, Added: []V3Macro{l1m}}, err
 	}
