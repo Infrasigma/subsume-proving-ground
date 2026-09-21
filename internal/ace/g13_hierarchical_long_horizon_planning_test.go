@@ -82,7 +82,7 @@ func g13Goal(t g13Task, s g13State) bool {
 
 func g13BFS(t g13Task) ([]int,int,bool) {
 	type node struct{ s g13State; path []int }
-	q:=[]node{{t.Start,[]int{t.Start}}}
+	q:=[]node{{t.Start,[]int{t.Start.Pos}}}
 	seen:=map[g13State]bool{t.Start:true}
 	exp:=0
 	for len(q)>0 {
