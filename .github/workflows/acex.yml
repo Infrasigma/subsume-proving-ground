@@ -1,0 +1,37 @@
+name: ACE-X genuine integrated gate
+
+on:
+  push:
+    branches:
+      - ace-x-live-20260921
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  ace-x:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: Resolve module checksums
+        run: go mod download
+      - name: Run pure-substrate integrated battery
+        env:
+          ACEX_SEEDS: "610117,830921"
+        run: |
+          set -euo pipefail
+          go test -mod=mod -run '^TestACEXIntegratedTerminal$' ./internal/acex -count=1 -timeout=12m -v | tee acex-result.txt
+      - name: Publish forensic result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acex-integrated-result
+          path: acex-result.txt
