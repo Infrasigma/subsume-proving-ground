@@ -99,6 +99,12 @@ func (a *agent) handle(in request) response {
 		a.lastAction = ""
 		a.lastState = acex.RelationalState{}
 		return response{OK:true,Memory:0,Version:0}
+	case "forget_raw":
+		a.entity.ForgetRawExperiences()
+		a.havePrevious = false
+		a.lastAction = ""
+		a.lastState = acex.RelationalState{}
+		return response{OK:true,Memory:len(a.entity.Memory.Items),Version:a.entity.Version}
 	case "status":
 		return response{OK:true,Memory:len(a.entity.Memory.Items),Version:a.entity.Version}
 	default:
