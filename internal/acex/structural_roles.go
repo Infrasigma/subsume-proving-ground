@@ -111,7 +111,10 @@ func (l *V8StructuralRoleLearner) Select(g RelationalState, actions []string) (s
 		}
 		succ := l.Success[key]
 		fail := l.Failure[key]
-		if succ == 0 || succ <= fail {
+		// A representation that has ever mapped both positive and
+		// negative outcomes is not safe for transfer. Fail closed rather
+		// than majority-voting over a conflicted abstraction.
+		if succ == 0 || fail > 0 {
 			continue
 		}
 		score := float64(succ) / float64(succ+fail)
