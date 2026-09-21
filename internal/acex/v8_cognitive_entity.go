@@ -1,6 +1,7 @@
 package acex
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -436,16 +437,26 @@ func (e *V8CognitiveEntity) verifyHermeticCapability() error {
 	if err != nil {
 		return err
 	}
-	payload, _, err := V12PatternPayload(capability.Pattern, ir)
+	_, _, err = V12PatternPayload(capability.Pattern, ir)
 	if err != nil {
 		return err
 	}
-	ok, err := ExecuteV12Wasm(e.HermeticArtifact, V12PatternSignature(payload))
+	executor, err := NewV12WasmDecisionExecutor(context.Background(), e.HermeticArtifact)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		return errors.New("hermetic wasm self-check rejected retained pattern")
+	defer executor.Close(context.Background())
+	input := make([]byte, V12DecisionCandidateStride)
+	candidate := v12PatternCandidateMatrix(capability.Pattern)
+	if _, err := EncodeV12DecisionInput([]V12CandidateMatrix{candidate}, input); err != nil {
+		return err
+	}
+	got, err := executor.Decide(input, 1)
+	if err != nil {
+		return err
+	}
+	if got != 0 {
+		return fmt.Errorf("hermetic wasm self-check returned %d", got)
 	}
 	return nil
 }
