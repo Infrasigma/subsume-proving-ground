@@ -227,10 +227,10 @@ func TestG4AutonomousMemorySelection(t *testing.T) {
 
 	for seed := 1; seed <= seeds; seed++ {
 		r := rand.New(rand.NewSource(int64(700000 + seed)))
-		observed := make([]g4Task,0,72)
-		for i := 0; i < 72; i++ { observed = append(observed, g4Draw(r, i%6)) }
-		future := make([]g4Task,0,144)
-		for i := 0; i < 144; i++ { future = append(future, g4Draw(r, (i+seed)%6)) }
+		observed := make([]g4Task,0,240)
+		for i := 0; i < 240; i++ { observed = append(observed, g4Draw(r, i%6)) }
+		future := make([]g4Task,0,480)
+		for i := 0; i < 480; i++ { future = append(future, g4Draw(r, (i+seed)%6)) }
 
 		futureSnapshot := append([]g4Task(nil), future...)
 		sel := g4Select(pool, observed, budget)
