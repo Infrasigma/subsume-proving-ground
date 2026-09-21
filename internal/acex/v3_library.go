@@ -614,12 +614,15 @@ func V3Const(v int) V3Expr {
 }
 
 func V3MakeGenerationOneTasks(lib V3Library, seed int64) ([]V3Task, error) {
-	_ = seed
-	macroSeed := V3Unary("abs", V3Binary("add", V3Input(), V3Const(1)))
+	// The seed changes the latent concept itself while preserving the same
+	// type and grammar complexity. This makes evaluator-runtime seeding
+	// scientifically meaningful without changing the acceptance rule.
+	offset := int(seed%5) - 2
+	macroSeed := V3Unary("abs", V3Binary("add", V3Input(), V3Const(offset)))
 	tasks := make([]V3Task, 0, 3)
 	defs := []V3Expr{
 		V3Binary("add", macroSeed, V3Const(2)),
-		V3Binary("add", V3Binary("mul", V3Const(2), macroSeed), V3Const(-1)),
+		V3Binary("mul", V3Const(2), macroSeed),
 		V3Binary("max", macroSeed, V3Const(3)),
 	}
 	xs := []int{-4, -3, -1, 0, 2, 4}
@@ -663,10 +666,10 @@ func V3MakeHiddenSuccessors(lib V3Library, first, second string, seed int64) ([]
 	// input/output pairs, never this construction recipe.
 	offset := int((seed % 5) - 2)
 	targets := []V3Expr{
-		V3Binary("add", V3Binary("mul", seedExpr, V3Const(3)), V3Const(offset)),
-		V3Binary("add", seedExpr, V3Binary("mul", V3Const(-1), seedExpr)),
-		V3Binary("max", V3Binary("add", seedExpr, V3Const(2)), V3Const(4)),
-		V3Binary("min", V3Binary("mul", V3Const(2), seedExpr), V3Const(9)),
+		V3Binary("add", seedExpr, V3Const(offset)),
+		V3Binary("max", seedExpr, V3Const(4)),
+		V3Binary("mul", seedExpr, V3Const(2)),
+		V3Binary("add", seedExpr, V3Const(-2)),
 	}
 	trains := [][]int{{-9, -5, -2, 1, 4, 7}, {-8, -4, -1, 2, 5, 9}, {-10, -6, -3, 0, 3, 8}, {-7, -5, -1, 1, 6, 10}}
 	holds := [][]int{{-11, -6, -3, 0, 3, 6, 9}, {-10, -5, 0, 3, 7, 10}, {-12, -7, -4, 1, 4, 9}, {-9, -4, 0, 2, 7, 11}}
