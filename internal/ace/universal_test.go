@@ -1,6 +1,9 @@
 package ace
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestUniversalContractsAndSynthesis(t *testing.T) {
 	task := Task{ID:"add-one",Goal:"y=x+1",Budget:ResourceVector{Search:500,Verify:500}}
