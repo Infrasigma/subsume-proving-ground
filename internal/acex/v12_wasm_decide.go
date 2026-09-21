@@ -111,7 +111,13 @@ func v12EmitSearchLevel(pattern V11DirectedPatternArtifact, depth int) []byte {
 			out = append(out, v12LocalGet(localIndex)...)
 			out = append(out, v12LocalGet(uint32(prev+1))...)
 			out = append(out, 0x46) // eq
-			out = append(out, 0x04, 0x40, 0x0c, 0x01, 0x0b) // if equal -> next mapping
+			// Duplicate mapping: advance this loop cursor before continuing.
+			out = append(out, 0x04, 0x40) // if
+			out = append(out, v12LocalGet(localIndex)...)
+			out = append(out, 0x41, 0x01, 0x6a)
+			out = append(out, v12LocalSet(localIndex)...)
+			out = append(out, 0x0c, 0x01) // br current loop
+			out = append(out, 0x0b)       // end if
 		}
 	}
 
