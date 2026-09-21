@@ -24,3 +24,24 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: go test -v -mod=mod ./...
       - run: go vet -mod=mod ./...
+
+  h4-kill-test:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'h4-concept-live-20260921'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+      - name: Run frozen H4 evaluator
+        env:
+          H4_SEED_A: "431171"
+          H4_SEED_B: "928437"
+          PYTHONHASHSEED: "0"
+        run: |
+          python3 h4_forge/h4_evaluator.py | tee h4-result.txt
+      - name: Publish H4 forensic result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h4-result
+          path: h4-result.txt
