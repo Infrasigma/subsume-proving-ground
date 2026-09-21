@@ -52,6 +52,10 @@ func TestV8UnifiedCognitiveEntity(t *testing.T) {
 			{Input:map[string]string{"x":"4"},Expected:map[string]string{"y":"5"}},
 			{Input:map[string]string{"x":"-2"},Expected:map[string]string{"y":"-1"}},
 		},
+		[]ProgramTestCase{
+			{Input:map[string]string{"x":"7"},Expected:map[string]string{"y":"8"}},
+			{Input:map[string]string{"x":"-5"},Expected:map[string]string{"y":"-4"}},
+		},
 	)
 	if err != nil || proposal.Artifact == "" || !entity.HasEvidence("tool-invention") {
 		t.Fatalf("symbolic tool invention failed: err=%v proposal=%+v caps=%v",err,proposal,entity.VerifiedCapabilities())
@@ -110,5 +114,19 @@ func TestV8SurpriseMemoryAffectsRetrieval(t *testing.T) {
 	}
 	if !entity.HasEvidence("persistent-surprise-memory") {
 		t.Fatal("memory evidence missing")
+	}
+}
+
+func TestV8FailureMemoryBlocksRepeatedBadAction(t *testing.T) {
+	entity := NewV8CognitiveEntity()
+	s0 := v7State("memory",0)
+	_ = entity.Remember(V5MemoryTrace{
+		ID:"bad-action", Context:[]string{V7StateKey(s0),"BAD"},
+		PredictionErr:.95, Utility:-1, Failure:true, Verified:true,
+	})
+	action, err := entity.ObserveAndAct(s0,[]string{"BAD","GOOD"})
+	if err != nil { t.Fatal(err) }
+	if action == "BAD" {
+		t.Fatalf("failure memory did not alter action selection: %q", action)
 	}
 }
