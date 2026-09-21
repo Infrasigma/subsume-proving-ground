@@ -2,6 +2,7 @@ package acex
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"testing"
@@ -51,21 +52,27 @@ func TestV12WasmCapabilityRoundTripAndTamperDetection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, _, err := V12PatternPayload(loaded.Pattern, ir2)
+	_, _, err = V12PatternPayload(loaded.Pattern, ir2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sig := V12PatternSignature(payload)
-	ok, err := ExecuteV12Wasm(cap.Module, sig)
-	if err != nil || !ok {
-		t.Fatalf("expected retained capability to execute: ok=%v err=%v", ok, err)
-	}
-	ok, err = ExecuteV12Wasm(cap.Module, sig+1)
+	executor, err := NewV12WasmDecisionExecutor(context.Background(), cap.Module)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ok {
-		t.Fatal("artifact accepted a non-matching signature")
+	defer executor.Close(context.Background())
+	candidate := v12PatternCandidateMatrix(loaded.Pattern)
+	buf := make([]byte, V12DecisionCandidateStride)
+	input, err := EncodeV12DecisionInput([]V12CandidateMatrix{candidate}, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := executor.Decide(input, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 0 {
+		t.Fatalf("artifact decide rejected learned pattern: %d", got)
 	}
 
 	text := string(cap.Module)
