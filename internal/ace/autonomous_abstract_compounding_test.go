@@ -297,7 +297,7 @@ func TestAutonomousAbstractCompounding(t *testing.T) {
     start := time.Now()
     heap0, inuse0, syss0 := abstractCompoundMemory()
     seeds := []int{2, 7, 19, 31, 47, 61, 73, 89, 101, 127, 149, 167}
-    capA := AcquisitionProcedure{Version: 1, Steps: []ProcedureStep{{Op:"sort-cost"}, {Op:"take", Arg:1}}}
+    capA := AcquisitionProcedure{Version: 1, Steps: []ProcedureStep{{Op:"sort-cost"}, {Op:"rotate", Arg:1}}}
     capB := AcquisitionProcedure{Version: 1, Steps: []ProcedureStep{{Op:"reverse"}, {Op:"dedupe"}}}
     rawRoot := t.TempDir()
     rawExamplesBytes := int64(0)
