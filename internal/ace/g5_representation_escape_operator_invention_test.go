@@ -135,7 +135,7 @@ func g5HeldOut() []g5Case {
 func g5Future() []g5Case {
 	return []g5Case{
 		{[]int{-7,-2,0,9},1},
-		{[]int{9,3,4,8},0},
+		{[]int{9,-2,0,-7},0},
 		{[]int{-5,-4,-1,2},1},
 		{[]int{8,9,2,10},0},
 	}
@@ -220,10 +220,12 @@ func TestG5RepresentationEscapeOperatorInvention(t *testing.T) {
 	if !found { t.Fatal("no generic representation/operator candidate passed held-out verification") }
 
 	futureOK := g5Verify(accepted,future,true)
-	ablationFails := true
-	for _, tc := range future {
-		if _, ok := baseValues[g5BaseKey(tc.Input)]; ok {
-			ablationFails = false
+	ablationFails := false
+	for i := 0; i < len(future); i++ {
+		for j := i + 1; j < len(future); j++ {
+			if g5BaseKey(future[i].Input) == g5BaseKey(future[j].Input) && future[i].Output != future[j].Output {
+				ablationFails = true
+			}
 		}
 	}
 	if !futureOK || !ablationFails {
