@@ -132,3 +132,4 @@ func main() {
 // Negative-control recording revision; structural-role gate remains unchanged.
 // Adaptive representation-expansion gate added to evaluator.
 // Targeted V8 adaptive-entity diagnostic workflow enabled.
+// Multi-episode representation-transfer evaluator revision enabled.
