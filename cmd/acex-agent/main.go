@@ -18,6 +18,10 @@ type request struct {
 	Counterexamples []ace.ProgramTestCase    `json:"counterexamples"`
 	State           acex.RelationalState     `json:"state"`
 	Actions         []string                 `json:"actions"`
+	Action          string                   `json:"action"`
+	NextState       acex.RelationalState     `json:"next_state"`
+	Reward          float64                  `json:"reward"`
+	Terminal        bool                     `json:"terminal"`
 }
 
 type response struct {
@@ -30,7 +34,10 @@ type response struct {
 }
 
 type agent struct {
-	entity *acex.V8CognitiveEntity
+	entity       *acex.V8CognitiveEntity
+	lastState    acex.RelationalState
+	lastAction   string
+	havePrevious bool
 }
 
 func newAgent() *agent {
@@ -75,9 +82,22 @@ func (a *agent) handle(in request) response {
 		if err != nil {
 			return response{Error:err.Error()}
 		}
+		a.lastState = in.State
+		a.lastAction = action
+		a.havePrevious = true
 		return response{OK:true,Action:action,Memory:len(a.entity.Memory.Items),Version:a.entity.Version}
+	case "observe":
+		if !a.havePrevious {
+			return response{Error:"observe requires a preceding act"}
+		}
+		a.entity.ObserveOutcome(a.lastState, a.lastAction, in.NextState, in.Reward, in.Terminal)
+		a.havePrevious = false
+		return response{OK:true,Memory:len(a.entity.Memory.Items),Version:a.entity.Version}
 	case "reset":
 		a.entity = acex.NewV8CognitiveEntity()
+		a.havePrevious = false
+		a.lastAction = ""
+		a.lastState = acex.RelationalState{}
 		return response{OK:true,Memory:0,Version:0}
 	case "status":
 		return response{OK:true,Memory:len(a.entity.Memory.Items),Version:a.entity.Version}
