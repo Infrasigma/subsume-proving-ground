@@ -184,6 +184,31 @@ func (e *V8CognitiveEntity) SolveStatic(task V4Task, maxSize, beam int) (V4Searc
 	return V6SolveWithStrategy(e.ActiveStrategy, task, maxSize, beam)
 }
 
+func (e *V8CognitiveEntity) InventTool(task Task, examples []ProgramTestCase) (ModificationProposal, error) {
+	if e == nil {
+		return ModificationProposal{}, errors.New("nil V8 entity")
+	}
+	spec, err := GeneralCapabilitySpecification(task, examples)
+	if err != nil {
+		return ModificationProposal{}, err
+	}
+	candidates, err := (UniversalMechanismSearch{}).SearchMechanisms(spec, task.Budget)
+	if err != nil || len(candidates) == 0 {
+		return ModificationProposal{}, errors.New("no executable symbolic synthesis mechanism")
+	}
+	for _, candidate := range candidates {
+		proposal, buildErr := (UniversalProgramBuilder{}).Build(candidate, spec)
+		if buildErr != nil {
+			continue
+		}
+		e.attest("tool-invention", proposal.ID,
+			"symbolically synthesized executable capability from behavioral evidence", true)
+		return proposal, nil
+	}
+	e.Failures = append(e.Failures, "tool-invention:search-exhausted")
+	return ModificationProposal{}, errors.New("tool synthesis exhausted all mechanisms")
+}
+
 func (e *V8CognitiveEntity) RollbackMechanism() error {
 	if e == nil {
 		return errors.New("nil V8 entity")
