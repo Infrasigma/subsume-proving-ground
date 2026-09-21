@@ -93,8 +93,8 @@ jobs:
           src=start()
           try:
               learn(src,6)
-          diagnostic = rpc(src,{"op":"status"})
-          print("LEARN_STATUS " + json.dumps({
+              diagnostic = rpc(src,{"op":"status"})
+              print("LEARN_STATUS " + json.dumps({
               "memory": diagnostic.get("memory"),
               "version": diagnostic.get("version"),
               "search_expansions": diagnostic.get("search_expansions"),
