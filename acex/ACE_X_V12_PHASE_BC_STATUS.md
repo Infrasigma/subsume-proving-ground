@@ -18,3 +18,5 @@ TRUE_ASI_STATUS = NOT_ESTABLISHED
 No V12 scientific claim is promoted yet.
 
 - Protected evaluator diagnostic revision: expose bounded V11 synthesis state before raw-memory destruction.
+
+- V11 causal defect fixed: synthesis candidates are provisionally valid during discrimination evaluation.
