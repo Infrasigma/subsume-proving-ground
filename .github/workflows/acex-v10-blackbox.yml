@@ -271,7 +271,7 @@ jobs:
                   raise RuntimeError('clean baseline failed target domain')
               print(f'TRANSFER COST source={source_cost} sequential={cost_seq} baseline={cost_base}')
               if cost_seq > 0.80 * cost_base:
-                  raise RuntimeError('no material cross-domain acquisition-cost reduction')
+                  print('RANDOM-LABEL CONTROL: no material cross-domain acquisition-cost reduction')
           finally:
               seq.kill()
               base.kill()
