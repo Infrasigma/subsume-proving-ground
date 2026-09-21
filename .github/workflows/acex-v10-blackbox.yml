@@ -1,0 +1,192 @@
+name: ACE-X V10 independent black-box gate
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ace-x-v10-blackbox:
+    if: github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground' && (github.event.pull_request.head.ref == 'ace-x-v10-blackbox-autonomy-20260921' || github.event.pull_request.head.ref == 'ace-x-v10-v8-blackbox-20260921')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact V10 candidate head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - run: go mod download
+      - name: Install Bubblewrap
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Build isolated candidate
+        run: CGO_ENABLED=0 go build -o /tmp/acex-agent ./cmd/acex-agent
+      - name: Run evaluator-owned black-box experiment
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+
+          def start_agent():
+              return subprocess.Popen(
+                  [
+                      'bwrap',
+                      '--ro-bind', '/tmp/acex-agent', '/acex-agent',
+                      '--proc', '/proc',
+                      '--dev', '/dev',
+                      '--tmpfs', '/tmp',
+                      '--unshare-net',
+                      '--unshare-pid',
+                      '--unshare-ipc',
+                      '--unshare-uts',
+                      '--die-with-parent',
+                      '/acex-agent',
+                  ],
+                  stdin=subprocess.PIPE,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+                  text=True,
+                  bufsize=1,
+              )
+
+          def rpc(p, payload):
+              p.stdin.write(json.dumps(payload) + '\n')
+              p.stdin.flush()
+              line = p.stdout.readline()
+              if not line:
+                  raise RuntimeError('candidate terminated: ' + p.stderr.read())
+              out = json.loads(line)
+              if not out.get('ok') and not out.get('artifact') and not out.get('action'):
+                  raise RuntimeError(out.get('error', 'candidate error'))
+              return out
+
+          def eval_expr(e, env):
+              k = e.get('kind')
+              if k == 'const':
+                  return int(e['value'])
+              if k == 'var':
+                  return int(env[e['value']])
+              if k in ('add', 'sub', 'mul'):
+                  a = eval_expr(e['left'], env)
+                  b = eval_expr(e['right'], env)
+                  return a + b if k == 'add' else (a - b if k == 'sub' else a * b)
+              if k in ('lt', 'eq', 'and', 'or'):
+                  a = eval_expr(e['left'], env)
+                  b = eval_expr(e['right'], env)
+                  if k == 'lt': return int(a < b)
+                  if k == 'eq': return int(a == b)
+                  if k == 'and': return int(a != 0 and b != 0)
+                  return int(a != 0 or b != 0)
+              if k == 'not':
+                  return int(eval_expr(e['left'], env) == 0)
+              raise RuntimeError('unsupported expr kind ' + str(k))
+
+          def run_program(blob, inp):
+              program = json.loads(blob)
+              env = dict(inp)
+              steps = 0
+              def exec_stmts(stmts):
+                  nonlocal steps
+                  for s in stmts:
+                      steps += 1
+                      if steps > 200:
+                          raise RuntimeError('step limit')
+                      k = s.get('kind')
+                      if k == 'assign':
+                          env[s['target']] = str(eval_expr(s['expr'], env))
+                      elif k == 'if':
+                          branch = s.get('then', []) if eval_expr(s['cond'], env) != 0 else s.get('else', [])
+                          exec_stmts(branch)
+                      elif k == 'repeat':
+                          for _ in range(int(s.get('count', 0))):
+                              exec_stmts(s.get('body', []))
+                      else:
+                          raise RuntimeError('unsupported stmt ' + str(k))
+              exec_stmts(program.get('statements', []))
+              return env
+
+          def run_hidden_interaction(p, variant):
+              def state(stage, rename):
+                  ids = ['opaque-world-' + rename]
+                  return {
+                      'nodes': [{'ID': ids[0], 'Kind': 'world', 'Attrs': {'phase': str(stage)}}],
+                      'edges': [],
+                  }
+
+              names = [
+                  ('A','B','C'),
+                  ('K','Q','R'),
+              ]
+              good = names[variant]
+              stage = 0
+              terminal = False
+              for _ in range(15):
+                  actions = [good[0], good[1]] if stage == 0 else ([good[1], good[2]] if stage == 1 else [good[2], good[0]])
+                  r = rpc(p, {'op': 'act', 'state': state(stage, 'x' + str(variant)), 'actions': actions})
+                  action = r['action']
+                  if stage == 0:
+                      if action == good[0]: stage, reward = 1, 0
+                      else: stage, reward = 0, -1
+                  elif stage == 1:
+                      if action == good[1]: stage, reward = 2, 0
+                      else: stage, reward = 1, -1
+                  else:
+                      if action == good[2]: stage, reward, terminal = 3, 1, True
+                      else: stage, reward = 2, -1
+                  rpc(p, {'op': 'observe', 'next_state': state(stage, 'x' + str(variant)), 'reward': reward, 'terminal': terminal})
+                  if terminal:
+                      break
+              return terminal
+
+          p = start_agent()
+          try:
+              train = [
+                  {'input': {'x': '1'}, 'expected': {'y': '1'}},
+                  {'input': {'x': '2'}, 'expected': {'y': '4'}},
+              ]
+              hidden = [
+                  {'input': {'x': '3'}, 'expected': {'y': '9'}},
+                  {'input': {'x': '-2'}, 'expected': {'y': '4'}},
+                  {'input': {'x': '5'}, 'expected': {'y': '25'}},
+                  {'input': {'x': '7'}, 'expected': {'y': '49'}},
+              ]
+
+              counter = []
+              solved = False
+              for _ in range(6):
+                  r = rpc(p, {
+                      'op': 'synthesize',
+                      'task': {'id': 'hidden-square', 'goal': '', 'budget': {'Search': 3000, 'Verify': 3000}},
+                      'training': train,
+                      'counterexamples': counter,
+                  })
+                  artifact = r['artifact']
+                  for case in train:
+                      if run_program(artifact, case['input']).get('y') != case['expected']['y']:
+                          raise RuntimeError('candidate failed visible evidence')
+                  bad = next((case for case in hidden if run_program(artifact, case['input']).get('y') != case['expected']['y']), None)
+                  if bad is None:
+                      solved = True
+                      break
+                  counter.append(bad)
+              if not solved:
+                  raise RuntimeError('candidate failed evaluator-owned hidden synthesis')
+
+              # Require persistence after raw interaction episodes are no longer replayed.
+              if not run_hidden_interaction(p, 0):
+                  raise RuntimeError('candidate failed first hidden interactive environment')
+              if not run_hidden_interaction(p, 1):
+                  raise RuntimeError('candidate failed renamed hidden interactive environment')
+
+              print('BLACKBOX V10 PASS: independent synthesis + interaction + surface-renamed transfer')
+          finally:
+              p.kill()
+          PY
