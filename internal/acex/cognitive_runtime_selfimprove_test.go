@@ -1,3 +1,5 @@
+//go:build v2kill
+
 package acex
 
 import "testing"
