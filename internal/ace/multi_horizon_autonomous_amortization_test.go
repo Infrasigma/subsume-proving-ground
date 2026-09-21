@@ -448,8 +448,8 @@ func TestMultiHorizonAutonomousAmortization(t *testing.T) {
 			}
 			verified, calls := verifyAbstractCompoundProcedure(learned, train, holdout)
 			if !verified {
-				trainFP := abstractCompoundStreamFingerprint(train)
-				holdoutFP := abstractCompoundStreamFingerprint(holdout)
+				trainFP := amortizationProcedureFingerprint(p, amortizationTask{Train: train})
+				holdoutFP := amortizationProcedureFingerprint(p, amortizationTask{Train: holdout})
 				t.Fatalf("seed %d: acquired capability failed held-out verification method=%s target=%s learned=%s train_fp=%s holdout_fp=%s verifier_calls=%d", seed, method.Name, procedureSignature(p), procedureSignature(learned), trainFP, holdoutFP, calls)
 			}
 			rawBytes, err := json.Marshal(struct {
