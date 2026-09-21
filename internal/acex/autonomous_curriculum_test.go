@@ -10,7 +10,7 @@ func TestV2AutonomousCurriculum(t *testing.T) {
 		{KnownSuccesses:9,KnownFailures:2,SearchGaps:3},
 	}
 	for i,st:=range states {
-		ch,err:=c.Generate(st,6,float64(100+i))
+		ch,err:=c.Generate(st,6,int64(100+i))
 		if err!=nil { t.Fatal(err) }
 		if ch.Parent!="measured-capability-frontier" || len(ch.Transforms)!=1 || ch.Difficulty<=1 {
 			t.Fatalf("invalid endogenous challenge: %+v",ch)
