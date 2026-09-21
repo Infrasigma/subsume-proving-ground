@@ -122,6 +122,25 @@ func V5ChooseIntervention(h []V5Hypothesis) (V5InterventionResult, error) {
 	if len(h) < 2 {
 		return V5InterventionResult{}, errors.New("need at least two competing hypotheses")
 	}
+	totalPrior := 0.0
+	for _, x := range h {
+		if x.Prior > 0 {
+			totalPrior += x.Prior
+		}
+	}
+	if totalPrior <= 0 {
+		totalPrior = float64(len(h))
+	}
+	baseH := 0.0
+	priors := make([]float64, len(h))
+	for i, x := range h {
+		p := x.Prior
+		if p <= 0 {
+			p = 1
+		}
+		priors[i] = p / totalPrior
+		baseH -= priors[i] * math.Log2(priors[i])
+	}
 	actions := map[string]bool{}
 	for _, x := range h {
 		for action := range x.Outcome {
@@ -130,31 +149,43 @@ func V5ChooseIntervention(h []V5Hypothesis) (V5InterventionResult, error) {
 	}
 	best := V5InterventionResult{}
 	for action := range actions {
-		outcomes := map[string]int{}
-		for _, x := range h {
-			outcomes[x.Outcome[action]]++
+		mass := map[string]float64{}
+		for i, x := range h {
+			if outcome, ok := x.Outcome[action]; ok {
+				mass[outcome] += priors[i]
+			}
 		}
-		if len(outcomes) < 2 {
+		if len(mass) < 2 {
 			continue
 		}
-		total := 0
-		for _, n := range outcomes {
-			total += n
+		expectedH := 0.0
+		for outcome, pOutcome := range mass {
+			if pOutcome <= 0 {
+				continue
+			}
+			postH := 0.0
+			for i, x := range h {
+				if x.Outcome[action] != outcome {
+					continue
+				}
+				p := priors[i] / pOutcome
+				if p > 0 {
+					postH -= p * math.Log2(p)
+				}
+			}
+			_ = outcome
+			expectedH += pOutcome * postH
 		}
-		expected := 0.0
-		for _, n := range outcomes {
-			p := float64(n) / float64(total)
-			expected += p * math.Log2(math.Max(float64(len(outcomes)), 1))
-		}
-		disagreement := float64(len(outcomes))
+		gain := baseH - expectedH
+		disagreement := float64(len(mass))
 		if disagreement > best.Disagreement ||
-			(disagreement == best.Disagreement && expected > best.ExpectedGain) ||
-			(disagreement == best.Disagreement && expected == best.ExpectedGain && action < best.Action) {
-			best = V5InterventionResult{Action: action, Disagreement: disagreement, ExpectedGain: expected}
+			(disagreement == best.Disagreement && gain > best.ExpectedGain) ||
+			(disagreement == best.Disagreement && gain == best.ExpectedGain && action < best.Action) {
+			best = V5InterventionResult{Action: action, Disagreement: disagreement, ExpectedGain: gain}
 		}
 	}
-	if best.Action == "" {
-		return V5InterventionResult{}, errors.New("no discriminating intervention")
+	if best.Action == "" || best.ExpectedGain <= 0 {
+		return V5InterventionResult{}, errors.New("no informative intervention")
 	}
 	return best, nil
 }
