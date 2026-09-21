@@ -118,6 +118,10 @@ func v12EmitSearchLevel(pattern V11DirectedPatternArtifact, depth int) []byte {
 	if depth+1 == pattern.Nodes-1 {
 		out = append(out, v12EmitMappingBody(pattern)...)
 	} else {
+		// Nested mapping variables are mutable Wasm locals. Reset the child
+		// cursor for every outer-candidate iteration.
+		out = append(out, v12I32Const(1)...)
+		out = append(out, v12LocalSet(uint32(depth+2))...)
 		out = append(out, v12EmitSearchLevel(pattern, depth+1)...)
 	}
 
