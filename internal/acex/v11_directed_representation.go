@@ -322,6 +322,11 @@ func (r *V11DirectedExecutableRepresentation) Synthesize() bool {
 		}
 		r.SearchExpansions++
 		candidate.Examples = r.Examples
+		// Match requires a structurally valid candidate. Mark the candidate
+		// provisionally valid before asking Separates to discriminate examples;
+		// otherwise Separates would invoke Match with Valid=false and reject
+		// every candidate by construction.
+		candidate.Valid = true
 		candidate.Valid = candidate.Separates(r.Examples)
 		if !candidate.Valid {
 			continue
