@@ -316,6 +316,7 @@ func MapRepresentation(source Dataset, target Dataset, concept Concept) (Represe
 		return Representation{}, nil, Resource{}, errors.New("empty concept")
 	}
 	maps := make([]Mapping, 0, len(concept.Features))
+	usedTargets := map[string]bool{}
 	for _, sf := range concept.Features {
 		s, ok := sp[sf]
 		if !ok {
@@ -323,6 +324,9 @@ func MapRepresentation(source Dataset, target Dataset, concept Concept) (Represe
 		}
 		best := Mapping{Source: sf, Score: -1}
 		for tf, t := range tp {
+			if usedTargets[tf] {
+				continue
+			}
 			score := 1.0 - math.Abs(s.Positive-t.Positive) - math.Abs(s.Negative-t.Negative)
 			score += 0.10 * math.Min(1, float64(len(s.Cooccurrence)+len(t.Cooccurrence))/10)
 			sigS, sigT := cooccurrenceSignature(s.Cooccurrence), cooccurrenceSignature(t.Cooccurrence)
@@ -337,6 +341,7 @@ func MapRepresentation(source Dataset, target Dataset, concept Concept) (Represe
 			return Representation{}, nil, Resource{}, errors.New("representation mapping ambiguous")
 		}
 		maps = append(maps, best)
+		usedTargets[best.Target] = true
 	}
 	m := map[string]string{}
 	var sum float64
@@ -344,7 +349,7 @@ func MapRepresentation(source Dataset, target Dataset, concept Concept) (Represe
 		m[x.Source] = x.Target
 		sum += x.Score
 	}
-	return Representation{Name: "behavioral-role-map", Map: m, Confidence: sum / float64(len(maps))}, maps,
+	return Representation{Name: "behavioral-role-map:permutation-aware", Map: m, Confidence: sum / float64(len(maps))}, maps,
 		Resource{Search: len(sp) * len(tp), Verify: len(maps)}, nil
 }
 
