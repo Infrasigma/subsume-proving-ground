@@ -40,3 +40,5 @@ jobs:
           path: acex-v3-result.txt
 
 # terminal rerun trigger; scientific acceptance unchanged
+
+# rerun after precise V2 kill isolation; acceptance unchanged
