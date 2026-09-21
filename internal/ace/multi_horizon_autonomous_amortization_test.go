@@ -1,3 +1,4 @@
+// G3 race verification is executed independently of the functional experiment result.
 package ace
 
 import (
