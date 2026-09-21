@@ -46,46 +46,44 @@ func (BeliefRevision) ChooseIntervention(b []Belief, outcomes map[string]map[str
 	if len(b) < 2 {
 		return "", 0, errors.New("need competing beliefs")
 	}
+	_ = outcomes
 	b = NormalizeBeliefs(b)
 	base := make([]float64, len(b))
 	for i := range b {
 		base[i] = b[i].Posterior
 	}
 	baseH := entropy(base)
+	actions := map[string]bool{}
+	for _, x := range b {
+		for action := range x.Predicted {
+			actions[action] = true
+		}
+	}
 	bestAction := ""
 	bestGain := -1.0
-	for action, byOutcome := range outcomes {
+	for action := range actions {
+		mass := map[string]float64{}
+		for _, x := range b {
+			outcome, ok := x.Predicted[action]
+			if ok {
+				mass[outcome] += x.Posterior
+			}
+		}
 		expectedH := 0.0
-		mass := 0.0
-		for outcome, likelihood := range byOutcome {
-			if likelihood <= 0 {
+		for outcome, pOutcome := range mass {
+			if pOutcome <= 0 {
 				continue
 			}
-			mass += likelihood
 			post := make([]float64, len(b))
-			z := 0.0
 			for i, x := range b {
-				p, ok := x.Predicted[action]
-				if !ok {
-					continue
+				if x.Predicted[action] == outcome {
+					post[i] = x.Posterior / pOutcome
 				}
-				if p == outcome {
-					post[i] = x.Posterior
-				}
-				z += post[i]
 			}
-			if z > 0 {
-				for i := range post {
-					post[i] /= z
-				}
-				expectedH += likelihood * entropy(post)
-			}
-		}
-		if mass > 0 {
-			expectedH /= mass
+			expectedH += pOutcome * entropy(post)
 		}
 		gain := baseH - expectedH
-		if gain > bestGain {
+		if gain > bestGain || (gain == bestGain && action < bestAction) {
 			bestGain = gain
 			bestAction = action
 		}
