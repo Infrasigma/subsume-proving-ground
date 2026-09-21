@@ -110,11 +110,22 @@ func LoadV12WasmCapability(module []byte) (V12WasmCapability, error) {
 	cap := V12WasmCapability{Module: append([]byte(nil), module...), Pattern:payload.Pattern}
 	h := sha256.Sum256(module)
 	cap.SHA256 = fmt.Sprintf("%x", h[:])
-	if ok, err := ExecuteV12Wasm(module, V12PatternSignature(expected)); err != nil || !ok {
-		if err != nil {
-			return V12WasmCapability{}, err
-		}
-		return V12WasmCapability{}, fmt.Errorf("artifact self-check rejected learned signature")
+	executor, err := NewV12WasmDecisionExecutor(context.Background(), module)
+	if err != nil {
+		return V12WasmCapability{}, err
+	}
+	defer executor.Close(context.Background())
+	input := make([]byte, V12DecisionCandidateStride)
+	rows := v12PatternCandidateMatrix(payload.Pattern)
+	if _, err := EncodeV12DecisionInput([]V12CandidateMatrix{rows}, input); err != nil {
+		return V12WasmCapability{}, err
+	}
+	got, err := executor.Decide(input, 1)
+	if err != nil {
+		return V12WasmCapability{}, err
+	}
+	if got != 0 {
+		return V12WasmCapability{}, fmt.Errorf("artifact decide self-check returned %d", got)
 	}
 	return cap, nil
 }
