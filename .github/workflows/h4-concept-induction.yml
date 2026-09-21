@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - h4-concept-live-20260921
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
