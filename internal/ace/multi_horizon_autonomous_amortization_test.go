@@ -1,5 +1,6 @@
 // G3 race verification is executed independently of the functional experiment result.
 // CI trigger: execute the repaired workflow on this branch.
+// Final workflow-validation trigger only.
 package ace
 
 import (
