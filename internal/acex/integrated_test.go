@@ -119,6 +119,26 @@ func makeComposedTarget(seed int64, family hiddenFamily, count int) Dataset {
 	return Dataset{Examples: append(pos, neg...)}
 }
 
+func mappedConcept(source Dataset, target Dataset, c Concept) (Concept, Resource, error) {
+	rep, _, cost, err := MapRepresentation(source, target, c)
+	if err != nil {
+		return Concept{}, cost, err
+	}
+	mapped := make([]string, 0, len(c.Features))
+	for _, f := range c.Features {
+		x, ok := rep.Map[f]
+		if !ok {
+			return Concept{}, cost, fmt.Errorf("missing mapped feature %q", f)
+		}
+		mapped = append(mapped, x)
+	}
+	sort.Strings(mapped)
+	c.Features = mapped
+	c.ID = strings.Join(mapped, "+")
+	c.TransferSig = rep.Name
+	return c, cost, nil
+}
+
 func split(data Dataset) (Dataset, Dataset) {
 	a := make([]Observation, 0, (len(data.Examples)+1)/2)
 	b := make([]Observation, 0, len(data.Examples)/2)
@@ -300,8 +320,8 @@ func runBlock(seed int64) blockResult {
 	details["g5_diagnosis"] = diag
 
 	// X6: endogenous next-challenge generation.
-	next, curriculumErr := (Curriculum{}).Next(Dataset{Examples: throttled.Examples[:60]})
-	gates["G6"] = curriculumErr == nil && len(next.Examples) == 60
+	nextList, curriculumErr := (Curriculum{}).Next([]Dataset{{Examples: throttled.Examples[:60]}})
+	gates["G6"] = curriculumErr == nil && len(nextList) == 1 && len(nextList[0].Examples) == 60
 	details["g6_size"] = len(next.Examples)
 
 	// X7: self-improve the search policy on visible tasks, then require its gain
