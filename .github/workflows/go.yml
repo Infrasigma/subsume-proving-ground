@@ -49,3 +49,35 @@ jobs:
         with:
           name: acex-integrated-result
           path: acex-result.txt
+
+  ace-x-forensic:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Fetch exact ACE-X PR head
+        run: |
+          git fetch origin refs/heads/ace-x-live-20260921
+          git checkout --detach 35a5c73768d449126bbd9c2763df8ef92a19712e
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: Resolve module checksums
+        run: go mod download
+      - name: Run ACE-X pure-substrate gate
+        env:
+          ACEX_SEEDS: "610117,830921"
+        run: |
+          set -euo pipefail
+          go test -mod=mod -run '^TestACEXIntegratedTerminal$' ./internal/acex -count=1 -timeout=12m -v | tee acex-result.txt
+      - name: Publish ACE-X forensic result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acex-forensic-result
+          path: acex-result.txt
