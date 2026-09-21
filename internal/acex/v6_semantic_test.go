@@ -15,7 +15,9 @@ func makeV6TaskFamily(seed int64, offsets []int, negated bool) ([]V4Task, error)
 		if negated {
 			inner = v4IntExpr("neg", inner)
 		}
-		expr := v4IntExpr("abs", inner)
+		// Force a nontrivial reusable skeleton; the learner must discover the
+		// shared max/abs/add structure rather than collapsing to abs(variable).
+		expr := v4IntExpr("max", v4IntConst(0), v4IntExpr("abs", inner))
 		task, err := v4MakeTask("v6-visible-"+strings.TrimSpace(string(rune('a'+i))), inputs, holds, expr, NewV4Library())
 		if err != nil {
 			return nil, err
