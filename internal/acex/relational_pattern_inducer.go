@@ -325,7 +325,7 @@ func (l *V8RelationalPatternInducer) Record(state RelationalState, action string
 
 func (l *V8RelationalPatternInducer) TrySynthesize() bool {
 	if l == nil || l.Pattern != nil || l.Budget <= 0 {
-		return l != nil && l.Pattern != nil
+		return false
 	}
 	hasPositive, hasNegative := false, false
 	for _, ex := range l.Examples {
