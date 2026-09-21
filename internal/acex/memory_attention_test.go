@@ -92,5 +92,6 @@ func TestV2ArchitectureTerminal(t *testing.T) {
 	TestV2AutonomousCurriculum(t)
 	TestV2RawGroundingAndRenaming(t)
 	TestV2RuntimePromotesSynthesizedSearchLanguage(t)
+	TestV2ImprovementLedger(t)
 	t.Log("ACEX V2 COGNITIVE SUBSTRATE: PASS")
 }
