@@ -1,7 +1,7 @@
 name: ACE-X V12 E1 protected evidence
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, synchronize, reopened]
     branches: [main]
 
