@@ -81,5 +81,6 @@ func TestV2ArchitectureTerminal(t *testing.T) {
 	TestV2EndogenousGapSelection(t)
 	TestV2MemoryAttentionAndExecutiveControl(t)
 	TestV2AdversarialRandomizedCognitiveSweep(t)
+	TestV2PredictiveModelRevisionAndPlanning(t)
 	t.Log("ACEX V2 COGNITIVE SUBSTRATE: PASS")
 }
