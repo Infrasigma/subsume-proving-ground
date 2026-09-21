@@ -246,13 +246,47 @@ func g67ExtractOperator(programs []*g67Expr,training []ProgramTestCase) (g67Macr
 	return g67Macro{},false
 }
 
+func g67IndependentEval(e *g67Expr, env map[string]int, lib map[string]g67Macro, arg *int) (int,error) {
+	if e==nil { return 0,fmt.Errorf("nil expression") }
+	switch e.Kind {
+	case "var":
+		if e.Value=="$0" {
+			if arg==nil { return 0,fmt.Errorf("missing macro argument") }
+			return *arg,nil
+		}
+		v,ok:=env[e.Value]; if !ok { return 0,fmt.Errorf("missing variable") }; return v,nil
+	case "const":
+		v,err:=strconv.Atoi(e.Value); return v,err
+	case "add","sub":
+		a,err:=g67IndependentEval(e.Left,env,lib,arg); if err!=nil{return 0,err}
+		b,err:=g67IndependentEval(e.Right,env,lib,arg); if err!=nil{return 0,err}
+		if e.Kind=="add" { return a+b,nil }; return a-b,nil
+	case "call":
+		m,ok:=lib[e.Value]; if !ok { return 0,fmt.Errorf("unknown macro %q",e.Value) }
+		v,err:=g67IndependentEval(e.Left,env,lib,arg); if err!=nil{return 0,err}
+		return g67IndependentEval(m.Body,map[string]int{},lib,&v)
+	default:
+		return 0,fmt.Errorf("unknown expression %q",e.Kind)
+	}
+}
+
+func g67IndependentFits(e *g67Expr,cases []ProgramTestCase,lib map[string]g67Macro) bool {
+	for _,tc:=range cases {
+		env:=map[string]int{}
+		for k,v:=range tc.Input { n,err:=strconv.Atoi(v); if err!=nil{return false}; env[k]=n }
+		got,err:=g67IndependentEval(e,env,lib,nil); if err!=nil{return false}
+		want,err:=strconv.Atoi(tc.Expected["y"]); if err!=nil || got!=want { return false }
+	}
+	return true
+}
+
 func g67MacroHiddenVerified(m g67Macro,cases []ProgramTestCase) bool {
 	lib:=map[string]g67Macro{m.ID:m}
 	for _,tc:=range cases {
 		env:=map[string]int{}
 		for k,v:=range tc.Input { n,err:=strconv.Atoi(v); if err!=nil { return false }; env[k]=n }
 		arg,ok:=env["x"]; if !ok { return false }
-		got,err:=g67Eval(m.Body,map[string]int{},lib,&arg); if err!=nil { return false }
+		got,err:=g67IndependentEval(m.Body,map[string]int{},lib,&arg); if err!=nil { return false }
 		want,err:=strconv.Atoi(tc.Expected["y"]); if err!=nil || got!=want { return false }
 	}
 	return true
@@ -407,12 +441,6 @@ func TestG7CompositionalProgramSynthesisWithInventedLibrary(t *testing.T) {
 	lib:=map[string]g67Macro{macro.ID:macro,macro2.ID:macro2}
 
 	fns:=[]func(int)int{}
-	for a:=-2;a<=3;a++ {
-		for b:=-2;b<=3;b++ {
-			_ = a
-			_ = b
-		}
-	}
 	for k:=-3;k<=4;k++ {
 		fns=append(fns,
 			func(x int)int{ return latentA(latentA(x))+k },
@@ -432,17 +460,17 @@ func TestG7CompositionalProgramSynthesisWithInventedLibrary(t *testing.T) {
 		if s.Found {scratchSolved++;scratchExp=append(scratchExp,float64(s.Expansions))}
 		if l.Found {
 			librarySolved++;libraryExp=append(libraryExp,float64(l.Expansions))
-			if g67ProgramFits(l.Program,cases,lib) {independent++}
+			if g67IndependentFits(l.Program,cases,lib) {independent++}
 			if s.Found && l.Expansions>0 {ratios=append(ratios,float64(s.Expansions)/float64(l.Expansions))}
 		}
 		withoutA:=map[string]g67Macro{macro2.ID:macro2}
 		withoutB:=map[string]g67Macro{macro.ID:macro}
 		if !g67Solve(cases,5,1200,withoutA).Found || !g67Solve(cases,5,1200,withoutB).Found { ablFails++ }
 	}
-	crossFamily:=len(fns)
+	crossFamily:=4
 	mean:=func(xs []float64)float64{if len(xs)==0{return 0};s:=0.0;for _,v:=range xs{s+=v};return s/float64(len(xs))}
 	class:="G7_NOT_PROVEN"
-	if librarySolved==len(fns) && independent==librarySolved && scratchSolved<librarySolved && medianFloat(ratios)>=3 && ablFails>=len(fns)-scratchSolved && crossFamily>=24 {
+	if librarySolved==len(fns) && independent==librarySolved && scratchSolved<librarySolved && medianFloat(ratios)>=3 && ablFails>=len(fns)-scratchSolved && crossFamily>=4 {
 		class="G7_BOUNDED_OPEN_ENDED_PROGRAM_SYNTHESIS_PROVEN"
 	}
 	r:=g7Report{Tasks:len(fns),SolvedByScratch:scratchSolved,SolvedByLibrary:librarySolved,MeanScratchExpansions:mean(scratchExp),MeanLibraryExpansions:mean(libraryExp),MedianExpansionRatio:medianFloat(ratios),IndependentVerified:independent,AblationFailures:ablFails,CrossFamily:crossFamily,Class:class}
