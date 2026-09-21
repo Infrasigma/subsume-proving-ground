@@ -25,11 +25,14 @@ type CognitiveRuntime struct {
 	Attention   AttentionController
 	Relational  RelationalMemory
 	Mechanisms  []Macro
+	ActiveRanker RankerProgram
+	Version     uint64
 }
 
 func NewCognitiveRuntime() *CognitiveRuntime {
 	return &CognitiveRuntime{
 		Model: NewPredictiveModel(),
+		ActiveRanker: RankerProgram{Expr:&RankExpr{Kind:"metric",Value:metricID("balance")}},
 		Self: RuntimeSelfModel{
 			KnownActions: map[string]float64{},
 			Capabilities: map[string]float64{},
@@ -109,4 +112,26 @@ func (r *CognitiveRuntime) Diagnose() string {
 		return "stable"
 	}
 	return fmt.Sprintf("failures=%d", len(r.Self.Failures))
+}
+
+
+func (r *CognitiveRuntime) ImproveSearchLanguage(train, holdout, hidden []Dataset) (RankerSearchResult, error) {
+	if len(train) == 0 || len(train) != len(holdout) || len(hidden) == 0 {
+		return RankerSearchResult{}, errors.New("invalid search-language improvement datasets")
+	}
+	candidate, err := SearchRankerProgram(train, holdout, r.ActiveRanker)
+	if err != nil {
+		return RankerSearchResult{}, err
+	}
+	for i := range hidden {
+		baseOrdered := candidateFeatures(hidden[i])
+		_, baseCost, baseErr := DiscoverWithOrder(hidden[i], hidden[i], baseOrdered, 4)
+		_, newCost, newErr := DiscoverWithOrder(hidden[i], hidden[i], candidate.Program.OrderFixed(hidden[i]), 4)
+		if baseErr != nil || newErr != nil || newCost.Total() >= baseCost.Total() {
+			return RankerSearchResult{}, errors.New("candidate search language failed independent hidden verification")
+		}
+	}
+	r.ActiveRanker = candidate.Program
+	r.Version++
+	return candidate, nil
 }
