@@ -33,9 +33,18 @@ func permutedTokens(seed int64, family hiddenFamily, suffix string) []string {
 	return out
 }
 
+func stableTokenSeed(family hiddenFamily, conceptIndex int64) int64 {
+	var h int64 = 1469598103934665603
+	for _, ch := range family.Name {
+		h ^= int64(ch)
+		h *= 1099511628211
+	}
+	return h + conceptIndex*104729
+}
+
 func makeBalanced(seed int64, family hiddenFamily, conceptIndex int, count int, extraTokens bool) Dataset {
 	r := rand.New(rand.NewSource(seed))
-	tokens := permutedTokens(seed+int64(conceptIndex)*991, family, "opaque")
+	tokens := permutedTokens(stableTokenSeed(family, int64(conceptIndex)), family, "opaque")
 	positives, negatives := make([]Observation, 0, count/2), make([]Observation, 0, count/2)
 	tries := 0
 	for len(positives) < count/2 || len(negatives) < count/2 {
@@ -100,8 +109,8 @@ func mappedConcept(source Dataset, target Dataset, c Concept) (Concept, Resource
 
 func makeComposedTarget(seed int64, family hiddenFamily, count int) (Dataset, Dataset, Dataset) {
 	r := rand.New(rand.NewSource(seed))
-	aTokens := permutedTokens(seed+17, family, "compose-a")
-	bTokens := permutedTokens(seed+29, family, "compose-b")
+	aTokens := permutedTokens(stableTokenSeed(family, 0), family, "opaque")
+	bTokens := permutedTokens(stableTokenSeed(family, 1), family, "opaque")
 	makeSet := func(requireBoth bool) Dataset {
 		pos, neg := make([]Observation, 0, count/2), make([]Observation, 0, count/2)
 		for len(pos) < count/2 || len(neg) < count/2 {
