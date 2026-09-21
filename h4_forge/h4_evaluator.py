@@ -186,6 +186,7 @@ def run_block(seed: int) -> dict:
     patterns = choose_patterns(seed)
     lib = ConceptLibrary()
     learned: list[Concept] = []
+    library_snapshots: list[ConceptLibrary] = []
     invention_ok = True
     validity_ok = True
     acquisition_records = []
@@ -210,6 +211,7 @@ def run_block(seed: int) -> dict:
         if concept.heldout_accuracy < 0.90:
             validity_ok = False
         learned.append(concept)
+        library_snapshots.append(ConceptLibrary.loads(lib.dumps()))
         acquisition_records.append({
             "index": i,
             "found": True,
@@ -267,8 +269,9 @@ def run_block(seed: int) -> dict:
         support = dataset_for_pattern(concept.atoms, seed + 6000 + i * 41, 60)
         audit = dataset_for_pattern(concept.atoms, seed + 7000 + i * 43, 120)
         _, _, k0 = fresh_learn(support, audit)
-        _, acc, k1 = lib.query(support, audit)
-        ratio = cost_ratio(k1 + 20 * len(lib.concepts), k0)
+        prefix_lib = library_snapshots[i]
+        _, acc, k1 = prefix_lib.query(support, audit)
+        ratio = cost_ratio(k1 + 20 * len(prefix_lib.concepts), k0)
         compounding.append({"step": i + 1, "ratio": ratio, "accuracy": acc})
 
     recursive_ok = all(x["ratio"] < 0.75 and x["accuracy"] >= 0.90 for x in compounding[:3])
