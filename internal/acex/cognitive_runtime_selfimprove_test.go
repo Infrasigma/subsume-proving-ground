@@ -1,10 +1,9 @@
-//go:build v2kill
-
 package acex
 
 import "testing"
 
 func TestV2RuntimePromotesSynthesizedSearchLanguage(t *testing.T) {
+	if !v2KillMode { t.Skip("V2 runtime self-improvement route is preserved as a scientific KILL; dedicated v2kill run exercises the failure") }
 	r:=NewCognitiveRuntime()
 	train:=make([]Dataset,4)
 	hold:=make([]Dataset,4)
