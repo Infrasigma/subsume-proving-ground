@@ -131,28 +131,47 @@ func g4PredictedSavings(c g4Memory, observed []g4Task) float64 {
 }
 
 func g4Select(pool []g4Memory, observed []g4Task, budget int) []g4Memory {
+	groups := map[int][]g4Memory{}
+	for _, c := range pool {
+		groups[c.Key] = append(groups[c.Key], c)
+	}
+	keys := make([]int, 0, len(groups))
+	for k := range groups { keys = append(keys, k) }
+	sort.Ints(keys)
+
 	dp := make([]float64, budget+1)
-	ch := make([][]g4Memory, budget+1)
+	choice := make([][]g4Memory, budget+1)
 	for i := range dp { dp[i] = -math.MaxFloat64 }
 	dp[0] = 0
-	for _, c := range pool {
-		value := g4PredictedSavings(c, observed) / float64(c.Bytes)
-		for b := budget; b >= c.Bytes; b-- {
-			if dp[b-c.Bytes] == -math.MaxFloat64 { continue }
-			v := dp[b-c.Bytes] + value
-			if v > dp[b] {
-				dp[b] = v
-				ch[b] = append(append([]g4Memory(nil), ch[b-c.Bytes]...), c)
+
+	for _, key := range keys {
+		next := make([]float64, budget+1)
+		nextChoice := make([][]g4Memory, budget+1)
+		for i := range next { next[i] = -math.MaxFloat64 }
+		for b := 0; b <= budget; b++ {
+			if dp[b] == -math.MaxFloat64 { continue }
+			if dp[b] > next[b] {
+				next[b] = dp[b]
+				nextChoice[b] = append([]g4Memory(nil), choice[b]...)
+			}
+			for _, c := range groups[key] {
+				if b+c.Bytes > budget { continue }
+				value := g4PredictedSavings(c, observed) / float64(c.Bytes)
+				v := dp[b] + value
+				if v > next[b+c.Bytes] {
+					next[b+c.Bytes] = v
+					nextChoice[b+c.Bytes] = append(append([]g4Memory(nil), choice[b]...), c)
+				}
 			}
 		}
+		dp, choice = next, nextChoice
 	}
 	best := 0
 	for b := 1; b <= budget; b++ {
 		if dp[b] > dp[best] { best = b }
 	}
-	return ch[best]
+	return choice[best]
 }
-
 func g4Actual(sel []g4Memory, future []g4Task) int {
 	byKey := map[int]g4Memory{}
 	for _, c := range sel { byKey[c.Key] = c }
