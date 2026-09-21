@@ -185,7 +185,7 @@ func amortizationProcedureFingerprint(p AcquisitionProcedure, task amortizationT
 	h.Write(b)
 	for _, ex := range task.Train {
 		for _, c := range ex.Input {
-			fmt.Fprintf(h, "|%s|%d|%d|", c.Mechanism, c.Resources.Compute, c.Resources.ExperimentBudget)
+			fmt.Fprintf(h, "|%s|%g|%g|", c.Mechanism, c.Resources.Compute, c.Resources.ExperimentBudget)
 		}
 		for _, y := range ex.Expected {
 			ioWriteString(h, y)
