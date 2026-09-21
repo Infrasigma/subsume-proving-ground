@@ -30,7 +30,8 @@ func TestV2BeliefRevisionAndSequentialExperimentation(t *testing.T) {
 
 	// The environment contradicts the initially most likely hypothesis.
 	// This must remove h1 rather than merely lowering all scores.
-	after, err := engine.Revise(beliefs, action, "green")
+	observed := beliefs[1].Predicted[action]
+	after, err := engine.Revise(beliefs, action, observed)
 	if err != nil {
 		t.Fatal(err)
 	}
