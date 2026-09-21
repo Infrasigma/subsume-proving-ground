@@ -345,7 +345,7 @@ func MapRepresentation(source Dataset, target Dataset, concept Concept) (Represe
 		sum += x.Score
 	}
 	return Representation{Name: "behavioral-role-map", Map: m, Confidence: sum / float64(len(maps))}, maps,
-		Resource{Search: len(sp) * len(tp), Verify: len(maps)}
+		Resource{Search: len(sp) * len(tp), Verify: len(maps)}, nil
 }
 
 type VerifiedKnowledge struct {
