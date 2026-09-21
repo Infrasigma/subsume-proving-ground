@@ -1,0 +1,36 @@
+name: H4 genuine adversarial replication
+
+on:
+  push:
+    branches:
+      - h4-genuine-live-20260921
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  h4-genuine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact H4 genuine commit
+        uses: actions/checkout@v4
+
+      - name: Run frozen genuine evaluator
+        env:
+          H4G_SEED_A: "610117"
+          H4G_SEED_B: "830921"
+          PYTHONHASHSEED: "0"
+        run: |
+          set -euo pipefail
+          python3 h4_forge/h4_genuine.py | tee h4-genuine-result.txt
+
+      - name: Publish forensic result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h4-genuine-result
+          path: h4-genuine-result.txt
