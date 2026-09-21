@@ -22,13 +22,13 @@ func TestV3ArchitectureTerminal(t *testing.T) {
 		base := NewV3Library()
 		first, err := V3MakeGenerationOneTasks(base, seed)
 		if err != nil { t.Fatalf("seed=%d generation1 task construction: %v", seed, err) }
-		learned, _, _, _, err := V3LearnGeneration(first, base, 7, 1200)
+		learnedLib, _, _, _, err := V3LearnGeneration(first, base, 7, 1200)
 		if err != nil { t.Fatalf("seed=%d generation1 learning: %v", seed, err) }
 		var m1 string
-		for name := range learned.Macros { m1 = name; break }
+		for name := range learnedLib.Macros { m1 = name; break }
 		if m1 == "" { t.Fatalf("seed=%d generation1 produced no macro", seed) }
 
-		second, err := V3MakeGenerationTwoTasks(learned.Library, m1)
+		second, err := V3MakeGenerationTwoTasks(learnedLib, m1)
 		if err != nil { t.Fatalf("seed=%d generation2 task construction: %v", seed, err) }
 		combined, err := V3LearnTwoGenerations(first, second, base, 7, 1200)
 		if err != nil { t.Fatalf("seed=%d recursive learning: %v", seed, err) }
