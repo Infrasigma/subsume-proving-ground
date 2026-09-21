@@ -125,3 +125,5 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+// Black-box evaluation workflow is evaluator-owned; this marker is intentionally inert.
