@@ -11,7 +11,6 @@ import (
 
 type g16Observation struct {
 	In, Out int
-	hiddenSkill int
 }
 
 type g16LearnedSkill struct {
@@ -162,7 +161,7 @@ func g16RunSeed(seed int, permute bool, shift bool) g16Report {
 		if shift && step>=observations/2 { weights=g16FutureWeights() }
 		si:=g16SampleSkill(r,weights)
 		x:=r.Intn(61)-30
-		obs=append(obs,g16Observation{In:x,Out:g16Apply(skills[si],x),hiddenSkill:si})
+		obs=append(obs,g16Observation{In:x,Out:g16Apply(skills[si],x)})
 	}
 	if permute {
 		rp:=rand.New(rand.NewSource(int64(180000+seed*17)))
