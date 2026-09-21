@@ -276,5 +276,135 @@ jobs:
               seq.kill()
               base.kill()
 
+          # Second transfer experiment: the shared latent is an observable
+          # structural action role. Surface node/edge labels and action names differ.
+          ROLE_PLAN = [
+              (2, 2),
+              (3, 2),
+              (2, 3),
+              (3, 3),
+              (4, 2),
+          ]
+
+          def make_role_state(domain, stage, seed, width):
+              rng = random.Random(seed + stage * 97 + domain * 1009)
+              action_ids = [f'role{domain}-{seed}-{stage}-{i}' for i in range(width)]
+              rng.shuffle(action_ids)
+              correct_pair = ROLE_PLAN[stage]
+              used = {correct_pair}
+              distractor_pairs = [(1,1), (1,2), (2,1), (3,1), (4,1), (2,4), (3,4), (4,3)]
+              rng.shuffle(distractor_pairs)
+              pairs = [correct_pair]
+              for pair in distractor_pairs:
+                  if pair not in used and len(pairs) < width:
+                      pairs.append(pair)
+                      used.add(pair)
+              rng.shuffle(pairs)
+
+              action_meta = {}
+              nodes = []
+              edges = []
+              surface = [
+                  ('lever','peg','engage'),
+                  ('token','port','route'),
+              ][domain]
+              for action, (degree, neighbor_degree) in zip(action_ids, pairs):
+                  nodes.append({
+                      'ID': action,
+                      'Kind': surface[0],
+                      'Attrs': {'surface': f's{domain}-{stage}'},
+                  })
+                  supports = []
+                  for j in range(degree):
+                      sid = f'{action}-support-{j}'
+                      supports.append(sid)
+                      nodes.append({
+                          'ID': sid,
+                          'Kind': surface[1],
+                          'Attrs': {'opaque': f'{domain}-{stage}-{j}'},
+                      })
+                      edges.append({'From': action, 'To': sid, 'Kind': surface[2]})
+                  # Add enough shared connections to make the first support
+                  # expose the requested maximum neighbor degree.
+                  if supports:
+                      for j in range(max(0, neighbor_degree - 1)):
+                          hid = f'{action}-hub-{j}'
+                          nodes.append({
+                              'ID': hid,
+                              'Kind': surface[1],
+                              'Attrs': {'opaque': 'hub'},
+                          })
+                          edges.append({'From': supports[0], 'To': hid, 'Kind': surface[2]})
+                  action_meta[action] = (degree, neighbor_degree, len(supports))
+
+              # Evaluator-owned target rule: correct action is the one whose
+              # structural (degree, max-neighbor-degree, neighbor-count) role
+              # equals the stage's ROLE_PLAN entry.
+              correct = next(a for a, pair in zip(action_ids, pairs) if pair == correct_pair)
+              return {
+                  'nodes': nodes,
+                  'edges': edges,
+              }, action_ids, correct
+
+          def solve_role_domain(p, domain, seed, width=6, depth=5):
+              total = 0
+              for stage in range(depth):
+                  state, actions, correct = make_role_state(domain, stage, seed, width)
+                  r = rpc(p, {'op': 'act', 'state': state, 'actions': actions})
+                  action = r['action']
+                  total += 1
+                  reward = 1 if action == correct else -1
+                  terminal = stage == depth - 1 and action == correct
+                  rpc(p, {
+                      'op': 'observe',
+                      'next_state': state,
+                      'reward': reward,
+                      'terminal': terminal,
+                  })
+                  if action != correct:
+                      # Continue the same stage until the correct action is found;
+                      # the candidate gets ordinary environment feedback.
+                      while total < depth * width * 2:
+                          r = rpc(p, {'op': 'act', 'state': state, 'actions': actions})
+                          action = r['action']
+                          total += 1
+                          reward = 1 if action == correct else -1
+                          terminal = stage == depth - 1 and action == correct
+                          rpc(p, {
+                              'op': 'observe',
+                              'next_state': state,
+                              'reward': reward,
+                              'terminal': terminal,
+                          })
+                          if action == correct:
+                              break
+                      if action != correct:
+                          return False, total
+              return True, total
+
+          role_seed = 88217
+          role_seq = start_agent()
+          role_base = start_agent()
+          try:
+              ok_source, source_cost = solve_role_domain(role_seq, 0, role_seed, width=4, depth=5)
+              if not ok_source:
+                  raise RuntimeError('structural-role source domain failed')
+              ok_target_seq, target_seq_cost = solve_role_domain(role_seq, 1, role_seed + 1, width=6, depth=5)
+              if not ok_target_seq:
+                  raise RuntimeError('structural-role sequential target failed')
+              ok_target_base, target_base_cost = solve_role_domain(role_base, 1, role_seed + 1, width=6, depth=5)
+              if not ok_target_base:
+                  raise RuntimeError('structural-role clean baseline failed')
+              print(
+                  f'ROLE TRANSFER COST source={source_cost} '
+                  f'sequential={target_seq_cost} baseline={target_base_cost}'
+              )
+              if target_seq_cost > 0.70 * target_base_cost:
+                  raise RuntimeError('structural-role transfer did not materially reduce target acquisition cost')
+          finally:
+              role_seq.kill()
+              role_base.kill()
+
+          print('BLACKBOX V10 STRUCTURAL-ROLE TRANSFER PASS')
           print('BLACKBOX V10 TRANSFER PASS: sequential experience materially reduced target-domain acquisition cost')
           PY
