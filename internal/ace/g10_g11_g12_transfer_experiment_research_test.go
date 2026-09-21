@@ -84,6 +84,17 @@ func g10JoinList(xs []int) string {
 
 func g10DomainApply(domain, op, in string) string {
 	switch domain {
+	case "token":
+		switch op {
+		case "tokA":
+			return in + "A"
+		case "tokB":
+			return in + "B"
+		case "tokC":
+			return in + "C"
+		case "tokD":
+			return in + "D"
+		}
 	case "text":
 		switch op {
 		case "appendA":
@@ -127,6 +138,18 @@ func g10DomainApply(domain, op, in string) string {
 }
 
 func g10IndependentApply(domain, op, in string) string {
+	if domain == "token" {
+		switch op {
+		case "tokA":
+			return in + "A"
+		case "tokB":
+			return in + "B"
+		case "tokC":
+			return in + "C"
+		case "tokD":
+			return in + "D"
+		}
+	}
 	if domain == "text" {
 		switch op {
 		case "appendA":
@@ -215,6 +238,8 @@ func g10IndependentRepeated(domain, op, in string, depth int) string {
 func g10BuildTask(domain, op string, depth int) g10Task {
 	var xs []string
 	switch domain {
+	case "token":
+		xs = []string{"x", "ab", "z", "root"}
 	case "text":
 		xs = []string{"ab", "Cab", "xy", "z", "aZ", "Ba"}
 	case "list":
@@ -397,12 +422,12 @@ func g10WriteReport(name string, v any) {
 }
 
 func TestG10CrossDomainAbstractionTransfer(t *testing.T) {
-	sourceOps := []string{"inc1", "dec2", "double", "shift5"}
+	sourceOps := []string{"tokA", "tokB", "tokC", "tokD"}
 	sourceTasks := make([]g10Task, 0, 12)
 	learnedPrograms := make([]g10Chain, 0, 12)
 	for _, op := range sourceOps {
 		for _, depth := range []int{2, 3, 4} {
-			task := g10BuildTask("num", op, depth)
+			task := g10BuildTask("token", op, depth)
 			program, _, ok := g10ScratchProgram(task, sourceOps)
 			if !ok {
 				t.Fatalf("source scratch synthesis failed op=%s depth=%d", op, depth)
