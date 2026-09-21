@@ -1,0 +1,203 @@
+name: ACE-X V10 relational representation transfer
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  relational-pattern-transfer:
+    if: github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground' && github.event.pull_request.head.ref == 'ace-x-v10-blackbox-autonomy-20260921'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - run: go mod download
+      - name: Install Bubblewrap
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Build candidate
+        run: CGO_ENABLED=0 go build -o /tmp/acex-agent ./cmd/acex-agent
+      - name: Independent relational transfer evaluation
+        run: |
+          /usr/bin/time -v python3 - <<'PY'
+          import json, os, random, signal, subprocess, time
+
+          def start_agent():
+              return subprocess.Popen(
+                  [
+                      'bwrap',
+                      '--ro-bind', '/tmp/acex-agent', '/acex-agent',
+                      '--proc', '/proc',
+                      '--dev', '/dev',
+                      '--tmpfs', '/tmp',
+                      '--unshare-net',
+                      '--unshare-pid',
+                      '--unshare-ipc',
+                      '--unshare-uts',
+                      '--die-with-parent',
+                      '/acex-agent',
+                  ],
+                  stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE, text=True, bufsize=1,
+                  start_new_session=True,
+              )
+
+          def stop_agent(p):
+              if p.poll() is not None:
+                  return
+              try:
+                  os.killpg(p.pid, signal.SIGKILL)
+              except ProcessLookupError:
+                  pass
+              p.wait(timeout=5)
+
+          def rpc(p, payload):
+              p.stdin.write(json.dumps(payload) + '\n')
+              p.stdin.flush()
+              line = p.stdout.readline()
+              if not line:
+                  raise RuntimeError('candidate terminated: ' + p.stderr.read())
+              return json.loads(line)
+
+          def role_state(prefix, surface, root_degree, correct_pattern, seed):
+              actions = [prefix + '-aa', prefix + '-mid', prefix + '-zz']
+              correct = actions[1]
+              ak, sk, ek = ('lever', 'peg', 'engage')
+              if surface == 1:
+                  ak, sk, ek = ('token', 'port', 'route')
+
+              nodes = []
+              edges = []
+              def add_node(nid, kind):
+                  nodes.append({'ID': nid, 'Kind': kind,
+                                'Attrs': {'surface': str(seed)}})
+              def add_edge(a, b):
+                  edges.append({'From': a, 'To': b, 'Kind': ek})
+
+              for action in actions:
+                  add_node(action, ak)
+
+              for idx, action in enumerate(actions):
+                  neighbors = [f'{action}-n{i}' for i in range(root_degree)]
+                  for n in neighbors:
+                      add_node(n, sk)
+                      add_edge(action, n)
+
+                  child_counter = 0
+                  branch_children = []
+                  for n in neighbors:
+                      c1 = f'{n}-c0'
+                      c2 = f'{n}-c1'
+                      add_node(c1, sk)
+                      add_node(c2, sk)
+                      add_edge(n, c1)
+                      add_edge(n, c2)
+                      branch_children.append((c1, c2))
+                      child_counter += 2
+
+                  # Correct latent role: one neighbor participates in a triangle.
+                  # Distractors use the same layer sizes and edge counts but put
+                  # the extra edge across two different branches.
+                  if idx == 1 and correct_pattern:
+                      add_edge(branch_children[0][0], branch_children[0][1])
+                  else:
+                      add_edge(branch_children[0][0], branch_children[1][0])
+
+              rng = random.Random(seed)
+              rng.shuffle(nodes)
+              rng.shuffle(edges)
+              rng.shuffle(actions)
+              return {'Nodes': nodes, 'Edges': edges}, actions, correct
+
+          def solve_stage(p, state, actions, correct):
+              for attempts in range(1, len(actions) * 3 + 1):
+                  reply = rpc(p, {'op':'act', 'state':state, 'actions':actions})
+                  action = reply.get('action')
+                  ok = action == correct
+                  rpc(p, {'op':'observe', 'next_state':state,
+                          'reward':1 if ok else -1,
+                          'terminal':ok})
+                  if ok:
+                      return attempts
+              raise RuntimeError('candidate failed hidden stage')
+
+          seq = start_agent()
+          try:
+              # Source generator: root degree 2.
+              for s in range(2):
+                  state, actions, correct = role_state(
+                      f'src-{s}', 0, 2, True, 11000 + s
+                  )
+                  src_cost = solve_stage(seq, state, actions, correct)
+                  print(f'SOURCE episode={s} cost={src_cost}')
+
+              seq_total = 0
+              base_total = 0
+              seq_wall = 0.0
+              base_wall = 0.0
+              episodes = 12
+
+              for ep in range(episodes):
+                  seed = 50000 + ep * 9173
+                  # Target generator is deliberately different: root degree 3,
+                  # new labels/IDs, different array order, same latent triangle
+                  # relation. This blocks memorization of source surface statistics.
+                  state, actions, correct = role_state(
+                      f'tgt-{seed}', 1, 3, True, seed
+                  )
+
+                  t0 = time.monotonic()
+                  seq_cost = solve_stage(seq, state, actions, correct)
+                  seq_wall += time.monotonic() - t0
+
+                  base = start_agent()
+                  try:
+                      t1 = time.monotonic()
+                      base_cost = solve_stage(base, state, actions, correct)
+                      base_wall += time.monotonic() - t1
+                  finally:
+                      stop_agent(base)
+
+                  seq_total += seq_cost
+                  base_total += base_cost
+                  print(
+                      f'EPISODE={ep} seed={seed} '
+                      f'sequential={seq_cost} baseline={base_cost}'
+                  )
+
+              ratio = seq_total / float(base_total)
+              print(
+                  f'RELATIONAL TRANSFER SUMMARY sequential_total={seq_total} '
+                  f'baseline_total={base_total} ratio={ratio:.4f} '
+                  f'episodes={episodes}'
+              )
+              print(
+                  f'RESOURCE SUMMARY sequential_wall={seq_wall:.6f} '
+                  f'baseline_wall={base_wall:.6f}'
+              )
+
+              if ratio > 0.70:
+                  raise RuntimeError(
+                      'relational representation did not achieve the independent '
+                      f'capacity/resource threshold: ratio={ratio:.4f}'
+                  )
+              print(
+                  'RELATIONAL REPRESENTATION TRANSFER PASS: '
+                  'fresh equal-budget baselines and an evaluator-owned '
+                  'surface-changed generator were beaten.'
+              )
+          finally:
+              stop_agent(seq)
+          PY
