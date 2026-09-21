@@ -1,0 +1,42 @@
+name: ACE-X V12 E1 protected evidence
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  v12-e1:
+    if: github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground' && github.event.pull_request.head.ref == 'ace-x-v12-hermetic-effect-20260921'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: Resolve module checksums
+        run: go mod download
+      - name: Run exact V12 E1 experiment
+        run: |
+          set -euo pipefail
+          go test -mod=mod -run '^TestV12E1HermeticGeneralityProof$' ./internal/acex -count=1 -timeout=15m -v | tee v12-e1-result.txt
+      - name: Run V12 regression probes
+        run: |
+          set -euo pipefail
+          go test -mod=mod -run '^TestV12CompiledWasmDecisionIsSelfContained$|^TestV12CompiledWasmHasDecisionABI$|^TestV12WasmCapabilityRoundTripAndTamperDetection$' ./internal/acex -count=1 -timeout=10m -v | tee v12-regression-result.txt
+      - name: Publish raw experiment logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acex-v12-e1-evidence
+          path: |
+            v12-e1-result.txt
+            v12-regression-result.txt
