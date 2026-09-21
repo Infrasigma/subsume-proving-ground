@@ -19,6 +19,7 @@ type g16LearnedSkill struct {
 	LastSeen int
 	Verified bool
 	Key string
+	Signature string
 }
 
 type g16Report struct {
@@ -92,10 +93,29 @@ func g16SampleSkill(r *rand.Rand,w []int) int {
 	return len(w)-1
 }
 
-func g16ExternalVerify(candidate []string, hiddenSkills []int, skills [][]string) bool {
+func g16VerifierInputs(seed int) []int {
+	r:=rand.New(rand.NewSource(int64(510000+seed*31337)))
+	out:=[]int{-97,-61,-37,-21,-11,-4,0,3,7,14,23,31,47,59,83}
+	for i:=0;i<12;i++ { out=append(out,r.Intn(241)-120) }
+	return out
+}
+
+func g16BehaviorSignature(body []string, inputs []int) string {
+	parts:=make([]int,len(inputs))
+	for i,x:=range inputs { parts[i]=g16Apply(body,x) }
+	return g16KeyInts(parts)
+}
+
+func g16KeyInts(xs []int) string {
+	s:=""
+	for _,x:=range xs { s+=strconv.Itoa(x)+"," }
+	return s
+}
+
+func g16ExternalVerify(candidate []string, hiddenSkills []int, skills [][]string, inputs []int) bool {
 	for _,skill:=range hiddenSkills {
 		ok:=true
-		for _,x:=range []int{-31,-17,-5,6,19,37} {
+		for _,x:=range inputs {
 			if g16Apply(candidate,x)!=g16Apply(skills[skill],x) { ok=false; break }
 		}
 		if ok { return true }
@@ -103,12 +123,13 @@ func g16ExternalVerify(candidate []string, hiddenSkills []int, skills [][]string
 	return false
 }
 
-func g16InsertUtility(lib []g16LearnedSkill,c g16LearnedSkill,capacity int) []g16LearnedSkill {
+func g16InsertUtility(lib []g16LearnedSkill,c g16LearnedSkill,capacity int,inputs []int) []g16LearnedSkill {
+	c.Signature=g16BehaviorSignature(c.Body,inputs)
 	for i:=range lib {
-		if lib[i].Key==c.Key {
-			if c.Support>lib[i].Support { lib[i].Support=c.Support }
-			if c.LastSeen>lib[i].LastSeen { lib[i].LastSeen=c.LastSeen }
-			lib[i].Verified=true
+		if lib[i].Signature==c.Signature {
+			if c.Support>lib[i].Support || (c.Support==lib[i].Support && len(c.Body)<len(lib[i].Body)) {
+				lib[i]=c
+			}
 			return lib
 		}
 	}
@@ -117,17 +138,21 @@ func g16InsertUtility(lib []g16LearnedSkill,c g16LearnedSkill,capacity int) []g1
 	sort.SliceStable(lib,func(i,j int)bool{
 		si:=lib[i].Support*20+lib[i].LastSeen
 		sj:=lib[j].Support*20+lib[j].LastSeen
-		if si==sj { return lib[i].Key>lib[j].Key }
+		if si==sj {
+			if len(lib[i].Body)!=len(lib[j].Body) { return len(lib[i].Body)<len(lib[j].Body) }
+			return lib[i].Signature<lib[j].Signature
+		}
 		return si>sj
 	})
 	return lib[:capacity]
 }
 
-func g16Retention(lib []g16LearnedSkill,skills [][]string) []bool {
+func g16Retention(lib []g16LearnedSkill,skills [][]string,inputs []int) []bool {
 	ret:=make([]bool,len(skills))
 	for i,s:=range skills {
+		target:=g16BehaviorSignature(s,inputs)
 		for _,m:=range lib {
-			if g16Apply(m.Body,5)==g16Apply(s,5) && g16Apply(m.Body,-7)==g16Apply(s,-7) && g16Apply(m.Body,23)==g16Apply(s,23) {
+			if m.Signature==target || g16BehaviorSignature(m.Body,inputs)==target {
 				ret[i]=true
 				break
 			}
@@ -175,9 +200,9 @@ func g16RunSeed(seed int, permute bool, shift bool) g16Report {
 	programs:=g16AllPrograms(4)
 	counts:=map[string]*g16LearnedSkill{}
 	for _,p:=range programs { counts[g16Key(p)]=&g16LearnedSkill{Body:p,Key:g16Key(p)} }
+	verifierInputs:=g16VerifierInputs(seed)
+	retentionInputs:=[]int{-113,-79,-53,-29,-13,-2,1,5,11,17,29,43,67,101}
 
-	holdout:=make([][]int,len(skills))
-	for i:=range holdout { holdout[i]=[]int{-43+i,-29-i,13+i,41-i} }
 
 	r:=rand.New(rand.NewSource(int64(160001+seed*104729)))
 	obs:=make([]g16Observation,0,observations)
@@ -211,13 +236,13 @@ func g16RunSeed(seed int, permute bool, shift bool) g16Report {
 			}
 			if len(matched)==0 { continue }
 			c.Verified=true
-			library=g16InsertUtility(library,*c,memory)
+			library=g16InsertUtility(library,*c,memory,verifierInputs)
 		}
 	}
 
 	verifiedPool:=make([]g16LearnedSkill,0,len(counts))
 	for _,c:=range counts {
-		if c.Verified { verifiedPool=append(verifiedPool,*c) }
+		if c.Verified { verifiedPool=append(verifiedPool,*c); verifiedPool[len(verifiedPool)-1].Signature=g16BehaviorSignature(c.Body,verifierInputs) }
 	}
 	sort.Slice(verifiedPool,func(i,j int)bool{
 		if verifiedPool[i].Support==verifiedPool[j].Support { return verifiedPool[i].Key<verifiedPool[j].Key }
@@ -238,9 +263,9 @@ func g16RunSeed(seed int, permute bool, shift bool) g16Report {
 		if len(m.Body)<=4 { report.MemoryBoundPasses++ }
 	}
 
-	ret:=g16Retention(library,skills)
-	rret:=g16Retention(randomLib,skills)
-	fret:=g16Retention(fifoLib,skills)
+	ret:=g16Retention(library,skills,retentionInputs)
+	rret:=g16Retention(randomLib,skills,retentionInputs)
+	fret:=g16Retention(fifoLib,skills,retentionInputs)
 	retained:=0; weighted:=0; randomWeighted:=0; fifoWeighted:=0; totalW:=0
 	fw:=g16FutureWeights()
 	for i,w:=range fw {
@@ -295,7 +320,6 @@ func g16RunSeed(seed int, permute bool, shift bool) g16Report {
 		report.MemoryBoundPasses==report.SkillsVerified {
 		report.Class="G16_TASK_FREE_CONTINUAL_SKILL_LEARNING_PROVEN"
 	}
-	_ = holdout
 	return report
 }
 
