@@ -26,13 +26,15 @@ type request struct {
 }
 
 type response struct {
-	OK       bool   `json:"ok"`
-	Error    string `json:"error,omitempty"`
-	Artifact string `json:"artifact,omitempty"`
-	Action   string `json:"action,omitempty"`
-	Memory   int    `json:"memory"`
+	OK               bool   `json:"ok"`
+	Error            string `json:"error,omitempty"`
+	Artifact         string `json:"artifact,omitempty"`
+	ArtifactSHA256   string `json:"artifact_sha256,omitempty"`
+	ArtifactBytes    int    `json:"artifact_bytes,omitempty"`
+	Action            string `json:"action,omitempty"`
+	Memory            int    `json:"memory"`
 	Version           uint64 `json:"version,omitempty"`
-	SearchExpansions int    `json:"search_expansions,omitempty"`
+	SearchExpansions  int    `json:"search_expansions,omitempty"`
 }
 
 type agent struct {
@@ -112,7 +114,19 @@ func (a *agent) handle(in request) response {
 		if err != nil {
 			return response{Error:err.Error()}
 		}
-		return response{OK:true,Artifact:artifact,Memory:len(a.entity.Memory.Items),Version:a.entity.Version,SearchExpansions:a.entity.DirectedRepresentation.SearchExpansions}
+		module, err := acex.DecodeV12WasmBase64(artifact)
+		if err != nil {
+			return response{Error:"exported capability is not V12 Wasm: " + err.Error()}
+		}
+		return response{
+			OK:              true,
+			Artifact:        artifact,
+			ArtifactSHA256:  a.entity.HermeticArtifactHash,
+			ArtifactBytes:   len(module),
+			Memory:          len(a.entity.Memory.Items),
+			Version:         a.entity.Version,
+			SearchExpansions: a.entity.DirectedRepresentation.SearchExpansions,
+		}
 	case "load_knowledge":
 		if err := a.entity.LoadRetainedRepresentation(in.Artifact); err != nil {
 			return response{Error:err.Error()}
