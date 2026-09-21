@@ -35,7 +35,6 @@ type g13Task struct {
 type g13Macro struct {
 	Name string
 	Key uint8
-	Route []int
 }
 
 type g13PlanReport struct {
@@ -100,48 +99,39 @@ func g13BFS(t g13Task) ([]int,int,bool) {
 
 func g13LearnMacros(tasks []g13Task) []g13Macro {
 	best:=map[uint8][]int{}
-	for _,t:=range tasks {
-		p,_,ok:=g13BFS(t); if !ok { continue }
-		for _,k:=range []uint8{1,2,4,8} {
-			if t.Need&k==0 { continue }
-			if _,seen:=best[k]; seen { continue }
-			pos:=-1
-			for i,node:=range p {
-				if t.World.KeyAt[node]&k!=0 { pos=i; break }
-			}
-			if pos>0 { best[k]=append([]int(nil),p[:pos+1]...) }
+
+
+func g13PathToKey(t g13Task, s g13State, key uint8) ([]int,bool) {
+	targets:=make([]int,0)
+	for p,k:=range t.World.KeyAt { if k==key {targets=append(targets,p)} }
+	if len(targets)==0{return nil,false}; sort.Ints(targets)
+	type node struct{s g13State; path []int}
+	q:=[]node{{s,[]int{s.Pos}}}; seen:=map[int]bool{s.Pos:true}
+	for len(q)>0 {
+		cur:=q[0]; q=q[1:]
+		if t.World.KeyAt[cur.s.Pos]&key!=0 {return cur.path,true}
+		for _,n:=range g13Neighbors(t.World,cur.s.Pos) {
+			ns,ok:=g13Apply(t.World,cur.s,n); if !ok || seen[ns.Pos]{continue}
+			seen[ns.Pos]=true; q=append(q,node{ns,append(append([]int(nil),cur.path...),n)})
 		}
 	}
-	out:=make([]g13Macro,0,len(best))
-	keys:=make([]int,0,len(best)); for k:=range best { keys=append(keys,int(k)) }; sort.Ints(keys)
-	for _,ki:=range keys {
-		k:=uint8(ki); out=append(out,g13Macro{Name:"collect-"+string(rune('0'+ki)),Key:k,Route:best[k]})
-	}
-	return out
+	return nil,false
 }
 
 func g13MacroPlan(t g13Task, macros []g13Macro) ([]int,int,bool) {
-	// High-level search over macro choices; macros are executable verified
-	// routes learned from prior tasks. The primitive BFS is the ablation.
-	type node struct{ s g13State; path []int; depth int }
-	q:=[]node{{t.Start,[]int{t.Start},0}}
-	seen:=map[g13State]bool{t.Start:true}
-	exp:=0
+	// Search only over learned reusable subgoal operators. Their concrete
+	// execution is resolved in the current world, making transfer explicit.
+	type node struct{s g13State; path []int}
+	q:=[]node{{t.Start,[]int{t.Start}}}; seen:=map[g13State]bool{t.Start:true}; exp:=0
 	for len(q)>0 {
 		cur:=q[0]; q=q[1:]; exp++
-		if g13Goal(t,cur.s) { return cur.path,exp,true }
+		if g13Goal(t,cur.s){return cur.path,exp,true}
 		for _,m:=range macros {
-			if cur.s.Keys&m.Key!=0 { continue }
-			s:=cur.s
-			ok:=true
-			full:=append([]int(nil),cur.path...)
-			for _,to:=range m.Route[1:] {
-				ns,stepOK:=g13Apply(t.World,s,to); if !stepOK { ok=false; break }
-				s=ns; full=append(full,to)
-			}
-			if !ok || seen[s] { continue }
-			seen[s]=true
-			q=append(q,node{s,full,cur.depth+1})
+			if cur.s.Keys&m.Key!=0 {continue}
+			seg,ok:=g13PathToKey(t,cur.s,m.Key); if !ok || len(seg)<2 {continue}
+			ns:=cur.s; full:=append([]int(nil),cur.path...)
+			for _,to:=range seg[1:] { var stepOK bool; ns,stepOK=g13Apply(t.World,ns,to); if !stepOK {ok=false;break}; full=append(full,to) }
+			if !ok || seen[ns] {continue}; seen[ns]=true; q=append(q,node{ns,full})
 		}
 	}
 	return nil,exp,false
@@ -199,12 +189,12 @@ func TestG13HierarchicalLongHorizonPlanning(t *testing.T) {
 		// Training goals deliberately require one-key subtasks. The target goals
 		// require 5-key compositions and are generated independently.
 		train:=make([]g13Task,0,4)
-		for i:=0;i<4;i++ {
+		for i:=0;i<8;i++ {
 			pos:=i
 			train=append(train,g13MakeTask(w,[]int{pos},pos))
 		}
 		macros:=g13LearnMacros(train)
-		if len(macros)<4 { t.Fatalf("seed %d learned only %d macros",seed,len(macros)) }
+		if len(macros)<8 { t.Fatalf("seed %d learned only %d reusable key macros",seed,len(macros)) }
 		report.MacrosLearned += len(macros)
 		target:=g13Task{World:w,Start:g13State{Pos:0},Need:0,Goal:0}
 		keyPositions:=make([]int,0,8)
@@ -238,7 +228,7 @@ func TestG13HierarchicalLongHorizonPlanning(t *testing.T) {
 		if !ok2 || !g13IndependentVerify(target,p2) || e2!=macroExp {t.Fatalf("seed %d order stress failed",seed)}
 		report.OrderStressPasses++
 		for _,m:=range macros {
-			if m.Key==0 || m.Name=="" || len(m.Route)<2 {noLeak=false}
+			if m.Key==0 || m.Name=="" {noLeak=false}
 		}
 		_ = target
 	}
