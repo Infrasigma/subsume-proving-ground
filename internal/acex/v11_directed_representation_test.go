@@ -41,7 +41,7 @@ func TestV11DirectedRepresentationInventionAndReload(t *testing.T) {
 	r := NewV11DirectedExecutableRepresentation()
 	for i := 0; i < 3; i++ {
 		state, actions, correct := v11ChainState("src", false, i)
-		r.Record(state, actions[(i+1)%len(actions)], -1, false)
+		r.Record(state, actions[0], -1, false)
 		r.Record(state, correct, 1, false)
 	}
 	if !r.Synthesize() {
