@@ -432,6 +432,7 @@ func TestMultiHorizonAutonomousAmortization(t *testing.T) {
 		acqExpansions := 0
 		acqVerifierCalls := 0
 		retainedBytes := int64(0)
+		rawTrainingBytes := int64(0)
 
 		for _, method := range methods {
 			p, err := decodeAcquisitionProcedure(method.Artifact)
@@ -447,6 +448,14 @@ func TestMultiHorizonAutonomousAmortization(t *testing.T) {
 			if !verified {
 				t.Fatalf("seed %d: acquired capability failed held-out verification", seed)
 			}
+			rawBytes, err := json.Marshal(struct {
+				Train   []abstractCompoundExample `json:"train"`
+				Holdout []abstractCompoundExample `json:"holdout"`
+			}{Train: train, Holdout: holdout})
+			if err != nil {
+				t.Fatal(err)
+			}
+			rawTrainingBytes += int64(len(rawBytes))
 			artifact, err := learned.Marshal()
 			if err != nil {
 				t.Fatal(err)
@@ -547,10 +556,9 @@ func TestMultiHorizonAutonomousAmortization(t *testing.T) {
 		}
 		manifestTamperDetected := originalHash != amortizationHashFile(tamperedPath)
 
-		rawMemoryBytes := int64(0)
+		rawMemoryBytes := rawTrainingBytes
 		compressedMemoryBytes := int64(0)
 		for _, method := range capabilityMethods {
-			rawMemoryBytes += int64(len(method.Artifact))
 			compressedMemoryBytes += int64(len(procedureSignatureMust(method.Artifact)))
 		}
 		persistentBytes := abstractCompoundFileBytes(rawRoot)
@@ -565,7 +573,7 @@ func TestMultiHorizonAutonomousAmortization(t *testing.T) {
 			RuntimeTamperRejected: runtimeTamperRejected,
 			ManifestTamperDetected: manifestTamperDetected,
 			PersistentBytes: persistentBytes,
-			ArtifactBytes: int64(len(methods) * 2),
+			ArtifactBytes: retainedBytes,
 			Horizons: make([]amortizationHorizon, 0, len(horizons)),
 		}
 
