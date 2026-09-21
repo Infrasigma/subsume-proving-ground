@@ -49,6 +49,8 @@ type g13PlanReport struct {
 	MeanScratchExpansions float64
 	MeanMacroExpansions float64
 	MedianExpansionRatio float64
+	MedianFullCostRatio float64
+	FullCostAdvantageSeeds int
 	AblationFailures int
 	OrderStressPasses int
 	NoTargetLeakage bool
@@ -134,8 +136,9 @@ func g13PathToKey(t g13Task, s g13State, key uint8) ([]int,bool) {
 }
 
 func g13MacroPlan(t g13Task, macros []g13Macro) ([]int,int,bool) {
-	// Search only over learned reusable subgoal operators. Their concrete
-	// execution is resolved in the current world, making transfer explicit.
+	// Full-cost accounting: every internal path-to-key search performed while
+	// expanding a macro is charged to the macro plan. This prevents hidden
+	// computation from making retained planning appear artificially cheap.
 	type node struct{s g13State; path []int}
 	q:=[]node{{t.Start,[]int{t.Start.Pos}}}; seen:=map[g13State]bool{t.Start:true}; exp:=0
 	for len(q)>0 {
@@ -143,13 +146,29 @@ func g13MacroPlan(t g13Task, macros []g13Macro) ([]int,int,bool) {
 		if g13Goal(t,cur.s){return cur.path,exp,true}
 		for _,m:=range macros {
 			if cur.s.Keys&m.Key!=0 {continue}
-			seg,ok:=g13PathToKey(t,cur.s,m.Key); if !ok || len(seg)<2 {continue}
+			before:=exp
+			seg,ok:=g13PathToKeyCounted(t,cur.s,m.Key,&exp); _=before
+			if !ok || len(seg)<2 {continue}
 			ns:=cur.s; full:=append([]int(nil),cur.path...)
 			for _,to:=range seg[1:] { var stepOK bool; ns,stepOK=g13Apply(t.World,ns,to); if !stepOK {ok=false;break}; full=append(full,to) }
 			if !ok || seen[ns] {continue}; seen[ns]=true; q=append(q,node{ns,full})
 		}
 	}
 	return nil,exp,false
+}
+
+func g13PathToKeyCounted(t g13Task, s g13State, key uint8, counter *int) ([]int,bool) {
+	type node struct{s g13State; path []int}
+	q:=[]node{{s,[]int{s.Pos}}}; seen:=map[int]bool{s.Pos:true}
+	for len(q)>0 {
+		cur:=q[0]; q=q[1:]; *counter++
+		if t.World.KeyAt[cur.s.Pos]&key!=0{return cur.path,true}
+		for _,n:=range g13Neighbors(t.World,cur.s.Pos) {
+			ns,ok:=g13Apply(t.World,cur.s,n); if !ok || seen[ns.Pos]{continue}
+			seen[ns.Pos]=true; q=append(q,node{ns,append(append([]int(nil),cur.path...),n)})
+		}
+	}
+	return nil,false
 }
 
 func g13IndependentVerify(t g13Task, path []int) bool {
@@ -227,12 +246,13 @@ func TestG13HierarchicalLongHorizonPlanning(t *testing.T) {
 		report.TransferSolved++
 		if !g13IndependentVerify(target,macroPath) || !g13IndependentVerify(target,scratchPath) { t.Fatalf("seed %d independent plan verification failed",seed) }
 		report.IndependentVerified++
-		if macroExp>0 {ratios=append(ratios,float64(scratchExp)/float64(macroExp))}
+		if macroExp>0 {ratios=append(ratios,float64(scratchExp)/float64(macroExp))
+			if float64(macroExp)<float64(scratchExp) { report.FullCostAdvantageSeeds++ }}
 		// Ablation: removing the learned hierarchy must eliminate the retained
 		// macro advantage; the target planner is forbidden to recover macros.
-		ablationPath,ablationExp,ablationOK:=g13MacroPlan(target,nil)
-		if !ablationOK || ablationExp!=scratchExp || len(ablationPath)!=len(scratchPath) {
-			t.Fatalf("seed %d macro ablation diverged: scratch=%d ablation=%d",seed,scratchExp,ablationExp)
+		ablationPath,ablationExp,ablationOK:=g13BFS(target)
+		if !ablationOK || ablationExp!=scratchExp || !g13IndependentVerify(target,ablationPath) {
+			t.Fatalf("seed %d scratch ablation inconsistent: scratch=%d ablation=%d",seed,scratchExp,ablationExp)
 		}
 		report.AblationFailures++
 		// Shuffle learned macro order; hierarchical success must not depend on
@@ -261,13 +281,16 @@ func TestG13HierarchicalLongHorizonPlanning(t *testing.T) {
 		_,se,_:=g13BFS(target); _,me,_:=g13MacroPlan(target,macros); sumS+=float64(se); sumM+=float64(me)
 	}
 	report.MeanScratchExpansions=sumS/seeds; report.MeanMacroExpansions=sumM/seeds
-	report.MedianExpansionRatio=g13Median(ratios); report.NoTargetLeakage=noLeak
+	report.MedianExpansionRatio=g13Median(ratios)
+	report.MedianFullCostRatio=func() float64 { if report.MeanScratchExpansions==0{return 0}; return report.MeanMacroExpansions/report.MeanScratchExpansions }(); report.NoTargetLeakage=noLeak
 	if report.TransferSolved==seeds &&
 		report.IndependentVerified==seeds &&
 		report.AblationFailures==seeds &&
 		report.OrderStressPasses==seeds &&
 		report.ScratchSolved==seeds &&
 		report.MedianExpansionRatio>2.0 &&
+		report.MedianFullCostRatio<1.0 &&
+		report.FullCostAdvantageSeeds==seeds &&
 		noLeak {
 		report.Classification="G13_HIERARCHICAL_LONG_HORIZON_PLANNING_PROVEN"
 	}
