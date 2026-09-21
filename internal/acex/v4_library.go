@@ -63,6 +63,20 @@ type V4Library struct {
 	Concepts map[string]V4Concept
 }
 
+func (l V4Library) Digest() string {
+	names := make([]string, 0, len(l.Concepts))
+	for name := range l.Concepts {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		c := l.Concepts[name]
+		parts = append(parts, fmt.Sprintf("%s=%s", name, v4Signature(c.Body)))
+	}
+	return hashString(strings.Join(parts, "|"))
+}
+
 type V4SearchResult struct {
 	Program V4Expr
 	Cost Resource
