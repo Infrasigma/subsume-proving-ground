@@ -1,0 +1,26 @@
+name: ACE-X targeted cognitive diagnostics
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  adaptive-entity-diagnostic:
+    if: github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground' && github.event.pull_request.head.ref == 'ace-x-v10-v8-blackbox-20260921'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - run: go mod download
+      - name: Run adaptive entity integration diagnostic
+        run: go test -mod=mod ./internal/acex -run '^TestV8AdaptiveRepresentationEntityTransferCost$' -v
