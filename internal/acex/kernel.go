@@ -256,6 +256,13 @@ func (r RepresentationLab) Discover(train, holdout Dataset) (Concept, Resource, 
 					Accuracy:   ha,
 					Complexity: k,
 				}
+				// Non-broad policies are executable search strategies, not
+				// hard-coded task solvers: once a candidate survives the
+				// independent holdout, they may stop early.
+				if r.Policy != PolicyBroad && r.Policy != PolicyNovelty {
+					cost.Storage += k
+					return best, cost, nil
+				}
 			}
 		}
 	}
