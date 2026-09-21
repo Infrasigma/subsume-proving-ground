@@ -1,0 +1,37 @@
+name: ACE-X V5 protected open-cognitive gate
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  ace-x-v5-forensic:
+    if: github.event.pull_request.head.ref == 'ace-x-v5-open-cognitive-20260921' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact V5 head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - run: go mod download
+      - name: Run protected V5 terminal
+        env:
+          ACEX_V5_RUNTIME_SEED: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          go test -mod=mod -run '^TestV5MechanismTerminal$|^TestV5GroundingMemoryAndCausalLoop$|^TestV5PersistenceAfterRawEpisodeDeletion$' ./internal/acex -count=1 -timeout=15m -v | tee acex-v5-protected-result.txt
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acex-v5-protected-result
+          path: acex-v5-protected-result.txt
