@@ -182,6 +182,7 @@ func sortedStringSet(m map[string]bool) []string {
 func (e *V8CognitiveEntity) ObserveOutcome(before RelationalState, action string, after RelationalState, reward float64, terminal bool) V7Step {
 	e.StructuralRoles.Observe(before, action, reward, terminal)
 	e.AdaptiveRoles.Observe(before, action, reward, terminal)
+	e.RelationalPatterns.Record(before, action, reward, terminal)
 	step := e.Experience.ExecuteObserved(before, action, after, reward, terminal)
 	err := e.Remember(V5MemoryTrace{
 		ID:            "experience-" + V7ActionEffectSignature(step),
