@@ -236,11 +236,11 @@ func (e *V8CognitiveEntity) InventTool(task ace.Task, training, holdout []ace.Pr
 		return ace.ModificationProposal{}, errors.New("nil V8 entity")
 	}
 	if len(holdout) < 2 {
-		return ModificationProposal{}, errors.New("independent tool holdout required")
+		return ace.ModificationProposal{}, errors.New("independent tool holdout required")
 	}
 	spec, err := ace.GeneralCapabilitySpecification(task, training)
 	if err != nil {
-		return ModificationProposal{}, err
+		return ace.ModificationProposal{}, err
 	}
 	candidates, err := (ace.UniversalMechanismSearch{}).SearchMechanisms(spec, task.Budget)
 	if err != nil || len(candidates) == 0 {
