@@ -2,6 +2,7 @@ package acex
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -202,6 +203,8 @@ func SearchRankerProgram(train,holdout []Dataset,current RankerProgram)(RankerSe
 		base+=c.Total()
 	}
 	best:=RankerSearchResult{Program:current,Baseline:base,Improved:base}
+	bestAny:=base
+	bestAnySig:=""
 	for _,p:=range enumerateRankerPrograms(1) {
 		if p.Signature()==current.Signature() { continue }
 		cost:=0
@@ -211,10 +214,13 @@ func SearchRankerProgram(train,holdout []Dataset,current RankerProgram)(RankerSe
 			if e!=nil { ok=false; break }
 			cost+=c.Total()
 		}
-		if ok && cost<best.Improved { best=RankerSearchResult{Program:p,Baseline:base,Improved:cost} }
+		if ok {
+			if cost<bestAny { bestAny=cost; bestAnySig=p.Signature() }
+			if cost<best.Improved { best=RankerSearchResult{Program:p,Baseline:base,Improved:cost} }
+		}
 	}
 	if best.Improved>=best.Baseline {
-		return RankerSearchResult{},errors.New("no verified ranker improvement")
+		return RankerSearchResult{},fmt.Errorf("no verified ranker improvement: baseline=%d best_any=%d best_signature=%s",base,bestAny,bestAnySig)
 	}
 	return best,nil
 }
