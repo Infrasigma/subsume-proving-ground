@@ -249,12 +249,15 @@ func generateAmortizationTask(seed int, methods []AcquisitionMethodArtifact) amo
 		expected := abstractCompoundReference(m2, abstractCompoundReference(m1, in))
 		return abstractCompoundExample{Input: in, Expected: abstractCompoundMechanisms(expected)}
 	}
-	train := make([]abstractCompoundExample, 0, 8)
-	for n := 11; n <= 18; n++ {
+	// A fixed 12-example identification set is the smallest size that makes the
+	// deterministic primitive baseline universally solve the 512-task curriculum
+	// under the current procedure language; both learners receive it symmetrically.
+	train := make([]abstractCompoundExample, 0, 12)
+	for n := 11; n <= 22; n++ {
 		train = append(train, buildExample(n))
 	}
 	holdout := make([]abstractCompoundExample, 0, 4)
-	for n := 19; n <= 22; n++ {
+	for n := 23; n <= 26; n++ {
 		holdout = append(holdout, buildExample(n))
 	}
 	return amortizationTask{Train: train, Holdout: holdout, Target: []int{target[0], target[1]}}
