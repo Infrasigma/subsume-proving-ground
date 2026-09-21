@@ -159,6 +159,20 @@ func v4Signature(e V4Expr) string {
 	}
 }
 
+func v4Canonicalize(e V4Expr) V4Expr {
+	out := cloneV4Expr(e)
+	for i := range out.Args {
+		out.Args[i] = v4Canonicalize(out.Args[i])
+	}
+	switch out.Kind {
+	case "add", "mul", "max", "min", "and", "or":
+		if len(out.Args) == 2 && v4Signature(out.Args[1]) < v4Signature(out.Args[0]) {
+			out.Args[0], out.Args[1] = out.Args[1], out.Args[0]
+		}
+	}
+	return out
+}
+
 func v4ValueKey(v V4Value) string {
 	switch v.Type {
 	case V4Int:
@@ -439,6 +453,7 @@ func v4Search(t V4Task, lib V4Library, maxSize, beam int, accept func(V4Expr) bo
 	seen := map[string]bool{}
 	result := V4SearchResult{}
 	add := func(e V4Expr) {
+		e = v4Canonicalize(e)
 		size := v4Size(e)
 		if size > maxSize {
 			return
@@ -811,18 +826,21 @@ func v4ConceptCall(c V4Concept, vals map[string]V4Expr) V4Expr {
 }
 
 func V4MakeFirstIntTasks(seed int64) ([]V4Task, error) {
-	delta := int(seed%3) - 1
-	specs := [][3]int{{-1, 2, 1}, {0, 2, -1}, {-2, 1, delta}}
-	defs := make([]V4Expr, 0, 3)
+	offsets := []int{
+		int(seed%5) - 2,
+		int((seed/5)%5) - 2,
+		-int(seed%3) - 1,
+	}
 	x := v4IntInput()
-	for _, s := range specs {
-		clamped := v4IntExpr("add", x, v4IntConst(s[2]))
-		body := v4IntExpr("max", v4IntConst(s[0]), v4IntExpr("min", v4IntConst(s[1]), clamped))
-		defs = append(defs, body)
+	defs := make([]V4Expr, 0, len(offsets))
+	for _, offset := range offsets {
+		defs = append(defs, v4IntExpr("max",
+			v4IntConst(0),
+			v4IntExpr("abs", v4IntExpr("add", x, v4IntConst(offset)))))
 	}
 	inputs := []int{-6, -4, -2, -1, 0, 2, 4}
 	holds := []int{-7, -5, -3, 1, 3, 5, 7}
-	out := make([]V4Task, 0, 3)
+	out := make([]V4Task, 0, len(defs))
 	for i, d := range defs {
 		t, err := v4MakeTask(fmt.Sprintf("v4-int-g1-%d", i), inputs, holds, d, NewV4Library())
 		if err != nil {
@@ -834,16 +852,21 @@ func V4MakeFirstIntTasks(seed int64) ([]V4Task, error) {
 }
 
 func V4MakeFirstBoolTasks(seed int64) ([]V4Task, error) {
-	offset := int(seed%3) - 1
-	specs := [][2]int{{offset, 0}, {1, 1}, {-1, -1}}
-	defs := make([]V4Expr, 0, 3)
-	x := v4IntInput()
-	for _, s := range specs {
-		defs = append(defs, v4BoolExpr("gt", v4IntExpr("add", x, v4IntConst(s[0])), v4IntConst(s[1])))
+	pairs := [][2]int{
+		{int(seed%5) - 2, 2},
+		{int((seed/5)%5) - 2, 3},
+		{1, int(seed%3) - 1},
 	}
-	inputs := []int{-5, -3, -1, 0, 1, 3, 5}
-	holds := []int{-6, -4, -2, 2, 4, 6}
-	out := make([]V4Task, 0, 3)
+	x := v4IntInput()
+	defs := make([]V4Expr, 0, len(pairs))
+	for _, pair := range pairs {
+		defs = append(defs, v4BoolExpr("gt",
+			v4IntExpr("abs", v4IntExpr("add", x, v4IntConst(pair[0]))),
+			v4IntConst(pair[1])))
+	}
+	inputs := []int{-7, -5, -3, -1, 0, 1, 3, 5, 7}
+	holds := []int{-8, -6, -4, 2, 4, 6, 8}
+	out := make([]V4Task, 0, len(defs))
 	for i, d := range defs {
 		t, err := v4MakeTask(fmt.Sprintf("v4-bool-g1-%d", i), inputs, holds, d, NewV4Library())
 		if err != nil {
@@ -855,22 +878,19 @@ func V4MakeFirstBoolTasks(seed int64) ([]V4Task, error) {
 }
 
 func V4MakeSecondIntTasks(first V4Concept) ([]V4Task, error) {
-	if len(first.Params) != 3 {
+	if len(first.Params) != 1 {
 		return nil, errors.New("unexpected first concept arity")
 	}
-	vals := []map[string]V4Expr{
-		{"p0": v4IntConst(-1), "p1": v4IntConst(2), "p2": v4IntConst(1)},
-		{"p0": v4IntConst(0), "p1": v4IntConst(2), "p2": v4IntConst(-1)},
-		{"p0": v4IntConst(-2), "p1": v4IntConst(1), "p2": v4IntConst(0)},
-	}
+	deltas := []int{1, -1, 2}
+	offsets := []int{-2, 0, 2}
 	defs := make([]V4Expr, 0, 3)
-	for i, m := range vals {
-		c := v4ConceptCall(first, m)
-		defs = append(defs, v4IntExpr("add", c, v4IntConst([]int{1, -1, 2}[i])))
+	for i := range deltas {
+		call := v4ConceptCall(first, map[string]V4Expr{"p0": v4IntConst(offsets[i])})
+		defs = append(defs, v4IntExpr("add", call, v4IntConst(deltas[i])))
 	}
 	inputs := []int{-7, -5, -3, -1, 0, 2, 4, 6}
 	holds := []int{-8, -6, -4, -2, 1, 3, 5, 7}
-	out := make([]V4Task, 0, 3)
+	out := make([]V4Task, 0, len(defs))
 	lib := NewV4Library()
 	lib.Concepts[first.Name] = first
 	for i, d := range defs {
@@ -884,16 +904,19 @@ func V4MakeSecondIntTasks(first V4Concept) ([]V4Task, error) {
 }
 
 func V4MakeHiddenSuccessors(seed int64, intSecond V4Concept, boolFirst V4Concept, lib V4Library) ([]V4HiddenCase, error) {
+	if len(intSecond.Params) != 2 || len(boolFirst.Params) != 2 {
+		return nil, errors.New("unexpected hidden concept arity")
+	}
 	s := int(seed)
 	intTargets := []V4Expr{
-		v4ConceptCall(intSecond, map[string]V4Expr{"p0": v4IntConst((s%3)-1), "p1": v4IntConst(2), "p2": v4IntConst(1), "p3": v4IntConst(1)}),
-		v4ConceptCall(intSecond, map[string]V4Expr{"p0": v4IntConst(0), "p1": v4IntConst((s%3)+1), "p2": v4IntConst(-1), "p3": v4IntConst(-1)}),
-		v4ConceptCall(intSecond, map[string]V4Expr{"p0": v4IntConst(-2), "p1": v4IntConst(1), "p2": v4IntConst(0), "p3": v4IntConst(2)}),
+		v4ConceptCall(intSecond, map[string]V4Expr{"p0": v4IntConst((s%5)-2), "p1": v4IntConst(1)}),
+		v4ConceptCall(intSecond, map[string]V4Expr{"p0": v4IntConst((s%3)-1), "p1": v4IntConst(-2)}),
+		v4ConceptCall(intSecond, map[string]V4Expr{"p0": v4IntConst(2), "p1": v4IntConst(3)}),
 	}
 	boolTargets := []V4Expr{
-		v4ConceptCall(boolFirst, map[string]V4Expr{"p0": v4IntConst((s%3)-1), "p1": v4IntConst(0)}),
-		v4ConceptCall(boolFirst, map[string]V4Expr{"p0": v4IntConst(-1), "p1": v4IntConst(1)}),
-		v4ConceptCall(boolFirst, map[string]V4Expr{"p0": v4IntConst(1), "p1": v4IntConst(-1)}),
+		v4ConceptCall(boolFirst, map[string]V4Expr{"p0": v4IntConst((s%5)-2), "p1": v4IntConst(2)}),
+		v4ConceptCall(boolFirst, map[string]V4Expr{"p0": v4IntConst(-1), "p1": v4IntConst(3)}),
+		v4ConceptCall(boolFirst, map[string]V4Expr{"p0": v4IntConst(1), "p1": v4IntConst(1)}),
 	}
 	all := make([]V4HiddenCase, 0, 6)
 	in1 := []int{-9, -6, -3, 0, 3, 6, 9}
@@ -901,26 +924,18 @@ func V4MakeHiddenSuccessors(seed int64, intSecond V4Concept, boolFirst V4Concept
 	libAll := cloneV4Library(lib)
 	for i, d := range intTargets {
 		t, err := v4MakeTask(fmt.Sprintf("v4-hidden-int-%d", i), in1, hold1, d, libAll)
-		if err != nil {
-			return nil, err
-		}
+		if err != nil { return nil, err }
 		alt, err := v4MakeTask(fmt.Sprintf("v4-hidden-int-hold-%d", i), hold1, in1, d, libAll)
-		if err != nil {
-			return nil, err
-		}
+		if err != nil { return nil, err }
 		all = append(all, V4HiddenCase{ID: fmt.Sprintf("v4-hidden-int-%d", i), Train: t, Holdout: alt})
 	}
 	in2 := []int{-8, -5, -2, 1, 4, 7, 10}
 	hold2 := []int{-9, -6, -3, 0, 3, 6, 9, 12}
 	for i, d := range boolTargets {
 		t, err := v4MakeTask(fmt.Sprintf("v4-hidden-bool-%d", i), in2, hold2, d, libAll)
-		if err != nil {
-			return nil, err
-		}
+		if err != nil { return nil, err }
 		alt, err := v4MakeTask(fmt.Sprintf("v4-hidden-bool-hold-%d", i), hold2, in2, d, libAll)
-		if err != nil {
-			return nil, err
-		}
+		if err != nil { return nil, err }
 		all = append(all, V4HiddenCase{ID: fmt.Sprintf("v4-hidden-bool-%d", i), Train: t, Holdout: alt})
 	}
 	return all, nil
