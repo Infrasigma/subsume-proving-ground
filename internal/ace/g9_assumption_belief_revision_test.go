@@ -257,7 +257,7 @@ func g9Oracle(base []g9Assumption, evidence g9Assumption, rules []g9Rule) g9HitR
 		}
 		if !g9Consistent(kept,rules) { continue }
 		ids:=make([]int,0)
-		for i := range base { if mask&(1<<i) != 0 { ids=append(ids,i) } }
+		for i := range base { if !base[i].Hard && mask&(1<<i) != 0 { ids=append(ids,i) } }
 		if !best.OK || cost < best.Cost || (cost==best.Cost && g9SubsetKey(ids)<g9SubsetKey(best.IDs)) {
 			best=g9HitResult{IDs:ids,Cost:cost,OK:true}
 		}
@@ -338,8 +338,11 @@ func g9FindContradictoryEvidence(base []g9Assumption, rules []g9Rule) (string,bo
 		if !closure[g9Neg(lit)] { cands=append(cands,lit) }
 	}
 	sort.Strings(cands)
-	if len(cands)==0 { return "",false }
-	return cands[0],true
+	for _,lit:=range cands {
+		ev:=g9Assumption{ID:"probe",Literal:g9Neg(lit),Cost:0,Hard:true}
+		if g9Oracle(base,ev,rules).OK { return ev.Literal,true }
+	}
+	return "",false
 }
 
 func g9IDs(xs []g9Assumption) []string {
@@ -367,11 +370,8 @@ func TestG9AssumptionBasedBeliefRevision(t *testing.T) {
 		if !g9Consistent(base,rules) { t.Fatalf("seed %d generated inconsistent base",seed) }
 		active:=append([]g9Assumption(nil),base...)
 		for update:=0;update<4;update++ {
-			target,ok:=g9FindContradictoryEvidence(active,rules)
-			evidenceLiteral:=""
-			if ok {
-				evidenceLiteral=g9Neg(target)
-			} else {
+			evidenceLiteral,ok:=g9FindContradictoryEvidence(active,rules)
+			if !ok {
 				evidenceLiteral=[]string{"p","!p","q","!q"}[(seed+update)%4]
 			}
 			evidence:=g9Assumption{ID:"e"+string(rune('0'+update)),Literal:evidenceLiteral,Cost:0,Hard:true}
