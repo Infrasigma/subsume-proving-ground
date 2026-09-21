@@ -158,7 +158,7 @@ func g13Independent13(task g13Task,p g13Program13,lib *g13Lib13) bool {
 
 func g13Training13(family int, r *rand.Rand) []g13Task13 {
 	common:=[][]int{{0,2},{2,3},{1,2},{2,0}}
-	if family==1 { common=[][]int{{10,11},{11,13},{12,10},{10,13} }
+	if family==1 { common=[][]int{{10,11},{11,13},{12,10},{10,13}} }
 	out:=make([]g13Task13,0,12)
 	for i:=0;i<12;i++ {
 		base:=append([]int(nil),common[i%len(common)]...)
