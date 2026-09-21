@@ -28,6 +28,8 @@ type CognitiveRuntime struct {
 	ActiveRanker RankerProgram
 	RankerHistory []RankerProgram
 	ImprovementLedger ImprovementLedger
+	V3Library    V3Library
+	V3LibraryHistory []V3Library
 	Version     uint64
 }
 
@@ -39,6 +41,7 @@ func NewCognitiveRuntime() *CognitiveRuntime {
 			KnownActions: map[string]float64{},
 			Capabilities: map[string]float64{},
 		},
+		V3Library: NewV3Library(),
 	}
 }
 
