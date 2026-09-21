@@ -37,6 +37,7 @@ type V8ExecutableRepresentation struct {
 	SearchSpace int
 	ProgramKey  string
 	Valid       bool
+	Retained    bool
 }
 
 func NewV8ExecutableRepresentation() V8ExecutableRepresentation {
@@ -157,7 +158,7 @@ func (p V8ExecutableRepPredicate) Key() string {
 }
 
 func (r *V8ExecutableRepresentation) Record(state RelationalState, action string, reward float64, terminal bool) {
-	if r == nil {
+	if r == nil || r.Retained {
 		return
 	}
 	r.Examples = append(r.Examples, V8RelationalPatternExample{
@@ -194,7 +195,13 @@ func (r V8ExecutableRepresentation) separates() bool {
 }
 
 func (r *V8ExecutableRepresentation) Synthesize() bool {
-	if r == nil || len(r.Examples) < 2 {
+	if r == nil {
+		return false
+	}
+	if r.Retained {
+		return r.Valid && r.ProgramKey != ""
+	}
+	if len(r.Examples) < 2 {
 		return false
 	}
 	if r.separates() {
@@ -276,6 +283,7 @@ func (r *V8ExecutableRepresentation) Synthesize() bool {
 	r.Predicate = best
 	r.ProgramKey = bestKey
 	r.Valid = true
+	r.Retained = false
 	return true
 }
 
@@ -304,6 +312,7 @@ func (r V8ExecutableRepresentation) Select(state RelationalState, actions []stri
 
 func (r V8ExecutableRepresentation) ForgetExamples() V8ExecutableRepresentation {
 	r.Examples = nil
+	r.Retained = r.Valid && r.ProgramKey != ""
 	return r
 }
 
