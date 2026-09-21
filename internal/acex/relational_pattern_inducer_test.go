@@ -137,6 +137,24 @@ func TestV8EntityTriggersAndRetainsRelationalRepresentation(t *testing.T) {
 	}
 }
 
+func TestRelationalPatternInvalidatesOnContradictoryEvidence(t *testing.T) {
+	inducer := NewV8RelationalPatternInducer()
+	pos, posRoot := aliasPatternState("contra",0,true)
+	neg, negRoot := aliasPatternState("contra-neg",0,false)
+	inducer.Record(neg,negRoot,-1,false)
+	inducer.Record(pos,posRoot,1,false)
+	if !inducer.TrySynthesize() || inducer.Pattern == nil {
+		t.Fatal("failed to synthesize initial separating pattern")
+	}
+	inducer.Record(pos,posRoot,-1,false)
+	if _, ok := inducer.Select(pos, []string{posRoot}); ok {
+		t.Fatal("contradicted pattern remained executable")
+	}
+	if inducer.Pattern != nil {
+		t.Fatal("contradicted pattern was not invalidated")
+	}
+}
+
 func TestRelationalPatternSynthesizerBudgetIsBounded(t *testing.T) {
 	inducer := NewV8RelationalPatternInducer()
 	inducer.Budget = 3
