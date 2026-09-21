@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"testing"
 )
 
@@ -98,8 +99,22 @@ func g13BFS(t g13Task) ([]int,int,bool) {
 }
 
 func g13LearnMacros(tasks []g13Task) []g13Macro {
-	best:=map[uint8][]int{}
-
+	seen:=map[uint8]bool{}
+	for _,t:=range tasks {
+		for k:=uint8(1); k!=0; k<<=1 {
+			if t.Need&k!=0 { seen[k]=true }
+		}
+	}
+	keys:=make([]int,0,len(seen))
+	for k:=range seen { keys=append(keys,int(k)) }
+	sort.Ints(keys)
+	out:=make([]g13Macro,0,len(keys))
+	for _,ki:=range keys {
+		k:=uint8(ki)
+		out=append(out,g13Macro{Name:"collect-"+strconv.Itoa(ki),Key:k})
+	}
+	return out
+}
 
 func g13PathToKey(t g13Task, s g13State, key uint8) ([]int,bool) {
 	targets:=make([]int,0)
