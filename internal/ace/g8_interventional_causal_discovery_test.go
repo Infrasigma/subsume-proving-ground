@@ -2,7 +2,6 @@ package ace
 
 import (
 	"encoding/json"
-	"fmt"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -287,7 +286,6 @@ func TestG8InterventionalCausalModelDiscovery(t *testing.T) {
 // TestG8CandidateEnumerationSanity ensures the hypothesis space itself is exact
 // and contains the generating models used by the randomized gate.
 func TestG8CandidateEnumerationSanity(t *testing.T) {
-	dags := g8AllDAGs()
 	r := rand.New(rand.NewSource(777001))
 	for i := 0; i < 32; i++ {
 		m := g8MakeModel(r)
