@@ -1,0 +1,32 @@
+name: ACE-X V2 cognition gate
+
+on:
+  push:
+    branches:
+      - ace-x-v2-live-20260921
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  v2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - run: go mod download
+      - run: go test -mod=mod -run '^TestV2Terminal$' ./internal/acex -count=1 -timeout=8m -v | tee acex-v2-result.txt
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acex-v2-result
+          path: acex-v2-result.txt
