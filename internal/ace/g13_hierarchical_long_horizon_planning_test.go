@@ -137,7 +137,7 @@ func g13MacroPlan(t g13Task, macros []g13Macro) ([]int,int,bool) {
 	// Search only over learned reusable subgoal operators. Their concrete
 	// execution is resolved in the current world, making transfer explicit.
 	type node struct{s g13State; path []int}
-	q:=[]node{{t.Start,[]int{t.Start}}}; seen:=map[g13State]bool{t.Start:true}; exp:=0
+	q:=[]node{{t.Start,[]int{t.Start.Pos}}}; seen:=map[g13State]bool{t.Start:true}; exp:=0
 	for len(q)>0 {
 		cur:=q[0]; q=q[1:]; exp++
 		if g13Goal(t,cur.s){return cur.path,exp,true}
