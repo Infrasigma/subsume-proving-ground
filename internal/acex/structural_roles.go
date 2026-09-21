@@ -37,14 +37,10 @@ func structuralDegrees(g RelationalState) map[string]int {
 	return deg
 }
 
-func StructuralActionRoleKey(g RelationalState, action string, actions []string) (string, bool) {
-	actionSet := make(map[string]bool, len(actions))
-	for _, a := range actions {
-		actionSet[a] = true
-	}
+func StructuralActionRoleKey(g RelationalState, action string) (string, bool) {
 	found := false
 	for _, n := range g.Nodes {
-		if n.ID == action && actionSet[action] {
+		if n.ID == action {
 			found = true
 			break
 		}
@@ -76,22 +72,17 @@ func StructuralActionRoleKey(g RelationalState, action string, actions []string)
 		neighborDegreeSum += d
 	}
 
-	nonActionNeighborCount := 0
-	for id := range neighborIDs {
-		if !actionSet[id] {
-			nonActionNeighborCount++
-		}
-	}
+	nonActionNeighborCount := len(neighborIDs)
 
 	// Keep the representation small and entirely structural.
 	return fmt.Sprintf("d=%d|nd=%d|ns=%d", actionDegree, maxNeighborDegree, nonActionNeighborCount), true
 }
 
-func (l *V8StructuralRoleLearner) Observe(g RelationalState, action string, actions []string, reward float64, terminal bool) {
+func (l *V8StructuralRoleLearner) Observe(g RelationalState, action string, reward float64, terminal bool) {
 	if l == nil {
 		return
 	}
-	key, ok := StructuralActionRoleKey(g, action, actions)
+	key, ok := StructuralActionRoleKey(g, action)
 	if !ok {
 		return
 	}
@@ -114,7 +105,7 @@ func (l *V8StructuralRoleLearner) Select(g RelationalState, actions []string) (s
 	}
 	cs := make([]candidate, 0, len(actions))
 	for _, action := range actions {
-		key, ok := StructuralActionRoleKey(g, action, actions)
+		key, ok := StructuralActionRoleKey(g, action)
 		if !ok {
 			continue
 		}
