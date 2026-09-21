@@ -2,7 +2,6 @@ package ace
 
 import (
 	"encoding/json"
-	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -136,6 +135,37 @@ func g16Solve(task g16Task,methods []g16Method,maxLen int)([]string,int,bool) {
 	return nil,tests,false
 }
 
+func g16LibraryOnlyCandidateBodies(methods []g16Method,maxLen int) [][]string {
+	out:=make([][]string,0,len(methods))
+	seen:=map[string]bool{}
+	for _,m:=range methods {
+		if len(m.Body)<=maxLen && !seen[g16Sig(m.Body)] {
+			seen[g16Sig(m.Body)]=true
+			out=append(out,append([]string(nil),m.Body...))
+		}
+	}
+	sort.Slice(out,func(i,j int)bool{if len(out[i])==len(out[j]){return g16Sig(out[i])<g16Sig(out[j])};return len(out[i])<len(out[j])})
+	return out
+}
+
+func g16SolveLibraryOnly(task g16Task,methods []g16Method,maxLen int)([]string,int,bool) {
+	cands:=g16LibraryOnlyCandidateBodies(methods,maxLen); tests:=0
+	for _,body:=range cands {
+		tests++
+		ok:=true
+		for _,ex:=range task.Train {if g16Apply(body,ex[0])!=ex[1]{ok=false;break}}
+		if ok{return body,tests,true}
+	}
+	return nil,tests,false
+}
+
+func g16CoreBodies() [][]string {
+	return [][]string{
+		{"add1","mul2"},{"mul2","add1"},{"add2","neg"},{"neg","add2"},
+		{"add1","add1","mul2"},{"mul2","add2","neg"},{"neg","mul2","add1"},{"add2","add1","neg"},
+	}
+}
+
 func g16IndependentVerify(task g16Task,body []string) bool {
 	for _,ex:=range task.Hidden{if g16IndependentApply(body,ex[0])!=ex[1]{return false}}
 	return true
@@ -146,6 +176,7 @@ func g16AnchorScore(m g16Method,step int) float64 {
 }
 
 func (l *g16Learner) insert(body []string,task g16Task) {
+	if len(body)<2{return}
 	l.Step++
 	id:="m-"+g16Sig(body)
 	for i:=range l.Methods{
@@ -190,7 +221,7 @@ func g16Stream(r *rand.Rand) []g16Task {
 func g16Retention(tasks []g16Task,methods []g16Method) (int,int) {
 	solved:=0; verified:=0
 	for _,t:=range tasks{
-		body,_,ok:=g16Solve(t,methods,len(t.Body))
+		body,_,ok:=g16SolveLibraryOnly(t,methods,len(t.Body))
 		if ok && g16IndependentVerify(t,body){solved++;verified++}
 	}
 	return solved,verified
@@ -234,12 +265,16 @@ func TestG16TaskFreeContinualSkillLearning(t *testing.T){
 	solved,verified:=g16Retention(seenTasks,replay.Methods)
 	randomSolved,_:=g16Retention(seenTasks,randomLib)
 	coreTasks:=make([]g16Task,0,8)
-	for _,t:=range seenTasks{
-		if len(coreTasks)>=8{break}
-		if coreSeen[g16Sig(t.Body)]{coreTasks=append(coreTasks,t)}
+	for i,body:=range g16CoreBodies(){
+		task:=g16MakeTask("core-"+strconv.Itoa(i),body)
+		if coreSeen[g16Sig(body)]{coreTasks=append(coreTasks,task)}
 	}
-	coreSolved,_:=g16Retention(coreTasks,replay.Methods)
-	randomCore,_:=g16Retention(coreTasks,randomLib)
+	coreSolved:=0
+	randomCore:=0
+	for _,task:=range coreTasks {
+		if body,_,ok:=g16SolveLibraryOnly(task,replay.Methods,len(task.Body)); ok && g16IndependentVerify(task,body){coreSolved++}
+		if body,_,ok:=g16SolveLibraryOnly(task,randomLib,len(task.Body)); ok && g16IndependentVerify(task,body){randomCore++}
+	}
 	report:=g16Report{StreamTasks:len(stream),UniqueSkills:len(coreSeen),SuccessfulAcquisitions:acquisitions,HiddenVerified:hiddenVerified,ContinualSolved:continual,MemoryBoundPasses:memoryPass,CompositionTransfers:composition,NoBoundarySignal:true,Classification:"G16_NOT_PROVEN"}
 	if len(coreTasks)>0{report.CoreRetention=float64(coreSolved)/float64(len(coreTasks))}
 	if len(coreTasks)>0{report.RandomEvictRetention=float64(randomCore)/float64(len(coreTasks))}
