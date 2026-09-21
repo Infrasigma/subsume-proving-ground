@@ -26,6 +26,7 @@ type V8CognitiveEntity struct {
 	StructuralRoles  V8StructuralRoleLearner
 	AdaptiveRoles    V8AdaptiveStructuralRoleLearner
 	RelationalPatterns V8RelationalPatternInducer
+	ExecutableRepresentation V8ExecutableRepresentation
 	Inquiry          InquiryManager
 	PendingIntervention string
 	Evidence         []V8CapabilityEvidence
@@ -42,6 +43,7 @@ func NewV8CognitiveEntity() *V8CognitiveEntity {
 		StructuralRoles: NewV8StructuralRoleLearner(),
 		AdaptiveRoles: NewV8AdaptiveStructuralRoleLearner(),
 		RelationalPatterns: NewV8RelationalPatternInducer(),
+		ExecutableRepresentation: NewV8ExecutableRepresentation(),
 	}
 }
 
@@ -160,6 +162,19 @@ func (e *V8CognitiveEntity) ObserveAndAct(state RelationalState, actions []strin
 			return action, nil
 		}
 	}
+	if action, ok := e.ExecutableRepresentation.Select(state, filtered); ok {
+		e.attest("executable-representation-transfer", "v8-executable-rep-"+e.ExecutableRepresentation.ProgramKey,
+			e.ExecutableRepresentation.Description(), true)
+		return action, nil
+	}
+	if e.ExecutableRepresentation.Synthesize() {
+		if action, ok := e.ExecutableRepresentation.Select(state, filtered); ok {
+			e.Version++
+			e.attest("executable-representation-invention", "v8-executable-rep-"+e.ExecutableRepresentation.ProgramKey,
+				e.ExecutableRepresentation.Description(), true)
+			return action, nil
+		}
+	}
 	action, err := e.Experience.NextAction(state, filtered)
 	if err != nil {
 		e.Failures = append(e.Failures, "action-selection:"+err.Error())
@@ -183,6 +198,7 @@ func (e *V8CognitiveEntity) ObserveOutcome(before RelationalState, action string
 	e.StructuralRoles.Observe(before, action, reward, terminal)
 	e.AdaptiveRoles.Observe(before, action, reward, terminal)
 	e.RelationalPatterns.Record(before, action, reward, terminal)
+	e.ExecutableRepresentation.Record(before, action, reward, terminal)
 	step := e.Experience.ExecuteObserved(before, action, after, reward, terminal)
 	err := e.Remember(V5MemoryTrace{
 		ID:            "experience-" + V7ActionEffectSignature(step),
@@ -337,4 +353,23 @@ func (e V8CognitiveEntity) HasEvidence(capability string) bool {
 		}
 	}
 	return false
+}
+
+
+func (e *V8CognitiveEntity) ForgetRawExperiences() {
+	if e == nil {
+		return
+	}
+	// Remove episodic traces and bounded learned mappings while preserving the
+	// independently synthesized executable representation.
+	e.StructuralRoles = NewV8StructuralRoleLearner()
+	e.AdaptiveRoles = NewV8AdaptiveStructuralRoleLearner()
+	e.RelationalPatterns = NewV8RelationalPatternInducer()
+	e.Experience = NewV7CognitiveAgent()
+	e.Memory = V5AdaptiveMemory{}
+	e.Failures = nil
+	e.Inquiry = InquiryManager{}
+	e.PendingIntervention = ""
+	e.Version++
+	e.ExecutableRepresentation = e.ExecutableRepresentation.ForgetExamples()
 }
