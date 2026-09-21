@@ -4,8 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
-	"fmt"
+		"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -209,7 +208,7 @@ func generateAmortizationTask(seed int, methods []AcquisitionMethodArtifact) amo
 	}
 	target := pairs[rng.Intn(len(pairs))]
 	buildExample := func(n int) abstractCompoundExample {
-		in := makeAbstractCompoundStream(rng, n)
+		in := makeAmortizationStream(rng.r, n)
 		m1, _ := decodeAcquisitionProcedure(methods[target[0]].Artifact)
 		m2, _ := decodeAcquisitionProcedure(methods[target[1]].Artifact)
 		expected := abstractCompoundReference(m2, abstractCompoundReference(m1, in))
