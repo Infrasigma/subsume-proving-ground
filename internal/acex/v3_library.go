@@ -498,6 +498,9 @@ func V3LearnGeneration(tasks []V3Task, base V3Library, maxSize, beam int) (V3Lib
 		if err != nil {
 			return base, before, before, results, err
 		}
+		if !v3VerifyHoldout(res.Program, task, base) {
+			return base, before, before, results, fmt.Errorf("visible task %s failed independent holdout", task.ID)
+		}
 		before += res.Cost.Total()
 		programs[task.ID] = cloneV3Expr(res.Program)
 		results = append(results, res)
@@ -513,6 +516,9 @@ func V3LearnGeneration(tasks []V3Task, base V3Library, maxSize, beam int) (V3Lib
 		res, err := v3SemanticExpand(task, afterLib, maxSize, beam)
 		if err != nil {
 			return base, before, before, results, err
+		}
+		if !v3VerifyHoldout(res.Program, task, afterLib) {
+			return base, before, after, results, fmt.Errorf("admitted library fails holdout on visible task %s", task.ID)
 		}
 		after += res.Cost.Total()
 	}
