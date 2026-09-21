@@ -405,6 +405,107 @@ jobs:
               role_seq.kill()
               role_base.kill()
 
+          # Representation-expansion experiment. The initial radius-1
+          # role representation cannot distinguish the correct action from
+          # distractors. The candidate must derive a deeper rooted representation
+          # from experience and then transfer it to a new surface domain.
+          def make_triangle_role_state(domain, stage, seed):
+              rng = random.Random(seed + domain * 1009 + stage * 37)
+              labels = [f'tri{domain}-{seed}-{stage}-a', f'tri{domain}-{seed}-{stage}-b', f'tri{domain}-{seed}-{stage}-z']
+              # Keep the correct role under a different lexical action name.
+              correct = labels[2]
+              rng.shuffle(labels)
+              action_ids = labels
+              kind_action, kind_support, edge_kind = 'lever', 'peg', 'engage'
+              if domain == 1:
+                  kind_action, kind_support, edge_kind = 'token', 'port', 'route'
+
+              nodes = []
+              edges = []
+              for action in action_ids:
+                  nodes.append({
+                      'ID': action,
+                      'Kind': kind_action,
+                      'Attrs': {'opaque': f'{domain}-{stage}'},
+                  })
+
+              def add_node(nid):
+                  nodes.append({
+                      'ID': nid,
+                      'Kind': kind_support,
+                      'Attrs': {'opaque': 'surface'},
+                  })
+
+              # Correct: triangle among action + two neighbors.
+              n1, n2 = correct + '-n1', correct + '-n2'
+              add_node(n1)
+              add_node(n2)
+              edges.extend([
+                  {'From': correct, 'To': n1, 'Kind': edge_kind},
+                  {'From': correct, 'To': n2, 'Kind': edge_kind},
+                  {'From': n1, 'To': n2, 'Kind': edge_kind},
+              ])
+
+              # Distractors: same radius-1 degree signature, but open chains.
+              for action in [a for a in action_ids if a != correct]:
+                  d1, d2 = action + '-n1', action + '-n2'
+                  l1, l2 = action + '-l1', action + '-l2'
+                  for nid in [d1, d2, l1, l2]:
+                      add_node(nid)
+                  edges.extend([
+                      {'From': action, 'To': d1, 'Kind': edge_kind},
+                      {'From': action, 'To': d2, 'Kind': edge_kind},
+                      {'From': d1, 'To': l1, 'Kind': edge_kind},
+                      {'From': d2, 'To': l2, 'Kind': edge_kind},
+                  ])
+              return {'nodes': nodes, 'edges': edges}, action_ids, correct
+
+          def solve_triangle_domain(p, domain, seed, depth):
+              total = 0
+              for stage in range(depth):
+                  state, actions, correct = make_triangle_role_state(domain, stage, seed)
+                  for _ in range(len(actions) * 2):
+                      r = rpc(p, {'op': 'act', 'state': state, 'actions': actions})
+                      action = r['action']
+                      total += 1
+                      reward = 1 if action == correct else -1
+                      terminal = (stage == depth - 1 and action == correct)
+                      rpc(p, {
+                          'op': 'observe',
+                          'next_state': state,
+                          'reward': reward,
+                          'terminal': terminal,
+                      })
+                      if action == correct:
+                          break
+                  else:
+                      return False, total
+              return True, total
+
+          tri_seed = 44117
+          tri_seq = start_agent()
+          tri_base = start_agent()
+          try:
+              ok_source, source_cost = solve_triangle_domain(tri_seq, 0, tri_seed, depth=1)
+              if not ok_source:
+                  raise RuntimeError('representation-expansion source failed')
+              ok_target_seq, target_seq_cost = solve_triangle_domain(tri_seq, 1, tri_seed + 1, depth=5)
+              if not ok_target_seq:
+                  raise RuntimeError('representation-expansion sequential target failed')
+              ok_target_base, target_base_cost = solve_triangle_domain(tri_base, 1, tri_seed + 1, depth=5)
+              if not ok_target_base:
+                  raise RuntimeError('representation-expansion clean baseline failed')
+              print(
+                  f'REPRESENTATION EXPANSION COST source={source_cost} '
+                  f'sequential={target_seq_cost} baseline={target_base_cost}'
+              )
+              if target_seq_cost > 0.70 * target_base_cost:
+                  raise RuntimeError('new representation did not materially reduce target acquisition cost')
+          finally:
+              tri_seq.kill()
+              tri_base.kill()
+
+          print('BLACKBOX V10 REPRESENTATION-EXPANSION PASS')
           print('BLACKBOX V10 STRUCTURAL-ROLE TRANSFER PASS')
           print('BLACKBOX V10 TRANSFER PASS: sequential experience materially reduced target-domain acquisition cost')
           PY
