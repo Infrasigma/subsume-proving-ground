@@ -1,5 +1,3 @@
-//go:build v2kill
-
 package acex
 
 import (
@@ -42,6 +40,7 @@ func makeRankerDataset(seed int64, n int) Dataset {
 }
 
 func TestV2SynthesizesNewSearchLanguage(t *testing.T) {
+	if !v2KillMode { t.Skip("V2 search-language route is preserved as a scientific KILL; dedicated v2kill run exercises the failure") }
 	train := make([]Dataset,4)
 	hold := make([]Dataset,4)
 	for i:=0;i<4;i++ {
