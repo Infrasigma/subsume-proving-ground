@@ -1,6 +1,9 @@
 package ace
 
-import "testing"
+import (
+	"testing"
+	"sort"
+)
 
 type f11Cost struct {
 	SearchEvaluations int
