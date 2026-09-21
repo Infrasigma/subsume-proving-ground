@@ -24,7 +24,15 @@ jobs:
           go-version: "1.25.x"
           cache: false
       - run: go mod download
-      - run: go test -mod=mod -run '^TestV3ArchitectureTerminal$' ./internal/acex -count=1 -timeout=10m -v | tee acex-v3-result.txt
+      - run: |
+          set -euo pipefail
+          go test -mod=mod -run '^TestV3ArchitectureTerminal
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acex-v3-result
+          path: acex-v3-result.txt
+ ./internal/acex -count=1 -timeout=10m -v | tee acex-v3-result.txt
       - if: always()
         uses: actions/upload-artifact@v4
         with:
