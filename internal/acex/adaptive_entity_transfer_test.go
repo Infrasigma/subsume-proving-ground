@@ -29,6 +29,7 @@ func TestV8AdaptiveRepresentationEntityTransferCost(t *testing.T) {
 				t.Fatal(err)
 			}
 			cost++
+			t.Logf("stage=%d selected=%q correct=%q adaptiveRadius=%d", stage, a, correct, entity.AdaptiveRoles.ActiveRadius)
 			reward := -1.0
 			if a == correct {
 				reward = 1
