@@ -198,6 +198,29 @@ func f10ApplyMeta(p f10MetaProcedure, candidates []ArchitectureCandidate, repeat
 	return cur
 }
 
+func f10VerifiedSearch(train, hidden []rcCase, lib rcLibrary, maxSteps int) (rcSearchResult, bool, int) {
+	frontier := rcEnumerate(maxSteps, lib)
+	verificationCases := 0
+	for i, candidate := range frontier {
+		verificationCases += len(train)
+		if !rcFitsTrain(candidate, train, lib) {
+			continue
+		}
+		verificationCases += len(hidden)
+		if !rcFitsHidden(candidate, hidden, lib) {
+			continue
+		}
+		return rcSearchResult{
+			Procedure:       candidate,
+			Evaluated:       i + 1,
+			Frontier:        len(frontier),
+			SemanticDepth:   rcSemanticDepth(candidate, lib, map[string]bool{}),
+			UsedLearnedCall: rcUsesCall(candidate),
+		}, true, verificationCases
+	}
+	return rcSearchResult{Frontier:len(frontier)}, false, verificationCases
+}
+
 func TestF10AutonomousRecursiveAbstractionImprovesDiscoveryCost(t *testing.T) {
 	g0Train := []rcCase{
 		{Candidates: rcCandidates([]int{16, 2, 25, 9, 13}, "f10a"), Desired: ""},
@@ -237,7 +260,7 @@ func TestF10AutonomousRecursiveAbstractionImprovesDiscoveryCost(t *testing.T) {
 	for i := range g2Hidden { g2Hidden[i].Desired = rcFourthCheapest(g2Hidden[i].Candidates) }
 
 	lib2 := rcLibrary{Procedures: map[string]AcquisitionProcedure{"M1":m1.Procedure,"M2":m2.Procedure}}
-	baseline, baselinePass := rcSearch(g2Train, g2Hidden, lib2, 2)
+	baseline, baselinePass, _ := f10VerifiedSearch(g2Train, g2Hidden, lib2, 2)
 	if !baselinePass { t.Fatal("baseline recursive successor failed the fourth-rank hidden family") }
 
 	// Parameter search explores only a small integer parameter family.
