@@ -465,19 +465,17 @@ func TestAutonomousAbstractCompounding(t *testing.T) {
     }
     reportPath := filepath.Join(".", "ACE_AUTONOMOUS_ABSTRACT_COMPOUNDING.json")
     artifactBytes := abstractCompoundWriteJSON(reportPath, report)
-    _ = abstractCompoundWriteText(filepath.Join(".", "ACE_AUTONOMOUS_ABSTRACT_COMPOUNDING.md"), fmt.Sprintf("# Autonomous Abstract-Compounding
-
-Commit: \`%s\`
-
-Classification: **%s**
-
-The experiment demonstrates that independently verified executable capabilities learned from prior task families can be persisted and composed to solve a deeper held-out composition that a depth-2 scratch search cannot solve. Raw-memory and compressed-memory controls are non-executable and fail by construction.
-
-Mean scratch search expansions: **%.1f**
-Mean retained-capability search expansions: **%.1f**
-
-Boundary: %s
-", report.Commit, report.Classification, report.MeanScratchExpand, report.MeanCapabilityExpand, report.Boundary))
+    reportMarkdown := fmt.Sprintf(
+        "# Autonomous Abstract-Compounding\n\n"+
+        "Commit: %s\n\n"+
+        "Classification: **%s**\n\n"+
+        "The experiment demonstrates bounded reuse of independently verified executable capabilities across a held-out composition. This is not evidence of open-ended abstraction discovery, autonomous meta-method invention, AGI, or ASI.\n\n"+
+        "Mean scratch search expansions: **%.1f**\n"+
+        "Mean retained-capability search expansions: **%.1f**\n\n"+
+        "Boundary: %s\n",
+        report.Commit, report.Classification, report.MeanScratchExpand, report.MeanCapabilityExpand, report.Boundary,
+    )
+    _ = abstractCompoundWriteText(filepath.Join(".", "ACE_AUTONOMOUS_ABSTRACT_COMPOUNDING.md"), reportMarkdown)
 
     _ = heap0
     _ = inuse0
