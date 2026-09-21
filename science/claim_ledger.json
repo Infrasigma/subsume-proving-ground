@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "scientific_default": "TRUE_ASI_STATUS=NOT_ESTABLISHED",
+  "recorded_at": "2026-09-21",
+  "repository": "Infrasigma/subsume-proving-ground",
+  "candidate_head": "e483002d846fde860402859dc58981afbf6d375a",
+  "evaluator_head": "44440b447794f0bdae7597cf69f8374ec0fa0915",
+  "merge_base": "44440b447794f0bdae7597cf69f8374ec0fa0915",
+  "claims": [
+    {
+      "capability_id": "RELATIONAL_REPRESENTATION_TRANSFER",
+      "hypothesis": "Prior relational experience reduces acquisition cost on an unseen surface-changed target family.",
+      "candidate_version": "e483002d846fde860402859dc58981afbf6d375a",
+      "evaluator_version": "44440b447794f0bdae7597cf69f8374ec0fa0915",
+      "evaluator_run": "35619630384",
+      "task_generator_version": "acex-v10-relational-transfer@44440ba",
+      "baseline": "fresh clean candidate process per target episode",
+      "raw_result": {
+        "episodes": 12,
+        "sequential_total": 13,
+        "baseline_total": 24,
+        "ratio": 0.5417,
+        "sequential_wall_seconds": 0.038494,
+        "baseline_wall_seconds": 0.080247
+      },
+      "status": "PARTIALLY PROVEN",
+      "interpretation": "A protected black-box evaluator reproduced a material cross-surface acquisition-cost reduction under a fresh equal-budget baseline. This establishes bounded transfer in this task family, not broad cross-domain generality.",
+      "known_confounds": [
+        "single protected generator family",
+        "single evaluator protocol",
+        "no independent generator replication yet",
+        "current representation machinery remains developer-designed and bounded"
+      ],
+      "next_kill_test": "generator-disjoint and direction-dependent transfer with raw-memory deletion and restart"
+    },
+    {
+      "capability_id": "ADAPTIVE_REPRESENTATION_EXPANSION",
+      "hypothesis": "The current bounded adaptive representation mechanism materially lowers future acquisition cost across repeated hidden tasks.",
+      "candidate_version": "e483002d846fde860402859dc58981afbf6d375a",
+      "evaluator_version": "44440b447794f0bdae7597cf69f837f0f93cde523",
+      "evaluator_run": "35619630440",
+      "task_generator_version": "acex-v10-blackbox@44440ba",
+      "baseline": "fresh clean candidate process per target episode",
+      "raw_result": {
+        "episodes": 20,
+        "sequential_total": 100,
+        "baseline_total": 120,
+        "ratio": 0.8333,
+        "required_ratio_at_or_below": 0.7
+      },
+      "status": "FAILED",
+      "interpretation": "The frozen adaptive-representation criterion was not met. The current bounded representation family therefore did not demonstrate the required multi-episode acquisition-cost reduction under this gate.",
+      "known_confounds": [
+        "this is a bounded representation-family test, not a test of open-ended representation invention",
+        "other V10 mechanisms remain active in the integrated entity"
+      ],
+      "next_kill_test": "force a representational boundary that all currently active graph representations cannot encode"
+    },
+    {
+      "capability_id": "DIRECTION_DEPENDENT_REPRESENTATION_TRANSFER",
+      "hypothesis": "The existing V10 representation family already transfers a hidden direction-dependent relational rule after a surface shift.",
+      "candidate_version": "e483002d846fde860402859dc58981afbf6d375a",
+      "evaluator_version": "44440b447794f0bdae7597cf69f837f0f93cde523",
+      "evaluator_run": "35619630266",
+      "task_generator_version": "acex-v10-representation-boundary-v2@44440ba",
+      "baseline": "fresh clean candidate process per target episode",
+      "raw_result": {
+        "episodes": 20,
+        "sequential_total": 40,
+        "baseline_total": 40,
+        "ratio": 1,
+        "sequential_wall_seconds": 1.3508,
+        "baseline_wall_seconds": 0.110632
+      },
+      "status": "KILLED",
+      "interpretation": "The existing representation family did not materially transfer the direction-dependent latent rule. The boundary is reproduced across 20 fresh target episodes.",
+      "known_confounds": [
+        "boundary test is intentionally designed to expose a missing representational dimension",
+        "failure does not establish that a new representation can be invented autonomously"
+      ],
+      "next_kill_test": "require the entity to discover a direction-sensitive executable representation after this failure and verify it on an independent generator"
+    },
+    {
+      "capability_id": "BLACKBOX_INTEGRATED_V10",
+      "hypothesis": "The integrated V10 candidate passes the complete frozen black-box gate including adaptive representation expansion.",
+      "candidate_version": "e483002d846fde860402859dc58981afbf6d375a",
+      "evaluator_version": "44440b447794f0bdae7597cf69f837f0f93cde523",
+      "evaluator_run": "35619630440",
+      "status": "FAILED",
+      "interpretation": "Independent synthesis, interactive operation, surface-renamed transfer, structural-role transfer, and representation-expansion sub-stages produced useful signals, but the complete frozen gate failed on the adaptive representation criterion.",
+      "next_kill_test": "replace bounded adaptive expansion with candidate-discovered executable representation induction and rerun the complete protected battery"
+    }
+  ]
+}
