@@ -1,0 +1,206 @@
+name: ACE-X V10 representation-family kill gate
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  representation-family-kill:
+    if: github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground' && github.event.pull_request.head.ref == 'ace-x-v10-blackbox-autonomy-20260921'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - run: go mod download
+      - name: Install Bubblewrap
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Build candidate
+        run: CGO_ENABLED=0 go build -o /tmp/acex-agent ./cmd/acex-agent
+      - name: Execute evaluator-owned representation-family kill
+        run: |
+          python3 - <<'PY'
+          import json, os, random, signal, subprocess, time
+
+          def start_agent():
+              return subprocess.Popen(
+                  [
+                      'bwrap',
+                      '--ro-bind', '/tmp/acex-agent', '/acex-agent',
+                      '--proc', '/proc',
+                      '--dev', '/dev',
+                      '--tmpfs', '/tmp',
+                      '--unshare-net',
+                      '--unshare-pid',
+                      '--unshare-ipc',
+                      '--unshare-uts',
+                      '--die-with-parent',
+                      '/acex-agent',
+                  ],
+                  stdin=subprocess.PIPE,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+                  text=True,
+                  bufsize=1,
+                  start_new_session=True,
+              )
+
+          def stop_agent(p):
+              if p.poll() is not None:
+                  return
+              try:
+                  os.killpg(p.pid, signal.SIGKILL)
+              except ProcessLookupError:
+                  pass
+              p.wait(timeout=5)
+
+          def rpc(p, payload):
+              p.stdin.write(json.dumps(payload) + '\n')
+              p.stdin.flush()
+              line = p.stdout.readline()
+              if not line:
+                  raise RuntimeError('candidate terminated: ' + p.stderr.read())
+              return json.loads(line)
+
+          def state_for(prefix, surface, topology, noise):
+              action_ids = [prefix + '-a', prefix + '-b', prefix + '-c']
+              correct = action_ids[1]
+              action_kind = 'lever' if surface == 0 else 'token'
+              support_kind = 'peg' if surface == 0 else 'port'
+              edge_kind = 'engage' if surface == 0 else 'route'
+              nodes = []
+              edges = []
+
+              def add_node(nid, kind):
+                  nodes.append({'ID': nid, 'Kind': kind,
+                                'Attrs': {'surface': str(noise)}})
+
+              for a in action_ids:
+                  add_node(a, action_kind)
+
+              def build_action(root, pattern):
+                  ns = [root + '-n1', root + '-n2',
+                        root + '-c1', root + '-c2',
+                        root + '-c3', root + '-c4']
+                  for n in ns:
+                      add_node(n, support_kind)
+                  edges.extend([
+                      {'From': root, 'To': ns[0], 'Kind': edge_kind},
+                      {'From': root, 'To': ns[1], 'Kind': edge_kind},
+                      {'From': ns[0], 'To': ns[2], 'Kind': edge_kind},
+                      {'From': ns[0], 'To': ns[3], 'Kind': edge_kind},
+                      {'From': ns[1], 'To': ns[4], 'Kind': edge_kind},
+                      {'From': ns[1], 'To': ns[5], 'Kind': edge_kind},
+                  ])
+                  # The only hidden difference between the two role classes:
+                  # an edge entirely within the radius-2 layer. The current
+                  # bounded learner records only the count of such edges, not
+                  # which radius-2 vertices are connected.
+                  extra = (ns[2], ns[3]) if pattern == 0 else (ns[2], ns[4])
+                  edges.append({'From': extra[0], 'To': extra[1], 'Kind': edge_kind})
+
+              build_action(action_ids[0], 1 - topology)
+              build_action(action_ids[1], topology)
+              build_action(action_ids[2], 1 - topology)
+
+              # Scramble JSON array order and surface identifiers so no
+              # correspondence is exposed by ordering.
+              rng = random.Random(noise)
+              rng.shuffle(nodes)
+              rng.shuffle(edges)
+              rng.shuffle(action_ids)
+              return {'nodes': nodes, 'edges': edges}, action_ids, correct
+
+          def solve_one_stage(p, state, actions, correct):
+              attempts = 0
+              while attempts < len(actions) * 3:
+                  r = rpc(p, {'op': 'act', 'state': state, 'actions': actions})
+                  action = r.get('action')
+                  attempts += 1
+                  reward = 1 if action == correct else -1
+                  terminal = action == correct
+                  rpc(p, {
+                      'op': 'observe',
+                      'next_state': state,
+                      'reward': reward,
+                      'terminal': terminal,
+                  })
+                  if action == correct:
+                      return attempts
+              raise RuntimeError('candidate failed to solve evaluator-owned stage')
+
+          sequential = start_agent()
+          try:
+              # Source domain: topology class 0 is rewarded. The target domain
+              # reverses visible names but preserves only the latent topology.
+              source_state, source_actions, source_correct = state_for(
+                  'src-0001', 0, 0, 11731
+              )
+              src_cost = solve_one_stage(sequential, source_state, source_actions, source_correct)
+              if src_cost <= 0:
+                  raise RuntimeError('invalid source cost')
+              print(f'SOURCE COST={src_cost}')
+
+              seq_total = 0
+              base_total = 0
+              episodes = 18
+
+              for episode in range(episodes):
+                  seed = 30000 + episode * 7919
+                  target_state, target_actions, target_correct = state_for(
+                      f'tgt-{seed}', 1, 0, seed
+                  )
+                  seq_cost = solve_one_stage(
+                      sequential, target_state, target_actions, target_correct
+                  )
+                  seq_total += seq_cost
+
+                  baseline = start_agent()
+                  try:
+                      base_cost = solve_one_stage(
+                          baseline, target_state, target_actions, target_correct
+                      )
+                      base_total += base_cost
+                  finally:
+                      stop_agent(baseline)
+
+                  print(
+                      f'EPISODE={episode} seed={seed} sequential={seq_cost} baseline={base_cost}'
+                  )
+
+              ratio = seq_total / float(base_total)
+              print(
+                  f'KILL GATE SUMMARY sequential_total={seq_total} '
+                  f'baseline_total={base_total} ratio={ratio:.4f} episodes={episodes}'
+              )
+
+              # This is an expected-failure gate for the current bounded
+              # representation family. Passing means we reproduced a capability
+              # boundary: the existing family cannot transfer through this hidden
+              # structural alias. Unexpected improvement fails the gate so the
+              # mechanism can be investigated rather than silently reclassified.
+              if ratio <= 0.80:
+                  raise RuntimeError(
+                      'CURRENT REPRESENTATION FAMILY DID NOT FAIL AS EXPECTED: '
+                      f'sequential/baseline ratio={ratio:.4f}'
+                  )
+              print(
+                  'KILL CONFIRMED: current bounded structural representation '
+                  'does not materially transfer through evaluator-owned topology alias'
+              )
+          finally:
+              stop_agent(sequential)
+          PY
