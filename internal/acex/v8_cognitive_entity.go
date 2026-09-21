@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/Infrasigma/subsume-proving-ground/internal/ace"
 	"sort"
 )
 
@@ -229,31 +231,31 @@ func (e *V8CognitiveEntity) SolveStatic(task V4Task, maxSize, beam int) (V4Searc
 	return V6SolveWithStrategy(e.ActiveStrategy, task, maxSize, beam)
 }
 
-func (e *V8CognitiveEntity) InventTool(task Task, training, holdout []ProgramTestCase) (ModificationProposal, error) {
+func (e *V8CognitiveEntity) InventTool(task ace.Task, training, holdout []ace.ProgramTestCase) (ace.ModificationProposal, error) {
 	if e == nil {
-		return ModificationProposal{}, errors.New("nil V8 entity")
+		return ace.ModificationProposal{}, errors.New("nil V8 entity")
 	}
 	if len(holdout) < 2 {
 		return ModificationProposal{}, errors.New("independent tool holdout required")
 	}
-	spec, err := GeneralCapabilitySpecification(task, training)
+	spec, err := ace.GeneralCapabilitySpecification(task, training)
 	if err != nil {
 		return ModificationProposal{}, err
 	}
-	candidates, err := (UniversalMechanismSearch{}).SearchMechanisms(spec, task.Budget)
+	candidates, err := (ace.UniversalMechanismSearch{}).SearchMechanisms(spec, task.Budget)
 	if err != nil || len(candidates) == 0 {
-		return ModificationProposal{}, errors.New("no executable symbolic synthesis mechanism")
+		return ace.ModificationProposal{}, errors.New("no executable symbolic synthesis mechanism")
 	}
 	for _, candidate := range candidates {
-		proposal, buildErr := (UniversalProgramBuilder{}).Build(candidate, spec)
+		proposal, buildErr := (ace.UniversalProgramBuilder{}).Build(candidate, spec)
 		if buildErr != nil {
 			continue
 		}
-		var program UniversalProgram
+		var program ace.UniversalProgram
 		if err := json.Unmarshal([]byte(proposal.Artifact), &program); err != nil {
 			continue
 		}
-		if !programFits(program, holdout) {
+		if !ace.ProgramFitsForTests(program, holdout) {
 			continue
 		}
 		e.attest("tool-invention", proposal.ID,
@@ -261,7 +263,7 @@ func (e *V8CognitiveEntity) InventTool(task Task, training, holdout []ProgramTes
 		return proposal, nil
 	}
 	e.Failures = append(e.Failures, "tool-invention:holdout-rejected")
-	return ModificationProposal{}, errors.New("tool synthesis failed independent holdout")
+	return ace.ModificationProposal{}, errors.New("tool synthesis failed independent holdout")
 }
 
 func (e *V8CognitiveEntity) RollbackMechanism() error {
