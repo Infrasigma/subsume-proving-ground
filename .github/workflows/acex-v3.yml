@@ -38,3 +38,5 @@ jobs:
         with:
           name: acex-v3-result
           path: acex-v3-result.txt
+
+# terminal rerun trigger; scientific acceptance unchanged
