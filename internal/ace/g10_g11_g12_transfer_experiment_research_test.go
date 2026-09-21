@@ -309,6 +309,43 @@ func g10TransferSolve(task g10Task, templates []g10Template, ops []string) (int,
 	return tests, false
 }
 
+func g10ScratchProgram(task g10Task, ops []string) (g10Chain, int, bool) {
+	tests := 0
+	var dfs func([]string, int) (g10Chain, bool)
+	dfs = func(prefix []string, maxDepth int) (g10Chain, bool) {
+		if len(prefix) == maxDepth {
+			tests++
+			ok := true
+			for _, ex := range task.Train {
+				v := ex[0]
+				for _, op := range prefix {
+					v = g10DomainApply(task.Domain, op, v)
+				}
+				if v != ex[1] {
+					ok = false
+					break
+				}
+			}
+			if ok {
+				return g10Chain{Domain: task.Domain, Op: prefix[0], Depth: maxDepth}, true
+			}
+			return g10Chain{}, false
+		}
+		for _, op := range ops {
+			if found, ok := dfs(append(append([]string(nil), prefix...), op), maxDepth); ok {
+				return found, true
+			}
+		}
+		return g10Chain{}, false
+	}
+	for depth := 1; depth <= task.Depth; depth++ {
+		if found, ok := dfs(nil, depth); ok {
+			return found, tests, true
+		}
+	}
+	return g10Chain{}, tests, false
+}
+
 func g10ScratchSolve(task g10Task, ops []string) (int, bool) {
 	tests := 0
 	var dfs func([]string, int) (int, bool)
@@ -361,22 +398,33 @@ func g10WriteReport(name string, v any) {
 
 func TestG10CrossDomainAbstractionTransfer(t *testing.T) {
 	sourceOps := []string{"inc1", "dec2", "double", "shift5"}
-	source := make([]g10Chain, 0, 12)
+	sourceTasks := make([]g10Task, 0, 12)
+	learnedPrograms := make([]g10Chain, 0, 12)
 	for _, op := range sourceOps {
 		for _, depth := range []int{2, 3, 4} {
-			source = append(source, g10Chain{Domain: "num", Op: op, Depth: depth})
+			task := g10BuildTask("num", op, depth)
+			program, _, ok := g10ScratchProgram(task, sourceOps)
+			if !ok {
+				t.Fatalf("source scratch synthesis failed op=%s depth=%d", op, depth)
+			}
+			sourceTasks = append(sourceTasks, task)
+			learnedPrograms = append(learnedPrograms, program)
 		}
 	}
-	templates := g10LearnTemplates(source)
+	templates := g10LearnTemplates(learnedPrograms)
 	if len(templates) != 3 {
 		t.Fatalf("expected learned repeat templates for depths 2,3,4; got %+v", templates)
 	}
-	sourceTasks := make([]g10Task, 0, 12)
-	for _, p := range source {
-		sourceTasks = append(sourceTasks, g10BuildTask(p.Domain, p.Op, p.Depth))
-	}
 	if !g10TemplatesFit(sourceTasks, templates) {
-		t.Fatal("learned templates failed source verification")
+		t.Fatal("learned templates failed source training verification")
+	}
+	for i, task := range sourceTasks {
+		program := learnedPrograms[i]
+		for _, ex := range task.Hidden {
+			if g10IndependentRepeated(task.Domain, program.Op, ex[0], program.Depth) != ex[1] {
+				t.Fatalf("source hidden verification failed op=%s depth=%d", program.Op, program.Depth)
+			}
+		}
 	}
 
 	targetDomains := map[string][]string{
@@ -798,6 +846,13 @@ func TestG12AutonomousResearchLoop(t *testing.T) {
 		followups := g12GenerateFollowups(discovered)
 		followTruth := followups[r.Intn(len(followups))].Hyp
 		trace, final, novel := g12Run(truth, followTruth, r)
+		followupSteps := 0
+		for _, step := range trace {
+			if step.Phase == "followup" {
+				followupSteps++
+			}
+		}
+		report.ActiveFollowupMean += float64(followupSteps)
 		if len(trace) < 6 {
 			t.Fatalf("seed %d research trace too short", seed)
 		}
@@ -824,7 +879,6 @@ func TestG12AutonomousResearchLoop(t *testing.T) {
 		report.IndependentReplays++
 		report.NovelFollowupQueries++
 	}
-	report.ActiveFollowupMean = 1.0
 	sumRandom := 0.0
 	for seed := 1; seed <= cases; seed++ {
 		r := rand.New(rand.NewSource(int64(130000 + seed)))
@@ -843,6 +897,7 @@ func TestG12AutonomousResearchLoop(t *testing.T) {
 		}
 		sumRandom += float64(steps)
 	}
+report.ActiveFollowupMean = report.ActiveFollowupMean / float64(cases)
 	report.RandomFollowupMean = sumRandom / float64(cases)
 	if report.DiscoveryOptimal == cases &&
 		report.FollowupSolved == cases &&
