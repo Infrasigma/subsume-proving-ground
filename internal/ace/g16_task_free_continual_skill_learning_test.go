@@ -242,7 +242,7 @@ func TestG16TaskFreeContinualSkillLearning(t *testing.T){
 			body,_,ok=g16Solve(task,nil,5)
 		}
 		if !ok{t.Fatalf("stream task %d could not be solved",i)}
-		if g16IndependentVerify(t,body){hiddenVerified++}else{t.Fatalf("task %d hidden verification failed",i)}
+		if g16IndependentVerify(task,body){hiddenVerified++}else{t.Fatalf("task %d hidden verification failed",i)}
 		replay.insert(body,task); acquisitions++;continual++
 		// Count compositional transfer when a later task is solved using at
 		// least one retained non-primitive method rather than scratch.
@@ -255,7 +255,7 @@ func TestG16TaskFreeContinualSkillLearning(t *testing.T){
 		// Random-eviction ablation sees identical acquired candidates but
 		// receives no rehearsal/use-frequency signal.
 		if len(randomLib)>0{randomLib=g16BaselineRandom(randomLib,r,memory,body)}
-		randomLib=append(randomLib,g16Method{ID:"r-"+strconv.Itoa(i),Body:append([]string(nil),body...),Uses:1,LastSeen:i,Verified:true,Anchor:t.ID})
+		randomLib=append(randomLib,g16Method{ID:"r-"+strconv.Itoa(i),Body:append([]string(nil),body...),Uses:1,LastSeen:i,Verified:true,Anchor:task.ID})
 		if len(randomLib)>memory{randomLib=randomLib[1:]}
 		seenTasks=append(seenTasks,task)
 		if len(task.Body)>=2{coreSeen[g16Sig(task.Body)]=true}
@@ -263,7 +263,6 @@ func TestG16TaskFreeContinualSkillLearning(t *testing.T){
 	// Rehearsal/retention is evaluated on a fixed set of previously seen skills;
 	// no task-boundary metadata is supplied to the learner.
 	solved,verified:=g16Retention(seenTasks,replay.Methods)
-	_ , _ = g16Retention(seenTasks,randomLib)
 	coreTasks:=make([]g16Task,0,8)
 	for i,body:=range g16CoreBodies(){
 		task:=g16MakeTask("core-"+strconv.Itoa(i),body)
