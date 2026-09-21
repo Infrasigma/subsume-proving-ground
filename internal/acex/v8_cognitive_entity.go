@@ -25,6 +25,7 @@ type V8CognitiveEntity struct {
 	Memory           V5AdaptiveMemory
 	StructuralRoles  V8StructuralRoleLearner
 	AdaptiveRoles    V8AdaptiveStructuralRoleLearner
+	RelationalPatterns V8RelationalPatternInducer
 	Inquiry          InquiryManager
 	PendingIntervention string
 	Evidence         []V8CapabilityEvidence
@@ -40,6 +41,7 @@ func NewV8CognitiveEntity() *V8CognitiveEntity {
 		Experience:    NewV7CognitiveAgent(),
 		StructuralRoles: NewV8StructuralRoleLearner(),
 		AdaptiveRoles: NewV8AdaptiveStructuralRoleLearner(),
+		RelationalPatterns: NewV8RelationalPatternInducer(),
 	}
 }
 
@@ -145,6 +147,16 @@ func (e *V8CognitiveEntity) ObserveAndAct(state RelationalState, actions []strin
 			e.AdaptiveRoles.InventedRepresentation(), true)
 		return action, nil
 	}
+	// Known representation families failed to provide a safe action. This is
+	// the explicit representation-gap trigger for generic relational search.
+	if e.RelationalPatterns.TrySynthesize() {
+		if action, ok := e.RelationalPatterns.Select(state, filtered); ok {
+			e.Version++
+			e.attest("synthesized-relational-representation", "v8-pattern-"+e.RelationalPatterns.Pattern.Key(),
+				fmt.Sprintf("complexity=%d expansions=%d", e.RelationalPatterns.Pattern.Complexity(), e.RelationalPatterns.SearchExpansions), true)
+			return action, nil
+		}
+	}
 	action, err := e.Experience.NextAction(state, filtered)
 	if err != nil {
 		e.Failures = append(e.Failures, "action-selection:"+err.Error())
@@ -167,6 +179,7 @@ func sortedStringSet(m map[string]bool) []string {
 func (e *V8CognitiveEntity) ObserveOutcome(before RelationalState, action string, after RelationalState, reward float64, terminal bool) V7Step {
 	e.StructuralRoles.Observe(before, action, reward, terminal)
 	e.AdaptiveRoles.Observe(before, action, reward, terminal)
+	e.RelationalPatterns.Record(before, action, reward, terminal)
 	step := e.Experience.ExecuteObserved(before, action, after, reward, terminal)
 	err := e.Remember(V5MemoryTrace{
 		ID:            "experience-" + V7ActionEffectSignature(step),
