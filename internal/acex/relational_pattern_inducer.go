@@ -323,8 +323,14 @@ func (l *V8RelationalPatternInducer) Record(state RelationalState, action string
 }
 
 func (l *V8RelationalPatternInducer) TrySynthesize() bool {
-	if l == nil || l.Pattern != nil || l.Budget <= 0 {
+	if l == nil || l.Budget <= 0 {
 		return false
+	}
+	if l.Pattern != nil {
+		if len(l.Examples) == 0 || l.Pattern.Separates(l.Examples) {
+			return false
+		}
+		l.Pattern = nil
 	}
 	hasPositive, hasNegative := false, false
 	for _, ex := range l.Examples {
@@ -353,7 +359,7 @@ func (l *V8RelationalPatternInducer) TrySynthesize() bool {
 }
 
 func (l V8RelationalPatternInducer) Select(state RelationalState, actions []string) (string, bool) {
-	if l.Pattern == nil {
+	if l.Pattern == nil || (len(l.Examples) > 0 && !l.Pattern.Separates(l.Examples)) {
 		return "", false
 	}
 	matches := make([]string, 0, len(actions))
