@@ -411,11 +411,13 @@ jobs:
           # from experience and then transfer it to a new surface domain.
           def make_triangle_role_state(domain, stage, seed):
               rng = random.Random(seed + domain * 1009 + stage * 37)
-              labels = [f'tri{domain}-{seed}-{stage}-a', f'tri{domain}-{seed}-{stage}-b', f'tri{domain}-{seed}-{stage}-z']
-              # Keep the correct role under a different lexical action name.
-              correct = labels[2]
-              rng.shuffle(labels)
-              action_ids = labels
+              action_ids = [
+                  f'tri{domain}-{seed}-{stage}-a',
+                  f'tri{domain}-{seed}-{stage}-b',
+                  f'tri{domain}-{seed}-{stage}-z',
+              ]
+              correct = action_ids[1]
+              rng.shuffle(action_ids)
               kind_action, kind_support, edge_kind = 'lever', 'peg', 'engage'
               if domain == 1:
                   kind_action, kind_support, edge_kind = 'token', 'port', 'route'
@@ -436,28 +438,31 @@ jobs:
                       'Attrs': {'opaque': 'surface'},
                   })
 
-              # Correct: triangle among action + two neighbors.
-              n1, n2 = correct + '-n1', correct + '-n2'
-              add_node(n1)
-              add_node(n2)
+              # Correct role: two immediate neighbors share one radius-2 node.
+              c1, c2, shared = correct + '-n1', correct + '-n2', correct + '-shared'
+              for nid in [c1, c2, shared]:
+                  add_node(nid)
               edges.extend([
-                  {'From': correct, 'To': n1, 'Kind': edge_kind},
-                  {'From': correct, 'To': n2, 'Kind': edge_kind},
-                  {'From': n1, 'To': n2, 'Kind': edge_kind},
+                  {'From': correct, 'To': c1, 'Kind': edge_kind},
+                  {'From': correct, 'To': c2, 'Kind': edge_kind},
+                  {'From': c1, 'To': shared, 'Kind': edge_kind},
+                  {'From': c2, 'To': shared, 'Kind': edge_kind},
               ])
 
-              # Distractors: same radius-1 degree signature, but open chains.
+              # Distractors have exactly the same radius-1 counts but two
+              # separate radius-2 leaves, making depth-2 structure necessary.
               for action in [a for a in action_ids if a != correct]:
-                  d1, d2 = action + '-n1', action + '-n2'
+                  n1, n2 = action + '-n1', action + '-n2'
                   l1, l2 = action + '-l1', action + '-l2'
-                  for nid in [d1, d2, l1, l2]:
+                  for nid in [n1, n2, l1, l2]:
                       add_node(nid)
                   edges.extend([
-                      {'From': action, 'To': d1, 'Kind': edge_kind},
-                      {'From': action, 'To': d2, 'Kind': edge_kind},
-                      {'From': d1, 'To': l1, 'Kind': edge_kind},
-                      {'From': d2, 'To': l2, 'Kind': edge_kind},
+                      {'From': action, 'To': n1, 'Kind': edge_kind},
+                      {'From': action, 'To': n2, 'Kind': edge_kind},
+                      {'From': n1, 'To': l1, 'Kind': edge_kind},
+                      {'From': n2, 'To': l2, 'Kind': edge_kind},
                   ])
+
               return {'nodes': nodes, 'edges': edges}, action_ids, correct
 
           def solve_triangle_domain(p, domain, seed, depth):
