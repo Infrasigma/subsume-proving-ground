@@ -330,8 +330,7 @@ func g13Write(name string, v any) {
 		return
 	}
 	b, _ := json.MarshalIndent(v, "", "  ")
-	_ = os.WriteFile(filepath.Join(ws, name), append(b, '
-'), 0644)
+	_ = os.WriteFile(filepath.Join(ws, name), append(b, '\n'), 0644)
 }
 
 func g13Median(xs []float64) float64 {
