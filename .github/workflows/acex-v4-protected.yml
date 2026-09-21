@@ -72,3 +72,20 @@ jobs:
               go test -mod=mod -run '^TestV8UnifiedCognitiveEntity$|^TestV8SurpriseMemoryAffectsRetrieval$|^TestV8FailureMemoryBlocksRepeatedBadAction$' ./internal/acex -count=1 -timeout=20m -v
               ;;
           esac
+
+  ace-x-v9:
+    if: github.event.pull_request.head.ref == 'ace-x-v9-cegis-open-search-20260921' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact V9 head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - run: go mod download
+      - name: Run protected V9 terminal
+        run: go test -mod=mod -run '^TestV9CEGISRejectsOverfittingCandidate$|^TestV9MechanismImprovementUsesExecutableCEGIS$' ./internal/acex -count=1 -timeout=20m -v
