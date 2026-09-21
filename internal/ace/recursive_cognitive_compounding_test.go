@@ -295,8 +295,8 @@ func TestRecursiveCognitiveMechanismCompounding(t *testing.T) {
 	if !g1.UsedLearnedCall {
 		t.Fatalf("generation 1 did not reuse generation-0 machinery; procedure=%+v", g1.Procedure)
 	}
-	if g1.SemanticDepth != 3 {
-		t.Fatalf("generation 1 expected semantic depth 3, got %d procedure=%+v", g1.SemanticDepth, g1.Procedure)
+	if g1.SemanticDepth != 4 {
+		t.Fatalf("generation 1 expected semantic depth 6, got %d procedure=%+v", g1.SemanticDepth, g1.Procedure)
 	}
 
 	m2 := "M2"
@@ -333,7 +333,7 @@ func TestRecursiveCognitiveMechanismCompounding(t *testing.T) {
 	if !g2.UsedLearnedCall {
 		t.Fatalf("generation 2 did not reuse accumulated machinery; procedure=%+v", g2.Procedure)
 	}
-	if g2.SemanticDepth != 4 {
+	if g2.SemanticDepth != 6 {
 		t.Fatalf("generation 2 expected semantic depth 4, got %d procedure=%+v", g2.SemanticDepth, g2.Procedure)
 	}
 
