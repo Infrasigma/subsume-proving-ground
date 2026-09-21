@@ -24,6 +24,7 @@ type V8CognitiveEntity struct {
 	Experience       *V7CognitiveAgent
 	Memory           V5AdaptiveMemory
 	StructuralRoles  V8StructuralRoleLearner
+	AdaptiveRoles    V8AdaptiveStructuralRoleLearner
 	Inquiry          InquiryManager
 	PendingIntervention string
 	Evidence         []V8CapabilityEvidence
@@ -38,6 +39,7 @@ func NewV8CognitiveEntity() *V8CognitiveEntity {
 		ActiveStrategy: V6Strategy{Name:"baseline", Strategy:V6BaselineSearch, Library:NewV4Library()},
 		Experience:    NewV7CognitiveAgent(),
 		StructuralRoles: NewV8StructuralRoleLearner(),
+		AdaptiveRoles: NewV8AdaptiveStructuralRoleLearner(),
 	}
 }
 
@@ -138,6 +140,11 @@ func (e *V8CognitiveEntity) ObserveAndAct(state RelationalState, actions []strin
 			"selected previously verified label-invariant structural action role", true)
 		return action, nil
 	}
+	if action, ok := e.AdaptiveRoles.Select(state, filtered); ok {
+		e.attest("adaptive-representation-transfer", "v8-adaptive-"+V7StateKey(state),
+			e.AdaptiveRoles.InventedRepresentation(), true)
+		return action, nil
+	}
 	action, err := e.Experience.NextAction(state, filtered)
 	if err != nil {
 		e.Failures = append(e.Failures, "action-selection:"+err.Error())
@@ -159,6 +166,7 @@ func sortedStringSet(m map[string]bool) []string {
 
 func (e *V8CognitiveEntity) ObserveOutcome(before RelationalState, action string, after RelationalState, reward float64, terminal bool) V7Step {
 	e.StructuralRoles.Observe(before, action, reward, terminal)
+	e.AdaptiveRoles.Observe(before, action, reward, terminal)
 	step := e.Experience.ExecuteObserved(before, action, after, reward, terminal)
 	err := e.Remember(V5MemoryTrace{
 		ID:            "experience-" + V7ActionEffectSignature(step),
