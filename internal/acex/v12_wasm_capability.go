@@ -64,37 +64,10 @@ func CompileV12WasmCapability(ir V12EffectIR) (V12WasmCapability, error) {
 	if err != nil {
 		return V12WasmCapability{}, err
 	}
-	sig := V12PatternSignature(payload)
-
-	var module []byte
-	module = append(module, 0x00, 0x61, 0x73, 0x6d) // \0asm
-	module = append(module, 0x01, 0x00, 0x00, 0x00)
-
-	// (i64) -> i32
-	typeSection := []byte{0x01, 0x60, 0x01, 0x7e, 0x01, 0x7f}
-	module = append(module, wasmSection(1, typeSection)...)
-
-	// One function referring to type 0.
-	module = append(module, wasmSection(3, []byte{0x01, 0x00})...)
-
-	// export "match": func 0
-	exportSection := []byte{0x01, 0x05, 'm', 'a', 't', 'c', 'h', 0x00, 0x00}
-	module = append(module, wasmSection(7, exportSection)...)
-
-	// Keep the learned symbolic payload inside a standard custom section. The
-	// section is data, not a pointer into the learner's heap.
-	customPayload := append(wasmULEB(uint64(len(v12WasmCustomSection))), []byte(v12WasmCustomSection)...)
-	customPayload = append(customPayload, payloadBytes...)
-	module = append(module, wasmSection(0, customPayload)...)
-
-	// match(sig) -> 1 exactly when sig == the learned capability signature.
-	body := []byte{0x00, 0x20, 0x00, 0x42}
-	body = append(body, wasmSLEB(int64(sig))...)
-	body = append(body, 0x51, 0x0b) // i64.eq; end
-	codePayload := append(wasmULEB(1), wasmULEB(uint64(len(body)))...)
-	codePayload = append(codePayload, body...)
-	module = append(module, wasmSection(10, codePayload)...)
-
+	module, err := CompileV12DecisionWasm(payload.Pattern, payloadBytes)
+	if err != nil {
+		return V12WasmCapability{}, err
+	}
 	h := sha256.Sum256(module)
 	return V12WasmCapability{
 		Module:  module,
