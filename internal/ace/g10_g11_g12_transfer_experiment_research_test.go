@@ -115,6 +115,8 @@ func g10DomainApply(domain, op, in string) string {
 			return string(out)
 		case "suffixZ":
 			return in + "z"
+		case "appendC":
+			return in + "c"
 		}
 	case "list":
 		xs := g10SplitList(in)
@@ -127,6 +129,10 @@ func g10DomainApply(domain, op, in string) string {
 			xs = append([]int{0}, xs...)
 		case "add9":
 			xs = append(xs, 9)
+		case "add1":
+			xs = append(xs, 1)
+		case "add4":
+			xs = append(xs, 4)
 		case "swap":
 			for i, j := 0, len(xs)-1; i < j; i, j = i+1, j-1 {
 				xs[i], xs[j] = xs[j], xs[i]
@@ -170,6 +176,8 @@ func g10IndependentApply(domain, op, in string) string {
 			return b.String()
 		case "suffixZ":
 			return in + "z"
+		case "appendC":
+			return in + "c"
 		}
 	}
 	if domain == "list" {
@@ -185,6 +193,10 @@ func g10IndependentApply(domain, op, in string) string {
 			xs = append([]int{0}, xs...)
 		case "add9":
 			xs = append(append([]int{}, xs...), 9)
+		case "add1":
+			xs = append(append([]int{}, xs...), 1)
+		case "add4":
+			xs = append(append([]int{}, xs...), 4)
 		case "swap":
 			for i, j := 0, len(xs)-1; i < j; i, j = i+1, j-1 {
 				xs[i], xs[j] = xs[j], xs[i]
@@ -456,8 +468,8 @@ func TestG10CrossDomainAbstractionTransfer(t *testing.T) {
 	}
 
 	targetDomains := map[string][]string{
-		"text": {"appendA", "prependB", "flip", "suffixZ"},
-		"list": {"rot1", "add0", "add9", "swap"},
+		"text": {"appendA", "prependB", "suffixZ", "appendC"},
+		"list": {"add0", "add9", "add1", "add4"},
 	}
 	targetTasks := make([]g10Task, 0, 16)
 	for domain, ops := range targetDomains {
