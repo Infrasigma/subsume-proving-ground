@@ -240,11 +240,15 @@ func v6CanonicalPrograms(programs []V4Expr, lib V4Library, lo, hi int) ([]V4Expr
 	out := make([]V4Expr, 0, len(programs))
 	keys := make([]string, 0, len(programs))
 	for _, p := range programs {
-		rep, cls, err := V6SaturateEquivalents(p, lib, lo, hi, 96)
+		// Keep the discovered witness as the abstraction representative. The
+		// semantic quotient is still computed and certified, but replacing the
+		// witness with the smallest equivalent form can erase shared structure
+		// (for example add(x,0)->x) needed for cross-task abstraction.
+		_, cls, err := V6SaturateEquivalents(p, lib, lo, hi, 96)
 		if err != nil {
 			return nil, nil, err
 		}
-		out = append(out, rep)
+		out = append(out, cloneV4Expr(p))
 		keys = append(keys, cls.Key)
 	}
 	return out, keys, nil
