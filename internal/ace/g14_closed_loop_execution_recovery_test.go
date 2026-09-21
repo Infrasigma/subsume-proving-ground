@@ -80,6 +80,7 @@ func g14FaultedState(w g14World,pos,to int,f g14Fault, step int)(int,bool){
 func g14IndependentVerify(w g14World,start,goal int,observed []int) bool {
 	if len(observed)==0 || observed[0]!=start {return false}
 	for i:=1;i<len(observed);i++ {
+		if observed[i]==observed[i-1] { continue }
 		ok:=false
 		for _,n:=range g14Neighbors(w,observed[i-1]){if n==observed[i]{ok=true;break}}
 		if !ok{return false}
