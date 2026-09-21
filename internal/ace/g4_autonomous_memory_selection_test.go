@@ -204,7 +204,42 @@ func g4Random(pool []g4Memory, future []g4Task, seed int, budget int) int {
 }
 
 func g4Oracle(pool []g4Memory, future []g4Task, budget int) int {
-	return g4Actual(g4Select(pool, future, budget), future)
+	groups := map[int][]g4Memory{}
+	for _, c := range pool { groups[c.Key] = append(groups[c.Key], c) }
+	keys := make([]int, 0, len(groups))
+	for k := range groups { keys = append(keys, k) }
+	sort.Ints(keys)
+
+	dp := make([]int, budget+1)
+	valid := make([]bool, budget+1)
+	valid[0] = true
+	for _, key := range keys {
+		next := make([]int, budget+1)
+		nextValid := make([]bool, budget+1)
+		for b := 0; b <= budget; b++ {
+			if !valid[b] { continue }
+			if !nextValid[b] || dp[b] > next[b] {
+				next[b] = dp[b]
+				nextValid[b] = true
+			}
+			for _, c := range groups[key] {
+				nb := b + c.Bytes
+				if nb > budget { continue }
+				gain := 0
+				for _, t := range future { gain += g4Savings(c, t) }
+				if !nextValid[nb] || dp[b]+gain > next[nb] {
+					next[nb] = dp[b] + gain
+					nextValid[nb] = true
+				}
+			}
+		}
+		dp, valid = next, nextValid
+	}
+	best := 0
+	for b := 1; b <= budget; b++ {
+		if valid[b] && dp[b] > best { best = dp[b] }
+	}
+	return best
 }
 
 func g4WriteReport(name string, v any) {
