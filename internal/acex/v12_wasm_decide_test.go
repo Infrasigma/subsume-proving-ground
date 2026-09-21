@@ -40,6 +40,17 @@ func TestV12CompiledWasmDecisionIsSelfContained(t *testing.T) {
 	reverse.Rows[2] = 1 << 1
 	reverse.Rows[1] = 1 << 0
 
+	var singleBuffer [V12DecisionCandidateStride]byte
+	singleInput, err := EncodeV12DecisionInput([]V12CandidateMatrix{correct}, singleBuffer[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if singleGot, singleErr := exec.Decide(singleInput, 1); singleErr != nil {
+		t.Fatalf("single 3-node candidate failed: %v", singleErr)
+	} else if singleGot != 0 {
+		t.Fatalf("single 3-node candidate returned %d", singleGot)
+	}
+
 	var buffer [2 * V12DecisionCandidateStride]byte
 	input, err := EncodeV12DecisionInput([]V12CandidateMatrix{reverse, correct}, buffer[:])
 	if err != nil {
