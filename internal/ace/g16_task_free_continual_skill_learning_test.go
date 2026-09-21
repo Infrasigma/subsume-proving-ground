@@ -212,7 +212,7 @@ func g16Stream(r *rand.Rand) []g16Task {
 		idx:=r.Intn(len(all))
 		// Core families have higher arrival probability without exposing a task
 		// boundary or a family label to the learner.
-		if r.Intn(10)<7{idx=r.Intn(len(core))}else{idx=len(core)+r.Intn(len(distractor))}
+		if r.Intn(10)<8{idx=r.Intn(len(core))}else{idx=len(core)+r.Intn(len(distractor))}
 		stream=append(stream,g16MakeTask("t-"+strconv.Itoa(i),all[idx]))
 	}
 	return stream
@@ -290,7 +290,7 @@ func TestG16TaskFreeContinualSkillLearning(t *testing.T){
 		report.HiddenVerified==report.StreamTasks &&
 		report.MemoryBoundPasses==report.StreamTasks &&
 		report.CompositionTransfers>=report.StreamTasks/2 &&
-		report.CoreRetention>=0.80 &&
+		report.CoreRetention>=0.95 &&
 		report.CoreRetention-report.RandomEvictRetention>=0.20 &&
 		report.OrderStressPasses==16 &&
 		report.NoBoundarySignal {
