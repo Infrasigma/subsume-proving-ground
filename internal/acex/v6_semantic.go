@@ -299,9 +299,6 @@ func V6LearnProspective(tasks []V4Task, future []V4Task, base V4Library, maxSize
 		after += callSize
 		savingsBefore += v4Size(p)
 	}
-	if savingsBefore-after <= 0 {
-		return V6LearnResult{}, fmt.Errorf("historical compression nonpositive before=%d after=%d", savingsBefore, after)
-	}
 	c := V4Concept{
 		Name: fmt.Sprintf("v6concept-%d", len(base.Concepts)+1),
 		Body: cloneV4Expr(template),
@@ -310,6 +307,8 @@ func V6LearnProspective(tasks []V4Task, future []V4Task, base V4Library, maxSize
 		OutputType: tasks[0].OutputType,
 		DefSize: v4Size(template),
 		UseCount: len(canonical),
+		// Textual compression is diagnostic only; admission below is based on
+		// independently measured acquisition cost and future transfer.
 		Savings: savingsBefore - after,
 		Parent: "v6-prospective",
 	}
@@ -319,6 +318,9 @@ func V6LearnProspective(tasks []V4Task, future []V4Task, base V4Library, maxSize
 	_, visibleAfter, err := v4SolveVisible(tasks, nextLib, maxSize, beam)
 	if err != nil {
 		return V6LearnResult{}, err
+	}
+	if visibleAfter >= before {
+		return V6LearnResult{}, fmt.Errorf("verified visible acquisition cost did not improve before=%d after=%d textual-compression=%d", before, visibleAfter, savingsBefore-after)
 	}
 
 	baseFutureBefore := make([]V6TaskResult, 0, len(future))
