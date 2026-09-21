@@ -21,4 +21,15 @@ func TestV2RuntimePromotesSynthesizedSearchLanguage(t *testing.T) {
 	if res.Improved>=res.Baseline {
 		t.Fatalf("promoted mechanism did not improve cost: %+v",res)
 	}
+	receipt,ok:=r.ImprovementLedger.Latest()
+	if !ok || !receipt.HiddenPassed || receipt.AfterCost!=res.Improved {
+		t.Fatalf("promotion receipt missing or inconsistent: %+v",receipt)
+	}
+	active:=r.ActiveRanker.Signature()
+	if err:=r.RollbackSearchLanguage(); err!=nil {
+		t.Fatal(err)
+	}
+	if r.ActiveRanker.Signature()==active || r.Version!=0 {
+		t.Fatalf("rollback did not restore parent mechanism: active=%s version=%d",r.ActiveRanker.Signature(),r.Version)
+	}
 }
