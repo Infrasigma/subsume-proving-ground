@@ -61,7 +61,8 @@ func g14Apply(w g14World,pos,to int)(int,bool){
 	return pos,false
 }
 
-func g14FaultedState(w g14World,pos,to int,f g14Fault)(int,bool){
+func g14FaultedState(w g14World,pos,to int,f g14Fault, step int)(int,bool){
+	if step != f.Step { return g14Apply(w,pos,to) }
 	switch f.Kind%4 {
 	case 0: // dropped command: state does not advance.
 		return pos,true
@@ -105,13 +106,11 @@ func g14ClosedLoop(w g14World,start,goal int,f g14Fault)([]int,int,bool,bool,int
 		if !ok{return observed,totalExp,false,detected,replans}
 		next:=plan[1]
 		expected:=next
-		got,ok:=g14FaultedState(w,pos,next,f); if !ok{return observed,totalExp,false,detected,replans}
+		got,ok:=g14FaultedState(w,pos,next,f,steps); if !ok{return observed,totalExp,false,detected,replans}
 		if got!=expected {
 			detected=true; replans++
 		}
 		pos=got; observed=append(observed,pos)
-		f.Step--
-		if f.Step<0 {f.Kind=3}
 	}
 	return observed,totalExp,false,detected,replans
 }
@@ -120,7 +119,7 @@ func g14OpenLoop(w g14World,start,goal int,f g14Fault)([]int,int,bool) {
 	plan,exp,ok:=g14Plan(w,start,goal); if !ok{return nil,exp,false}
 	pos:=start; observed:=[]int{pos}
 	for i:=1;i<len(plan);i++ {
-		got,ok:=g14FaultedState(w,pos,plan[i],f); if !ok{return observed,exp,false}
+		got,ok:=g14FaultedState(w,pos,plan[i],f,i); if !ok{return observed,exp,false}
 		pos=got; observed=append(observed,pos)
 	}
 	return observed,exp,pos==goal
@@ -149,7 +148,7 @@ func TestG14ClosedLoopExecutionAndRecovery(t *testing.T){
 			report.Trials++
 			_ = p
 			if detected{report.FaultDetected++}
-			if ook || g14IndependentVerify(w,start,goal,open) {report.OpenLoopFailures++}
+			if !ook || !g14IndependentVerify(w,start,goal,open) {report.OpenLoopFailures++}
 			if !cok || !g14IndependentVerify(w,start,goal,closed){t.Fatalf("seed %d fault %d closed-loop recovery failed",seed,fi)}
 			report.ClosedLoopRecovered++;report.IndependentVerified++
 			if replans<1{t.Fatalf("seed %d fault %d did not trigger recovery",seed,fi)}
@@ -160,7 +159,7 @@ func TestG14ClosedLoopExecutionAndRecovery(t *testing.T){
 		shuffled:=rand.New(rand.NewSource(int64(15000+seed)))
 		a:=rand.Perm(faultsPerSeed); shuffled.Shuffle(len(a),func(i,j int){a[i],a[j]=a[j],a[i]})
 		for _,fi:=range a {
-			_,_,ok:=g14ClosedLoop(w,start,goal,g14Fault{Step:1+(fi%3),Kind:fi%3})
+			_,_,ok,_,_:=g14ClosedLoop(w,start,goal,g14Fault{Step:1+(fi%3),Kind:fi%3})
 			if !ok{t.Fatalf("seed %d shuffled recovery failed",seed)}
 		}
 		report.OrderStressPasses++
