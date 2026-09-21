@@ -124,6 +124,13 @@ func g16ExternalVerify(candidate []string, hiddenSkills []int, skills [][]string
 	return false
 }
 
+func g16BehaviorDistance(a,b string) int {
+	if len(a)!=len(b) { return 1 }
+	d:=0
+	for i:=range a { if a[i]!=b[i] { d++ } }
+	return d
+}
+
 func g16InsertUtility(lib []g16LearnedSkill,c g16LearnedSkill,capacity int,inputs []int) []g16LearnedSkill {
 	c.Signature=g16BehaviorSignature(c.Body,inputs)
 	for i:=range lib {
@@ -136,16 +143,36 @@ func g16InsertUtility(lib []g16LearnedSkill,c g16LearnedSkill,capacity int,input
 	}
 	lib=append(lib,c)
 	if len(lib)<=capacity { return lib }
-	sort.SliceStable(lib,func(i,j int)bool{
-		si:=lib[i].Support*20+lib[i].LastSeen
-		sj:=lib[j].Support*20+lib[j].LastSeen
-		if si==sj {
-			if len(lib[i].Body)!=len(lib[j].Body) { return len(lib[i].Body)<len(lib[j].Body) }
-			return lib[i].Signature<lib[j].Signature
+
+	// Diversity-aware bounded-memory hypothesis:
+	// retain items that jointly maximize observed evidence plus semantic
+	// coverage of the verifier space. This uses only past/observed behavior;
+	// no future-skill identity or hidden workload information is available.
+	selected:=make([]g16LearnedSkill,0,capacity)
+	remaining:=append([]g16LearnedSkill(nil),lib...)
+	for len(selected)<capacity && len(remaining)>0 {
+		best:=0
+		bestScore:=-1.0
+		for i,m:=range remaining {
+			score:=float64(m.Support*20+m.LastSeen)
+			if len(selected)>0 {
+				minD:=int(^uint(0)>>1)
+				for _,q:=range selected {
+					d:=g16BehaviorDistance(m.Signature,q.Signature)
+					if d<minD { minD=d }
+				}
+				score+=float64(minD)
+			} else {
+				score+=float64(len(m.Signature))
+			}
+			if score>bestScore || (score==bestScore && m.Key<remaining[best].Key) {
+				best=i; bestScore=score
+			}
 		}
-		return si>sj
-	})
-	return lib[:capacity]
+		selected=append(selected,remaining[best])
+		remaining=append(remaining[:best],remaining[best+1:]...)
+	}
+	return selected
 }
 
 func g16Retention(lib []g16LearnedSkill,skills [][]string,inputs []int) []bool {
