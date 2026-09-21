@@ -270,13 +270,17 @@ func g10TemplatesFit(tasks []g10Task, templates []g10Template) bool {
 			if tmpl.Depth != task.Depth {
 				continue
 			}
+			valid := true
 			for _, ex := range task.Train {
 				if g10ApplyRepeated(task.Domain, task.Op, ex[0], tmpl.Depth) != ex[1] {
-					continue
+					valid = false
+					break
 				}
 			}
-			found = true
-			break
+			if valid {
+				found = true
+				break
+			}
 		}
 		if !found {
 			return false
@@ -750,7 +754,7 @@ func g12Replay(trace []g12Trace, base g11Hypothesis) bool {
 	return len(hs) == 1 && len(phase2) == 1
 }
 
-func g12Run(truth, followTruth g11Hypothesis, rng *rand.Rand) (g12Trace, uint8, bool) {
+func g12Run(truth, followTruth g11Hypothesis, rng *rand.Rand) ([]g12Trace, g11Hypothesis, bool) {
 	baseHS := g11Hypotheses()
 	used := map[uint8]bool{}
 	trace := make([]g12Trace, 0, 8)
