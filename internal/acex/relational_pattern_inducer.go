@@ -320,6 +320,12 @@ func (l *V8RelationalPatternInducer) Record(state RelationalState, action string
 		Action: action,
 		Success: reward > 0 || terminal,
 	})
+	// Contradictory evidence invalidates retained relational knowledge
+	// immediately. Selection is already fail-closed, but keeping a stale
+	// pattern resident would allow invalid knowledge to survive in memory.
+	if l.Pattern != nil && !l.Pattern.Separates(l.Examples) {
+		l.Pattern = nil
+	}
 }
 
 func (l *V8RelationalPatternInducer) TrySynthesize() bool {
