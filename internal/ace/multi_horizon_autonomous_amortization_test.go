@@ -52,10 +52,12 @@ type amortizationSeedReport struct {
 	AcquisitionVerifierCalls int                  `json:"acquisition_verifier_calls"`
 	RetainedBytes           int64                 `json:"retained_bytes"`
 	RawMemoryBytes          int64                 `json:"raw_memory_bytes"`
-	CompressedMemoryBytes   int64               `json:"compressed_memory_bytes"`
-	ProcessRestartPassed    bool                `json:"process_restart_passed"`
-	RuntimeTamperRejected   bool                `json:"runtime_tamper_rejected"`
-	ManifestTamperDetected  bool                `json:"manifest_tamper_detected"`
+	CompressedMemoryBytes   int64                 `json:"compressed_memory_bytes"`
+	PersistentBytes         int64                 `json:"persistent_bytes"`
+	ArtifactBytes           int64                 `json:"artifact_bytes"`
+	ProcessRestartPassed    bool                  `json:"process_restart_passed"`
+	RuntimeTamperRejected   bool                  `json:"runtime_tamper_rejected"`
+	ManifestTamperDetected  bool                  `json:"manifest_tamper_detected"`
 }
 
 type amortizationReport struct {
