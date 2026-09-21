@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   ace-x-forensic:
-    if: github.event.pull_request.head.ref == 'ace-x-live-20260921' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    if: github.event.pull_request.head.ref == 'ace-x-clean-20260921' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
