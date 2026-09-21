@@ -45,6 +45,17 @@ func TestV8UnifiedCognitiveEntity(t *testing.T) {
 	if !entity.HasEvidence("causal-inquiry") {
 		t.Fatal("causal inquiry evidence missing")
 	}
+	proposal, err := entity.InventTool(
+		Task{ID:"tool-add-one",Goal:"y=x+1",Budget:ResourceVector{Search:1000,Verify:1000}},
+		[]ProgramTestCase{
+			{Input:map[string]string{"x":"0"},Expected:map[string]string{"y":"1"}},
+			{Input:map[string]string{"x":"4"},Expected:map[string]string{"y":"5"}},
+			{Input:map[string]string{"x":"-2"},Expected:map[string]string{"y":"-1"}},
+		},
+	)
+	if err != nil || proposal.Artifact == "" || !entity.HasEvidence("tool-invention") {
+		t.Fatalf("symbolic tool invention failed: err=%v proposal=%+v caps=%v",err,proposal,entity.VerifiedCapabilities())
+	}
 	if err := entity.Inquire(h,"probe-a","good"); err != nil {
 		t.Fatal(err)
 	}
