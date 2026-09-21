@@ -320,8 +320,8 @@ func runBlock(seed int64) blockResult {
 	details["g5_diagnosis"] = diag
 
 	// X6: endogenous next-challenge generation.
-	nextList, curriculumErr := (Curriculum{}).Next([]Dataset{{Examples: throttled.Examples[:60]}})
-	gates["G6"] = curriculumErr == nil && len(nextList) == 1 && len(nextList[0].Examples) == 60
+	next, curriculumErr := (Curriculum{}).Next([]Dataset{{Examples: throttled.Examples[:60]}})
+	gates["G6"] = curriculumErr == nil && len(next.Examples) == 60
 	details["g6_size"] = len(next.Examples)
 
 	// X7: self-improve the search policy on visible tasks, then require its gain
