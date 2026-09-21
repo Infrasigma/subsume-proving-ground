@@ -35,3 +35,5 @@ jobs:
         with:
           name: acex-v7-protected-result
           path: acex-v7-protected-result.txt
+
+# Protected evaluator infrastructure is now provided by main's ACE-X router. Candidate-specific workflow retained for forensic provenance: v7.
