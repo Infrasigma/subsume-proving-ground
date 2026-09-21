@@ -127,3 +127,4 @@ func main() {
 }
 
 // Black-box evaluation workflow is evaluator-owned; this marker is intentionally inert.
+// Transfer gate rerun marker: evaluator protocol unchanged.
