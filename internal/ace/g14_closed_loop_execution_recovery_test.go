@@ -73,10 +73,13 @@ func g14DisturbedState(w g14World,pos,to int,f g14Fault,step int,goal int)(int,b
 			if p!=goal && p!=to { return p,true }
 		}
 		return pos,true
-	default: // duplicate/stale command: advance if the same command remains legal
+	default: // stale/duplicated command: after the intended move, execute a
+		// different legal move when one exists, guaranteeing an observable deviation.
 		after,ok:=g14Apply(w,pos,to)
 		if !ok { return pos,true }
-		if again,ok2:=g14Apply(w,after,to); ok2 { return again,true }
+		for _,n:=range g14Neighbors(w,after) {
+			if n!=pos && n!=goal { return n,true }
+		}
 		return after,true
 	}
 }
