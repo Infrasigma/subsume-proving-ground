@@ -32,4 +32,4 @@ jobs:
       - name: Race verification
         if: always()
         run: go test -mod=mod -race -run '^TestMultiHorizonAutonomousAmortization
- ./internal/ace -count=1 -timeout 45m
+ ./internal/ace -count=1 -v -timeout 45m
