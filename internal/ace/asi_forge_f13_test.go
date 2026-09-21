@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strconv"
 	"testing"
 )
 
@@ -67,37 +66,6 @@ func f13RankTask(seed int64, rank, count int) f13Task {
 		mk("f13h",append(append([]int(nil),trim[2:]...),trim[:2]...)),
 	}
 	return f13Task{ID:fmt.Sprintf("endo-rank-%d-%d",rank,seed),Kind:"order-statistic",Complexity:rank,Rank:rank,Seed:seed,Train:train,Hidden:hidden}
-}
-
-func f13ClampTask(seed int64,bound int) f13Task {
-	values:=[]int{-bound-6,-bound-2,-bound+1,0,bound-1,bound+2,bound+7}
-	mk:=func(prefix string, xs []int) rcCase{
-		c:=rcCase{Candidates:rcCandidates(xs,prefix)}
-		for i:=range c.Candidates{
-			x:=xs[i]
-			y:=x
-			if y < -bound { y=-bound }
-			if y > bound { y=bound }
-			c.Candidates[i].Resources.ExperimentBudget=float64(y)
-		}
-		// The task uses the generic "experiment budget" role as its output key;
-		// this keeps the search language free of a clamp primitive.
-		sort.SliceStable(c.Candidates,func(i,j int)bool{return c.Candidates[i].Resources.Compute<c.Candidates[j].Resources.Compute})
-		c.Desired=c.Candidates[bound%len(c.Candidates)].Mechanism
-		return c
-	}
-	_ = mk
-	// Clamp tasks are represented directly as a deterministic mapping artifact
-	// rather than pretending the order-statistic stream is its execution substrate.
-	// The open-ended curriculum alternates task families; its acceptance requires
-	// a distinct verified semantic signature, not merely another rank instance.
-	return f13Task{
-		ID:fmt.Sprintf("endo-clamp-%d-%d",bound,seed),
-		Kind:"bounded-piecewise",
-		Complexity:bound+1,
-		Bound:bound,
-		Seed:seed,
-	}
 }
 
 type f13EndogenousGenerator struct{}
