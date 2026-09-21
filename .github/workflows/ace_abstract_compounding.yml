@@ -1,0 +1,33 @@
+name: ACE Autonomous Abstract Compounding
+
+on:
+  push:
+    branches:
+      - "feat/autonomous-abstract-compounding-20260922"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: Run focused autonomous abstract-compounding experiment
+        run: go test -mod=mod -run '^TestAutonomousAbstractCompounding$' ./internal/ace -count=1 -v -timeout 20m
+      - name: Upload experiment artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ace-autonomous-abstract-compounding
+          path: |
+            ACE_AUTONOMOUS_ABSTRACT_COMPOUNDING.json
+            ACE_AUTONOMOUS_ABSTRACT_COMPOUNDING.md
+          if-no-files-found: warn
+      - name: Run race verification
+        run: go test -mod=mod -race -run '^TestAutonomousAbstractCompounding$' ./internal/ace -count=1 -timeout 20m
