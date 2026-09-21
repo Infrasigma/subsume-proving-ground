@@ -1,0 +1,26 @@
+name: ICS v2
+on:
+  push:
+    branches:
+      - ics-live-20260921
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: Run v2 adversarial schema test
+        run: |
+          mkdir -p ics_artifacts
+          go run ./cmd/ics-v2 | tee ics_artifacts/v2_stdout.txt
+      - name: Upload v2 result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ics-v2
+          path: |
+            ics_artifacts/v2_result.json
+            ics_artifacts/v2_stdout.txt
