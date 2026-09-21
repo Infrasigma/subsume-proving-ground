@@ -83,18 +83,81 @@ func CompileV12DecisionWasm(pattern V11DirectedPatternArtifact, metadata []byte)
 }
 
 func v12EmitPatternMatcher(pattern V11DirectedPatternArtifact) []byte {
-	body := []byte{0x01, 0x03, 0x7f} // one local group: m1,m2,m3
+	// One i32 local: accumulated match flag. Mapping enumeration happens at
+	// artifact-build time; runtime inference contains only straight-line
+	// graph-embedding checks, with no mutable search cursors.
+	body := []byte{0x01, 0x01, 0x7f}
 
-	for i := 0; i < pattern.Nodes-1; i++ {
-		body = append(body, v12I32Const(1)...)
-		body = append(body, v12LocalSet(uint32(i+1))...)
+	body = append(body, v12I32Const(0)...)
+	body = append(body, v12LocalSet(1)...)
+
+	for _, mapping := range v12EnumerateMappings(pattern.Nodes) {
+		for i, edge := range pattern.Edges {
+			if i > 0 {
+				body = append(body, 0x71) // and prior edge predicates
+			}
+			body = append(body, v12EmitStaticEdgeTest(edge, mapping)...)
+		}
+		body = append(body, v12LocalGet(1)...)
+		body = append(body, 0x71) // NOTE: overwritten below; placeholder replaced by OR
+		body[len(body)-1] = 0x72
+		body = append(body, v12LocalSet(1)...)
+		body = append(body, v12LocalGet(1)...)
+		body = append(body, 0x04, 0x40) // if matched
+		body = append(body, 0x41, 0x01, 0x0f, 0x0b)
 	}
-
-	body = append(body, v12EmitSearchLevel(pattern, 0)...)
-	body = append(body, 0x41, 0x00, 0x0f, 0x0b) // return 0; end
+	body = append(body, 0x41, 0x00, 0x0f, 0x0b)
 	return body
 }
 
+func v12EnumerateMappings(nodes int) [][]int {
+	count := nodes - 1
+	out := make([][]int, 0)
+	mapping := make([]int, count)
+	used := make([]bool, V12DecisionMaxNodes)
+	var rec func(int)
+	rec = func(depth int) {
+		if depth == count {
+			copyMapping := append([]int(nil), mapping...)
+			out = append(out, copyMapping)
+			return
+		}
+		for candidate := 1; candidate < V12DecisionMaxNodes; candidate++ {
+			if used[candidate] {
+				continue
+			}
+			used[candidate] = true
+			mapping[depth] = candidate
+			rec(depth + 1)
+			used[candidate] = false
+		}
+	}
+	rec(0)
+	return out
+}
+
+func v12EmitStaticEdgeTest(edge V11DirectedPatternEdge, mapping []int) []byte {
+	from := 0
+	if edge.From > 0 {
+		from = mapping[edge.From-1]
+	}
+	to := 0
+	if edge.To > 0 {
+		to = mapping[edge.To-1]
+	}
+
+	var out []byte
+	out = append(out, v12LocalGet(0)...)
+	if from != 0 {
+		out = append(out, v12I32Const(int32(from*4))...)
+		out = append(out, 0x6a)
+	}
+	out = append(out, 0x28, 0x00, 0x00)
+	out = append(out, v12I32Const(int32(to))...)
+	out = append(out, 0x76)
+	out = append(out, 0x41, 0x01, 0x71)
+	return out
+}
 func v12EmitSearchLevel(pattern V11DirectedPatternArtifact, depth int) []byte {
 	var out []byte
 	localIndex := uint32(depth + 1)
