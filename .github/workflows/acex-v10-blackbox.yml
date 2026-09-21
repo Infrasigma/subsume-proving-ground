@@ -489,7 +489,6 @@ jobs:
 
           tri_seed = 44117
           tri_seq = start_agent()
-          tri_base = start_agent()
           try:
               ok_source, source_cost = solve_triangle_domain(tri_seq, 0, tri_seed, depth=1)
               if not ok_source:
@@ -505,9 +504,15 @@ jobs:
                   )
                   if not ok_target_seq:
                       raise RuntimeError(f'representation-expansion sequential target failed episode={episode}')
-                  ok_target_base, target_base_cost = solve_triangle_domain(
-                      tri_base, 1, target_seed, depth=5
-                  )
+                  # Fresh baseline per episode: no transfer and no
+                  # accumulated learning across target episodes.
+                  episode_base = start_agent()
+                  try:
+                      ok_target_base, target_base_cost = solve_triangle_domain(
+                          episode_base, 1, target_seed, depth=5
+                      )
+                  finally:
+                      episode_base.kill()
                   if not ok_target_base:
                       raise RuntimeError(f'representation-expansion clean baseline failed episode={episode}')
                   sequential_total += target_seq_cost
@@ -525,7 +530,6 @@ jobs:
                   )
           finally:
               tri_seq.kill()
-              tri_base.kill()
 
           print('BLACKBOX V10 REPRESENTATION-EXPANSION PASS')
           print('BLACKBOX V10 STRUCTURAL-ROLE TRANSFER PASS')
