@@ -236,23 +236,23 @@ func g67Digest(e *g67Expr) string {
 }
 
 func g67ExtractOperator(programs []*g67Expr,training []ProgramTestCase) (g67Macro,bool) {
-	type bucket struct{ body *g67Expr; uses int; tasks int }
+	type bucket struct{ body *g67Expr; uses int; tasks int; taskSeen map[int]bool }
 	buckets:=map[string]*bucket{}
-	for _,p:=range programs {
-		seenTask:=map[string]bool{}
-		for _,s:=range g67Subtrees(p) {
-			if g67Nodes(s)<3 || s.Kind=="call" { continue }
-			key:=g67Canonical(s)
+	for pi,p:=range programs {
+		localSeen:=map[string]bool{}
+		for _,sub:=range g67Subtrees(p) {
+			if g67Nodes(sub)<3 || sub.Kind=="call" { continue }
+			key:=g67Canonical(sub)
+			if localSeen[key] { continue }
+			localSeen[key]=true
 			b:=buckets[key]
-			if b==nil { b=&bucket{body:g67ReplaceRootVars(s)}; buckets[key]=b }
+			if b==nil { b=&bucket{body:g67ReplaceRootVars(sub),taskSeen:map[int]bool{}}; buckets[key]=b }
 			b.uses++
-			id:=g67Signature(s,[]ProgramTestCase{training[0]},map[string]g67Macro{})
-			seenTask[id]=true
+			if !b.taskSeen[pi] { b.taskSeen[pi]=true; b.tasks++ }
 		}
-		_ = seenTask
 	}
 	cands:=make([]*bucket,0,len(buckets))
-	for _,b:=range buckets { if b.uses>=3 { cands=append(cands,b) } }
+	for _,b:=range buckets { if b.tasks>=3 { cands=append(cands,b) } }
 	sort.Slice(cands,func(i,j int)bool{
 		si:=cands[i].uses*(g67Nodes(cands[i].body)-1)
 		sj:=cands[j].uses*(g67Nodes(cands[j].body)-1)
@@ -263,24 +263,20 @@ func g67ExtractOperator(programs []*g67Expr,training []ProgramTestCase) (g67Macr
 		id:="op-"+g67Digest(b.body)[:12]
 		m:=g67Macro{ID:id,Body:g67Clone(b.body),Nodes:g67Nodes(b.body),Uses:b.uses,Digest:g67Digest(b.body)}
 		lib:=map[string]g67Macro{id:m}
-		if !g67ProgramFits(m.Body,training,lib) {
-			// A bare macro body is evaluated with x represented by $0; train must
-			// be checked by substituting x explicitly.
-			ok:=true
-			for _,tc:=range training {
-				env:=map[string]int{}; for k,v:=range tc.Input{n,_:=strconv.Atoi(v);env[k]=n}
-				arg:=env["x"]; got,err:=g67Eval(m.Body,map[string]int{},lib,&arg); if err!=nil{ok=false;break}
-				want,_:=strconv.Atoi(tc.Expected["y"]);if got!=want{ok=false;break}
-			}
-			if !ok{continue}
+		ok:=true
+		for _,tc:=range training {
+			env:=map[string]int{}
+			for k,v:=range tc.Input { n,err:=strconv.Atoi(v); if err!=nil { ok=false; break }; env[k]=n }
+			arg,exists:=env["x"]; if !exists { ok=false; break }
+			got,err:=g67Eval(m.Body,map[string]int{},lib,&arg)
+			if err!=nil { ok=false; break }
+			want,err:=strconv.Atoi(tc.Expected["y"])
+			if err!=nil || got!=want { ok=false; break }
 		}
-		// Admission is training-only. Hidden verification is evaluator-owned
-		// and performed by the caller after candidate selection.
-		return m,true
+		if ok { return m,true }
 	}
 	return g67Macro{},false
 }
-
 func g67IndependentEval(e *g67Expr, env map[string]int, lib map[string]g67Macro, arg *int) (int,error) {
 	if e==nil { return 0,fmt.Errorf("nil expression") }
 	switch e.Kind {
