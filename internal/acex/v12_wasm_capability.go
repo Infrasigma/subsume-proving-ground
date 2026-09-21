@@ -229,7 +229,7 @@ func readWasmULEB(data []byte, pos *int) (uint64, error) {
 			return 0, fmt.Errorf("invalid wasm LEB")
 		}
 		b := data[*pos]
-		*pos++
+		*pos = *pos + 1
 		value |= uint64(b&0x7f) << shift
 		if b&0x80 == 0 {
 			return value, nil
