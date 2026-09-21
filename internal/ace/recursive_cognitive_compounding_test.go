@@ -28,7 +28,7 @@ func rcCandidates(costs []int, prefix string) []ArchitectureCandidate {
 		out = append(out, ArchitectureCandidate{
 			ID:        prefix + string(rune('a'+i)),
 			Mechanism: "mechanism-" + string(rune('a'+i)),
-			Resources: ResourceVector{Compute: cost},
+			Resources: ResourceVector{Compute: float64(cost)},
 		})
 	}
 	return out
