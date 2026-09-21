@@ -61,7 +61,7 @@ func CompileV12DecisionWasm(pattern V11DirectedPatternArtifact, metadata []byte)
 		0x03,
 		0x06, 'd', 'e', 'c', 'i', 'd', 'e', 0x00, 0x01,
 		0x06, 'm', 'e', 'm', 'o', 'r', 'y', 0x02, 0x00,
-		0x0e, 'm', 'a', 't', 'c', 'h', '_', 'c', 'a', 'n', 'd', 'i', 'd', 'a', 't', 'e', 0x00, 0x00,
+		0x0f, 'm', 'a', 't', 'c', 'h', '_', 'c', 'a', 'n', 'd', 'i', 'd', 'a', 't', 'e', 0x00, 0x00,
 	}
 	module = append(module, wasmSection(7, exportSection)...)
 
