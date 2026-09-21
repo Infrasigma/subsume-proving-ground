@@ -161,7 +161,7 @@ func g13PathToKeyCounted(t g13Task, s g13State, key uint8, counter *int) ([]int,
 	type node struct{s g13State; path []int}
 	q:=[]node{{s,[]int{s.Pos}}}; seen:=map[int]bool{s.Pos:true}
 	for len(q)>0 {
-		cur:=q[0]; q=q[1:]; *counter++
+		cur:=q[0]; q=q[1:]; (*counter)++
 		if t.World.KeyAt[cur.s.Pos]&key!=0{return cur.path,true}
 		for _,n:=range g13Neighbors(t.World,cur.s.Pos) {
 			ns,ok:=g13Apply(t.World,cur.s,n); if !ok || seen[ns.Pos]{continue}
