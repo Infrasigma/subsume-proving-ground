@@ -196,29 +196,6 @@ func g67Solve(cases []ProgramTestCase,maxDepth,limit int,lib map[string]g67Macro
 	}
 	return g67SolveResult{Expansions:generated}
 }
-func g67Solve(cases []ProgramTestCase,maxDepth,limit int,lib map[string]g67Macro) g67SolveResult {
-	exprs,generated:=g67Enumerate(maxDepth,lib,cases,limit)
-	sort.SliceStable(exprs,func(i,j int)bool{
-		ci,cj:=g67Nodes(exprs[i]),g67Nodes(exprs[j])
-		if ci==cj{return g67Canonical(exprs[i])<g67Canonical(exprs[j])}
-		return ci<cj
-	})
-	for tested,e:=range exprs {
-		if g67ProgramFits(e,cases,lib) {
-			return g67SolveResult{Program:e,Expansions:tested+1,Found:true}
-		}
-	}
-	return g67SolveResult{Expansions:generated}
-}
-func g67Solve(cases []ProgramTestCase,maxDepth,limit int,lib map[string]g67Macro) g67SolveResult {
-	exprs,exp:=g67Enumerate(maxDepth,lib,cases,limit)
-	for _,e:=range exprs {
-		if g67ProgramFits(e,cases,lib) {
-			return g67SolveResult{Program:e,Expansions:exp,Found:true}
-		}
-	}
-	return g67SolveResult{Expansions:exp}
-}
 
 func g67Subtrees(e *g67Expr) []*g67Expr {
 	if e==nil{return nil}
