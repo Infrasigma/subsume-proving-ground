@@ -25,6 +25,7 @@ type V8CognitiveEntity struct {
 	Memory           V5AdaptiveMemory
 	StructuralRoles  V8StructuralRoleLearner
 	AdaptiveRoles    V8AdaptiveStructuralRoleLearner
+	RelationalPatterns V8RelationalPatternInducer
 	Inquiry          InquiryManager
 	PendingIntervention string
 	Evidence         []V8CapabilityEvidence
@@ -40,6 +41,7 @@ func NewV8CognitiveEntity() *V8CognitiveEntity {
 		Experience:    NewV7CognitiveAgent(),
 		StructuralRoles: NewV8StructuralRoleLearner(),
 		AdaptiveRoles: NewV8AdaptiveStructuralRoleLearner(),
+		RelationalPatterns: NewV8RelationalPatternInducer(),
 	}
 }
 
