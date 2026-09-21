@@ -9,7 +9,7 @@ import (
 func TestV8UnifiedCognitiveEntity(t *testing.T) {
 	entity := NewV8CognitiveEntity()
 
-	visible, err := makeV6TaskFamily(11, []int{-3,0,3}, true)
+	visible, err := makeV6TaskFamily(11, []int{-3,3,6}, true)
 	if err != nil { t.Fatal(err) }
 	future, err := makeV6TaskFamily(12, []int{-4,-1,2,4}, false)
 	if err != nil { t.Fatal(err) }
