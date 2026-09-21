@@ -138,15 +138,3 @@ jobs:
           print("artifact_bytes=%d"%len(raw))
           print("artifact_sha256=%s"%hashlib.sha256(raw).hexdigest())
           PY
-      - name: Publish evaluator result
-        if: always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const body = "V12 protected gate finished. See workflow logs for the independent destructive rehydration result.";
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body
-            });
