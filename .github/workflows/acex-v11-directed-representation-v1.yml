@@ -1,0 +1,261 @@
+name: ACE-X V11 directed executable representation v1
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  v11-directed-representation:
+    if: github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground' && github.event.pull_request.head.ref == 'ace-x-v11-directed-representation-20260921'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - run: go mod download
+      - name: Install Bubblewrap
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Build isolated candidate
+        run: CGO_ENABLED=0 go build -o /tmp/acex-agent ./cmd/acex-agent
+      - name: Run evaluator-owned V11 scientific gate
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import random
+          import signal
+          import subprocess
+          import time
+
+          def start_agent():
+              return subprocess.Popen(
+                  [
+                      "bwrap",
+                      "--ro-bind", "/tmp/acex-agent", "/acex-agent",
+                      "--proc", "/proc",
+                      "--dev", "/dev",
+                      "--tmpfs", "/tmp",
+                      "--unshare-net",
+                      "--unshare-pid",
+                      "--unshare-ipc",
+                      "--unshare-uts",
+                      "--die-with-parent",
+                      "/acex-agent",
+                  ],
+                  stdin=subprocess.PIPE,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+                  text=True,
+                  bufsize=1,
+                  start_new_session=True,
+              )
+
+          def stop_agent(p):
+              if p.poll() is not None:
+                  return
+              try:
+                  os.killpg(p.pid, signal.SIGKILL)
+              except ProcessLookupError:
+                  pass
+              p.wait(timeout=5)
+
+          def rpc(p, payload):
+              p.stdin.write(json.dumps(payload) + "\n")
+              p.stdin.flush()
+              line = p.stdout.readline()
+              if not line:
+                  raise RuntimeError("candidate terminated: " + p.stderr.read())
+              out = json.loads(line)
+              if not out.get("ok") and not out.get("action") and not out.get("artifact"):
+                  raise RuntimeError(out.get("error", "candidate error"))
+              return out
+
+          def make_state(seed, generator, width):
+              rng = random.Random(seed)
+              actions = [f"g{generator}-{seed}-{chr(97+i)}" for i in range(width)]
+              correct_index = (seed // 7 + generator) % width
+              correct = actions[correct_index]
+              nodes = []
+              edges = []
+
+              action_kind = ["lever", "token", "marker"][generator % 3]
+              support_kind = ["peg", "port", "node"][generator % 3]
+              edge_kind = ["engage", "route", "bind"][generator % 3]
+
+              for action in actions:
+                  nodes.append({
+                      "ID": action,
+                      "Kind": action_kind,
+                      "Attrs": {"surface": str((seed + generator) % 17)},
+                  })
+                  a = f"{action}-a"
+                  b = f"{action}-b"
+                  z = f"{action}-z"
+                  nodes.extend([
+                      {"ID": a, "Kind": support_kind, "Attrs": {"opaque": str(seed + 1)}},
+                      {"ID": b, "Kind": support_kind, "Attrs": {"opaque": str(seed + 2)}},
+                      {"ID": z, "Kind": support_kind, "Attrs": {"opaque": str(seed + 3)}},
+                  ])
+
+                  # The hidden principle is directed local succession.
+                  # Correct roots contain root -> a -> b.
+                  # Distractors contain the same undirected path in reverse.
+                  if action == correct:
+                      edges.extend([
+                          {"From": action, "To": a, "Kind": edge_kind},
+                          {"From": a, "To": b, "Kind": edge_kind},
+                          {"From": b, "To": z, "Kind": edge_kind},
+                      ])
+                      if generator >= 2:
+                          q = f"{action}-q"
+                          nodes.append({"ID": q, "Kind": support_kind, "Attrs": {"opaque": str(seed + 4)}})
+                          edges.append({"From": a, "To": q, "Kind": edge_kind})
+                  else:
+                      edges.extend([
+                          {"From": z, "To": b, "Kind": edge_kind},
+                          {"From": b, "To": a, "Kind": edge_kind},
+                          {"From": a, "To": action, "Kind": edge_kind},
+                      ])
+                      if generator >= 2:
+                          q = f"{action}-q"
+                          nodes.append({"ID": q, "Kind": support_kind, "Attrs": {"opaque": str(seed + 4)}})
+                          edges.append({"From": q, "To": a, "Kind": edge_kind})
+
+              # Generator/surface changes are evaluator-owned; serialization is randomized.
+              rng.shuffle(nodes)
+              rng.shuffle(edges)
+              rng.shuffle(actions)
+              return {"nodes": nodes, "edges": edges}, actions, correct
+
+          def solve(p, state, actions, correct, limit=20):
+              attempts = 0
+              expansions = 0
+              while attempts < limit:
+                  out = rpc(p, {"op": "act", "state": state, "actions": actions})
+                  action = out.get("action")
+                  attempts += 1
+                  expansions = max(expansions, int(out.get("search_expansions", 0)))
+                  ok = action == correct
+                  rpc(p, {
+                      "op": "observe",
+                      "next_state": state,
+                      "reward": 1 if ok else -1,
+                      "terminal": ok,
+                  })
+                  if ok:
+                      return attempts, expansions
+              raise RuntimeError("candidate failed hidden stage")
+
+          # Source acquisition: two evaluator-owned source generators.
+          src = start_agent()
+          source_attempts = 0
+          try:
+              for i, generator in enumerate([0, 1, 0, 1]):
+                  state, actions, correct = make_state(11017 + i * 7919, generator, 3 + (i % 2))
+                  cost, _ = solve(src, state, actions, correct)
+                  source_attempts += cost
+
+              forgotten = rpc(src, {"op": "forget_raw"})
+              if forgotten.get("memory") != 0:
+                  raise RuntimeError("raw episodic memory was not deleted")
+
+              exported = rpc(src, {"op": "export_knowledge"})
+              artifact = exported.get("artifact", "")
+              if not artifact:
+                  raise RuntimeError("no retained representation artifact exported")
+              if any(token in artifact for token in ["g0-", "g1-", "src", "examples", "opaque"]):
+                  raise RuntimeError("retained artifact appears to contain raw/source material")
+
+          finally:
+              stop_agent(src)
+
+          # Restart requirement: new process, no candidate-side raw state.
+          restored = start_agent()
+          try:
+              loaded = rpc(restored, {"op": "load_knowledge", "artifact": artifact})
+              status = rpc(restored, {"op": "status"})
+              if status.get("memory") != 0:
+                  raise RuntimeError("restart-loaded agent has episodic memory")
+
+              sequential_total = 0
+              baseline_total = 0
+              sequential_target_expansions = 0
+              baseline_target_expansions = 0
+              sequential_wall = 0.0
+              baseline_wall = 0.0
+
+              for episode in range(24):
+                  generator = 1 if episode < 12 else 2
+                  seed = 50001 + episode * 6151
+                  state, actions, correct = make_state(seed, generator, 4 + (episode % 2))
+
+                  t0 = time.monotonic()
+                  seq_cost, seq_exp = solve(restored, state, actions, correct)
+                  sequential_wall += time.monotonic() - t0
+                  sequential_total += seq_cost
+                  sequential_target_expansions += seq_exp
+
+                  baseline = start_agent()
+                  try:
+                      t1 = time.monotonic()
+                      base_cost, base_exp = solve(baseline, state, actions, correct)
+                      baseline_wall += time.monotonic() - t1
+                      baseline_total += base_cost
+                      baseline_target_expansions += base_exp
+                  finally:
+                      stop_agent(baseline)
+
+                  print(
+                      f"EPISODE={episode} generator={generator} "
+                      f"sequential={seq_cost} baseline={base_cost} "
+                      f"seq_exp={seq_exp} base_exp={base_exp}"
+                  )
+
+              ratio = sequential_total / float(baseline_total)
+              print(
+                  f"V11 DIRECTED REPRESENTATION SUMMARY "
+                  f"source_attempts={source_attempts} "
+                  f"target_sequential={sequential_total} "
+                  f"target_baseline={baseline_total} "
+                  f"ratio={ratio:.4f} episodes=24"
+              )
+              print(
+                  f"V11 DIRECTED REPRESENTATION RESOURCE "
+                  f"artifact_bytes={len(artifact.encode())} "
+                  f"sequential_target_expansions={sequential_target_expansions} "
+                  f"baseline_target_expansions={baseline_target_expansions} "
+                  f"sequential_wall={sequential_wall:.6f} "
+                  f"baseline_wall={baseline_wall:.6f}"
+              )
+
+              if ratio > 0.70:
+                  raise RuntimeError(
+                      "V11 did not materially reduce equal-budget target acquisition cost: "
+                      f"ratio={ratio:.4f}"
+                  )
+              if sequential_total > 26:
+                  raise RuntimeError(
+                      "retained directed representation did not produce near-immediate target reuse"
+                  )
+
+              print(
+                  "V11 DIRECTED REPRESENTATION PASS: "
+                  "system-synthesized executable directed structure survived raw deletion, "
+                  "restart, surface shift, generator shift, and fresh equal-budget comparison."
+              )
+          finally:
+              stop_agent(restored)
+          PY
