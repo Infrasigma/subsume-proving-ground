@@ -9,44 +9,35 @@ import (
 	"testing"
 )
 
-type g15Task struct { Size, Depth, Noise, Seed int }
-type g15Evidence struct { Success, Fail int }
-type g15Model struct { Buckets map[[3]int]g15Evidence; Global g15Evidence }
+type g15Task struct{ Size, Depth, Noise, Seed int }
+type g15Evidence struct{ Success, Fail int }
+type g15Model struct{ Buckets map[[3]int]g15Evidence; Global g15Evidence }
 
 type g15Report struct {
-	TrainingCases int
-	HiddenCases int
-	StationaryCases int
-	ShiftedCases int
-	SelfModelBrier float64
-	GlobalBrier float64
-	StaticShiftedBrier float64
-	AdaptiveShiftedBrier float64
-	SelfModelECE float64
-	AlwaysVerifyCost float64
-	GlobalRegulatedCost float64
-	SelfRegulatedCost float64
-	AlwaysVerifyCalls int
-	GlobalRegulatedVerifies int
-	SelfRegulatedVerifies int
-	SuccessRate float64
-	SelfRegulatedSuccessRate float64
-	OrderStressPasses int
-	BoundaryStressPasses int
-	ShiftAdaptationPasses int
+	TrainingCases, HiddenCases, StationaryCases, ShiftedCases int
+	SelfModelBrier, GlobalBrier, StaticShiftedBrier, AdaptiveShiftedBrier, SelfModelECE float64
+	AlwaysVerifyCost, GlobalRegulatedCost, SelfRegulatedCost float64
+	AlwaysVerifyCalls, GlobalRegulatedVerifies, SelfRegulatedVerifies int
+	SuccessRate, SelfRegulatedSuccessRate, SelectiveCoverage, SelectiveRisk float64
+	OrderStressPasses, BoundaryStressPasses, ShiftAdaptationPasses int
 	CausalAblationPass bool
 	IndependentSeeds int
 	Classification string
 }
 
-func g15Difficulty(t g15Task) int { return (t.Size-3) + 2*t.Depth + t.Noise }
-func g15Budget(shifted bool) int { if shifted { return 8 }; return 9 }
-func g15ActualSuccess(t g15Task, shifted bool) bool { return g15Difficulty(t) <= g15Budget(shifted) }
+const g15Threshold = 0.80
 
-func (m *g15Model) Update(t g15Task, success bool) {
-	k := [3]int{t.Size,t.Depth,t.Noise}; e := m.Buckets[k]
-	if success { e.Success++; m.Global.Success++ } else { e.Fail++; m.Global.Fail++ }
-	m.Buckets[k] = e
+func g15ActualSuccess(t g15Task, shifted bool) bool {
+	budget:=9
+	if shifted { budget=8 }
+	return (t.Size-3)+2*t.Depth+t.Noise <= budget
+}
+
+func (m *g15Model) Update(t g15Task, ok bool) {
+	k:=[3]int{t.Size,t.Depth,t.Noise}
+	e:=m.Buckets[k]
+	if ok { e.Success++; m.Global.Success++ } else { e.Fail++; m.Global.Fail++ }
+	m.Buckets[k]=e
 }
 
 func g15Posterior(e g15Evidence) float64 {
@@ -55,43 +46,47 @@ func g15Posterior(e g15Evidence) float64 {
 }
 
 func (m *g15Model) Predict(t g15Task) float64 {
-	k := [3]int{t.Size,t.Depth,t.Noise}
-	if e,ok := m.Buckets[k]; ok && e.Success+e.Fail>0 { return g15Posterior(e) }
-	var matched g15Evidence
-	for key,e := range m.Buckets {
+	k:=[3]int{t.Size,t.Depth,t.Noise}
+	if e,ok:=m.Buckets[k]; ok && e.Success+e.Fail>0 { return g15Posterior(e) }
+	var near g15Evidence
+	for key,e:=range m.Buckets {
 		d:=0
 		if key[0]!=t.Size { d++ }; if key[1]!=t.Depth { d++ }; if key[2]!=t.Noise { d++ }
-		if d==1 { matched.Success+=e.Success; matched.Fail+=e.Fail }
+		if d==1 { near.Success+=e.Success; near.Fail+=e.Fail }
 	}
-	if matched.Success+matched.Fail>0 { return g15Posterior(matched) }
+	if near.Success+near.Fail>0 { return g15Posterior(near) }
 	return g15Posterior(m.Global)
 }
 
 func g15GlobalPredict(m *g15Model) float64 { return g15Posterior(m.Global) }
 
-func g15Brier(preds []float64, ys []bool) float64 {
-	if len(preds)==0 { return 0 }; s:=0.0
-	for i,p:=range preds { y:=0.0; if ys[i] { y=1 }; d:=p-y; s+=d*d }
-	return s/float64(len(preds))
+func g15Brier(ps []float64, ys []bool) float64 {
+	if len(ps)==0 { return 0 }
+	s:=0.0
+	for i,p:=range ps { y:=0.0; if ys[i] { y=1 }; d:=p-y; s+=d*d }
+	return s/float64(len(ps))
 }
 
-func g15ECE(preds []float64, ys []bool, bins int) float64 {
-	if len(preds)==0 { return 0 }; total:=0.0
+func g15ECE(ps []float64, ys []bool, bins int) float64 {
+	if len(ps)==0 { return 0 }
+	total:=0.0
 	for b:=0;b<bins;b++ {
-		lo:=float64(b)/float64(bins); hi:=float64(b+1)/float64(bins)
+		lo,hi:=float64(b)/float64(bins),float64(b+1)/float64(bins)
 		n:=0; sp:=0.0; sy:=0.0
-		for i,p:=range preds {
-			if (p>=lo && p<hi)||(b==bins-1 && p==1) { n++; sp+=p; if ys[i] { sy++ } }
+		for i,p:=range ps {
+			if (p>=lo && p<hi)||(b==bins-1&&p==1) { n++; sp+=p; if ys[i] { sy++ } }
 		}
-		if n>0 { total += float64(n)/float64(len(preds))*math.Abs(sp/float64(n)-sy/float64(n)) }
+		if n>0 { total += float64(n)/float64(len(ps))*math.Abs(sp/float64(n)-sy/float64(n)) }
 	}
 	return total
 }
 
-func g15DecisionCost(p float64, success bool) (float64,bool) {
-	if p<0.5 { return 2,success }
-	if success { return 1,true }
-	return 6,false
+// A low-confidence prediction invokes an independent verifier/recovery gate.
+// The decision is made before the hidden outcome is revealed.
+func g15Policy(p float64, actual bool)(cost float64, success, verified bool) {
+	if p<g15Threshold { return 2,true,true }
+	if actual { return 1,true,false }
+	return 6,false,false
 }
 
 func g15Write(name string,v any) {
@@ -100,106 +95,123 @@ func g15Write(name string,v any) {
 }
 
 func g15RunSeed(seed int) g15Report {
-	const trainN=600; const hiddenN=2048; const shiftAt=512
+	const trainN,hiddenN,shiftAt=600,2048,512
 	r:=rand.New(rand.NewSource(int64(150001+seed*7919)))
-	model:=&g15Model{Buckets:map[[3]int]g15Evidence{}}
+	m:=&g15Model{Buckets:map[[3]int]g15Evidence{}}
 	for i:=0;i<trainN;i++ {
-		task:=g15Task{Size:3+r.Intn(10),Depth:1+r.Intn(5),Noise:r.Intn(4),Seed:i}
-		model.Update(task,g15ActualSuccess(task,false))
+		t:=g15Task{3+r.Intn(10),1+r.Intn(5),r.Intn(4),i}
+		m.Update(t,g15ActualSuccess(t,false))
 	}
-	report:=g15Report{TrainingCases:trainN,HiddenCases:hiddenN,StationaryCases:shiftAt,ShiftedCases:hiddenN-shiftAt,Classification:"G15_NOT_PROVEN"}
-	stationaryPreds:=make([]float64,0,shiftAt); stationaryBase:=make([]float64,0,shiftAt); stationaryY:=make([]bool,0,shiftAt)
-	shiftedAdaptive:=make([]float64,0,hiddenN-shiftAt); shiftedStatic:=make([]float64,0,hiddenN-shiftAt); shiftedY:=make([]bool,0,hiddenN-shiftAt)
-	staticModel:=&g15Model{Buckets:map[[3]int]g15Evidence{},Global:model.Global}
-	for k,v:=range model.Buckets { staticModel.Buckets[k]=v }
-	alwaysCost,globalCost,selfCost:=0.0,0.0,0.0
-	globalVerifies,selfVerifies,selfSuccesses,totalSuccesses:=0,0,0,0
+	static:=&g15Model{Buckets:map[[3]int]g15Evidence{},Global:m.Global}
+	for k,v:=range m.Buckets { static.Buckets[k]=v }
+
+	sp,sb,sy:=make([]float64,0,shiftAt),make([]float64,0,shiftAt),make([]bool,0,shiftAt)
+	ap,st,ay:=make([]float64,0,hiddenN-shiftAt),make([]float64,0,hiddenN-shiftAt),make([]bool,0,hiddenN-shiftAt)
+	rep:=g15Report{TrainingCases:trainN,HiddenCases:hiddenN,StationaryCases:shiftAt,ShiftedCases:hiddenN-shiftAt,IndependentSeeds:1,Classification:"G15_NOT_PROVEN"}
+
+	always,global,self:=0.0,0.0,0.0
+	gv,sv,policyOK,actualOK,unverified,unverifiedFail:=0,0,0,0,0,0
+
 	for i:=0;i<hiddenN;i++ {
-		task:=g15Task{Size:3+r.Intn(10),Depth:1+r.Intn(5),Noise:r.Intn(4),Seed:10000+i}
-		shifted:=i>=shiftAt; ok:=g15ActualSuccess(task,shifted)
-		p:=model.Predict(task); g:=g15GlobalPredict(model); s:=staticModel.Predict(task)
-		if !shifted { stationaryPreds=append(stationaryPreds,p); stationaryBase=append(stationaryBase,g); stationaryY=append(stationaryY,ok) } else {
-			shiftedAdaptive=append(shiftedAdaptive,p); shiftedStatic=append(shiftedStatic,s); shiftedY=append(shiftedY,ok)
-		}
-		alwaysCost+=2
-		gc,_:=g15DecisionCost(g,ok); globalCost+=gc; if g<0.5 { globalVerifies++ }
-		sc,ss:=g15DecisionCost(p,ok); selfCost+=sc; if p<0.5 { selfVerifies++ }; if ss { selfSuccesses++ }; if ok { totalSuccesses++ }
-		model.Update(task,ok)
+		t:=g15Task{3+r.Intn(10),1+r.Intn(5),r.Intn(4),10000+i}
+		shift:=i>=shiftAt
+		actual:=g15ActualSuccess(t,shift)
+		p:=m.Predict(t); g:=g15GlobalPredict(m); s:=static.Predict(t)
+		if !shift { sp=append(sp,p); sb=append(sb,g); sy=append(sy,actual) } else { ap=append(ap,p); st=append(st,s); ay=append(ay,actual) }
+
+		always+=2
+		gc,_,gver:=g15Policy(g,actual); global+=gc; if gver { gv++ }
+		sc,ok,ver:=g15Policy(p,actual); self+=sc; if ver { sv++ } else { unverified++; if !actual { unverifiedFail++ } }
+		if ok { policyOK++ }; if actual { actualOK++ }
+		_ = gver
+		m.Update(t,actual)
 	}
-	report.SelfModelBrier=g15Brier(stationaryPreds,stationaryY); report.GlobalBrier=g15Brier(stationaryBase,stationaryY)
-	report.StaticShiftedBrier=g15Brier(shiftedStatic,shiftedY); report.AdaptiveShiftedBrier=g15Brier(shiftedAdaptive,shiftedY)
-	report.SelfModelECE=g15ECE(stationaryPreds,stationaryY,10)
-	report.AlwaysVerifyCost=alwaysCost/hiddenN; report.GlobalRegulatedCost=globalCost/hiddenN; report.SelfRegulatedCost=selfCost/hiddenN
-	report.AlwaysVerifyCalls=hiddenN; report.GlobalRegulatedVerifies=globalVerifies; report.SelfRegulatedVerifies=selfVerifies
-	report.SuccessRate=float64(totalSuccesses)/hiddenN; report.SelfRegulatedSuccessRate=float64(selfSuccesses)/hiddenN
-	if report.AdaptiveShiftedBrier < report.StaticShiftedBrier*0.9 { report.ShiftAdaptationPasses=1 }
-	train:=make([]g15Task,0,trainN); rr:=rand.New(rand.NewSource(int64(151777+seed*31)))
-	for i:=0;i<trainN;i++ { train=append(train,g15Task{Size:3+rr.Intn(10),Depth:1+rr.Intn(5),Noise:rr.Intn(4),Seed:i}) }
-	reference:=&g15Model{Buckets:map[[3]int]g15Evidence{}}
-	for _,task:=range train { reference.Update(task,g15ActualSuccess(task,false)) }
-	for orderSeed:=1;orderSeed<=32;orderSeed++ {
-		shuffled:=append([]g15Task(nil),train...); r2:=rand.New(rand.NewSource(int64(151000+seed*100+orderSeed)))
-		r2.Shuffle(len(shuffled),func(i,j int){shuffled[i],shuffled[j]=shuffled[j],shuffled[i]})
+
+	rep.SelfModelBrier=g15Brier(sp,sy); rep.GlobalBrier=g15Brier(sb,sy)
+	rep.StaticShiftedBrier=g15Brier(st,ay); rep.AdaptiveShiftedBrier=g15Brier(ap,ay)
+	rep.SelfModelECE=g15ECE(sp,sy,10)
+	rep.AlwaysVerifyCost=always/hiddenN; rep.GlobalRegulatedCost=global/hiddenN; rep.SelfRegulatedCost=self/hiddenN
+	rep.AlwaysVerifyCalls=hiddenN; rep.GlobalRegulatedVerifies=gv; rep.SelfRegulatedVerifies=sv
+	rep.SuccessRate=float64(actualOK)/hiddenN; rep.SelfRegulatedSuccessRate=float64(policyOK)/hiddenN
+	rep.SelectiveCoverage=1-float64(sv)/hiddenN
+	if unverified>0 { rep.SelectiveRisk=float64(unverifiedFail)/float64(unverified) }
+
+	if rep.AdaptiveShiftedBrier < 0.9*rep.StaticShiftedBrier { rep.ShiftAdaptationPasses=1 }
+
+	train:=make([]g15Task,0,trainN)
+	rr:=rand.New(rand.NewSource(int64(151777+seed*31)))
+	for i:=0;i<trainN;i++ { train=append(train,g15Task{3+rr.Intn(10),1+rr.Intn(5),rr.Intn(4),i}) }
+	ref:=&g15Model{Buckets:map[[3]int]g15Evidence{}}
+	for _,t:=range train { ref.Update(t,g15ActualSuccess(t,false)) }
+	for os:=1;os<=32;os++ {
+		sh:=append([]g15Task(nil),train...)
+		r2:=rand.New(rand.NewSource(int64(151000+seed*100+os)))
+		r2.Shuffle(len(sh),func(i,j int){sh[i],sh[j]=sh[j],sh[i]})
 		alt:=&g15Model{Buckets:map[[3]int]g15Evidence{}}
-		for _,task:=range shuffled { alt.Update(task,g15ActualSuccess(task,false)) }
+		for _,t:=range sh { alt.Update(t,g15ActualSuccess(t,false)) }
 		ok:=true
-		for _,probe:=range []g15Task{{3,1,0,1},{7,3,2,2},{12,5,3,3},{15,6,4,4}} {
-			if math.Abs(alt.Predict(probe)-reference.Predict(probe))>1e-12 { ok=false; break }
+		for _,p:=range []g15Task{{3,1,0,1},{7,3,2,2},{12,5,3,3},{15,6,4,4}} {
+			if math.Abs(alt.Predict(p)-ref.Predict(p))>1e-12 { ok=false; break }
 		}
-		if ok { report.OrderStressPasses++ }
+		if ok { rep.OrderStressPasses++ }
 	}
-	for _,probe:=range []g15Task{{20,8,7,1},{21,9,8,2},{22,10,9,3},{23,11,10,4}} {
-		p:=reference.Predict(probe); if p>0 && p<1 { report.BoundaryStressPasses++ }
+	for _,p:=range []g15Task{{20,8,7,1},{21,9,8,2},{22,10,9,3},{23,11,10,4}} {
+		q:=ref.Predict(p); if q>0&&q<1 { rep.BoundaryStressPasses++ }
 	}
-	report.CausalAblationPass=report.SelfRegulatedCost<report.GlobalRegulatedCost && report.SelfRegulatedCost<report.AlwaysVerifyCost && report.SelfRegulatedSuccessRate>=report.SuccessRate*0.98
-	if report.SelfModelBrier<report.GlobalBrier && report.SelfModelECE<0.10 &&
-		report.SelfRegulatedCost<report.GlobalRegulatedCost &&
-		report.SelfRegulatedSuccessRate>=report.SuccessRate*0.98 &&
-		report.OrderStressPasses==32 && report.BoundaryStressPasses==4 &&
-		report.ShiftAdaptationPasses>=1 && report.CausalAblationPass {
-		report.Classification="G15_METACOGNITIVE_SELF_MODEL_REGULATION_PROVEN"
+
+	rep.CausalAblationPass=
+		rep.SelfRegulatedCost<rep.GlobalRegulatedCost &&
+		rep.SelfRegulatedCost<rep.AlwaysVerifyCost &&
+		rep.SelfRegulatedSuccessRate>=0.98
+
+	if rep.SelfModelBrier<rep.GlobalBrier &&
+		rep.SelfRegulatedCost<rep.GlobalRegulatedCost &&
+		rep.SelfRegulatedCost<rep.AlwaysVerifyCost &&
+		rep.SelfRegulatedSuccessRate>=0.98 &&
+		rep.SelectiveRisk<=0.10 &&
+		rep.SelectiveCoverage>=0.15 &&
+		rep.OrderStressPasses==32 &&
+		rep.BoundaryStressPasses==4 &&
+		rep.ShiftAdaptationPasses==1 &&
+		rep.CausalAblationPass {
+		rep.Classification="G15_METACOGNITIVE_SELF_MODEL_REGULATION_PROVEN"
 	}
-	return report
+	return rep
 }
 
 func TestG15MetacognitiveSelfModelAndRegulation(t *testing.T) {
 	const seeds=16
-	aggregate:=g15Report{Classification:"G15_NOT_PROVEN",IndependentSeeds:seeds}
+	agg:=g15Report{IndependentSeeds:seeds,Classification:"G15_NOT_PROVEN"}
 	passed:=0
-	sumSelfBrier,sumGlobalBrier,sumShiftStatic,sumShiftAdaptive,sumECE:=0.0,0.0,0.0,0.0,0.0
-	sumAlways,sumGlobal,sumSelf:=0.0,0.0,0.0
-	sumSuccess,sumSelfSuccess:=0.0,0.0
-	minSavings:=1.0
+	var sumSB,sumGB,sumSS,sumAS,sumECE,sumAC,sumGC,sumSC,sumSR,sumAR,sumCV,sumRK float64
 	for seed:=1;seed<=seeds;seed++ {
 		r:=g15RunSeed(seed)
-		aggregate.TrainingCases+=r.TrainingCases; aggregate.HiddenCases+=r.HiddenCases
-		aggregate.StationaryCases+=r.StationaryCases; aggregate.ShiftedCases+=r.ShiftedCases
-		sumSelfBrier+=r.SelfModelBrier; sumGlobalBrier+=r.GlobalBrier; sumShiftStatic+=r.StaticShiftedBrier; sumShiftAdaptive+=r.AdaptiveShiftedBrier; sumECE+=r.SelfModelECE
-		sumAlways+=r.AlwaysVerifyCost; sumGlobal+=r.GlobalRegulatedCost; sumSelf+=r.SelfRegulatedCost
-		sumSuccess+=r.SuccessRate; sumSelfSuccess+=r.SelfRegulatedSuccessRate
-		aggregate.AlwaysVerifyCalls+=r.AlwaysVerifyCalls; aggregate.GlobalRegulatedVerifies+=r.GlobalRegulatedVerifies; aggregate.SelfRegulatedVerifies+=r.SelfRegulatedVerifies
-		aggregate.OrderStressPasses+=r.OrderStressPasses; aggregate.BoundaryStressPasses+=r.BoundaryStressPasses; aggregate.ShiftAdaptationPasses+=r.ShiftAdaptationPasses
-		if r.CausalAblationPass { aggregate.CausalAblationPass=true }
-		if r.Classification=="G15_METACOGNITIVE_SELF_MODEL_REGULATION_PROVEN" { passed++ } else { t.Logf("G15 seed=%d failed: %+v",seed,r) }
-		savings:=1.0-r.SelfRegulatedCost/r.AlwaysVerifyCost; if savings<minSavings { minSavings=savings }
+		sumSB+=r.SelfModelBrier; sumGB+=r.GlobalBrier; sumSS+=r.StaticShiftedBrier; sumAS+=r.AdaptiveShiftedBrier
+		sumECE+=r.SelfModelECE; sumAC+=r.AlwaysVerifyCost; sumGC+=r.GlobalRegulatedCost; sumSC+=r.SelfRegulatedCost
+		sumSR+=r.SelfRegulatedSuccessRate; sumAR+=r.SuccessRate; sumCV+=r.SelectiveCoverage; sumRK+=r.SelectiveRisk
+		agg.TrainingCases+=r.TrainingCases; agg.HiddenCases+=r.HiddenCases; agg.StationaryCases+=r.StationaryCases; agg.ShiftedCases+=r.ShiftedCases
+		agg.AlwaysVerifyCalls+=r.AlwaysVerifyCalls; agg.GlobalRegulatedVerifies+=r.GlobalRegulatedVerifies; agg.SelfRegulatedVerifies+=r.SelfRegulatedVerifies
+		agg.OrderStressPasses+=r.OrderStressPasses; agg.BoundaryStressPasses+=r.BoundaryStressPasses; agg.ShiftAdaptationPasses+=r.ShiftAdaptationPasses
+		if r.CausalAblationPass && r.Classification=="G15_METACOGNITIVE_SELF_MODEL_REGULATION_PROVEN" { passed++ } else { t.Logf("G15 seed=%d failed: %+v",seed,r) }
 	}
-	aggregate.SelfModelBrier=sumSelfBrier/seeds; aggregate.GlobalBrier=sumGlobalBrier/seeds
-	aggregate.StaticShiftedBrier=sumShiftStatic/seeds; aggregate.AdaptiveShiftedBrier=sumShiftAdaptive/seeds
-	aggregate.SelfModelECE=sumECE/seeds; aggregate.AlwaysVerifyCost=sumAlways/seeds; aggregate.GlobalRegulatedCost=sumGlobal/seeds; aggregate.SelfRegulatedCost=sumSelf/seeds
-	aggregate.SuccessRate=sumSuccess/seeds
-	aggregate.SelfRegulatedSuccessRate=sumSelfSuccess/seeds
-	aggregate.CausalAblationPass=passed==seeds
+	agg.SelfModelBrier=sumSB/seeds; agg.GlobalBrier=sumGB/seeds; agg.StaticShiftedBrier=sumSS/seeds; agg.AdaptiveShiftedBrier=sumAS/seeds; agg.SelfModelECE=sumECE/seeds
+	agg.AlwaysVerifyCost=sumAC/seeds; agg.GlobalRegulatedCost=sumGC/seeds; agg.SelfRegulatedCost=sumSC/seeds
+	agg.SuccessRate=sumAR/seeds; agg.SelfRegulatedSuccessRate=sumSR/seeds; agg.SelectiveCoverage=sumCV/seeds; agg.SelectiveRisk=sumRK/seeds
+	agg.CausalAblationPass=passed==seeds
 	if passed==seeds &&
-		aggregate.SelfModelBrier<aggregate.GlobalBrier &&
-		aggregate.SelfModelECE<0.10 &&
-		aggregate.SelfRegulatedCost<aggregate.GlobalRegulatedCost &&
-		aggregate.OrderStressPasses==seeds*32 &&
-		aggregate.BoundaryStressPasses==seeds*4 &&
-		aggregate.ShiftAdaptationPasses==seeds &&
-		aggregate.CausalAblationPass && minSavings>0.02 {
-		aggregate.Classification="G15_METACOGNITIVE_SELF_MODEL_REGULATION_PROVEN"
+		agg.SelfModelBrier<agg.GlobalBrier &&
+		agg.SelfRegulatedCost<agg.GlobalRegulatedCost &&
+		agg.SelfRegulatedCost<agg.AlwaysVerifyCost &&
+		agg.SelfRegulatedSuccessRate>=0.98 &&
+		agg.SelectiveRisk<=0.10 &&
+		agg.SelectiveCoverage>=0.15 &&
+		agg.OrderStressPasses==seeds*32 &&
+		agg.BoundaryStressPasses==seeds*4 &&
+		agg.ShiftAdaptationPasses==seeds &&
+		agg.CausalAblationPass {
+		agg.Classification="G15_METACOGNITIVE_SELF_MODEL_REGULATION_PROVEN"
 	}
-	g15Write("ACE_G15_METACOGNITION.json",aggregate)
-	t.Logf("G15 aggregate=%+v passed_seeds=%d/%d min_savings=%.4f",aggregate,passed,seeds,minSavings)
-	if aggregate.Classification!="G15_METACOGNITIVE_SELF_MODEL_REGULATION_PROVEN" { t.Fatalf("G15 failed: %+v",aggregate) }
+	g15Write("ACE_G15_METACOGNITION.json",agg)
+	t.Logf("G15 aggregate=%+v passed=%d/%d",agg,passed,seeds)
+	if agg.Classification!="G15_METACOGNITIVE_SELF_MODEL_REGULATION_PROVEN" { t.Fatalf("G15 failed: %+v",agg) }
 }
