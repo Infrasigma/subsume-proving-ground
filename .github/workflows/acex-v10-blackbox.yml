@@ -189,11 +189,8 @@ jobs:
               print('BLACKBOX V10 PASS: independent synthesis + interaction + surface-renamed transfer')
           finally:
               p.kill()
-          PY
-
           # Stronger transfer gate: compare a sequential learner against a clean
-          # equal-budget baseline on a different surface/domain. The evaluator
-          # chooses the task; no correspondence is exposed to the candidate.
+          # equal-budget baseline on a different surface/domain.
           import random
 
           def domain_state(domain, stage, seed):
@@ -203,9 +200,11 @@ jobs:
                           {'ID': 'glyph-' + str(seed), 'Kind': 'glyph',
                            'Attrs': {'tone': 'amber', 'step': str(stage)}},
                           {'ID': 'anchor-' + str(seed), 'Kind': 'anchor',
-                           'Attrs': {'mode': 'left'}}
+                           'Attrs': {'mode': 'left'}},
                       ],
-                      'edges': [{'From': 'glyph-' + str(seed), 'To': 'anchor-' + str(seed), 'Kind': 'trail'}]
+                      'edges': [
+                          {'From': 'glyph-' + str(seed), 'To': 'anchor-' + str(seed), 'Kind': 'trail'}
+                      ],
                   }
               return {
                   'nodes': [
@@ -214,12 +213,12 @@ jobs:
                       {'ID': 'hub-' + str(seed), 'Kind': 'hub',
                        'Attrs': {'channel': 'q'}},
                       {'ID': 'cell-' + str(seed), 'Kind': 'cell',
-                       'Attrs': {'band': 'blue'}}
+                       'Attrs': {'band': 'blue'}},
                   ],
                   'edges': [
                       {'From': 'reg-' + str(seed), 'To': 'hub-' + str(seed), 'Kind': 'wire'},
-                      {'From': 'hub-' + str(seed), 'To': 'cell-' + str(seed), 'Kind': 'link'}
-                  ]
+                      {'From': 'hub-' + str(seed), 'To': 'cell-' + str(seed), 'Kind': 'link'},
+                  ],
               }
 
           def solve_domain(p, domain, seed, width=6, depth=5):
@@ -260,8 +259,7 @@ jobs:
           seq = start_agent()
           base = start_agent()
           try:
-              # The sequential agent gets only domain 0 experience first.
-              ok_a, _ = solve_domain(seq, 0, transfer_seed, width=4, depth=4)
+              ok_a, source_cost = solve_domain(seq, 0, transfer_seed, width=4, depth=4)
               if not ok_a:
                   raise RuntimeError('sequential agent failed transfer-source domain')
               ok_b_seq, cost_seq = solve_domain(seq, 1, transfer_seed + 1, width=6, depth=5)
@@ -271,7 +269,7 @@ jobs:
               ok_b_base, cost_base = solve_domain(base, 1, transfer_seed + 1, width=6, depth=5)
               if not ok_b_base:
                   raise RuntimeError('clean baseline failed target domain')
-              print(f'TRANSFER COST sequential={cost_seq} baseline={cost_base}')
+              print(f'TRANSFER COST source={source_cost} sequential={cost_seq} baseline={cost_base}')
               if cost_seq > 0.80 * cost_base:
                   raise RuntimeError('no material cross-domain acquisition-cost reduction')
           finally:
@@ -279,3 +277,4 @@ jobs:
               base.kill()
 
           print('BLACKBOX V10 TRANSFER PASS: sequential experience materially reduced target-domain acquisition cost')
+          PY
