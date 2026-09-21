@@ -24,7 +24,15 @@ jobs:
           go-version: "1.25.x"
           cache: false
       - run: go mod download
-      - run: go test -mod=mod -run '^TestV2ArchitectureTerminal$' ./internal/acex -count=1 -timeout=8m -v | tee acex-v2-result.txt
+      - run: |
+          set -euo pipefail
+          go test -tags v2kill -mod=mod -run '^TestV2ArchitectureTerminal
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acex-v2-result
+          path: acex-v2-result.txt
+ ./internal/acex -count=1 -timeout=8m -v | tee acex-v2-result.txt
       - if: always()
         uses: actions/upload-artifact@v4
         with:
