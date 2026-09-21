@@ -3,12 +3,7 @@ name: ASI Forge
 on:
   push:
     branches:
-      - exp/recursive-cognitive-compounding-20260921
-  pull_request:
-    paths:
-      - "cmd/asi-forge/**"
-      - "internal/ace/**"
-      - ".github/workflows/asi_forge.yml"
+      - asi-forge-live-20260921
 
 jobs:
   forge:
