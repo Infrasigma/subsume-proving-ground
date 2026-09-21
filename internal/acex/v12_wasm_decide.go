@@ -93,7 +93,7 @@ func v12EmitPatternMatcher(pattern V11DirectedPatternArtifact) []byte {
 	body = append(body, v12EmitSearchLevel(pattern, 0)...)
 	body = append(body, 0x41, 0x00, 0x0f, 0x0b) // return 0; end
 	size := wasmULEB(uint64(len(body)))
-	out := append([]byte{0x00}, size...)
+	out := append([]byte{}, size...)
 	out = append(out, body...)
 	return out
 }
