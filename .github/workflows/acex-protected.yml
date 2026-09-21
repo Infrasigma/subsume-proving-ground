@@ -1,4 +1,4 @@
-name: ACE-X protected forensic gate
+name: ACE-X V2 protected cognitive gate
 
 on:
   pull_request_target:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   ace-x-forensic:
-    if: github.event.pull_request.head.ref == 'ace-x-clean-20260921' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    if: github.event.pull_request.head.ref == 'ace-x-v2-live-20260921' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -27,13 +27,20 @@ jobs:
         run: go mod download
       - name: Run ACE-X pure-substrate terminal gate
         env:
-          ACEX_SEEDS: "610117,830921"
+          ACEX_V2_SEEDS: "610117,830921"
         run: |
           set -euo pipefail
-          go test -mod=mod -run '^TestACEXIntegratedTerminal$' ./internal/acex -count=1 -timeout=12m -v | tee acex-result.txt
+          go test -mod=mod -run '^TestV2Terminal ./internal/acex -count=1 -timeout=12m -v | tee acex-result.txt
       - name: Publish ACE-X forensic result
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: acex-protected-result
+          name: acex-v2-protected-result
+          path: acex-result.txt
+ ./internal/acex -count=1 -timeout=12m -v | tee acex-result.txt
+      - name: Publish ACE-X forensic result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acex-v2-protected-result
           path: acex-result.txt
