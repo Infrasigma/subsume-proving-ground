@@ -83,6 +83,9 @@ func v6RewriteOnce(e V4Expr) []V4Expr {
 			cp := cloneV4Expr(e)
 			cp.Args[0], cp.Args[1] = cp.Args[1], cp.Args[0]
 			out = append(out, cp)
+			if v4Signature(args[0]) == v4Signature(args[1]) {
+				out = append(out, cloneV4Expr(args[0]))
+			}
 		}
 	case "neg":
 		if len(args) == 1 {
@@ -124,10 +127,6 @@ func v6RewriteOnce(e V4Expr) []V4Expr {
 			if args[1].Kind == "const-int" && args[1].Int == 1 {
 				out = append(out, cloneV4Expr(args[0]))
 			}
-		}
-	case "max", "min":
-		if len(args) == 2 && v4Signature(args[0]) == v4Signature(args[1]) {
-			out = append(out, cloneV4Expr(args[0]))
 		}
 	case "and":
 		if len(args) == 2 {
