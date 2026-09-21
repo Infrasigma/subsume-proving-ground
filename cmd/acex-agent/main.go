@@ -29,7 +29,7 @@ type response struct {
 	Error    string `json:"error,omitempty"`
 	Artifact string `json:"artifact,omitempty"`
 	Action   string `json:"action,omitempty"`
-	Memory   int    `json:"memory,omitempty"`
+	Memory   int    `json:"memory"`
 	Version  uint64 `json:"version,omitempty"`
 }
 
