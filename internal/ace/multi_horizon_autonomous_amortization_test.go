@@ -100,6 +100,39 @@ type amortizationHelperResult struct {
 	Output  []string `json:"output"`
 }
 
+func searchAndVerifyAbstractCompoundProcedure(examples, heldOut []abstractCompoundExample, maxDepth int) (AcquisitionProcedure, abstractCompoundSearchStats, bool) {
+	stats := abstractCompoundSearchStats{Depth: maxDepth}
+	candidates := EnumerateAcquisitionProcedures(maxDepth)
+	for _, p := range candidates {
+		stats.Expansions++
+		ok := true
+		for _, ex := range examples {
+			stats.VerifierCalls++
+			got, err := executeSearchProcedure(p, ex.Input)
+			if err != nil || !abstractCompoundStreamEqual(got, ex.Expected) {
+				ok = false
+				break
+			}
+		}
+		if !ok {
+			continue
+		}
+		for _, ex := range heldOut {
+			stats.VerifierCalls++
+			got, err := executeSearchProcedure(p, ex.Input)
+			ref := abstractCompoundReference(p, ex.Input)
+			if err != nil || !abstractCompoundStreamEqual(got, ex.Expected) || !abstractCompoundStreamEqual(ref, ex.Expected) || !abstractCompoundStreamEqual(got, abstractCompoundMechanisms(ref)) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return p, stats, true
+		}
+	}
+	return AcquisitionProcedure{}, stats, false
+}
+
 func amortizationCapabilities() []AcquisitionMethodArtifact {
 	specs := []struct {
 		name string
@@ -442,9 +475,9 @@ func TestMultiHorizonAutonomousAmortization(t *testing.T) {
 				t.Fatal(err)
 			}
 			train, holdout := abstractCompoundTaskExamples(seed*1000+len(capabilityMethods)+1, p, 3, 2)
-			learned, stats, ok := searchAbstractCompoundProcedure(train, 2)
+			learned, stats, ok := searchAndVerifyAbstractCompoundProcedure(train, holdout, 2)
 			if !ok {
-				t.Fatalf("seed %d: capability acquisition failed", seed)
+				t.Fatalf("seed %d: capability acquisition failed after held-out-qualified search", seed)
 			}
 			verified, calls := verifyAbstractCompoundProcedure(learned, train, holdout)
 			if !verified {
