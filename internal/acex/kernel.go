@@ -300,6 +300,15 @@ func Signature(data Dataset, f string) FeatureProfile {
 	return Profile(data)[f]
 }
 
+func cooccurrenceSignature(m map[string]float64) []float64 {
+	out := make([]float64, 0, len(m))
+	for _, v := range m {
+		out = append(out, v)
+	}
+	sort.Float64s(out)
+	return out
+}
+
 func MapRepresentation(source Dataset, target Dataset, concept Concept) (Representation, []Mapping, Resource, error) {
 	sp := Profile(source)
 	tp := Profile(target)
@@ -315,7 +324,11 @@ func MapRepresentation(source Dataset, target Dataset, concept Concept) (Represe
 		best := Mapping{Source: sf, Score: -1}
 		for tf, t := range tp {
 			score := 1.0 - math.Abs(s.Positive-t.Positive) - math.Abs(s.Negative-t.Negative)
-			score += 0.25 * math.Min(1, float64(len(s.Cooccurrence)+len(t.Cooccurrence))/10)
+			score += 0.10 * math.Min(1, float64(len(s.Cooccurrence)+len(t.Cooccurrence))/10)
+			sigS, sigT := cooccurrenceSignature(s.Cooccurrence), cooccurrenceSignature(t.Cooccurrence)
+			for i := 0; i < len(sigS) && i < len(sigT); i++ {
+				score += 0.08 * (1.0 - math.Abs(sigS[i]-sigT[i]))
+			}
 			if score > best.Score {
 				best = Mapping{Source: sf, Target: tf, Score: score}
 			}
