@@ -24,3 +24,25 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: go test -v -mod=mod ./...
       - run: go vet -mod=mod ./...
+
+  h4-genuine:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'h4-genuine-live-20260921'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+      - name: Run frozen H4 genuine evaluator
+        env:
+          H4G_SEED_A: "610117"
+          H4G_SEED_B: "830921"
+          PYTHONHASHSEED: "0"
+        run: |
+          set -euo pipefail
+          python3 h4_forge/h4_genuine.py | tee h4-genuine-result.txt
+      - name: Publish H4 genuine result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h4-genuine-result
+          path: h4-genuine-result.txt
