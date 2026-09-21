@@ -423,6 +423,35 @@ type PlanStep struct {
 	Requires []string
 }
 
+func ComposeConcepts(a, b Concept) Concept {
+	features := append([]string(nil), a.Features...)
+	seen := map[string]bool{}
+	for _, f := range features {
+		seen[f] = true
+	}
+	for _, f := range b.Features {
+		if !seen[f] {
+			features = append(features, f)
+			seen[f] = true
+		}
+	}
+	sort.Strings(features)
+	return Concept{
+		ID:         a.ID + "|" + b.ID,
+		Features:   features,
+		Support:    minInt(a.Support, b.Support),
+		Accuracy:   math.Min(a.Accuracy, b.Accuracy),
+		Complexity: len(features),
+	}
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 type Planner struct {
 	Width int
 }
