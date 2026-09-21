@@ -92,10 +92,7 @@ func v12EmitPatternMatcher(pattern V11DirectedPatternArtifact) []byte {
 
 	body = append(body, v12EmitSearchLevel(pattern, 0)...)
 	body = append(body, 0x41, 0x00, 0x0f, 0x0b) // return 0; end
-	size := wasmULEB(uint64(len(body)))
-	out := append([]byte{}, size...)
-	out = append(out, body...)
-	return out
+	return body
 }
 
 func v12EmitSearchLevel(pattern V11DirectedPatternArtifact, depth int) []byte {
@@ -196,10 +193,7 @@ func v12EmitDecisionSelector() []byte {
 	body = append(body, 0x0c, 0x00)
 	body = append(body, 0x0b, 0x0b)
 	body = append(body, 0x41, 0x7f, 0x0f, 0x0b) // -1
-	size := wasmULEB(uint64(len(body)))
-	out := append([]byte{0x00}, size...)
-	out = append(out, body...)
-	return out
+	return body
 }
 
 func v12LocalGet(index uint32) []byte {
