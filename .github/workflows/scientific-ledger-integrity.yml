@@ -1,0 +1,27 @@
+name: Scientific ledger integrity
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  protect-ledger:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reject candidate edits to evaluator-owned scientific records
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "origin/main...HEAD")"
+          blocked="$(printf '%s
+' "$changed" | grep -E '^(scientific/claim_ledger\.md|\.github/workflows/acex-v11-directed-representation-v1\.yml)$' || true)"
+          if [ -n "$blocked" ]; then
+            echo "Protected scientific files modified by candidate:"
+            echo "$blocked"
+            exit 1
+          fi
