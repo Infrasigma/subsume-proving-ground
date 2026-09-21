@@ -1,7 +1,6 @@
 package acex
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
