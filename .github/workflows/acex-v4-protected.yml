@@ -94,7 +94,7 @@ jobs:
         run: go test -mod=mod -run '^TestV9CEGISRejectsOverfittingCandidate$|^TestV9MechanismImprovementUsesExecutableCEGIS$' ./internal/acex -count=1 -timeout=20m -v
 
   ace-x-v10-blackbox:
-    if: github.event.pull_request.head.ref == 'ace-x-v10-blackbox-autonomy-20260921' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    if: (github.event.pull_request.head.ref == 'ace-x-v10-blackbox-autonomy-20260921' || github.event.pull_request.head.ref == 'ace-x-v10-v8-blackbox-20260921') && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
