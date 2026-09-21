@@ -93,14 +93,13 @@ func v12EmitPatternMatcher(pattern V11DirectedPatternArtifact) []byte {
 
 	for _, mapping := range v12EnumerateMappings(pattern.Nodes) {
 		for i, edge := range pattern.Edges {
-			if i > 0 {
-				body = append(body, 0x71) // and prior edge predicates
-			}
 			body = append(body, v12EmitStaticEdgeTest(edge, mapping)...)
+			if i > 0 {
+				body = append(body, 0x71) // and edge predicates
+			}
 		}
 		body = append(body, v12LocalGet(1)...)
-		body = append(body, 0x71) // NOTE: overwritten below; placeholder replaced by OR
-		body[len(body)-1] = 0x72
+		body = append(body, 0x72) // or mapping match into accumulator
 		body = append(body, v12LocalSet(1)...)
 		body = append(body, v12LocalGet(1)...)
 		body = append(body, 0x04, 0x40) // if matched
