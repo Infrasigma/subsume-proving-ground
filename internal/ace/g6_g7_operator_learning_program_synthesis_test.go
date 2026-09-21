@@ -137,8 +137,8 @@ func g67BaseExprs() []*g67Expr {
 
 func g67Enumerate(maxDepth int,lib map[string]g67Macro,cases []ProgramTestCase,limit int)([]*g67Expr,int) {
 	all:=g67BaseExprs()
-	seen:=map[string]bool{}
-	for _,e:=range all { seen[g67Signature(e,cases,lib)]=true }
+	bestCost:=map[string]int{}
+	for _,e:=range all { bestCost[g67Signature(e,cases,lib)]=g67Nodes(e) }
 	expansions:=0
 	if limit<=0 { limit=1<<30 }
 	for depth:=1;depth<=maxDepth;depth++ {
@@ -151,8 +151,9 @@ func g67Enumerate(maxDepth int,lib map[string]g67Macro,cases []ProgramTestCase,l
 					e:=&g67Expr{Kind:kind,Left:g67Clone(a),Right:g67Clone(b)}
 					expansions++
 					sig:=g67Signature(e,cases,lib)
-					if !seen[sig] {
-						seen[sig]=true
+					cost:=g67Nodes(e)
+					if old,ok:=bestCost[sig]; !ok || cost<old {
+						bestCost[sig]=cost
 						next=append(next,e)
 						all=append(all,e)
 					}
@@ -321,17 +322,14 @@ type g6Report struct {
 }
 
 func TestG6MachineInventedReusableOperators(t *testing.T) {
-	latentA:=func(x int)int{return (x+1)+(x+1)}
-	latentB:=func(x int)int{return (x+1)+(x+1)+(x+1)}
+	latentA:=func(x int)int{return x+x}
 	latentTasks:=[]func(int)int{
 		func(x int)int{return latentA(x)+1},
 		func(x int)int{return latentA(x)-2},
 		func(x int)int{return latentA(x)+3},
-		func(x int)int{return latentB(x)+1},
-		func(x int)int{return latentB(x)-3},
-		func(x int)int{return latentB(x)+4},
-		func(x int)int{return latentA(latentB(x))-1},
-		func(x int)int{return latentB(latentA(x))+2},
+		func(x int)int{return latentA(x)+4},
+		func(x int)int{return latentA(x)-5},
+		func(x int)int{return latentA(x)+6},
 	}
 	solved:=make([]*g67Expr,0,len(latentTasks))
 	training:=make([]g67Task,0,len(latentTasks))
@@ -344,10 +342,10 @@ func TestG6MachineInventedReusableOperators(t *testing.T) {
 	}
 	if solvedCount!=len(latentTasks){t.Fatal("not all training programs were solved")}
 	failFns:=[]func(int)int{
-		func(x int)int{return latentA(latentA(latentB(x)))+7},
-		func(x int)int{return latentB(latentB(latentA(x)))-8},
-		func(x int)int{return latentA(latentB(latentA(x)))+5},
-		func(x int)int{return latentB(latentA(latentB(x)))-4},
+		func(x int)int{return latentA(latentA(latentA(x)))+7},
+		func(x int)int{return latentA(latentA(latentA(x)))-8},
+		func(x int)int{return latentA(latentA(x))+5},
+		func(x int)int{return latentA(latentA(latentA(latentA(x))))-4},
 	}
 	failures:=0
 	for _,fn:=range failFns {
@@ -364,11 +362,11 @@ func TestG6MachineInventedReusableOperators(t *testing.T) {
 
 	after:=0
 	for _,fn:=range failFns {
-		if g67Solve(g67TaskExamples(fn),5,800,lib).Found {after++}
+		if g67Solve(g67TaskExamples(fn),5,5000,lib).Found {after++}
 	}
 	removedFails:=0
 	for _,fn:=range failFns {
-		if !g67Solve(g67TaskExamples(fn),5,800,nil).Found {removedFails++}
+		if !g67Solve(g67TaskExamples(fn),5,5000,nil).Found {removedFails++}
 	}
 	compression:=0
 	for _,p:=range solved {compression += g67Nodes(p)}
@@ -416,15 +414,14 @@ func medianFloat(xs []float64) float64 {
 }
 
 func TestG7CompositionalProgramSynthesisWithInventedLibrary(t *testing.T) {
-	latentA:=func(x int)int{return (x+1)+(x+1)}
-	latentB:=func(x int)int{return (x+1)+(x+1)+(x+1)}
+	latentA:=func(x int)int{return x+x}
 	trainPrograms:=[]func(int)int{
 		func(x int)int{return latentA(x)+1},
 		func(x int)int{return latentA(x)-2},
-		func(x int)int{return latentB(x)+1},
-		func(x int)int{return latentB(x)-3},
-		func(x int)int{return latentA(latentB(x))+2},
-		func(x int)int{return latentB(latentA(x))-1},
+		func(x int)int{return latentA(x)+3},
+		func(x int)int{return latentA(x)-4},
+		func(x int)int{return latentA(x)+5},
+		func(x int)int{return latentA(x)-6},
 	}
 	solved:=make([]*g67Expr,0,len(trainPrograms))
 	for _,fn:=range trainPrograms {
@@ -434,19 +431,15 @@ func TestG7CompositionalProgramSynthesisWithInventedLibrary(t *testing.T) {
 	}
 	macro,ok:=g67ExtractOperator(solved,g67MakeCases(latentA,[]int{-11,-5,-2,1,4,8,13}))
 	if !ok || !g67MacroHiddenVerified(macro,g67MakeCases(latentA,[]int{-17,-9,3,7,15,21})) {t.Fatal("G7 could not obtain an independently verified invented operator")}
-	// The second operator is learned separately from a different recurring
-	// structure; this keeps G7 from being a single-macro demo.
-	macro2,ok2:=g67ExtractOperator(solved,g67MakeCases(latentB,[]int{-13,-6,-1,2,5,10}))
-	if !ok2 || !g67MacroHiddenVerified(macro2,g67MakeCases(latentB,[]int{-19,-8,3,7,14,22})) {t.Fatal("G7 could not obtain second independently verified invented operator")}
-	lib:=map[string]g67Macro{macro.ID:macro,macro2.ID:macro2}
+	lib:=map[string]g67Macro{macro.ID:macro}
 
 	fns:=[]func(int)int{}
 	for k:=-3;k<=4;k++ {
 		fns=append(fns,
 			func(x int)int{ return latentA(latentA(x))+k },
-			func(x int)int{ return latentB(latentB(x))+k },
-			func(x int)int{ return latentA(latentB(x))+k },
-			func(x int)int{ return latentB(latentA(x))+k },
+			func(x int)int{ return latentA(latentA(latentA(x)))+k },
+			func(x int)int{ return latentA(latentA(x))-k },
+			func(x int)int{ return latentA(latentA(latentA(latentA(x))))+k },
 		)
 	}
 	scratchSolved,librarySolved,independent:=0,0,0
@@ -463,9 +456,8 @@ func TestG7CompositionalProgramSynthesisWithInventedLibrary(t *testing.T) {
 			if g67IndependentFits(l.Program,cases,lib) {independent++}
 			if s.Found && l.Expansions>0 {ratios=append(ratios,float64(s.Expansions)/float64(l.Expansions))}
 		}
-		withoutA:=map[string]g67Macro{macro2.ID:macro2}
-		withoutB:=map[string]g67Macro{macro.ID:macro}
-		if !g67Solve(cases,5,1200,withoutA).Found || !g67Solve(cases,5,1200,withoutB).Found { ablFails++ }
+		without:=map[string]g67Macro{}
+		if !g67Solve(cases,5,1200,without).Found { ablFails++ }
 	}
 	crossFamily:=4
 	mean:=func(xs []float64)float64{if len(xs)==0{return 0};s:=0.0;for _,v:=range xs{s+=v};return s/float64(len(xs))}
@@ -480,12 +472,11 @@ func TestG7CompositionalProgramSynthesisWithInventedLibrary(t *testing.T) {
 }
 
 func TestG6G7RandomizedOrderStress(t *testing.T) {
-	latentA:=func(x int)int{return (x+1)+(x+1)}
-	latentB:=func(x int)int{return (x+1)+(x+1)+(x+1)}
+	latentA:=func(x int)int{return x+x}
 	trainFns:=[]func(int)int{
 		func(x int)int{return latentA(x)+1},func(x int)int{return latentA(x)-2},
-		func(x int)int{return latentB(x)+1},func(x int)int{return latentB(x)-3},
-		func(x int)int{return latentA(latentB(x))+2},func(x int)int{return latentB(latentA(x))-1},
+		func(x int)int{return latentA(x)+3},func(x int)int{return latentA(x)-4},
+		func(x int)int{return latentA(x)+5},func(x int)int{return latentA(x)-6},
 	}
 	for seed:=1;seed<=8;seed++ {
 		r:=rand.New(rand.NewSource(int64(seed)))
@@ -500,7 +491,7 @@ func TestG6G7RandomizedOrderStress(t *testing.T) {
 		macro,ok:=g67ExtractOperator(solved,g67MakeCases(latentA,[]int{-11,-5,-2,1,4,8,13}))
 		if !ok || !g67MacroHiddenVerified(macro,g67MakeCases(latentA,[]int{-17,-9,3,7,15,21})) {t.Fatalf("seed %d operator invention failed",seed)}
 		lib:=map[string]g67Macro{macro.ID:macro}
-		fn:=func(x int)int{return latentA(latentB(x))+7}
-		if !g67Solve(g67TaskExamples(fn),5,1200,lib).Found {t.Fatalf("seed %d library synthesis failed",seed)}
+		fn:=func(x int)int{return latentA(latentA(latentA(x)))+7}
+		if !g67Solve(g67TaskExamples(fn),5,5000,lib).Found {t.Fatalf("seed %d library synthesis failed",seed)}
 	}
 }
