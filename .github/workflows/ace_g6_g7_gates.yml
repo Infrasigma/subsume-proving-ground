@@ -1,0 +1,29 @@
+
+name: ACE G6 G7 Operator Learning and Program Synthesis
+
+on:
+  push:
+    branches:
+      - "feat/autonomous-abstract-compounding-20260922"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  g6-g7:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: G6 reusable operator invention
+        run: go test -mod=mod -run '^TestG6MachineInventedReusableOperators$' ./internal/ace -count=1 -v -timeout 20m
+      - name: G7 compositional program synthesis
+        run: go test -mod=mod -run '^TestG7CompositionalProgramSynthesisWithInventedLibrary$' ./internal/ace -count=1 -v -timeout 20m
+      - name: G6/G7 randomized stress
+        run: go test -mod=mod -run '^TestG6G7RandomizedOrderStress$' ./internal/ace -count=1 -v -timeout 20m
+      - name: G6/G7 race
+        run: go test -mod=mod -race -run '^(TestG6MachineInventedReusableOperators|TestG7CompositionalProgramSynthesisWithInventedLibrary|TestG6G7RandomizedOrderStress)$' ./internal/ace -count=1 -v -timeout 20m
