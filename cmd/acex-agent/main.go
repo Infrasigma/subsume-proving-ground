@@ -35,6 +35,11 @@ type response struct {
 	Memory            int    `json:"memory"`
 	Version           uint64 `json:"version,omitempty"`
 	SearchExpansions  int    `json:"search_expansions,omitempty"`
+	DirectedValid     bool   `json:"directed_valid,omitempty"`
+	DirectedRetained  bool   `json:"directed_retained,omitempty"`
+	DirectedNodes     int    `json:"directed_nodes,omitempty"`
+	DirectedEdges     int    `json:"directed_edges,omitempty"`
+	DirectedExamples  int    `json:"directed_examples,omitempty"`
 }
 
 type agent struct {
@@ -133,7 +138,7 @@ func (a *agent) handle(in request) response {
 		}
 		return response{OK:true,Memory:len(a.entity.Memory.Items),Version:a.entity.Version,SearchExpansions:a.entity.DirectedRepresentation.SearchExpansions}
 	case "status":
-		return response{OK:true,Memory:len(a.entity.Memory.Items),Version:a.entity.Version,SearchExpansions:a.entity.DirectedRepresentation.SearchExpansions}
+		return response{OK:true,Memory:len(a.entity.Memory.Items),Version:a.entity.Version,SearchExpansions:a.entity.DirectedRepresentation.SearchExpansions,DirectedValid:a.entity.DirectedRepresentation.Valid,DirectedRetained:a.entity.DirectedRepresentation.Retained,DirectedNodes:a.entity.DirectedRepresentation.Nodes,DirectedEdges:len(a.entity.DirectedRepresentation.Edges),DirectedExamples:len(a.entity.DirectedRepresentation.Examples),}
 	default:
 		return response{Error:fmt.Sprintf("unknown op %q",in.Op)}
 	}
