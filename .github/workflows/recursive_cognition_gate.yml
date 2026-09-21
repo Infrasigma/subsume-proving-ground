@@ -1,0 +1,24 @@
+name: Recursive Cognition Gate
+
+on:
+  push:
+    branches:
+      - exp/recursive-cognitive-compounding-20260921
+  pull_request:
+    paths:
+      - "internal/ace/recursive_cognitive_compounding_test.go"
+      - "internal/ace/ace.go"
+      - "internal/ace/universal.go"
+      - ".github/workflows/recursive_cognition_gate.yml"
+
+jobs:
+  recursive-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: Run recursive cognitive mechanism experiment
+        run: go test -mod=mod -run '^TestRecursiveCognitiveMechanismCompounding$' ./internal/ace -count=1 -v -timeout 10m
