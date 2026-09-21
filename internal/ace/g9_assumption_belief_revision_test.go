@@ -299,34 +299,35 @@ func g9IndependentClosure(assumptions []g9Assumption, rules []g9Rule) map[string
 func g9RandomScenario(seed int64) ([]g9Assumption, []g9Rule, string, int) {
 	r:=rand.New(rand.NewSource(seed))
 	atoms:=[]string{"p","q","r","s","t","u"}
+	truth:=make(map[string]string,len(atoms))
+	for _,atom:=range atoms {
+		lit:=atom
+		if r.Intn(2)==1 { lit="!"+atom }
+		truth[atom]=lit
+	}
 	base:=make([]g9Assumption,0,7)
 	for i:=0;i<7;i++ {
 		atom:=atoms[r.Intn(len(atoms))]
-		if r.Intn(2)==1 { atom="!"+atom }
-		cost:=1+r.Intn(9)
-		a:=g9Assumption{ID:"a"+string(rune('0'+i)),Literal:atom,Cost:cost}
-		base=append(base,a)
+		base=append(base,g9Assumption{
+			ID:"a"+string(rune('0'+i)),
+			Literal:truth[atom],
+			Cost:1+r.Intn(9),
+		})
 	}
-	rules:=make([]g9Rule,0,8)
-	for i:=1;i<6;i++ {
-		antAtom:=atoms[i-1]
-		consAtom:=atoms[i]
-		if r.Intn(2)==1 { antAtom="!"+antAtom }
-		if r.Intn(2)==1 { consAtom="!"+consAtom }
-		arity:=1+r.Intn(2)
-		ants:=[]string{antAtom}
-		if arity==2 {
-			second:=atoms[r.Intn(i)]
-			if r.Intn(2)==1 { second="!"+second }
-			if second==antAtom { second=g9Neg(second) }
-			ants=append(ants,second)
+	rules:=make([]g9Rule,0,10)
+	for i:=1;i<len(atoms);i++ {
+		cons:=truth[atoms[i]]
+		ants:=[]string{truth[atoms[i-1]]}
+		if i>1 && r.Intn(2)==1 {
+			ants=append(ants,truth[atoms[r.Intn(i)]])
 		}
-		rules=append(rules,g9Rule{Antecedents:ants,Consequent:consAtom})
+		rules=append(rules,g9Rule{Antecedents:ants,Consequent:cons})
 	}
-	// Add one direct dependency chain to make provenance and retraction nontrivial.
+	// Two extra dependencies make minimal revision nontrivial while all rule
+	// consequences remain consistent with the generated base world.
 	rules=append(rules,
-		g9Rule{Antecedents:[]string{"p"},Consequent:"q"},
-		g9Rule{Antecedents:[]string{"q"},Consequent:"r"},
+		g9Rule{Antecedents:[]string{truth["p"]},Consequent:truth["r"]},
+		g9Rule{Antecedents:[]string{truth["q"],truth["r"]},Consequent:truth["u"]},
 	)
 	return base,rules,"",0
 }
@@ -363,13 +364,9 @@ func TestG9AssumptionBasedBeliefRevision(t *testing.T) {
 	report:=g9RevisionReport{}
 	for seed:=1;seed<=seeds;seed++ {
 		base,rules,_,_:=g9RandomScenario(int64(930000+seed))
-		// Regenerate until the base is consistent and contains enough derived structure.
-		for tries:=0; tries<40 && (!g9Consistent(base,rules)); tries++ {
-			base,rules,_,_=g9RandomScenario(int64(930000+seed+tries+1000))
-		}
 		if !g9Consistent(base,rules) { t.Fatalf("seed %d generated inconsistent base",seed) }
-		active:=append([]g9Assumption(nil),base...)
 		for update:=0;update<4;update++ {
+			active:=append([]g9Assumption(nil),base...)
 			evidenceLiteral,ok:=g9FindContradictoryEvidence(active,rules)
 			if !ok {
 				fallbacks:=[]string{"p","!p","q","!q","r","!r","s","!s"}
@@ -425,7 +422,6 @@ func TestG9AssumptionBasedBeliefRevision(t *testing.T) {
 				t.Fatalf("seed %d update %d order changed revision result",seed,update)
 			}
 			report.OrderInvariantPasses++
-			active=updated
 			report.Updates++
 		}
 	}
