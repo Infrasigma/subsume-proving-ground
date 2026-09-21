@@ -143,6 +143,23 @@ func g67Enumerate(maxDepth int,lib map[string]g67Macro,cases []ProgramTestCase,l
 	if limit<=0 { limit=1<<30 }
 	for depth:=1;depth<=maxDepth;depth++ {
 		prev:=append([]*g67Expr(nil),all...)
+		macroAdded:=false
+		// Learned operators are intentionally expanded first. This is the
+		// mechanism that permits recursive composition to amortize search.
+		for id:=range lib {
+			for _,a:=range prev {
+				if expansions>=limit { return all,expansions }
+				e:=&g67Expr{Kind:"call",Value:id,Left:g67Clone(a)}
+				expansions++
+				sig:=g67Signature(e,cases,lib)
+				cost:=g67Nodes(e)
+				if old,ok:=bestCost[sig]; !ok || cost<old {
+					bestCost[sig]=cost
+					all=append(all,e)
+					macroAdded=true
+				}
+			}
+		}
 		next:=make([]*g67Expr,0)
 		for _,a:=range prev {
 			for _,b:=range prev {
@@ -160,26 +177,25 @@ func g67Enumerate(maxDepth int,lib map[string]g67Macro,cases []ProgramTestCase,l
 				}
 			}
 		}
-		macroAdded:=false
-		for id:=range lib {
-			for _,a:=range prev {
-				if expansions>=limit { return all,expansions }
-				e:=&g67Expr{Kind:"call",Value:id,Left:g67Clone(a)}
-				expansions++
-				sig:=g67Signature(e,cases,lib)
-				cost:=g67Nodes(e)
-				if old,ok:=bestCost[sig]; !ok || cost<old {
-					bestCost[sig]=cost
-					all=append(all,e)
-					macroAdded=true
-				}
-			}
-		}
 		if len(next)==0 && !macroAdded { break }
 	}
 	return all,expansions
 }
 
+func g67Solve(cases []ProgramTestCase,maxDepth,limit int,lib map[string]g67Macro) g67SolveResult {
+	exprs,generated:=g67Enumerate(maxDepth,lib,cases,limit)
+	sort.SliceStable(exprs,func(i,j int)bool{
+		ci,cj:=g67Nodes(exprs[i]),g67Nodes(exprs[j])
+		if ci==cj{return g67Canonical(exprs[i])<g67Canonical(exprs[j])}
+		return ci<cj
+	})
+	for tested,e:=range exprs {
+		if g67ProgramFits(e,cases,lib) {
+			return g67SolveResult{Program:e,Expansions:tested+1,Found:true}
+		}
+	}
+	return g67SolveResult{Expansions:generated}
+}
 func g67Solve(cases []ProgramTestCase,maxDepth,limit int,lib map[string]g67Macro) g67SolveResult {
 	exprs,generated:=g67Enumerate(maxDepth,lib,cases,limit)
 	sort.SliceStable(exprs,func(i,j int)bool{
