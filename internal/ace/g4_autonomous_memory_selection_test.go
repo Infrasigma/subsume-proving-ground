@@ -3,7 +3,6 @@ package ace
 
 import (
 	"encoding/json"
-	"fmt"
 	"math"
 	"math/rand"
 	"os"
