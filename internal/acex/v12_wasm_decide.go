@@ -109,7 +109,7 @@ func v12EmitSearchLevel(pattern V11DirectedPatternArtifact, depth int) []byte {
 	if depth > 0 {
 		for prev := 0; prev < depth; prev++ {
 			out = append(out, v12LocalGet(localIndex)...)
-			out = append(out, v12LocalGet(uint32(prev))...)
+			out = append(out, v12LocalGet(uint32(prev+1))...)
 			out = append(out, 0x46) // eq
 			out = append(out, 0x04, 0x40, 0x0c, 0x01, 0x0b) // if equal -> next mapping
 		}
@@ -152,25 +152,28 @@ func v12EmitMappingBody(pattern V11DirectedPatternArtifact) []byte {
 
 func v12EmitEdgeTest(edge V11DirectedPatternEdge) []byte {
 	var out []byte
+	// All non-root mapping indices are bounded to 1..15 by the search loops.
 	if edge.From == 0 {
-		// Root is fixed at mapping node 0: its row begins at base.
 		out = append(out, v12LocalGet(0)...)
 	} else {
-		// mapped source index * 4 + base = row address.
 		out = append(out, v12LocalGet(uint32(edge.From))...)
-		out = append(out, 0x41, 0x02, 0x74) // << 2
+		out = append(out, 0x41, 0x10, 0x4f) // >=16
+		out = append(out, 0x04, 0x40, 0x0c, 0x01, 0x0b) // impossible mapping -> next mapping
+		out = append(out, v12LocalGet(uint32(edge.From))...)
+		out = append(out, 0x41, 0x02, 0x74)
 		out = append(out, v12LocalGet(0)...)
-		out = append(out, 0x6a) // + base
+		out = append(out, 0x6a)
 	}
-	out = append(out, 0x28, 0x00, 0x00) // i32.load, conservative alignment
+	out = append(out, 0x28, 0x00, 0x00)
 	if edge.To == 0 {
 		out = append(out, 0x41, 0x00)
 	} else {
 		out = append(out, v12LocalGet(uint32(edge.To))...)
+		out = append(out, 0x41, 0x10, 0x4f)
+		out = append(out, 0x04, 0x40, 0x0c, 0x01, 0x0b)
+		out = append(out, v12LocalGet(uint32(edge.To))...)
 	}
-	out = append(out, 0x76)       // shr_u
-	out = append(out, 0x41, 0x01) // bit 0
-	out = append(out, 0x71)       // and
+	out = append(out, 0x76, 0x41, 0x01, 0x71)
 	return out
 }
 
