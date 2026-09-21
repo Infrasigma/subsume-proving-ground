@@ -105,7 +105,7 @@ func g13Expand13(p []int,lib *g13Lib13) []int {
 	return out
 }
 
-func g13Solve13(task g13Task,lib *g13Lib13,maxLen int)(g13Program13,int,int,bool) {
+func g13Solve13(task g13Task13,lib *g13Lib13,maxLen int)(g13Program13,int,int,bool) {
 	cands:=g13Enumerate13(task.Family,maxLen,lib)
 	tests,ops:=0,0
 	for _,c:=range cands {
@@ -148,7 +148,7 @@ func g13MineLibrary13(programs []g13Program13) *g13Lib13 {
 	return m
 }
 
-func g13Independent13(task g13Task,p g13Program13,lib *g13Lib13) bool {
+func g13Independent13(task g13Task13,p g13Program13,lib *g13Lib13) bool {
 	full:=g13Expand13(p,lib)
 	for _,ex:=range task.Hidden {
 		if g13Apply13(task.Family,full,ex.In)!=ex.Out { return false }
