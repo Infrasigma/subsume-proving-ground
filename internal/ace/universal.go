@@ -59,22 +59,111 @@ func (UniversalMechanismSearch) SearchMechanisms(s CapabilitySpecification,b Res
 }
 
 type UniversalProgramBuilder struct{}
+
+func uexprComplexity(e *UExpr) int {
+	if e == nil {
+		return 0
+	}
+	return 1 + uexprComplexity(e.Left) + uexprComplexity(e.Right)
+}
+
+func ustmtComplexity(s UStmt) int {
+	n := 1 + uexprComplexity(s.Expr) + uexprComplexity(s.Cond)
+	for _, child := range s.Then {
+		n += ustmtComplexity(child)
+	}
+	for _, child := range s.Else {
+		n += ustmtComplexity(child)
+	}
+	for _, child := range s.Body {
+		n += ustmtComplexity(child)
+	}
+	return n
+}
+
+func uprogramComplexity(p UniversalProgram) int {
+	n := 0
+	for _, s := range p.Statements {
+		n += ustmtComplexity(s)
+	}
+	return n
+}
+
+func universalArtifactKey(p UniversalProgram) string {
+	b, err := json.Marshal(p)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+func betterUniversalProgram(candidate, incumbent UniversalProgram, haveIncumbent bool) bool {
+	if !haveIncumbent {
+		return true
+	}
+	cc, ic := uprogramComplexity(candidate), uprogramComplexity(incumbent)
+	if cc != ic {
+		return cc < ic
+	}
+	return universalArtifactKey(candidate) < universalArtifactKey(incumbent)
+}
+
 func (UniversalProgramBuilder) Build(c ArchitectureCandidate,s CapabilitySpecification)(ModificationProposal,error){
-    if len(s.KnownExamples)<2{return ModificationProposal{},errors.New("missing behavioral evidence")}
-    vars:=append([]string{},s.Inputs...);if len(vars)==0{return ModificationProposal{},errors.New("no inferred inputs")};out:=s.Outputs;if len(out)==0{return ModificationProposal{},errors.New("no inferred outputs")}
-    // Search is generic: enumerate expressions/conditions, then compose them
-    // into assignments and branches. No target operation is encoded here.
-    var exprs []UExpr
-    for _,v:=range vars{exprs=append(exprs,UExpr{Kind:"var",Value:v})}
-    for n:=-2;n<=2;n++{exprs=append(exprs,UExpr{Kind:"const",Value:strconv.Itoa(n)})}
-    base:=append([]UExpr{},exprs...)
-    for _,a:=range base{for _,b:=range base{exprs=append(exprs,UExpr{Kind:"add",Left:&a,Right:&b},UExpr{Kind:"sub",Left:&a,Right:&b},UExpr{Kind:"mul",Left:&a,Right:&b})}}
-    // Strategy controls the search grammar, not the target answer.
-    if strings.HasPrefix(c.Mechanism,"universal:branching")||strings.HasPrefix(c.Mechanism,"universal:compositional"){
-        for _,v:=range vars{for _,e:=range exprs{for _,cmp:=range []string{"lt","eq"}{for _,n:=range []int{-1,0,1}{cc:=UExpr{Kind:cmp,Left:&UExpr{Kind:"var",Value:v},Right:&UExpr{Kind:"const",Value:strconv.Itoa(n)}};p:=UniversalProgram{Statements:[]UStmt{{Kind:"if",Cond:&cc,Then:[]UStmt{{Kind:"assign",Target:out[0],Expr:&e}},Else:[]UStmt{{Kind:"assign",Target:out[0],Expr:&e}}}}};if programFits(p,s.KnownExamples){return encodeUniversal(p,s,c)}}}}}
-    }
-    for _,e:=range exprs{p:=UniversalProgram{Statements:[]UStmt{{Kind:"assign",Target:out[0],Expr:&e}}};if programFits(p,s.KnownExamples){return encodeUniversal(p,s,c)}}
-    return ModificationProposal{},errors.New("universal synthesis exhausted search space")
+	if len(s.KnownExamples)<2{return ModificationProposal{},errors.New("missing behavioral evidence")}
+	vars:=append([]string{},s.Inputs...)
+	if len(vars)==0{return ModificationProposal{},errors.New("no inferred inputs")}
+	out:=s.Outputs
+	if len(out)==0{return ModificationProposal{},errors.New("no inferred outputs")}
+
+	// Search is generic: enumerate a bounded compositional program space and
+	// select the simplest program consistent with all observed evidence.
+	var exprs []UExpr
+	for _,v:=range vars{exprs=append(exprs,UExpr{Kind:"var",Value:v})}
+	for n:=-2;n<=2;n++{exprs=append(exprs,UExpr{Kind:"const",Value:strconv.Itoa(n)})}
+	base:=append([]UExpr{},exprs...)
+	for _,a:=range base{
+		for _,b:=range base{
+			aa,bb:=a,b
+			exprs=append(exprs,
+				UExpr{Kind:"add",Left:&aa,Right:&bb},
+				UExpr{Kind:"sub",Left:&aa,Right:&bb},
+				UExpr{Kind:"mul",Left:&aa,Right:&bb},
+			)
+		}
+	}
+
+	best:=UniversalProgram{}
+	haveBest:=false
+	consider:=func(p UniversalProgram){
+		if programFits(p,s.KnownExamples) && betterUniversalProgram(p,best,haveBest){
+			best= p
+			haveBest=true
+		}
+	}
+
+	// Strategy controls grammar availability, not the target answer.
+	if strings.HasPrefix(c.Mechanism,"universal:branching")||strings.HasPrefix(c.Mechanism,"universal:compositional"){
+		for _,v:=range vars{
+			for _,e:=range exprs{
+				for _,cmp:=range []string{"lt","eq"}{
+					for _,n:=range []int{-1,0,1}{
+						ee:=e
+						cc:=UExpr{Kind:cmp,Left:&UExpr{Kind:"var",Value:v},Right:&UExpr{Kind:"const",Value:strconv.Itoa(n)}}
+						p:=UniversalProgram{Statements:[]UStmt{{Kind:"if",Cond:&cc,Then:[]UStmt{{Kind:"assign",Target:out[0],Expr:&ee}},Else:[]UStmt{{Kind:"assign",Target:out[0],Expr:&ee}}}}}
+						consider(p)
+					}
+				}
+			}
+		}
+	}
+
+	for _,e:=range exprs{
+		ee:=e
+		p:=UniversalProgram{Statements:[]UStmt{{Kind:"assign",Target:out[0],Expr:&ee}}}
+		consider(p)
+	}
+	if !haveBest{return ModificationProposal{},errors.New("universal synthesis exhausted search space")}
+	return encodeUniversal(best,s,c)
 }
 func encodeUniversal(p UniversalProgram,s CapabilitySpecification,c ArchitectureCandidate)(ModificationProposal,error){b,err:=json.Marshal(p);if err!=nil{return ModificationProposal{},err};return ModificationProposal{ID:Hash([]any{c,s,p}),Capability:s,Candidate:c,Artifact:string(b),Provenance:Prov("mechanism-builder",c.ID,"synthesize-universal-program",p)},nil}
 
