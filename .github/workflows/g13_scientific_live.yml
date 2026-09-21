@@ -1,0 +1,23 @@
+name: ACE G13 Scientific Live Retest
+
+on:
+  push:
+    branches:
+      - feat/g13-full-cost-scientific-retest-20260922
+
+permissions:
+  contents: read
+
+jobs:
+  g13-scientific:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: Full-cost G13 validation
+        run: go test -mod=mod -run '^TestG13HierarchicalLongHorizonPlanning$' ./internal/ace -count=1 -v -timeout 20m
+      - name: Race validation
+        run: go test -mod=mod -race -run '^TestG13HierarchicalLongHorizonPlanning$' ./internal/ace -count=1 -v -timeout 20m
