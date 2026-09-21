@@ -24,6 +24,7 @@ jobs:
       - name: Run F0-F15 forensic forge
         id: forge
         run: |
+          mkdir -p asi_forge
           set +e
           ./asi-forge > asi_forge/ARTIFACT_STDOUT.txt
           rc=$?
