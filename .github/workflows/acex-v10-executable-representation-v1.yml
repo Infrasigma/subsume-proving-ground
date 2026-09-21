@@ -1,0 +1,223 @@
+name: ACE-X V10 executable representation invention v1
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  executable-representation-v1:
+    if: github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground' && (github.event.pull_request.head.ref == 'ace-x-v10-blackbox-autonomy-20260921' || github.event.pull_request.head.ref == 'ace-x-v10-v8-blackbox-20260921')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - run: go mod download
+      - name: Install Bubblewrap
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Build isolated candidate
+        run: CGO_ENABLED=0 go build -o /tmp/acex-agent ./cmd/acex-agent
+      - name: Execute protected executable-representation experiment
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import signal
+          import subprocess
+          import time
+
+          def start_agent():
+              return subprocess.Popen(
+                  [
+                      'bwrap',
+                      '--ro-bind', '/tmp/acex-agent', '/acex-agent',
+                      '--proc', '/proc',
+                      '--dev', '/dev',
+                      '--tmpfs', '/tmp',
+                      '--unshare-net',
+                      '--unshare-pid',
+                      '--unshare-ipc',
+                      '--unshare-uts',
+                      '--die-with-parent',
+                      '/acex-agent',
+                  ],
+                  stdin=subprocess.PIPE,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+                  text=True,
+                  bufsize=1,
+                  start_new_session=True,
+              )
+
+          def stop_agent(p):
+              if p.poll() is not None:
+                  return
+              try:
+                  os.killpg(p.pid, signal.SIGKILL)
+              except ProcessLookupError:
+                  pass
+              p.wait(timeout=5)
+
+          def rpc(p, payload):
+              p.stdin.write(json.dumps(payload) + '\n')
+              p.stdin.flush()
+              line = p.stdout.readline()
+              if not line:
+                  raise RuntimeError('candidate terminated: ' + p.stderr.read())
+              return json.loads(line)
+
+          def make_state(prefix, surface, width, degree, seed):
+              ids = [f'{prefix}-{seed}-{chr(ord("a")+i)}' for i in range(width)]
+              correct = ids[width // 2]
+              nodes = []
+              edges = []
+              action_kind = 'lever' if surface == 0 else 'token'
+              support_kind = 'peg' if surface == 0 else 'port'
+              edge_kind = 'engage' if surface == 0 else 'route'
+
+              for action in ids:
+                  nodes.append({
+                      'ID': action,
+                      'Kind': action_kind,
+                      'Attrs': {'surface': str(seed)},
+                  })
+                  for j in range(degree):
+                      support = f'{action}-s{j}'
+                      nodes.append({
+                          'ID': support,
+                          'Kind': support_kind,
+                          'Attrs': {'opaque': str(seed + j)},
+                      })
+                      if action == correct:
+                          edges.append({'From': action, 'To': support, 'Kind': edge_kind})
+                      else:
+                          edges.append({'From': support, 'To': action, 'Kind': edge_kind})
+
+              # Evaluator controls correspondence; the candidate sees only
+              # the resulting state/action set and reward.
+              import random
+              rng = random.Random(seed)
+              rng.shuffle(nodes)
+              rng.shuffle(edges)
+              rng.shuffle(ids)
+              return {'nodes': nodes, 'edges': edges}, ids, correct
+
+          def solve(p, state, actions, correct, limit=20):
+              attempts = 0
+              for _ in range(limit):
+                  r = rpc(p, {'op':'act', 'state':state, 'actions':actions})
+                  action = r.get('action')
+                  if action not in actions:
+                      raise RuntimeError(f'candidate emitted unavailable action: {action!r}')
+                  attempts += 1
+                  ok = action == correct
+                  rpc(p, {
+                      'op':'observe',
+                      'next_state':state,
+                      'reward':1 if ok else -1,
+                      'terminal':ok,
+                  })
+                  if ok:
+                      return attempts
+              raise RuntimeError('candidate failed hidden stage')
+
+          sequential = start_agent()
+          source_total = 0
+          target_total = 0
+          baseline_total = 0
+          seq_wall = 0.0
+          base_wall = 0.0
+          try:
+              # Source family A: 3 actions, directed latent role.
+              for i, seed in enumerate([11017, 21017, 31017]):
+                  state, actions, correct = make_state('srcA', 0, 3, 2, seed)
+                  t0 = time.monotonic()
+                  cost = solve(sequential, state, actions, correct)
+                  seq_wall += time.monotonic() - t0
+                  source_total += cost
+                  print(f'SOURCE_A episode={i} seed={seed} cost={cost}')
+
+              # Delete all raw traces while retaining only the executable
+              # representation discovered by the candidate.
+              forgotten = rpc(sequential, {'op':'forget_raw'})
+              print(f'RAW_DELETION response={forgotten}')
+              if forgotten.get('memory') != 0:
+                  raise RuntimeError('candidate did not report empty episodic memory after raw deletion')
+
+              # Target family A: new surface and identifiers, same abstract
+              # rule. Ten fresh target episodes.
+              for i in range(10):
+                  seed = 50001 + i * 7919
+                  state, actions, correct = make_state('tgtA', 1, 3, 2, seed)
+                  t0 = time.monotonic()
+                  seq_cost = solve(sequential, state, actions, correct)
+                  seq_wall += time.monotonic() - t0
+                  target_total += seq_cost
+
+                  baseline = start_agent()
+                  try:
+                      t1 = time.monotonic()
+                      base_cost = solve(baseline, state, actions, correct)
+                      base_wall += time.monotonic() - t1
+                      baseline_total += base_cost
+                  finally:
+                      stop_agent(baseline)
+                  print(f'TARGET_A episode={i} seed={seed} sequential={seq_cost} baseline={base_cost}')
+
+              # Generator-disjoint target family B: width, degree, surface and
+              # serialization differ while the latent rule remains generic.
+              for i in range(10):
+                  seed = 90001 + i * 6151
+                  state, actions, correct = make_state('tgtB', 1, 4, 3, seed)
+                  t0 = time.monotonic()
+                  seq_cost = solve(sequential, state, actions, correct)
+                  seq_wall += time.monotonic() - t0
+                  target_total += seq_cost
+
+                  baseline = start_agent()
+                  try:
+                      t1 = time.monotonic()
+                      base_cost = solve(baseline, state, actions, correct)
+                      base_wall += time.monotonic() - t1
+                      baseline_total += base_cost
+                  finally:
+                      stop_agent(baseline)
+                  print(f'TARGET_B episode={i} seed={seed} sequential={seq_cost} baseline={base_cost}')
+
+              ratio = target_total / float(baseline_total)
+              print(
+                  f'EXECUTABLE REPRESENTATION V1 SUMMARY source_total={source_total} '
+                  f'target_total={target_total} baseline_total={baseline_total} '
+                  f'ratio={ratio:.4f} target_episodes=20'
+              )
+              print(
+                  f'EXECUTABLE REPRESENTATION V1 RESOURCE sequential_wall={seq_wall:.6f} '
+                  f'baseline_wall={base_wall:.6f}'
+              )
+
+              if ratio > 0.70:
+                  raise RuntimeError(
+                      'executable representation did not materially reduce '
+                      f'future acquisition cost: ratio={ratio:.4f}'
+                  )
+
+              print(
+                  'EXECUTABLE REPRESENTATION V1 PASS: protected source experience '
+                  'produced reusable post-deletion transfer on two fresh target generators.'
+              )
+          finally:
+              stop_agent(sequential)
+          PY
