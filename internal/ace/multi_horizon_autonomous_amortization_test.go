@@ -305,6 +305,14 @@ func amortizationHashFile(path string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func procedureSignatureMust(artifact string) string {
+	var p AcquisitionProcedure
+	if err := json.Unmarshal([]byte(artifact), &p); err != nil {
+		return ""
+	}
+	return procedureSignature(p)
+}
+
 func amortizationHoldoutVerify(methods []AcquisitionMethodArtifact, task amortizationTask) bool {
 	got, err := amortizationSelectPair(methods, task)
 	if err != nil || !gotOk(got) {
@@ -539,16 +547,25 @@ func TestMultiHorizonAutonomousAmortization(t *testing.T) {
 		}
 		manifestTamperDetected := originalHash != amortizationHashFile(tamperedPath)
 
+		rawMemoryBytes := int64(0)
+		compressedMemoryBytes := int64(0)
+		for _, method := range capabilityMethods {
+			rawMemoryBytes += int64(len(method.Artifact))
+			compressedMemoryBytes += int64(len(procedureSignatureMust(method.Artifact)))
+		}
+		persistentBytes := abstractCompoundFileBytes(rawRoot)
 		perSeed := amortizationSeedReport{
 			Seed: seed,
 			AcquisitionExpansions: acqExpansions,
 			AcquisitionVerifierCalls: acqVerifierCalls,
 			RetainedBytes: retainedBytes,
-			RawMemoryBytes: retainedBytes * 200,
-			CompressedMemoryBytes: int64(len(capabilityMethods) * 64),
+			RawMemoryBytes: rawMemoryBytes,
+			CompressedMemoryBytes: compressedMemoryBytes,
 			ProcessRestartPassed: restartPassed,
 			RuntimeTamperRejected: runtimeTamperRejected,
 			ManifestTamperDetected: manifestTamperDetected,
+			PersistentBytes: persistentBytes,
+			ArtifactBytes: int64(len(methods) * 2),
 			Horizons: make([]amortizationHorizon, 0, len(horizons)),
 		}
 
