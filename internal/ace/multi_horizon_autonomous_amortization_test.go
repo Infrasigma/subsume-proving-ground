@@ -249,8 +249,14 @@ func generateAmortizationTask(seed int, methods []AcquisitionMethodArtifact) amo
 		expected := abstractCompoundReference(m2, abstractCompoundReference(m1, in))
 		return abstractCompoundExample{Input: in, Expected: abstractCompoundMechanisms(expected)}
 	}
-	train := []abstractCompoundExample{buildExample(11), buildExample(12), buildExample(13)}
-	holdout := []abstractCompoundExample{buildExample(14), buildExample(15)}
+	train := make([]abstractCompoundExample, 0, 8)
+	for n := 11; n <= 18; n++ {
+		train = append(train, buildExample(n))
+	}
+	holdout := make([]abstractCompoundExample, 0, 4)
+	for n := 19; n <= 22; n++ {
+		holdout = append(holdout, buildExample(n))
+	}
 	return amortizationTask{Train: train, Holdout: holdout, Target: []int{target[0], target[1]}}
 }
 
