@@ -1,0 +1,152 @@
+name: ACE-X V12 hermetic protected gate
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  v12:
+    if: github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground' && github.event.pull_request.head.ref == 'ace-x-v12-hermetic-effect-20260921'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Build
+        run: CGO_ENABLED=0 go build -o /tmp/acex-agent ./cmd/acex-agent
+      - name: Targeted V12 engineering gate
+        run: go test -mod=mod ./internal/acex -run 'TestV12' -count=1
+      - name: Protected destructive rehydration
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, os, signal, subprocess
+
+          def start():
+              return subprocess.Popen([
+                  "bwrap","--ro-bind","/tmp/acex-agent","/acex-agent",
+                  "--proc","/proc","--dev","/dev","--tmpfs","/tmp",
+                  "--unshare-net","--unshare-pid","--unshare-ipc",
+                  "--unshare-uts","--die-with-parent","/acex-agent"
+              ], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                 stderr=subprocess.PIPE, text=True, start_new_session=True)
+
+          def stop(p):
+              if p.poll() is None:
+                  os.killpg(p.pid, signal.SIGKILL)
+                  p.wait(timeout=5)
+
+          def rpc(p, x):
+              p.stdin.write(json.dumps(x)+"\n"); p.stdin.flush()
+              line=p.stdout.readline()
+              if not line: raise RuntimeError(p.stderr.read())
+              y=json.loads(line)
+              if not y.get("ok"): raise RuntimeError(y.get("error","candidate error"))
+              return y
+
+          def state(seed, gen, width=4):
+              actions=["g%d-%d-%c"%(gen,seed,97+i) for i in range(width)]
+              good=actions[(seed//7+gen)%width]
+              nodes=[]; edges=[]
+              for a in actions:
+                  x=a+"-x"; y=a+"-y"; z=a+"-z"
+                  nodes += [{"ID":a,"Kind":"action","Attrs":{}},
+                            {"ID":x,"Kind":"node","Attrs":{}},
+                            {"ID":y,"Kind":"node","Attrs":{}},
+                            {"ID":z,"Kind":"node","Attrs":{}}]
+                  if a==good:
+                      edges += [{"From":a,"To":x,"Kind":"r"},
+                                {"From":x,"To":y,"Kind":"r"},
+                                {"From":y,"To":z,"Kind":"r"}]
+                  else:
+                      edges += [{"From":z,"To":y,"Kind":"r"},
+                                {"From":y,"To":x,"Kind":"r"},
+                                {"From":x,"To":a,"Kind":"r"}]
+              return {"nodes":nodes,"edges":edges}, actions, good
+
+          def learn(p, n):
+              for i in range(n):
+                  s,a,g=state(12000+i*97,i%2,3+(i%2))
+                  for _ in range(12):
+                      o=rpc(p,{"op":"act","state":s,"actions":a})
+                      ok=o["action"]==g
+                      rpc(p,{"op":"observe","next_state":s,
+                             "reward":1 if ok else -1,"terminal":ok})
+                      if ok: break
+
+          src=start()
+          try:
+              learn(src,6)
+              if rpc(src,{"op":"forget_raw"})["memory"] != 0:
+                  raise RuntimeError("raw memory survived deletion")
+              exp=rpc(src,{"op":"export_knowledge"})
+              raw=base64.b64decode(exp["artifact"],validate=True)
+              if raw[:4] != bytes([0,97,115,109]):
+                  raise RuntimeError("not Wasm")
+              if hashlib.sha256(raw).hexdigest()!=exp["artifact_sha256"]:
+                  raise RuntimeError("artifact hash mismatch")
+              if len(raw)!=exp["artifact_bytes"]:
+                  raise RuntimeError("artifact size mismatch")
+              artifact=exp["artifact"]
+          finally:
+              stop(src)
+
+          fresh=start()
+          try:
+              rpc(fresh,{"op":"load_knowledge","artifact":artifact})
+              if rpc(fresh,{"op":"status"})["memory"]!=0:
+                  raise RuntimeError("fresh process received memory")
+              s,a,g=state(91001,2,5)
+              for _ in range(8):
+                  o=rpc(fresh,{"op":"act","state":s,"actions":a})
+                  ok=o["action"]==g
+                  rpc(fresh,{"op":"observe","next_state":s,
+                         "reward":1 if ok else -1,"terminal":ok})
+                  if ok: break
+              else:
+                  raise RuntimeError("fresh process could not reuse artifact")
+          finally:
+              stop(fresh)
+
+          tampered=bytearray(raw); tampered[-1]^=1
+          bad=start()
+          try:
+              try:
+                  rpc(bad,{"op":"load_knowledge",
+                           "artifact":base64.b64encode(tampered).decode()})
+              except RuntimeError:
+                  pass
+              else:
+                  raise RuntimeError("tampered artifact accepted")
+          finally:
+              stop(bad)
+
+          print("V12 PROTECTED DESTRUCTIVE REHYDRATION PASS")
+          print("artifact_bytes=%d"%len(raw))
+          print("artifact_sha256=%s"%hashlib.sha256(raw).hexdigest())
+          PY
+      - name: Publish evaluator result
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = "V12 protected gate finished. See workflow logs for the independent destructive rehydration result.";
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
