@@ -71,9 +71,9 @@ func (UniversalProgramBuilder) Build(c ArchitectureCandidate,s CapabilitySpecifi
     for _,a:=range base{for _,b:=range base{exprs=append(exprs,UExpr{Kind:"add",Left:&a,Right:&b},UExpr{Kind:"sub",Left:&a,Right:&b},UExpr{Kind:"mul",Left:&a,Right:&b})}}
     // Strategy controls the search grammar, not the target answer.
     if strings.HasPrefix(c.Mechanism,"universal:branching")||strings.HasPrefix(c.Mechanism,"universal:compositional"){
-        for _,v:=range vars{for _,e:=range exprs{for _,cmp:=range []string{"lt","eq"}{for _,n:=range []int{-1,0,1}{cc:=UExpr{Kind:cmp,Left:&UExpr{Kind:"var",Value:v},Right:&UExpr{Kind:"const",Value:strconv.Itoa(n)}};p:=UniversalProgram{Statements:[]UStmt{{Kind:"if",Cond:&cc,Then:[]UStmt{{Kind:"assign",Target:out[0],Expr:&e}},Else:[]UStmt{{Kind:"assign",Target:out[0],Expr:&e}}}}};if programFits(p,s.KnownExamples){return encodeUniversal(p,s,c),nil}}}}}
+        for _,v:=range vars{for _,e:=range exprs{for _,cmp:=range []string{"lt","eq"}{for _,n:=range []int{-1,0,1}{cc:=UExpr{Kind:cmp,Left:&UExpr{Kind:"var",Value:v},Right:&UExpr{Kind:"const",Value:strconv.Itoa(n)}};p:=UniversalProgram{Statements:[]UStmt{{Kind:"if",Cond:&cc,Then:[]UStmt{{Kind:"assign",Target:out[0],Expr:&e}},Else:[]UStmt{{Kind:"assign",Target:out[0],Expr:&e}}}}};if programFits(p,s.KnownExamples){return encodeUniversal(p,s,c)}}}}}
     }
-    for _,e:=range exprs{p:=UniversalProgram{Statements:[]UStmt{{Kind:"assign",Target:out[0],Expr:&e}}};if programFits(p,s.KnownExamples){return encodeUniversal(p,s,c),nil}}
+    for _,e:=range exprs{p:=UniversalProgram{Statements:[]UStmt{{Kind:"assign",Target:out[0],Expr:&e}}};if programFits(p,s.KnownExamples){return encodeUniversal(p,s,c)}}
     return ModificationProposal{},errors.New("universal synthesis exhausted search space")
 }
 func encodeUniversal(p UniversalProgram,s CapabilitySpecification,c ArchitectureCandidate)(ModificationProposal,error){b,err:=json.Marshal(p);if err!=nil{return ModificationProposal{},err};return ModificationProposal{ID:Hash([]any{c,s,p}),Capability:s,Candidate:c,Artifact:string(b),Provenance:Prov("mechanism-builder",c.ID,"synthesize-universal-program",p)},nil}
