@@ -29,7 +29,20 @@ jobs:
           ACEX_V8_RUNTIME_SEED: ${{ github.run_id }}
         run: |
           set -euo pipefail
-          go test -mod=mod -run '^TestV8UnifiedCognitiveEntity$|^TestV8SurpriseMemoryAffectsRetrieval$' ./internal/acex -count=1 -timeout=20m -v | tee acex-v8-protected-result.txt
+          go test -mod=mod -run '^TestUniversalProgramBuilderLearnsExecutableCapability
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acex-v8-protected-result
+          path: acex-v8-protected-result.txt
+ ./internal/ace -count=1 -timeout=5m -v
+          go test -mod=mod -run '^TestV8UnifiedCognitiveEntity$|^TestV8SurpriseMemoryAffectsRetrieval
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acex-v8-protected-result
+          path: acex-v8-protected-result.txt
+ ./internal/acex -count=1 -timeout=20m -v | tee acex-v8-protected-result.txt
       - if: always()
         uses: actions/upload-artifact@v4
         with:
