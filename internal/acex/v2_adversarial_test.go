@@ -2,7 +2,6 @@ package acex
 
 import (
 	"fmt"
-	"math"
 	"math/rand"
 	"sort"
 	"testing"
