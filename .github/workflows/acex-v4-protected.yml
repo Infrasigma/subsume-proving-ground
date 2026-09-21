@@ -9,6 +9,9 @@ on:
     types: [opened, synchronize, reopened]
     branches:
       - main
+  push:
+    branches:
+      - ace-x-v8-unified-cognitive-20260921
 
 permissions:
   contents: read
@@ -241,3 +244,23 @@ jobs:
               try: p.kill()
               except Exception: pass
           PY
+
+  ace-x-v8-push:
+    if: github.ref_name == 'ace-x-v8-unified-cognitive-20260921' && github.repository == 'Infrasigma/subsume-proving-ground'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact pushed candidate head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - run: go mod download
+      - name: Run protected V8 terminal on push
+        run: |
+          set -euo pipefail
+          go test -mod=mod -run '^TestUniversalProgramBuilderLearnsExecutableCapability$' ./internal/ace -count=1 -timeout=5m -v
+          go test -mod=mod -run '^TestV8UnifiedCognitiveEntity$|^TestV8SurpriseMemoryAffectsRetrieval$|^TestV8FailureMemoryBlocksRepeatedBadAction$' ./internal/acex -count=1 -timeout=20m -v
