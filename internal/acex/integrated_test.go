@@ -84,7 +84,7 @@ func makeBalanced(seed int64, family hiddenFamily, conceptIndex int, count int, 
 	return Dataset{Examples: append(positives, negatives...)}
 }
 
-func makeComposedTarget(seed int64, family hiddenFamily, count int) (Dataset, Dataset, Dataset) {
+func makeComposedTarget(seed int64, family hiddenFamily, count int) Dataset {
 	r := rand.New(rand.NewSource(seed))
 	aTokens := permutedTokens(stableTokenSeed(family, 0), family, "opaque")
 	bTokens := permutedTokens(stableTokenSeed(family, 1), family, "opaque")
@@ -116,7 +116,7 @@ func makeComposedTarget(seed int64, family hiddenFamily, count int) (Dataset, Da
 			neg = append(neg, ex)
 		}
 	}
-	return Dataset{Examples: append(pos, neg...)}, Dataset{}, Dataset{}
+	return Dataset{Examples: append(pos, neg...)}
 }
 
 func split(data Dataset) (Dataset, Dataset) {
@@ -264,7 +264,7 @@ func runBlock(seed int64) blockResult {
 	if compositionOK {
 		targetA := makeBalanced(seed+1001, families[2], 0, 140, true)
 		targetB := makeBalanced(seed+1002, families[2], 1, 140, true)
-		_, _, unionTarget := makeComposedTarget(seed+1003, families[2], 160)
+		unionTarget := makeComposedTarget(seed+1003, families[2], 160)
 		ma, mca, ea := mappedConcept(aTrain, targetA, a)
 		mb, mcb, eb := mappedConcept(bTrain, targetB, b)
 		if ea != nil || eb != nil {
