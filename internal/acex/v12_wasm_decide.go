@@ -152,13 +152,16 @@ func v12EmitMappingBody(pattern V11DirectedPatternArtifact) []byte {
 func v12EmitEdgeTest(edge V11DirectedPatternEdge) []byte {
 	var out []byte
 	if edge.From == 0 {
+		// Root is fixed at mapping node 0: its row begins at base.
 		out = append(out, v12LocalGet(0)...)
 	} else {
+		// mapped source index * 4 + base = row address.
 		out = append(out, v12LocalGet(uint32(edge.From))...)
+		out = append(out, 0x41, 0x02, 0x74) // << 2
+		out = append(out, v12LocalGet(0)...)
+		out = append(out, 0x6a) // + base
 	}
-	out = append(out, 0x41, 0x02, 0x74) // << 2
-	out = append(out, 0x6a)              // + base
-	out = append(out, 0x28, 0x02, 0x00) // i32.load
+	out = append(out, 0x28, 0x00, 0x00) // i32.load, conservative alignment
 	if edge.To == 0 {
 		out = append(out, 0x41, 0x00)
 	} else {
