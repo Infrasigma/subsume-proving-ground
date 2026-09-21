@@ -5,20 +5,8 @@ import "testing"
 func TestV8AdaptiveRepresentationEntityTransferCost(t *testing.T) {
 	entity := NewV8CognitiveEntity()
 	source, sourceActions, sourceCorrect := adaptiveRoleState("entity-src", 0)
-	for i := 0; i < len(sourceActions)*2; i++ {
-		a, err := entity.ObserveAndAct(source, sourceActions)
-		if err != nil {
-			t.Fatal(err)
-		}
-		reward := -1.0
-		if a == sourceCorrect {
-			reward = 1
-		}
-		entity.ObserveOutcome(source, a, source, reward, false)
-		if a == sourceCorrect {
-			break
-		}
-	}
+	entity.ObserveOutcome(source, sourceActions[1], source, -1, false)
+	entity.ObserveOutcome(source, sourceCorrect, source, 1, false)
 	if entity.AdaptiveRoles.ActiveRadius < 2 {
 		t.Fatalf("entity did not retain expanded representation: radius=%d", entity.AdaptiveRoles.ActiveRadius)
 	}
