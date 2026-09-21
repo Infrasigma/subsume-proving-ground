@@ -26,7 +26,8 @@ func TestV12WasmCapabilityRoundTripAndTamperDetection(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.HasPrefix(cap.Module, []byte{0x00, 0x61, 0x73, 0x6d}) {
-		t.Fatalf("not a Wasm module: %x", cap.Module[:min(len(cap.Module), 8)])
+		if len(cap.Module) < 8 { t.Fatalf("Wasm module too short: %d", len(cap.Module)) }
+	if string(cap.Module[:4]) != "\x00asm" { t.Fatalf("bad Wasm magic: %x", cap.Module[:8]) }
 	}
 	if cap.SHA256 == "" || len(cap.Module) < 32 {
 		t.Fatalf("missing artifact identity: size=%d hash=%q", len(cap.Module), cap.SHA256)
@@ -88,9 +89,3 @@ func TestV12WasmCapabilityRoundTripAndTamperDetection(t *testing.T) {
 	}
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
