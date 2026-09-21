@@ -1,0 +1,215 @@
+name: ACE-X V10 representation boundary v2
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  representation-boundary-v2:
+    if: github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground' && (github.event.pull_request.head.ref == 'ace-x-v10-blackbox-autonomy-20260921' || github.event.pull_request.head.ref == 'ace-x-v10-v8-blackbox-20260921')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - run: go mod download
+      - name: Install Bubblewrap
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Build candidate
+        run: CGO_ENABLED=0 go build -o /tmp/acex-agent ./cmd/acex-agent
+      - name: Execute evaluator-owned directional representation boundary
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import random
+          import signal
+          import subprocess
+          import time
+
+          def start_agent():
+              return subprocess.Popen(
+                  [
+                      'bwrap',
+                      '--ro-bind', '/tmp/acex-agent', '/acex-agent',
+                      '--proc', '/proc',
+                      '--dev', '/dev',
+                      '--tmpfs', '/tmp',
+                      '--unshare-net',
+                      '--unshare-pid',
+                      '--unshare-ipc',
+                      '--unshare-uts',
+                      '--die-with-parent',
+                      '/acex-agent',
+                  ],
+                  stdin=subprocess.PIPE,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+                  text=True,
+                  bufsize=1,
+                  start_new_session=True,
+              )
+
+          def stop_agent(p):
+              if p.poll() is not None:
+                  return
+              try:
+                  os.killpg(p.pid, signal.SIGKILL)
+              except ProcessLookupError:
+                  pass
+              p.wait(timeout=5)
+
+          def rpc(p, payload):
+              p.stdin.write(json.dumps(payload) + '\n')
+              p.stdin.flush()
+              line = p.stdout.readline()
+              if not line:
+                  raise RuntimeError('candidate terminated: ' + p.stderr.read())
+              out = json.loads(line)
+              if not out.get('ok') and not out.get('action'):
+                  raise RuntimeError(out.get('error', 'candidate error'))
+              return out
+
+          def make_state(domain, seed):
+              rng = random.Random(seed)
+              action_ids = [f'{domain}-{seed}-a', f'{domain}-{seed}-b', f'{domain}-{seed}-c']
+              correct = action_ids[1]
+              action_kind, support_kind, edge_kind = ('lever', 'peg', 'engage')
+              if domain == 1:
+                  action_kind, support_kind, edge_kind = ('token', 'port', 'route')
+
+              nodes = []
+              edges = []
+
+              def add_node(nid, kind, attrs=None):
+                  nodes.append({
+                      'ID': nid,
+                      'Kind': kind,
+                      'Attrs': attrs or {'surface': str(seed)},
+                  })
+
+              for action in action_ids:
+                  add_node(action, action_kind)
+
+                  n1 = action + '-n1'
+                  n2 = action + '-n2'
+                  add_node(n1, support_kind, {'opaque': str(seed)})
+                  add_node(n2, support_kind, {'opaque': str(seed)})
+
+                  # All three action roots have identical undirected topology.
+                  # The only latent distinction is edge direction:
+                  # the correct root owns outgoing edges; distractors receive
+                  # the same edges in the opposite direction.
+                  if action == correct:
+                      edges.append({'From': action, 'To': n1, 'Kind': edge_kind})
+                      edges.append({'From': action, 'To': n2, 'Kind': edge_kind})
+                  else:
+                      edges.append({'From': n1, 'To': action, 'Kind': edge_kind})
+                      edges.append({'From': n2, 'To': action, 'Kind': edge_kind})
+
+              rng.shuffle(nodes)
+              rng.shuffle(edges)
+              rng.shuffle(action_ids)
+              return {'nodes': nodes, 'edges': edges}, action_ids, correct
+
+          def solve_stage(p, state, actions, correct):
+              attempts = 0
+              max_attempts = len(actions) * 3
+              while attempts < max_attempts:
+                  reply = rpc(p, {'op': 'act', 'state': state, 'actions': actions})
+                  action = reply.get('action')
+                  attempts += 1
+                  ok = action == correct
+                  rpc(p, {
+                      'op': 'observe',
+                      'next_state': state,
+                      'reward': 1 if ok else -1,
+                      'terminal': ok,
+                  })
+                  if ok:
+                      return attempts
+              raise RuntimeError('candidate failed evaluator-owned stage')
+
+          source_seed = 17017
+          target_seed0 = 72001
+          episodes = 20
+
+          sequential = start_agent()
+          baseline_cost = 0
+          sequential_cost = 0
+          sequential_wall = 0.0
+          baseline_wall = 0.0
+
+          try:
+              source_state, source_actions, source_correct = make_state(0, source_seed)
+              source_cost = solve_stage(sequential, source_state, source_actions, source_correct)
+              print(f'DIRECTIONAL SOURCE COST={source_cost}')
+
+              for episode in range(episodes):
+                  target_seed = target_seed0 + episode * 7919
+                  target_state, target_actions, target_correct = make_state(1, target_seed)
+
+                  t0 = time.monotonic()
+                  seq_cost = solve_stage(
+                      sequential, target_state, target_actions, target_correct
+                  )
+                  sequential_wall += time.monotonic() - t0
+                  sequential_cost += seq_cost
+
+                  baseline = start_agent()
+                  try:
+                      t1 = time.monotonic()
+                      base_cost = solve_stage(
+                          baseline, target_state, target_actions, target_correct
+                      )
+                      baseline_wall += time.monotonic() - t1
+                  finally:
+                      stop_agent(baseline)
+
+                  baseline_cost += base_cost
+                  print(
+                      f'EPISODE={episode} seed={target_seed} '
+                      f'sequential={seq_cost} baseline={base_cost}'
+                  )
+
+              ratio = sequential_cost / float(baseline_cost)
+              print(
+                  f'DIRECTIONAL BOUNDARY V2 SUMMARY sequential_total={sequential_cost} '
+                  f'baseline_total={baseline_cost} ratio={ratio:.4f} episodes={episodes}'
+              )
+              print(
+                  f'DIRECTIONAL BOUNDARY V2 RESOURCE sequential_wall={sequential_wall:.6f} '
+                  f'baseline_wall={baseline_wall:.6f}'
+              )
+
+              # This is a kill/boundary test, not a capability pass.
+              # All existing V10 structural representations explicitly collapse
+              # edge direction. Material transfer here would therefore invalidate
+              # the test assumption and require investigation rather than reclassifying
+              # the existing mechanism as broader than its documented representation.
+              if ratio <= 0.80:
+                  raise RuntimeError(
+                      'CURRENT V10 REPRESENTATION FAMILY CROSSED DIRECTIONAL BOUNDARY: '
+                      f'sequential/baseline ratio={ratio:.4f}'
+                  )
+
+              print(
+                  'BOUNDARY V2 CONFIRMED: current V10 representation family '
+                  'did not materially transfer a direction-dependent latent rule.'
+              )
+          finally:
+              stop_agent(sequential)
+          PY
