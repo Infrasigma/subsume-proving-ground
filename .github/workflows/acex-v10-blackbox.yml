@@ -494,18 +494,35 @@ jobs:
               ok_source, source_cost = solve_triangle_domain(tri_seq, 0, tri_seed, depth=1)
               if not ok_source:
                   raise RuntimeError('representation-expansion source failed')
-              ok_target_seq, target_seq_cost = solve_triangle_domain(tri_seq, 1, tri_seed + 1, depth=5)
-              if not ok_target_seq:
-                  raise RuntimeError('representation-expansion sequential target failed')
-              ok_target_base, target_base_cost = solve_triangle_domain(tri_base, 1, tri_seed + 1, depth=5)
-              if not ok_target_base:
-                  raise RuntimeError('representation-expansion clean baseline failed')
+
+              sequential_total = 0
+              baseline_total = 0
+              episodes = 20
+              for episode in range(episodes):
+                  target_seed = tri_seed + 1000 + episode * 7919
+                  ok_target_seq, target_seq_cost = solve_triangle_domain(
+                      tri_seq, 1, target_seed, depth=5
+                  )
+                  if not ok_target_seq:
+                      raise RuntimeError(f'representation-expansion sequential target failed episode={episode}')
+                  ok_target_base, target_base_cost = solve_triangle_domain(
+                      tri_base, 1, target_seed, depth=5
+                  )
+                  if not ok_target_base:
+                      raise RuntimeError(f'representation-expansion clean baseline failed episode={episode}')
+                  sequential_total += target_seq_cost
+                  baseline_total += target_base_cost
+
               print(
-                  f'REPRESENTATION EXPANSION COST source={source_cost} '
-                  f'sequential={target_seq_cost} baseline={target_base_cost}'
+                  f'REPRESENTATION EXPANSION MULTI EPISODE COST source={source_cost} '
+                  f'sequential_total={sequential_total} baseline_total={baseline_total} '
+                  f'episodes={episodes}'
               )
-              if target_seq_cost > 0.70 * target_base_cost:
-                  raise RuntimeError('new representation did not materially reduce target acquisition cost')
+              if sequential_total > 0.70 * baseline_total:
+                  raise RuntimeError(
+                      'adaptive representation did not materially reduce '
+                      'multi-episode acquisition cost'
+                  )
           finally:
               tri_seq.kill()
               tri_base.kill()
