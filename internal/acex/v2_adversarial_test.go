@@ -59,6 +59,7 @@ func TestV2AdversarialRandomizedCognitiveSweep(t *testing.T) {
 			})
 		}
 		trueIdx := r.Intn(nH)
+		trueID := h[trueIdx].ID
 		engine := BeliefRevision{}
 		h = NormalizeBeliefs(h)
 		used := map[string]bool{}
@@ -79,7 +80,16 @@ func TestV2AdversarialRandomizedCognitiveSweep(t *testing.T) {
 				t.Fatalf("seed %d: sequential experimenter got stuck: action=%q gain=%v err=%v post=%+v", seed, action, gain, err, h)
 			}
 			used[action] = true
-			outcome := h[trueIdx].Predicted[action]
+			outcome := ""
+			for _, x := range h {
+				if x.ID == trueID {
+					outcome = x.Predicted[action]
+					break
+				}
+			}
+			if outcome == "" {
+				t.Fatalf("seed %d: true hypothesis lost before intervention %s", seed, action)
+			}
 			revised, err := engine.Revise(h, action, outcome)
 			if err != nil {
 				t.Fatalf("seed %d: revision failed: %v", seed, err)
@@ -88,7 +98,7 @@ func TestV2AdversarialRandomizedCognitiveSweep(t *testing.T) {
 			steps++
 			truePosterior := 0.0
 			for _, x := range h {
-				if x.ID == fmt.Sprintf("h-%d", trueIdx) {
+				if x.ID == trueID {
 					truePosterior = x.Posterior
 				}
 			}
@@ -98,7 +108,7 @@ func TestV2AdversarialRandomizedCognitiveSweep(t *testing.T) {
 		}
 		truePosterior := 0.0
 		for _, x := range h {
-			if x.ID == fmt.Sprintf("h-%d", trueIdx) {
+			if x.ID == trueID {
 				truePosterior = x.Posterior
 			}
 		}
