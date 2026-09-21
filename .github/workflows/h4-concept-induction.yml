@@ -25,6 +25,7 @@ jobs:
           H4_SEED_B: "928437"
           PYTHONHASHSEED: "0"
         run: |
+          set -euo pipefail
           python3 h4_forge/h4_evaluator.py | tee h4-result.txt
 
       - name: Publish forensic result
