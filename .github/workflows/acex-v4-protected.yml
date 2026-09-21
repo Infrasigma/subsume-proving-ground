@@ -264,3 +264,102 @@ jobs:
           set -euo pipefail
           go test -mod=mod -run '^TestUniversalProgramBuilderLearnsExecutableCapability$' ./internal/ace -count=1 -timeout=5m -v
           go test -mod=mod -run '^TestV8UnifiedCognitiveEntity$|^TestV8SurpriseMemoryAffectsRetrieval$|^TestV8FailureMemoryBlocksRepeatedBadAction$' ./internal/acex -count=1 -timeout=20m -v
+
+
+  ace-x-v9-open-representation:
+    if: github.event.pull_request.head.ref == 'ace-x-v9-open-representation-20260921' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v4
+        with:
+          ref: \${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - run: go mod download
+      - name: Install evaluator-owned gate
+        run: |
+          cat > internal/acex/v9_protected_gate_test.go <<'EOF'
+          package acex
+
+          import (
+            "math/rand"
+            "testing"
+          )
+
+          func protectedV9State(r *rand.Rand, n int) RelationalState {
+            nodes := make([]RelNode, n)
+            for i := range nodes {
+              nodes[i] = RelNode{ID: string(rune('a'+i)) + "-" + string(rune('A'+r.Intn(26))), Kind:"opaque", Attrs:map[string]string{}}
+            }
+            edges := make([]RelEdge, 0)
+            for i:=0;i<n;i++ {
+              for j:=i+1;j<n;j++ {
+                if r.Intn(3)==0 {
+                  edges = append(edges, RelEdge{From:nodes[i].ID,To:nodes[j].ID,Kind:"r"})
+                }
+              }
+            }
+            return RelationalState{Nodes:nodes,Edges:edges}
+          }
+
+          func protectedV9Formula(s RelationalState, mode int) bool {
+            a := V9RepAtom{Kind:"degree-class-count",Value:1}
+            b := V9RepAtom{Kind:"degree-class-count",Value:2}
+            c := V9RepAtom{Kind:"degree-class-count",Value:0}
+            d := V9RepAtom{Kind:"degree-class-count",Value:3}
+            av := evalV9Atom(s,a)
+            bv := evalV9Atom(s,b)
+            cv := evalV9Atom(s,c)
+            dv := evalV9Atom(s,d)
+            switch mode {
+            case 0:
+              return av == bv
+            case 1:
+              return (av == bv) && (cv < dv)
+            default:
+              return (av%2 == 0) == (bv%2 == 0)
+            }
+          }
+
+          func makeProtectedV9Examples(seed int64, mode int, count int, wantBalanced bool) []V9RepExample {
+            r := rand.New(rand.NewSource(seed))
+            out := make([]V9RepExample, 0, count)
+            pos, neg := 0, 0
+            targetEach := count/2
+            for attempts:=0; len(out)<count && attempts<count*200; attempts++ {
+              s:=protectedV9State(r,4+r.Intn(3))
+              y:=protectedV9Formula(s,mode)
+              if wantBalanced {
+                if y && pos>=targetEach { continue }
+                if !y && neg>=targetEach { continue }
+              }
+              out=append(out,V9RepExample{State:s,Label:y})
+              if y {pos++} else {neg++}
+            }
+            if len(out)<count || pos==0 || neg==0 { return nil }
+            return out
+          }
+
+          func TestV9ProtectedStructuralRepresentationGate(t *testing.T) {
+            modes := []int{0,1,2}
+            for i, mode := range modes {
+              train := makeProtectedV9Examples(910000+int64(i)*17, mode, 40, true)
+              hold := makeProtectedV9Examples(920000+int64(i)*19, mode, 80, true)
+              if len(train)==0 || len(hold)==0 { t.Fatalf("seed generator failed mode=%d",mode) }
+              inv:=V9RepresentationInventor{MaxDepth:3,Budget:50000,MinTrainAccuracy:1}
+              rep,err:=inv.Invent(train)
+              if err!=nil { t.Fatalf("mode=%d invention failed: %v",mode,err) }
+              acc:=v9Accuracy(hold,rep.Expr)
+              if acc<0.90 { t.Fatalf("mode=%d hidden holdout accuracy=%.3f description=%s",mode,acc,V9RepresentationDescription(rep)) }
+              if rep.Complexity<2 { t.Fatalf("mode=%d representation was not compositional: complexity=%d",mode,rep.Complexity) }
+              var lib V9RepresentationLibrary
+              if err:=lib.Admit(rep,hold); err!=nil { t.Fatalf("mode=%d independent admission failed: %v",mode,err) }
+            }
+          }
+          EOF
+      - name: Run evaluator-owned V9 gate
+        run: go test -mod=mod -run '^TestV9ProtectedStructuralRepresentationGate$' ./internal/acex -count=1 -timeout=18m -v
