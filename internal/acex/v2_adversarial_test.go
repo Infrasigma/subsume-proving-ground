@@ -35,50 +35,77 @@ func TestV2AdversarialRandomizedCognitiveSweep(t *testing.T) {
 	for seed := 1; seed <= trials; seed++ {
 		r := rand.New(rand.NewSource(int64(900000 + seed)))
 
-		// Belief revision: random deterministic hypothesis spaces and random
-		// experiments. The true hypothesis must become dominant after evidence.
+		// Belief revision: generate distinct hypothesis signatures. The
+		// experimenter must repeatedly intervene and revise until the true
+		// hypothesis becomes uniquely identified.
 		nH := 4 + r.Intn(4)
-		h := make([]Belief, nH)
-		for i := range h {
-			h[i] = Belief{
-				ID:      fmt.Sprintf("h-%d", i),
-				Prior:   0.25 + r.Float64(),
-				Predicted: map[string]string{
-					"a": fmt.Sprintf("o-%d", r.Intn(3)),
-					"b": fmt.Sprintf("o-%d", r.Intn(3)),
-					"c": fmt.Sprintf("o-%d", r.Intn(3)),
-					"d": fmt.Sprintf("o-%d", r.Intn(3)),
-				},
+		h := make([]Belief, 0, nH)
+		signatures := map[string]bool{}
+		for len(h) < nH {
+			preds := map[string]string{
+				"a": fmt.Sprintf("o-%d", r.Intn(3)),
+				"b": fmt.Sprintf("o-%d", r.Intn(3)),
+				"c": fmt.Sprintf("o-%d", r.Intn(3)),
+				"d": fmt.Sprintf("o-%d", r.Intn(3)),
 			}
+			sig := fmt.Sprintf("%s|%s|%s|%s", preds["a"], preds["b"], preds["c"], preds["d"])
+			if signatures[sig] {
+				continue
+			}
+			signatures[sig] = true
+			h = append(h, Belief{
+				ID:        fmt.Sprintf("h-%d", len(h)),
+				Prior:     0.25 + r.Float64(),
+				Predicted: preds,
+			})
 		}
 		trueIdx := r.Intn(nH)
 		engine := BeliefRevision{}
 		h = NormalizeBeliefs(h)
-		action, gain, err := engine.ChooseIntervention(h, nil)
-		if err != nil || gain <= 0 || action == "" {
-			t.Fatalf("seed %d: no discriminating action: action=%q gain=%v err=%v", seed, action, gain, err)
+		used := map[string]bool{}
+		steps := 0
+		for steps < 4 {
+			filtered := make([]Belief, len(h))
+			for i, x := range h {
+				filtered[i] = x
+				filtered[i].Predicted = map[string]string{}
+				for action, outcome := range h[i].Predicted {
+					if !used[action] {
+						filtered[i].Predicted[action] = outcome
+					}
+				}
+			}
+			action, gain, err := engine.ChooseIntervention(filtered, nil)
+			if err != nil || gain <= 0 || action == "" {
+				t.Fatalf("seed %d: sequential experimenter got stuck: action=%q gain=%v err=%v post=%+v", seed, action, gain, err, h)
+			}
+			used[action] = true
+			outcome := h[trueIdx].Predicted[action]
+			revised, err := engine.Revise(h, action, outcome)
+			if err != nil {
+				t.Fatalf("seed %d: revision failed: %v", seed, err)
+			}
+			h = revised
+			steps++
+			truePosterior := 0.0
+			for _, x := range h {
+				if x.ID == fmt.Sprintf("h-%d", trueIdx) {
+					truePosterior = x.Posterior
+				}
+			}
+			if truePosterior > 0.999 {
+				break
+			}
 		}
-		outcome := h[trueIdx].Predicted[action]
-		revised, err := engine.Revise(h, action, outcome)
-		if err != nil {
-			t.Fatalf("seed %d: revision failed: %v", seed, err)
-		}
-		topID := revised[0].ID
-		// Ties are possible; require the true hypothesis to be among the
-		// maximally supported survivors, and require entropy to decrease.
 		truePosterior := 0.0
-		for _, x := range revised {
-			if x.ID == h[trueIdx].ID {
+		for _, x := range h {
+			if x.ID == fmt.Sprintf("h-%d", trueIdx) {
 				truePosterior = x.Posterior
 			}
 		}
-		if truePosterior <= 0 {
-			t.Fatalf("seed %d: true hypothesis was eliminated by its own predicted outcome", seed)
+		if truePosterior <= 0.999 {
+			t.Fatalf("seed %d: sequential evidence did not identify true hypothesis after %d interventions: posterior=%v", seed, steps, truePosterior)
 		}
-		if topID == "" || truePosterior < 1.0/float64(nH) {
-			t.Fatalf("seed %d: weak posterior after revision: true=%v revised=%+v", seed, truePosterior, revised)
-		}
-		_ = math.IsNaN(gain)
 
 		// Mechanism induction: generate a hidden repeated motif and vary every
 		// surrounding trace. The motif itself is never passed as a parameter.
