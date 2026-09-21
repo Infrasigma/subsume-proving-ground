@@ -41,7 +41,7 @@ jobs:
           path: acex-v4-protected-result.txt
 
   ace-x-v6-v7-v8:
-    if: (github.event.pull_request.head.ref == 'ace-x-v6-semantic-prospective-20260921' || github.event.pull_request.head.ref == 'ace-x-v7-interactive-symbolic-20260921' || github.event.pull_request.head.ref == 'ace-x-v8-unified-cognitive-20260921') && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    if: (github.event.pull_request.head.ref == 'ace-x-v6-semantic-prospective-20260921' || github.event.pull_request.head.ref == 'ace-x-v7-interactive-symbolic-20260921' || github.event.pull_request.head.ref == 'ace-x-v8-unified-cognitive-20260921' || github.event.pull_request.head.ref == 'ace-x-v8-fresh-integration-20260921') && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -67,7 +67,7 @@ jobs:
             ace-x-v7-interactive-symbolic-20260921)
               go test -mod=mod -run '^TestV7ExplorationGoalPlanningAndPersistence$|^TestV7MacroInductionAndStructuralActionTransfer$|^TestV7ExplorationDoesNotPretendUnobservedTransitionsAreKnown$' ./internal/acex -count=1 -timeout=20m -v
               ;;
-            ace-x-v8-unified-cognitive-20260921)
+            ace-x-v8-unified-cognitive-20260921|ace-x-v8-fresh-integration-20260921)
               go test -mod=mod -run '^TestUniversalProgramBuilderLearnsExecutableCapability$' ./internal/ace -count=1 -timeout=5m -v
               go test -mod=mod -run '^TestV8UnifiedCognitiveEntity$|^TestV8SurpriseMemoryAffectsRetrieval$|^TestV8FailureMemoryBlocksRepeatedBadAction$' ./internal/acex -count=1 -timeout=20m -v
               ;;
