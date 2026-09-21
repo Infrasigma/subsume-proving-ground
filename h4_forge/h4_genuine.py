@@ -373,6 +373,9 @@ def run_block(seed: int) -> dict:
             "low_source_holdout": low_hold,
         })
 
+    if len(library.concepts) < 3:
+        return {"verdict": "KILLED", "reason": "discovery produced fewer than 3 unique retained concepts", "hidden": hidden, "discoveries": discoveries}
+
     # Cross-surface transfer to both surfaces never used for source acquisition.
     transfer = []
     for i, c in enumerate(library.concepts):
@@ -438,7 +441,8 @@ def run_block(seed: int) -> dict:
         return tuple(pos[: count // 2] + neg[: count // 2])
     ctrain = compose_balanced(target, a.atoms, b.atoms, "xor", seed + 9000, 100)
     caudit = compose_balanced(target, a.atoms, b.atoms, "xor", seed + 9100, 140)
-    _, k0_acc, k0_cost = fresh_all_search(ctrain, caudit)
+    k0_concept, k0_cost = fresh_all_search(ctrain, caudit)
+    k0_acc = 0.0 if k0_concept is None else k0_concept.heldout_accuracy
     _, k1_acc, k1_cost = library.compose(ctrain, caudit)
     comp_ratio = k1_cost / max(k0_cost, 1)
     composition = {"accuracy": k1_acc, "fresh_accuracy": k0_acc, "cost_ratio": comp_ratio}
