@@ -133,3 +133,4 @@ func main() {
 // Adaptive representation-expansion gate added to evaluator.
 // Targeted V8 adaptive-entity diagnostic workflow enabled.
 // Multi-episode representation-transfer evaluator revision enabled.
+// Baseline is now reset per independent target episode.
