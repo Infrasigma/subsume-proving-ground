@@ -30,4 +30,6 @@ jobs:
             ACE_MULTI_HORIZON_AMORTIZATION/**
           if-no-files-found: warn
       - name: Race verification
-        run: go test -mod=mod -race -run '^TestMultiHorizonAutonomousAmortization$' ./internal/ace -count=1 -timeout 45m
+        if: always()
+        run: go test -mod=mod -race -run '^TestMultiHorizonAutonomousAmortization
+ ./internal/ace -count=1 -timeout 45m
