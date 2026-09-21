@@ -26,6 +26,8 @@ type CognitiveRuntime struct {
 	Relational  RelationalMemory
 	Mechanisms  []Macro
 	ActiveRanker RankerProgram
+	RankerHistory []RankerProgram
+	ImprovementLedger ImprovementLedger
 	Version     uint64
 }
 
@@ -131,7 +133,22 @@ func (r *CognitiveRuntime) ImproveSearchLanguage(train, holdout, hidden []Datase
 			return RankerSearchResult{}, errors.New("candidate search language failed independent hidden verification")
 		}
 	}
+	receipt:=MakeImprovementReceipt(r.Version,r.Version+1,candidate.Program.Signature(),candidate.Baseline,candidate.Improved,true)
+	if err:=r.ImprovementLedger.Admit(receipt); err!=nil {
+		return RankerSearchResult{},err
+	}
+	r.RankerHistory=append(r.RankerHistory,r.ActiveRanker)
 	r.ActiveRanker = candidate.Program
 	r.Version++
 	return candidate, nil
+}
+
+func (r *CognitiveRuntime) RollbackSearchLanguage() error {
+	if len(r.RankerHistory)==0 {
+		return errors.New("no search-language rollback available")
+	}
+	r.ActiveRanker=r.RankerHistory[len(r.RankerHistory)-1]
+	r.RankerHistory=r.RankerHistory[:len(r.RankerHistory)-1]
+	if r.Version>0 { r.Version-- }
+	return nil
 }
