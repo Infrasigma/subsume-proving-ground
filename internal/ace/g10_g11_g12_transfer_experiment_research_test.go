@@ -253,6 +253,9 @@ func g10BuildTask(domain, op string, depth int) g10Task {
 		train = append(train, [2]string{x, g10ApplyRepeated(domain, op, x, depth)})
 	}
 	hiddenXS := []string{"11", "-11", "5", "21"}
+	if domain == "token" {
+		hiddenXS = []string{"q", "seed", "base", "!"}
+	}
 	if domain == "text" {
 		hiddenXS = []string{"hello", "Az", "xyZ", "K"}
 	}
