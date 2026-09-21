@@ -225,7 +225,7 @@ func v3VectorKey(xs []int) string {
 	return b.String()
 }
 
-func v3Matches(e V3Expr, task V3Task, l V3Library) bool {
+func v3MatchesTrain(e V3Expr, task V3Task, l V3Library) bool {
 	got, err := v3Evaluate(e, task.TrainInputs, l)
 	if err != nil || len(got) != len(task.TrainOutput) {
 		return false
@@ -235,12 +235,16 @@ func v3Matches(e V3Expr, task V3Task, l V3Library) bool {
 			return false
 		}
 	}
-	hold, err := v3Evaluate(e, task.HoldInputs, l)
-	if err != nil || len(hold) != len(task.HoldOutput) {
+	return true
+}
+
+func v3VerifyHoldout(e V3Expr, task V3Task, l V3Library) bool {
+	got, err := v3Evaluate(e, task.HoldInputs, l)
+	if err != nil || len(got) != len(task.HoldOutput) {
 		return false
 	}
-	for i := range hold {
-		if hold[i] != task.HoldOutput[i] {
+	for i := range got {
+		if got[i] != task.HoldOutput[i] {
 			return false
 		}
 	}
@@ -296,7 +300,7 @@ func v3SemanticExpand(task V3Task, l V3Library, maxSize int, beam int) (V3Search
 		}
 		bySize[size] = entries
 		for _, en := range entries {
-			if v3Matches(en.e, task, l) {
+			if v3MatchesTrain(en.e, task, l) {
 				result.Cost.Verify += len(task.TrainInputs) + len(task.HoldInputs)
 				result.Program = cloneV3Expr(en.e)
 				result.Size = en.size
@@ -455,6 +459,15 @@ func v3BestCandidate(taskPrograms map[string]V3Expr, tasks []V3Task, l V3Library
 		names = append(names, sig)
 	}
 	sort.Strings(names)
+	sort.Slice(names, func(i, j int) bool {
+		if stats[names[i]].sizes != stats[names[j]].sizes {
+			return stats[names[i]].sizes > stats[names[j]].sizes
+		}
+		if stats[names[i]].uses != stats[names[j]].uses {
+			return stats[names[i]].uses > stats[names[j]].uses
+		}
+		return names[i] < names[j]
+	})
 	for _, sig := range names {
 		st := stats[sig]
 		body := cloneV3Expr(st.expr)
@@ -548,7 +561,7 @@ func V3VerifyHiddenSuccessors(lib V3Library, baseline V3Library, hidden []V3Hidd
 		if err != nil {
 			return nil, before, after, fmt.Errorf("learned hidden search failed %s: %w", hc.ID, err)
 		}
-		if !v3Matches(got.Program, hc.Train, lib) || !v3Matches(got.Program, hc.Holdout, lib) {
+		if !v3MatchesTrain(got.Program, hc.Train, lib) || !v3VerifyHoldout(got.Program, hc.Train, lib) || !v3VerifyHoldout(got.Program, hc.Holdout, lib) {
 			return nil, before, after, fmt.Errorf("hidden semantic generalization failed %s", hc.ID)
 		}
 		before += base.Cost.Total()
