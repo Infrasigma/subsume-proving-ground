@@ -73,6 +73,7 @@ func TestV2MemoryAttentionAndExecutiveControl(t *testing.T) {
 }
 
 func TestV2ArchitectureTerminal(t *testing.T) {
+	if !v2KillMode { t.Skip("V2 terminal is a preserved negative route; run with -tags v2kill") }
 	if testing.Short() {
 		t.Skip("terminal architecture test disabled in short mode")
 	}
