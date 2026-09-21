@@ -148,9 +148,16 @@ func makeComposedTarget(seed int64, family hiddenFamily, count int) (Dataset, Da
 }
 
 func split(data Dataset) (Dataset, Dataset) {
-	n := len(data.Examples) / 2
-	return Dataset{Examples: append([]Observation(nil), data.Examples[:n]...)},
-		Dataset{Examples: append([]Observation(nil), data.Examples[n:]...)}
+	a := make([]Observation, 0, (len(data.Examples)+1)/2)
+	b := make([]Observation, 0, len(data.Examples)/2)
+	for i, ex := range data.Examples {
+		if i%2 == 0 {
+			a = append(a, ex)
+		} else {
+			b = append(b, ex)
+		}
+	}
+	return Dataset{Examples: a}, Dataset{Examples: b}
 }
 
 type causalWorld struct {
