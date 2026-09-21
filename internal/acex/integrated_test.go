@@ -98,6 +98,55 @@ func mappedConcept(source Dataset, target Dataset, c Concept) (Concept, Resource
 	return c, cost, nil
 }
 
+func makeComposedTarget(seed int64, family hiddenFamily, count int) (Dataset, Dataset, Dataset) {
+	r := rand.New(rand.NewSource(seed))
+	aTokens := permutedTokens(seed+17, family, "compose-a")
+	bTokens := permutedTokens(seed+29, family, "compose-b")
+	makeSet := func(requireBoth bool) Dataset {
+		pos, neg := make([]Observation, 0, count/2), make([]Observation, 0, count/2)
+		for len(pos) < count/2 || len(neg) < count/2 {
+			label := len(pos) < count/2 && (len(neg) >= count/2 || r.Float64() < 0.5)
+			features := make([]string, 0, 16)
+			if label {
+				features = append(features, aTokens...)
+				if requireBoth {
+					features = append(features, bTokens...)
+				}
+			} else {
+				for _, token := range aTokens {
+					if r.Float64() > 0.45 {
+						features = append(features, token)
+					}
+				}
+				if requireBoth {
+					for _, token := range bTokens {
+						if r.Float64() > 0.60 {
+							features = append(features, token)
+						}
+					}
+				}
+				if requireBoth && len(features) == len(aTokens)+len(bTokens) {
+					features = features[:len(features)-1]
+				}
+			}
+			for i, n := range family.Noise {
+				if r.Float64() < 0.15+float64(i)*0.08 {
+					features = append(features, fmt.Sprintf("compose-%s-%d", n, r.Intn(7)))
+				}
+			}
+			sort.Strings(features)
+			ex := Observation{Features: features, Label: label}
+			if label {
+				pos = append(pos, ex)
+			} else {
+				neg = append(neg, ex)
+			}
+		}
+		return Dataset{Examples: append(pos, neg...)}
+	}
+	return makeSet(false), makeSet(true), Dataset{Examples: append([]Observation(nil), makeSet(true).Examples...)}
+}
+
 func split(data Dataset) (Dataset, Dataset) {
 	n := len(data.Examples) / 2
 	return Dataset{Examples: append([]Observation(nil), data.Examples[:n]...)},
@@ -225,25 +274,27 @@ func runBlock(seed int64) blockResult {
 	}
 
 	// Two independently learned concepts compose on a third opaque target surface.
-	aTrain := makeBalanced(seed+606, families[0], 2, 120, true)
-	aHold := makeBalanced(seed+707, families[0], 2, 120, true)
-	bTrain := makeBalanced(seed+808, families[1], 2, 120, true)
-	bHold := makeBalanced(seed+909, families[1], 2, 120, true)
+	aTrain := makeBalanced(seed+606, families[0], 0, 120, true)
+	aHold := makeBalanced(seed+707, families[0], 0, 120, true)
+	bTrain := makeBalanced(seed+808, families[1], 1, 120, true)
+	bHold := makeBalanced(seed+909, families[1], 1, 120, true)
 	a, ac, ae := lab.Discover(aTrain, aHold)
 	b, bc, be := lab.Discover(bTrain, bHold)
 	compositionOK := ae == nil && be == nil
 	combinedCost := ac.Total() + bc.Total()
 	if compositionOK {
-		target := makeBalanced(seed+1001, families[2], 2, 160, true)
-		ma, mca, ea := mappedConcept(aTrain, target, a)
-		mb, mcb, eb := mappedConcept(bTrain, target, b)
+		targetA := makeBalanced(seed+1001, families[2], 0, 140, true)
+		targetB := makeBalanced(seed+1002, families[2], 1, 140, true)
+		_, _, unionTarget := makeComposedTarget(seed+1003, families[2], 160)
+		ma, mca, ea := mappedConcept(aTrain, targetA, a)
+		mb, mcb, eb := mappedConcept(bTrain, targetB, b)
 		if ea != nil || eb != nil {
 			compositionOK = false
 		} else {
 			union := ComposeConcepts(ma, mb)
-			acc := Accuracy(target, union.Features)
+			acc := Accuracy(unionTarget, union.Features)
 			fresh := RepresentationLab{MaxAtoms: 8, Policy: PolicyBroad}
-			_, freshCost, ferr := fresh.Discover(target, target)
+			_, freshCost, ferr := fresh.Discover(unionTarget, unionTarget)
 			combinedCost += mca.Total() + mcb.Total()
 			if ferr != nil || acc < 0.90 {
 				compositionOK = false
@@ -263,7 +314,10 @@ func runBlock(seed int64) blockResult {
 	throttled := makeBalanced(seed+1111, families[0], 0, 100, true)
 	controller := MetaController{Policy: PolicyBroad}
 	diag := controller.DiagnoseAndSwitch(throttled, 1)
-	gates["G5"] = diag.Kind != "" && controller.Policy != PolicyBroad
+	recoverLab := RepresentationLab{MaxAtoms: 4, Policy: controller.Policy}
+	recoverTrain, recoverHold := split(throttled)
+	recovered, _, recoverErr := recoverLab.Discover(recoverTrain, recoverHold)
+	gates["G5"] = diag.Kind != "" && controller.Policy != PolicyBroad && recoverErr == nil && recovered.Accuracy >= 0.90
 	details["g5_diagnosis"] = diag
 
 	// X6: endogenous next-challenge generation.
@@ -303,12 +357,14 @@ func runBlock(seed int64) blockResult {
 
 	// X10: persistence/deletion is demonstrated by solving a target from stored
 	// knowledge after raw training data is discarded.
+	postDeleteAudit := makeBalanced(seed+1414, sourceFamily, 0, 120, true)
 	deletedSource, deletedTarget := source, hold
 	deletedSource.Examples = nil
 	deletedTarget.Examples = nil
-	gates["G10"] = len(store.Items) > 0 && store.Items[0].Verified && len(store.Items[0].Concept.Features) >= 3
-	_ = deletedSource
-	_ = deletedTarget
+	retained := store.Items[0].Concept
+	postDeleteAccuracy := Accuracy(postDeleteAudit, retained.Features)
+	gates["G10"] = len(store.Items) > 0 && store.Items[0].Verified && len(retained.Features) >= 3 && postDeleteAccuracy >= 0.90
+	metrics["g10_post_delete_accuracy"] = postDeleteAccuracy
 
 	// X11: pure substrate model ablation. This package is standard-library-only.
 	gates["G9"] = true
