@@ -154,15 +154,26 @@ func (e *V8CognitiveEntity) ObserveAndAct(state RelationalState, actions []strin
 		return action, nil
 	}
 	if action, ok := e.DirectedRepresentation.Select(state, filtered); ok {
+		if err := e.verifyHermeticCapability(); err != nil {
+			if e.DirectedRepresentation.Retained {
+				return "", err
+			}
+		}
 		e.attest("directed-executable-representation-transfer", "v11-directed-rep-"+e.DirectedRepresentation.Key(),
-		fmt.Sprintf("complexity=%d expansions=%d retained=%t", e.DirectedRepresentation.Complexity(), e.DirectedRepresentation.SearchExpansions, e.DirectedRepresentation.Retained), true)
+			fmt.Sprintf("complexity=%d expansions=%d retained=%t wasm=%s", e.DirectedRepresentation.Complexity(), e.DirectedRepresentation.SearchExpansions, e.DirectedRepresentation.Retained, e.HermeticArtifactHash), true)
 		return action, nil
 	}
 	if e.DirectedRepresentation.Synthesize() {
 		if action, ok := e.DirectedRepresentation.Select(state, filtered); ok {
+			if err := e.ensureHermeticCapability(); err != nil {
+				return "", err
+			}
+			if err := e.verifyHermeticCapability(); err != nil {
+				return "", err
+			}
 			e.Version++
 			e.attest("directed-executable-representation-invention", "v11-directed-rep-"+e.DirectedRepresentation.Key(),
-				fmt.Sprintf("complexity=%d expansions=%d", e.DirectedRepresentation.Complexity(), e.DirectedRepresentation.SearchExpansions), true)
+				fmt.Sprintf("complexity=%d expansions=%d wasm=%s", e.DirectedRepresentation.Complexity(), e.DirectedRepresentation.SearchExpansions, e.HermeticArtifactHash), true)
 			return action, nil
 		}
 	}
@@ -214,7 +225,13 @@ func sortedStringSet(m map[string]bool) []string {
 func (e *V8CognitiveEntity) ObserveOutcome(before RelationalState, action string, after RelationalState, reward float64, terminal bool) V7Step {
 	e.StructuralRoles.Observe(before, action, reward, terminal)
 	e.AdaptiveRoles.Observe(before, action, reward, terminal)
+	oldKey := e.DirectedRepresentation.Key()
+	oldValid := e.DirectedRepresentation.Valid
 	e.DirectedRepresentation.Record(before, action, reward, terminal)
+	if e.DirectedRepresentation.Key() != oldKey || e.DirectedRepresentation.Valid != oldValid {
+		e.HermeticArtifact = nil
+		e.HermeticArtifactHash = ""
+	}
 	e.RelationalPatterns.Record(before, action, reward, terminal)
 	e.ExecutableRepresentation.Record(before, action, reward, terminal)
 	step := e.Experience.ExecuteObserved(before, action, after, reward, terminal)
@@ -448,9 +465,18 @@ func (e *V8CognitiveEntity) ForgetRawExperiences() {
 	e.Inquiry = InquiryManager{}
 	e.PendingIntervention = ""
 	e.Version++
-	if err := e.DirectedRepresentation.ForgetExamples(); err != nil {
-		// Preserve an already-retained directed representation; a failed
-		// first-time retention is intentionally not converted into a claim.
+	if !e.DirectedRepresentation.Retained && !e.DirectedRepresentation.Valid {
+		_ = e.DirectedRepresentation.Synthesize()
+	}
+	if e.DirectedRepresentation.Valid {
+		if err := e.DirectedRepresentation.ForgetExamples(); err != nil {
+			e.Failures = append(e.Failures, "directed-retention:"+err.Error())
+		}
+		if e.DirectedRepresentation.Retained {
+			if err := e.ensureHermeticCapability(); err != nil {
+				e.Failures = append(e.Failures, "hermetic-retention:"+err.Error())
+			}
+		}
 	}
 	e.ExecutableRepresentation = e.ExecutableRepresentation.ForgetExamples()
 }
@@ -459,18 +485,54 @@ func (e *V8CognitiveEntity) ExportRetainedRepresentation() (string, error) {
 	if e == nil {
 		return "", errors.New("nil V8 entity")
 	}
-	return e.DirectedRepresentation.Artifact()
+	if !e.DirectedRepresentation.Retained {
+		return "", errors.New("directed representation is not retained")
+	}
+	if err := e.ensureHermeticCapability(); err != nil {
+		return "", err
+	}
+	if err := e.verifyHermeticCapability(); err != nil {
+		return "", err
+	}
+	return EncodeV12WasmBase64(e.HermeticArtifact), nil
 }
 
 func (e *V8CognitiveEntity) LoadRetainedRepresentation(artifact string) error {
 	if e == nil {
 		return errors.New("nil V8 entity")
 	}
-	r, err := LoadV11DirectedRepresentation(artifact)
-	if err != nil {
-		return err
+	module, decodeErr := DecodeV12WasmBase64(artifact)
+	if decodeErr == nil {
+		capability, loadErr := LoadV12WasmCapability(module)
+		if loadErr == nil {
+			e.DirectedRepresentation = V11DirectedExecutableRepresentation{
+				Root: capability.Pattern.Root,
+				Nodes: capability.Pattern.Nodes,
+				Edges: append([]V11DirectedPatternEdge(nil), capability.Pattern.Edges...),
+				Budget: 20000,
+				Valid: true,
+				Retained: true,
+			}
+			e.HermeticArtifact = append([]byte(nil), module...)
+			e.HermeticArtifactHash = capability.SHA256
+		} else {
+			r, err := LoadV11DirectedRepresentation(artifact)
+			if err != nil {
+				return loadErr
+			}
+			e.DirectedRepresentation = r
+			e.HermeticArtifact = nil
+			e.HermeticArtifactHash = ""
+		}
+	} else {
+		r, err := LoadV11DirectedRepresentation(artifact)
+		if err != nil {
+			return err
+		}
+		e.DirectedRepresentation = r
+		e.HermeticArtifact = nil
+		e.HermeticArtifactHash = ""
 	}
-	e.DirectedRepresentation = r
 	e.StructuralRoles = NewV8StructuralRoleLearner()
 	e.AdaptiveRoles = NewV8AdaptiveStructuralRoleLearner()
 	e.RelationalPatterns = NewV8RelationalPatternInducer()
