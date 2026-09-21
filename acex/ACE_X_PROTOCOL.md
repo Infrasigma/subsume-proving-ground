@@ -38,3 +38,5 @@ No threshold, hidden seed, evaluator, or task-family-specific mechanism may be c
 Optional model interfaces are replaceable components only. The evaluator remains model-independent.
 
 CI-trigger revision: integrated gate unchanged.
+
+Clean-run synchronization marker.
