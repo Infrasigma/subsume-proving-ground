@@ -26,6 +26,10 @@ jobs:
           echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
           cat asi_forge/ARTIFACT_STDOUT.txt
           exit 0
+      - name: Compute deterministic repair target
+        if: always()
+        run: |
+          go run ./cmd/asi-forge-repair | tee asi_forge/REPAIR_TARGET.txt
       - name: Upload forge artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -35,6 +39,7 @@ jobs:
             asi_forge/artifacts/ASI_FORGE_RUN.json
             asi_forge/artifacts/ASI_FORGE_RUN.md
             asi_forge/ARTIFACT_STDOUT.txt
+            asi_forge/REPAIR_TARGET.txt
       - name: Enforce ASI verdict gate
         run: |
           python3 - <<'PY'
