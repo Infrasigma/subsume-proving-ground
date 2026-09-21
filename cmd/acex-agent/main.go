@@ -131,3 +131,4 @@ func main() {
 // Structural-role transfer hypothesis integrated; evaluation remains external.
 // Negative-control recording revision; structural-role gate remains unchanged.
 // Adaptive representation-expansion gate added to evaluator.
+// Targeted V8 adaptive-entity diagnostic workflow enabled.
