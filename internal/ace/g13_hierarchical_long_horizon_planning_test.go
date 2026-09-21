@@ -63,7 +63,7 @@ func g13Enumerate13(family,maxLen int,lib *g13Lib13) []g13Program13 {
 	ops:=g13Ops(family)
 	atoms:=append([]int(nil),ops...)
 	for i:=range lib.Macros { atoms=append(atoms,-1000-i) }
-	out:=make([]g13Program13,0,4096)
+	out:=make([]g13Program13,0,8192)
 	seen:=map[string]bool{}
 	var rec func([]int,int)
 	rec=func(p []int,d int){
@@ -78,6 +78,14 @@ func g13Enumerate13(family,maxLen int,lib *g13Lib13) []g13Program13 {
 		for _,a:=range atoms { rec(append(append([]int(nil),p...),a),d+1) }
 	}
 	rec(nil,0)
+	sort.SliceStable(out,func(i,j int) bool{
+		if len(out[i])!=len(out[j]) { return len(out[i])<len(out[j]) }
+		mi,mj:=0,0
+		for _,x:=range out[i] { if x<0 { mi++ } }
+		for _,x:=range out[j] { if x<0 { mj++ } }
+		if mi!=mj { return mi>mj }
+		return programKey13(out[i])<programKey13(out[j])
+	})
 	return out
 }
 
