@@ -128,7 +128,7 @@ func TestF11ResourceNormalizedRecursiveImprovement(t *testing.T) {
 		metaCost := f11Cost{
 			SearchEvaluations:parameterEvals,
 			VerificationCases:len(successor.train)+len(successor.hidden),
-			SemanticSteps:len(meta.Prefix)+1,
+			SemanticSteps:len(meta.Base.Steps)+1,
 			ArtifactBytes:f11SerializedSize(m2.Procedure),
 		}
 		metaTotal += f11Scalar(metaCost)
