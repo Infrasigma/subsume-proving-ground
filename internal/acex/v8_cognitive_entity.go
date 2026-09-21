@@ -147,8 +147,14 @@ func (e *V8CognitiveEntity) ObserveAndAct(state RelationalState, actions []strin
 			e.AdaptiveRoles.InventedRepresentation(), true)
 		return action, nil
 	}
-	// Known representation families failed to provide a safe action. This is
-	// the explicit representation-gap trigger for generic relational search.
+	// Known representation families failed to provide a safe action. Use an
+	// existing synthesized relation first; only search for a new representation
+	// when none is retained.
+	if action, ok := e.RelationalPatterns.Select(state, filtered); ok {
+		e.attest("synthesized-relational-representation", "v8-pattern-"+e.RelationalPatterns.Pattern.Key(),
+			fmt.Sprintf("complexity=%d expansions=%d", e.RelationalPatterns.Pattern.Complexity(), e.RelationalPatterns.SearchExpansions), true)
+		return action, nil
+	}
 	if e.RelationalPatterns.TrySynthesize() {
 		if action, ok := e.RelationalPatterns.Select(state, filtered); ok {
 			e.Version++
