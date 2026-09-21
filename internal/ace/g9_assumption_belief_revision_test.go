@@ -431,9 +431,9 @@ func TestG9AssumptionBasedBeliefRevision(t *testing.T) {
 	for seed:=1;seed<=seeds;seed++ {
 		base,rules,_,_:=g9RandomScenario(int64(950000+seed))
 		if !g9Consistent(base,rules) { continue }
-		target,ok:=g9FindContradictoryEvidence(base,rules)
+		evidenceLiteral,ok:=g9FindContradictoryEvidence(base,rules)
 		if !ok { continue }
-		ev:=g9Assumption{ID:"naive",Literal:g9Neg(target),Cost:0,Hard:true}
+		ev:=g9Assumption{ID:"naive",Literal:evidenceLiteral,Cost:0,Hard:true}
 		if !g9Consistent(append(append([]g9Assumption(nil),base...),ev),rules) { report.NaiveInconsistencies++ }
 	}
 	class:="G9_NOT_PROVEN"
