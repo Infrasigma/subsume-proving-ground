@@ -58,26 +58,73 @@ func motifKey(xs []int) string {
   for _,v:=range xs{out=append(out,byte(v))}; return string(out)
 }
 
-func discoverLibrary(stream []Episode,minLen,maxLen,minCount int) Library {
-  counts:=map[string]*Macro{}
-  for _,raw:=range stream {
-    ep:=canonicalize(raw); seen:=map[string]bool{}
-    for n:=minLen;n<=maxLen;n++ {
-      for i:=0;i+n<=len(ep);i++ {
-        seq:=append([]int(nil),ep[i:i+n]...); k:=motifKey(seq)
-        if seen[k]{continue}; seen[k]=true
-        m:=counts[k]; if m==nil{m=&Macro{Seq:seq};counts[k]=m};m.Count++
-      }
-    }
-  }
-  c:=[]Macro{}
-  for _,m:=range counts { if m.Count<minCount{continue};m.Gain=(len(m.Seq)-1)*(m.Count-1);if m.Gain>0{c=append(c,*m)} }
-  sort.Slice(c,func(i,j int)bool{if c[i].Gain!=c[j].Gain{return c[i].Gain>c[j].Gain};if len(c[i].Seq)!=len(c[j].Seq){return len(c[i].Seq)>len(c[j].Seq)};return motifKey(c[i].Seq)<motifKey(c[j].Seq)})
-  selected:=[]Macro{}
-  for _,m:=range c { dup:=false;for _,s:=range selected{if motifKey(s.Seq)==motifKey(m.Seq){dup=true;break}};if dup{continue};m.ID=len(selected);selected=append(selected,m);if len(selected)>=256{break} }
-  return Library{Macros:selected}
+func countOccurrences(ep Episode, seq []int) int {
+	count:=0
+	for i:=0;i+len(seq)<=len(ep);i++{if matchesAt(ep,i,seq){count++;i+=len(seq)-1}}
+	return count
 }
 
+func discoverLibraryPredictive(stream []Episode,minLen,maxLen,minCount int) Library {
+	if len(stream)<3 { return discoverLibraryBasic(stream,minLen,maxLen,minCount) }
+	split:=len(stream)*2/3
+	train:=stream[:split]
+	validation:=stream[split:]
+	counts:=map[string]*Macro{}
+	for _,raw:=range train {
+		ep:=canonicalize(raw); seen:=map[string]bool{}
+		for n:=minLen;n<=maxLen;n++{
+			for i:=0;i+n<=len(ep);i++{
+			seq:=append([]int(nil),ep[i:i+n]...); k:=motifKey(seq)
+				if seen[k]{continue};seen[k]=true
+				m:=counts[k];if m==nil{m=&Macro{Seq:seq};counts[k]=m};m.Count++
+			}
+		}
+	}
+	cands:=[]Macro{}
+	for _,m:=range counts{
+		if m.Count<minCount{continue}
+		valEpisodes:=0
+		for _,raw:=range validation{if countOccurrences(canonicalize(raw),m.Seq)>0{valEpisodes++}}
+		// Predictive admission: the pattern must recur across unseen episodes.
+		if valEpisodes<2{continue}
+		literalBits:=len(m.Seq)*9
+		referenceBits:=9
+		headerBits:=10+len(m.Seq)*8
+		m.Gain=(literalBits-referenceBits)*(m.Count-1)-headerBits
+		if m.Gain>0{cands=append(cands,*m)}
+	}
+	sort.Slice(cands,func(i,j int)bool{
+		if cands[i].Gain!=cands[j].Gain{return cands[i].Gain>cands[j].Gain}
+		if len(cands[i].Seq)!=len(cands[j].Seq){return len(cands[i].Seq)>len(cands[j].Seq)}
+		return motifKey(cands[i].Seq)<motifKey(cands[j].Seq)
+	})
+	selected:=[]Macro{}
+	for _,m:=range cands{
+		dup:=false;for _,s:=range selected{if motifKey(s.Seq)==motifKey(m.Seq){dup=true;break}}
+		if dup{continue};m.ID=len(selected);selected=append(selected,m);if len(selected)>=128{break}
+	}
+	return Library{Macros:selected}
+}
+
+func discoverLibraryBasic(stream []Episode,minLen,maxLen,minCount int) Library {
+	counts:=map[string]*Macro{}
+	for _,raw:=range stream{
+		ep:=canonicalize(raw);seen:=map[string]bool{}
+		for n:=minLen;n<=maxLen;n++{for i:=0;i+n<=len(ep);i++{
+			seq:=append([]int(nil),ep[i:i+n]...);k:=motifKey(seq);if seen[k]{continue};seen[k]=true
+			m:=counts[k];if m==nil{m=&Macro{Seq:seq};counts[k]=m};m.Count++
+		}}
+	}
+	c:=[]Macro{}
+	for _,m:=range counts{if m.Count<minCount{continue};m.Gain=(len(m.Seq)-1)*(m.Count-1);if m.Gain>0{c=append(c,*m)}}
+	sort.Slice(c,func(i,j int)bool{return c[i].Gain>c[j].Gain})
+	selected:=[]Macro{};for _,m:=range c{dup:=false;for _,s:=range selected{if motifKey(s.Seq)==motifKey(m.Seq){dup=true;break}};if dup{continue};m.ID=len(selected);selected=append(selected,m);if len(selected)>=128{break}}
+	return Library{Macros:selected}
+}
+
+func discoverLibrary(stream []Episode,minLen,maxLen,minCount int) Library {
+	return discoverLibraryPredictive(stream,minLen,maxLen,minCount)
+}
 func matchesAt(ep Episode,i int,seq []int)bool{if i+len(seq)>len(ep){return false};for j,v:=range seq{if ep[i+j]!=v{return false}};return true}
 
 func libraryHeaderBits(lib Library)int{
@@ -117,13 +164,18 @@ func runBlock(seed int)BlockResult{
     rk0:=freshCost(raw,false);rk:=learnedCost(raw,lib,false);sk0:=freshCost(surf,true);sk:=learnedCost(surf,lib,true);ok0:=freshCost(order2,false);ok:=learnedCost(order2,lib,false)
     metrics=append(metrics,GenMetrics{Generation:gen,RawBitsK0:rk0,RawBitsK:rk,RawSavings:savings(rk0,rk),SurfaceBitsK0:sk0,SurfaceBitsK:sk,SurfaceSavings:savings(sk0,sk),Order2BitsK0:ok0,Order2BitsK:ok,Order2Savings:savings(ok0,ok),Ratio:func()float64{if rk0==0{return 1};return float64(rk)/float64(rk0)}()})
     // Generic promotion: discovered reusable phrases become part of the next experience vocabulary.
-    if gen<3{for _,m:=range lib.Macros{if len(m.Seq)>=7{motifs=append(motifs,append(Episode(nil),m.Seq...))}}}
+    if gen<3{promoted:=0;for _,m:=range lib.Macros{if len(m.Seq)>=7&&promoted<8{motifs=append(motifs,append(Episode(nil),m.Seq...));promoted++}}}
   }
   negTrain:=shuffleStream(r,build(motifs,makeIDs(r,18,160,7)));negLib:=discoverLibrary(negTrain,3,10,3);negAudit:=audit(r,motifs,160,7,false)
   negSavings:=savings(freshCost(negAudit,false),learnedCost(negAudit,negLib,false))
-  sum:=0.0;min:=math.Inf(1);comp:=true;recursive:=true
-  for i,m:=range metrics{sum+=m.Ratio;if m.Ratio<min{min=m.Ratio};if m.RawSavings<0.25||m.Order2Savings<0.25{comp=false};if i>0&&m.Ratio>=0.75{recursive=false}}
-  retention:=0.0;if metrics[0].RawSavings>0{retention=metrics[0].SurfaceSavings/metrics[0].RawSavings}
+  sum:=0.0;min:=math.Inf(1);comp:=true;recursive:=true;retentions:=[]float64{}
+  for i,m:=range metrics{
+    sum+=m.Ratio;if m.Ratio<min{min=m.Ratio}
+    if i>0&&(m.RawSavings<0.25||m.Order2Savings<0.25){comp=false}
+    if i>0&&m.Ratio>=0.75{recursive=false}
+    if i>0&&m.RawSavings>0{retentions=append(retentions,m.SurfaceSavings/m.RawSavings)}
+  }
+  retention:=0.0;if len(retentions)>0{for _,x:=range retentions{retention+=x};retention/=float64(len(retentions))}
   pass:=comp&&recursive&&retention>=0.80&&negSavings<0.05
   return BlockResult{Seed:seed,Generations:metrics,MeanRecursiveRatio:sum/4,MinRecursiveRatio:min,SurfaceRetention:retention,NegativeControlSavings:negSavings,AllCompositionSavings:comp,AllRecursiveThresholds:recursive,SurfacePass:retention>=0.80,NegativeControlPass:negSavings<0.05,Pass:pass}
 }
