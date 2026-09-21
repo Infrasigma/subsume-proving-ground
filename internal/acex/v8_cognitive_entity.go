@@ -14,20 +14,23 @@ type V8CapabilityEvidence struct {
 }
 
 type V8CognitiveEntity struct {
-	Mechanism     V5MechanismRuntime
-	StaticLibrary V4Library
-	Experience    *V7CognitiveAgent
-	Memory        V5AdaptiveMemory
-	Inquiry       InquiryManager
-	Evidence      []V8CapabilityEvidence
-	Version       uint64
-	Failures      []string
+	Mechanism        V5MechanismRuntime
+	StaticLibrary    V4Library
+	ActiveStrategy   V6Strategy
+	StrategyHistory  []V6Strategy
+	Experience       *V7CognitiveAgent
+	Memory           V5AdaptiveMemory
+	Inquiry          InquiryManager
+	Evidence         []V8CapabilityEvidence
+	Version          uint64
+	Failures         []string
 }
 
 func NewV8CognitiveEntity() *V8CognitiveEntity {
 	return &V8CognitiveEntity{
 		Mechanism:     *NewV5MechanismRuntime(),
 		StaticLibrary: NewV4Library(),
+		ActiveStrategy: V6Strategy{Name:"baseline", Strategy:V6BaselineSearch, Library:NewV4Library()},
 		Experience:    NewV7CognitiveAgent(),
 	}
 }
@@ -163,22 +166,38 @@ func (e *V8CognitiveEntity) SelectMechanism(visible, hidden []V4Task, maxSize, b
 	if strategy.Strategy != V6SemanticSearch {
 		return errors.New("semantic strategy was not independently selected")
 	}
+	e.StrategyHistory = append(e.StrategyHistory, e.ActiveStrategy)
+	e.ActiveStrategy = strategy
 	e.attest("mechanism-selection", "v8-semantic-strategy",
 		fmt.Sprintf("hidden-ratios=%v", ratios), true)
 	e.Version++
 	return nil
 }
 
+func (e *V8CognitiveEntity) SolveStatic(task V4Task, maxSize, beam int) (V4SearchResult, error) {
+	if e == nil {
+		return V4SearchResult{}, errors.New("nil V8 entity")
+	}
+	if e.ActiveStrategy.Strategy == "" {
+		e.ActiveStrategy = V6Strategy{Name:"baseline", Strategy:V6BaselineSearch, Library:NewV4Library()}
+	}
+	return V6SolveWithStrategy(e.ActiveStrategy, task, maxSize, beam)
+}
+
 func (e *V8CognitiveEntity) RollbackMechanism() error {
 	if e == nil {
 		return errors.New("nil V8 entity")
 	}
-	if err := e.Mechanism.Rollback(); err != nil {
-		return err
+	if len(e.StrategyHistory) == 0 {
+		return errors.New("no V8 strategy rollback")
 	}
-	e.Version = e.Mechanism.Version
+	e.ActiveStrategy = e.StrategyHistory[len(e.StrategyHistory)-1]
+	e.StrategyHistory = e.StrategyHistory[:len(e.StrategyHistory)-1]
+	if e.Version > 0 {
+		e.Version--
+	}
 	e.attest("rollback", fmt.Sprintf("v8-version-%d", e.Version),
-		"previous executable mechanism restored", true)
+		"previous executable search strategy restored", true)
 	return nil
 }
 
