@@ -288,6 +288,14 @@ func (e *V12WasmDecisionExecutor) Close(ctx context.Context) error {
 	return err3
 }
 
+func v12PatternCandidateMatrix(pattern V11DirectedPatternArtifact) V12CandidateMatrix {
+	var candidate V12CandidateMatrix
+	for _, edge := range pattern.Edges {
+		candidate.Rows[edge.From] |= uint32(1) << uint32(edge.To)
+	}
+	return candidate
+}
+
 func EncodeV12DecisionInput(candidates []V12CandidateMatrix, buf []byte) ([]byte, error) {
 	if len(candidates) == 0 || len(candidates) > V12DecisionMaxCandidates {
 		return nil, fmt.Errorf("candidate count out of bounds: %d", len(candidates))
