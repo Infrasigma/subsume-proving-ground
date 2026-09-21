@@ -60,3 +60,5 @@ This protocol does not claim ASI; it tests whether H4 concept reuse survives str
 representation and negative-control challenges.
 
 Frozen test revision: G1-G8; no post-result threshold changes permitted.
+
+Trigger revision 2: evaluator logic unchanged.
