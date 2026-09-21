@@ -42,6 +42,8 @@ type g13PlanResult struct {
 	Found             bool
 }
 
+type g13PlanReport = g13Report
+
 type g13Report struct {
 	Seeds                         int
 	TrainingTasks                int
