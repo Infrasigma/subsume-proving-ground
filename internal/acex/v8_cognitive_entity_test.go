@@ -1,6 +1,10 @@
 package acex
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Infrasigma/subsume-proving-ground/internal/ace"
+)
 
 func TestV8UnifiedCognitiveEntity(t *testing.T) {
 	entity := NewV8CognitiveEntity()
@@ -46,13 +50,13 @@ func TestV8UnifiedCognitiveEntity(t *testing.T) {
 		t.Fatal("causal inquiry evidence missing")
 	}
 	proposal, err := entity.InventTool(
-		Task{ID:"tool-add-one",Goal:"y=x+1",Budget:ResourceVector{Search:1000,Verify:1000}},
-		[]ProgramTestCase{
+		ace.Task{ID:"tool-add-one",Goal:"y=x+1",Budget:ace.ResourceVector{Search:1000,Verify:1000}},
+		[]ace.ProgramTestCase{
 			{Input:map[string]string{"x":"0"},Expected:map[string]string{"y":"1"}},
 			{Input:map[string]string{"x":"4"},Expected:map[string]string{"y":"5"}},
 			{Input:map[string]string{"x":"-2"},Expected:map[string]string{"y":"-1"}},
 		},
-		[]ProgramTestCase{
+		[]ace.ProgramTestCase{
 			{Input:map[string]string{"x":"7"},Expected:map[string]string{"y":"8"}},
 			{Input:map[string]string{"x":"-5"},Expected:map[string]string{"y":"-4"}},
 		},
