@@ -147,6 +147,19 @@ func (e *V8CognitiveEntity) ObserveAndAct(state RelationalState, actions []strin
 			e.AdaptiveRoles.InventedRepresentation(), true)
 		return action, nil
 	}
+	if action, ok := e.RelationalPatterns.Select(state, filtered); ok {
+		e.attest("synthesized-relational-representation", "v8-pattern-"+e.RelationalPatterns.Pattern.Key(),
+			fmt.Sprintf("complexity=%d expansions=%d", e.RelationalPatterns.Pattern.Complexity(), e.RelationalPatterns.SearchExpansions), true)
+		return action, nil
+	}
+	if e.RelationalPatterns.TrySynthesize() {
+		if action, ok := e.RelationalPatterns.Select(state, filtered); ok {
+			e.Version++
+			e.attest("synthesized-relational-representation", "v8-pattern-"+e.RelationalPatterns.Pattern.Key(),
+				fmt.Sprintf("complexity=%d expansions=%d", e.RelationalPatterns.Pattern.Complexity(), e.RelationalPatterns.SearchExpansions), true)
+			return action, nil
+		}
+	}
 	action, err := e.Experience.NextAction(state, filtered)
 	if err != nil {
 		e.Failures = append(e.Failures, "action-selection:"+err.Error())
