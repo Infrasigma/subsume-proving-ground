@@ -169,18 +169,33 @@ func (e *V8CognitiveEntity) ObserveAndAct(state RelationalState, actions []strin
 			fmt.Sprintf("complexity=%d expansions=%d retained=true wasm=%s", e.DirectedRepresentation.Complexity(), e.DirectedRepresentation.SearchExpansions, e.HermeticArtifactHash), true)
 		return action, nil
 	}
-	if e.DirectedRepresentation.Synthesize() {
-		if err := e.ensureHermeticCapability(); err != nil {
-			return "", err
-		}
-		action, err := e.decideHermetic(state, filtered)
-		if err != nil {
-			return "", err
-		}
-		e.Version++
-		e.attest("directed-executable-representation-invention", "v12-wasm-"+e.HermeticArtifactHash,
-			fmt.Sprintf("complexity=%d expansions=%d wasm=%s", e.DirectedRepresentation.Complexity(), e.DirectedRepresentation.SearchExpansions, e.HermeticArtifactHash), true)
+
+	// Before retention, evidence is still being gathered. The provisional Go
+	// matcher is permitted only in this pre-retention phase; after retention
+	// this branch is unreachable and all decisions are forced through Wasm.
+	if action, ok := e.DirectedRepresentation.Select(state, filtered); ok {
+		e.attest("directed-executable-representation-provisional", "v11-provisional-"+e.DirectedRepresentation.Key(),
+			fmt.Sprintf("complexity=%d expansions=%d retained=false examples=%d", e.DirectedRepresentation.Complexity(), e.DirectedRepresentation.SearchExpansions, len(e.DirectedRepresentation.Examples)), true)
 		return action, nil
+	}
+
+	if e.DirectedRepresentation.Synthesize() {
+		if e.DirectedRepresentation.Retained {
+			action, err := e.decideHermetic(state, filtered)
+			if err != nil {
+				return "", err
+			}
+			e.Version++
+			e.attest("directed-executable-representation-invention", "v12-wasm-"+e.HermeticArtifactHash,
+				fmt.Sprintf("complexity=%d expansions=%d retained=true wasm=%s", e.DirectedRepresentation.Complexity(), e.DirectedRepresentation.SearchExpansions, e.HermeticArtifactHash), true)
+			return action, nil
+		}
+		if action, ok := e.DirectedRepresentation.Select(state, filtered); ok {
+			e.Version++
+			e.attest("directed-executable-representation-invention-provisional", "v11-provisional-"+e.DirectedRepresentation.Key(),
+				fmt.Sprintf("complexity=%d expansions=%d retained=false examples=%d", e.DirectedRepresentation.Complexity(), e.DirectedRepresentation.SearchExpansions, len(e.DirectedRepresentation.Examples)), true)
+			return action, nil
+		}
 	}
 	if action, ok := e.RelationalPatterns.Select(state, filtered); ok {
 		e.attest("synthesized-relational-representation", "v8-pattern-"+e.RelationalPatterns.Pattern.Key(),
