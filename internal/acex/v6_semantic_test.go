@@ -52,7 +52,7 @@ func TestV6SemanticEquivalenceQuotient(t *testing.T) {
 }
 
 func TestV6ProspectiveLibraryLearning(t *testing.T) {
-	visible, err := makeV6TaskFamily(1, []int{-3, 0, 3}, true)
+	visible, err := makeV6TaskFamily(1, []int{-3, 3, 6}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
