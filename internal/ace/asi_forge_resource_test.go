@@ -98,7 +98,7 @@ func TestF11ResourceNormalizedRecursiveImprovement(t *testing.T) {
 	var baseTotal, metaTotal float64
 	for _, successor := range successors {
 		lib2 := rcLibrary{Procedures:map[string]AcquisitionProcedure{"M1":m1.Procedure,"M2":m2.Procedure}}
-		base, basePass := rcSearch(successor.train,successor.hidden,lib2,3)
+		base, basePass := rcSearch(successor.train,successor.hidden,lib2,4)
 		if !basePass { t.Fatalf("recursive baseline did not solve successor: %+v",base) }
 		baseCost := f11Cost{
 			SearchEvaluations:base.Evaluated,
