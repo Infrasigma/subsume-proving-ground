@@ -31,7 +31,14 @@ jobs:
           ACEX_SEEDS: "610117,830921"
         run: |
           set -euo pipefail
-          go test -mod=mod -run '^TestV2ArchitectureTerminal$' ./internal/acex -count=1 -timeout=12m -v | tee acex-result.txt
+          go test -tags v2kill -mod=mod -run '^TestV2ArchitectureTerminal
+      - name: Publish ACE-X forensic result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acex-v2-protected-result
+          path: acex-result.txt
+ ./internal/acex -count=1 -timeout=12m -v | tee acex-result.txt
       - name: Publish ACE-X forensic result
         if: always()
         uses: actions/upload-artifact@v4
