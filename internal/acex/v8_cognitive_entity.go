@@ -25,6 +25,7 @@ type V8CognitiveEntity struct {
 	Memory           V5AdaptiveMemory
 	StructuralRoles  V8StructuralRoleLearner
 	AdaptiveRoles    V8AdaptiveStructuralRoleLearner
+	DirectedRepresentation V11DirectedExecutableRepresentation
 	RelationalPatterns V8RelationalPatternInducer
 	ExecutableRepresentation V8ExecutableRepresentation
 	Inquiry          InquiryManager
@@ -42,6 +43,7 @@ func NewV8CognitiveEntity() *V8CognitiveEntity {
 		Experience:    NewV7CognitiveAgent(),
 		StructuralRoles: NewV8StructuralRoleLearner(),
 		AdaptiveRoles: NewV8AdaptiveStructuralRoleLearner(),
+		DirectedRepresentation: NewV11DirectedExecutableRepresentation(),
 		RelationalPatterns: NewV8RelationalPatternInducer(),
 		ExecutableRepresentation: NewV8ExecutableRepresentation(),
 	}
@@ -149,6 +151,19 @@ func (e *V8CognitiveEntity) ObserveAndAct(state RelationalState, actions []strin
 			e.AdaptiveRoles.InventedRepresentation(), true)
 		return action, nil
 	}
+	if action, ok := e.DirectedRepresentation.Select(state, filtered); ok {
+		e.attest("directed-executable-representation-transfer", "v11-directed-rep-"+e.DirectedRepresentation.Key(),
+		fmt.Sprintf("complexity=%d expansions=%d retained=%t", e.DirectedRepresentation.Complexity(), e.DirectedRepresentation.SearchExpansions, e.DirectedRepresentation.Retained), true)
+		return action, nil
+	}
+	if e.DirectedRepresentation.Synthesize() {
+		if action, ok := e.DirectedRepresentation.Select(state, filtered); ok {
+			e.Version++
+			e.attest("directed-executable-representation-invention", "v11-directed-rep-"+e.DirectedRepresentation.Key(),
+				fmt.Sprintf("complexity=%d expansions=%d", e.DirectedRepresentation.Complexity(), e.DirectedRepresentation.SearchExpansions), true)
+			return action, nil
+		}
+	}
 	if action, ok := e.RelationalPatterns.Select(state, filtered); ok {
 		e.attest("synthesized-relational-representation", "v8-pattern-"+e.RelationalPatterns.Pattern.Key(),
 			fmt.Sprintf("complexity=%d expansions=%d", e.RelationalPatterns.Pattern.Complexity(), e.RelationalPatterns.SearchExpansions), true)
@@ -197,6 +212,7 @@ func sortedStringSet(m map[string]bool) []string {
 func (e *V8CognitiveEntity) ObserveOutcome(before RelationalState, action string, after RelationalState, reward float64, terminal bool) V7Step {
 	e.StructuralRoles.Observe(before, action, reward, terminal)
 	e.AdaptiveRoles.Observe(before, action, reward, terminal)
+	e.DirectedRepresentation.Record(before, action, reward, terminal)
 	e.RelationalPatterns.Record(before, action, reward, terminal)
 	e.ExecutableRepresentation.Record(before, action, reward, terminal)
 	step := e.Experience.ExecuteObserved(before, action, after, reward, terminal)
@@ -371,5 +387,36 @@ func (e *V8CognitiveEntity) ForgetRawExperiences() {
 	e.Inquiry = InquiryManager{}
 	e.PendingIntervention = ""
 	e.Version++
+	if err := e.DirectedRepresentation.ForgetExamples(); err != nil {
+		// Preserve an already-retained directed representation; a failed
+		// first-time retention is intentionally not converted into a claim.
+	}
 	e.ExecutableRepresentation = e.ExecutableRepresentation.ForgetExamples()
+}
+
+func (e *V8CognitiveEntity) ExportRetainedRepresentation() (string, error) {
+	if e == nil {
+		return "", errors.New("nil V8 entity")
+	}
+	return e.DirectedRepresentation.Artifact()
+}
+
+func (e *V8CognitiveEntity) LoadRetainedRepresentation(artifact string) error {
+	if e == nil {
+		return errors.New("nil V8 entity")
+	}
+	r, err := LoadV11DirectedRepresentation(artifact)
+	if err != nil {
+		return err
+	}
+	e.DirectedRepresentation = r
+	e.StructuralRoles = NewV8StructuralRoleLearner()
+	e.AdaptiveRoles = NewV8AdaptiveStructuralRoleLearner()
+	e.RelationalPatterns = NewV8RelationalPatternInducer()
+	e.Experience = NewV7CognitiveAgent()
+	e.Memory = V5AdaptiveMemory{}
+	e.Failures = nil
+	e.PendingIntervention = ""
+	e.Version++
+	return nil
 }
