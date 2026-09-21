@@ -200,7 +200,7 @@ func g67Digest(e *g67Expr) string {
 	return hex.EncodeToString(h[:])
 }
 
-func g67ExtractOperator(programs []*g67Expr,training []ProgramTestCase,hidden []ProgramTestCase) (g67Macro,bool) {
+func g67ExtractOperator(programs []*g67Expr,training []ProgramTestCase) (g67Macro,bool) {
 	type bucket struct{ body *g67Expr; uses int; tasks int }
 	buckets:=map[string]*bucket{}
 	for _,p:=range programs {
@@ -239,16 +239,23 @@ func g67ExtractOperator(programs []*g67Expr,training []ProgramTestCase,hidden []
 			}
 			if !ok{continue}
 		}
-		// Independent hidden verification of the operator itself.
-		ok:=true
-		for _,tc:=range hidden {
-			env:=map[string]int{};for k,v:=range tc.Input{n,_:=strconv.Atoi(v);env[k]=n}
-			arg:=env["x"];got,err:=g67Eval(m.Body,map[string]int{},lib,&arg);if err!=nil{ok=false;break}
-			want,_:=strconv.Atoi(tc.Expected["y"]);if got!=want{ok=false;break}
-		}
-		if ok{return m,true}
+		// Admission is training-only. Hidden verification is evaluator-owned
+		// and performed by the caller after candidate selection.
+		return m,true
 	}
 	return g67Macro{},false
+}
+
+func g67MacroHiddenVerified(m g67Macro,cases []ProgramTestCase) bool {
+	lib:=map[string]g67Macro{m.ID:m}
+	for _,tc:=range cases {
+		env:=map[string]int{}
+		for k,v:=range tc.Input { n,err:=strconv.Atoi(v); if err!=nil { return false }; env[k]=n }
+		arg,ok:=env["x"]; if !ok { return false }
+		got,err:=g67Eval(m.Body,map[string]int{},lib,&arg); if err!=nil { return false }
+		want,err:=strconv.Atoi(tc.Expected["y"]); if err!=nil || got!=want { return false }
+	}
+	return true
 }
 
 func g67MakeCases(fn func(int)int, xs []int) []ProgramTestCase {
@@ -316,8 +323,9 @@ func TestG6MachineInventedReusableOperators(t *testing.T) {
 
 	opTrain:=g67MakeCases(latentA,[]int{-11,-5,-2,1,4,8,13})
 	opHidden:=g67MakeCases(latentA,[]int{-17,-9,3,7,15,21})
-	macro,ok:=g67ExtractOperator(solved,opTrain,opHidden)
-	if !ok {t.Fatal("machine failed to invent and independently verify reusable operator")}
+	macro,ok:=g67ExtractOperator(solved,opTrain)
+	if !ok {t.Fatal("machine failed to invent reusable operator")}
+	if !g67MacroHiddenVerified(macro,opHidden) {t.Fatal("invented operator failed independent hidden verification")}
 	lib:=map[string]g67Macro{macro.ID:macro}
 
 	after:=0
@@ -390,12 +398,12 @@ func TestG7CompositionalProgramSynthesisWithInventedLibrary(t *testing.T) {
 		if !res.Found {t.Fatal("G7 training prerequisite synthesis failed")}
 		solved=append(solved,res.Program)
 	}
-	macro,ok:=g67ExtractOperator(solved,g67MakeCases(latentA,[]int{-11,-5,-2,1,4,8,13}),g67MakeCases(latentA,[]int{-17,-9,3,7,15,21}))
-	if !ok {t.Fatal("G7 could not obtain an independently verified invented operator")}
+	macro,ok:=g67ExtractOperator(solved,g67MakeCases(latentA,[]int{-11,-5,-2,1,4,8,13}))
+	if !ok || !g67MacroHiddenVerified(macro,g67MakeCases(latentA,[]int{-17,-9,3,7,15,21})) {t.Fatal("G7 could not obtain an independently verified invented operator")}
 	// The second operator is learned separately from a different recurring
 	// structure; this keeps G7 from being a single-macro demo.
-	macro2,ok2:=g67ExtractOperator(solved,g67MakeCases(latentB,[]int{-13,-6,-1,2,5,10}),g67MakeCases(latentB,[]int{-19,-8,3,7,14,22}))
-	if !ok2 {t.Fatal("G7 could not obtain second independently verified invented operator")}
+	macro2,ok2:=g67ExtractOperator(solved,g67MakeCases(latentB,[]int{-13,-6,-1,2,5,10}))
+	if !ok2 || !g67MacroHiddenVerified(macro2,g67MakeCases(latentB,[]int{-19,-8,3,7,14,22})) {t.Fatal("G7 could not obtain second independently verified invented operator")}
 	lib:=map[string]g67Macro{macro.ID:macro,macro2.ID:macro2}
 
 	fns:=[]func(int)int{}
@@ -427,7 +435,9 @@ func TestG7CompositionalProgramSynthesisWithInventedLibrary(t *testing.T) {
 			if g67ProgramFits(l.Program,cases,lib) {independent++}
 			if s.Found && l.Expansions>0 {ratios=append(ratios,float64(s.Expansions)/float64(l.Expansions))}
 		}
-		if !g67Solve(cases,5,1200,nil).Found {ablFails++}
+		withoutA:=map[string]g67Macro{macro2.ID:macro2}
+		withoutB:=map[string]g67Macro{macro.ID:macro}
+		if !g67Solve(cases,5,1200,withoutA).Found || !g67Solve(cases,5,1200,withoutB).Found { ablFails++ }
 	}
 	crossFamily:=len(fns)
 	mean:=func(xs []float64)float64{if len(xs)==0{return 0};s:=0.0;for _,v:=range xs{s+=v};return s/float64(len(xs))}
@@ -459,8 +469,8 @@ func TestG6G7RandomizedOrderStress(t *testing.T) {
 			if !res.Found {t.Fatalf("seed %d training synthesis failed",seed)}
 			solved=append(solved,res.Program)
 		}
-		macro,ok:=g67ExtractOperator(solved,g67MakeCases(latentA,[]int{-11,-5,-2,1,4,8,13}),g67MakeCases(latentA,[]int{-17,-9,3,7,15,21}))
-		if !ok {t.Fatalf("seed %d operator invention failed",seed)}
+		macro,ok:=g67ExtractOperator(solved,g67MakeCases(latentA,[]int{-11,-5,-2,1,4,8,13}))
+		if !ok || !g67MacroHiddenVerified(macro,g67MakeCases(latentA,[]int{-17,-9,3,7,15,21})) {t.Fatalf("seed %d operator invention failed",seed)}
 		lib:=map[string]g67Macro{macro.ID:macro}
 		fn:=func(x int)int{return latentA(latentB(x))+7}
 		if !g67Solve(g67TaskExamples(fn),5,1200,lib).Found {t.Fatalf("seed %d library synthesis failed",seed)}
