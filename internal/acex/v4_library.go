@@ -378,14 +378,31 @@ func v4AtomicExprs(t V4Task) []V4Expr {
 	return out
 }
 
-func v4ArgAtoms(typ V4Type, inputType V4Type) []V4Expr {
+func v4ArgAtoms(t V4Task, typ V4Type) []V4Expr {
 	out := []V4Expr{}
-	if inputType == typ {
-		out = append(out, V4Expr{Kind: "input", Type: inputType})
+	if t.InputType == typ {
+		out = append(out, V4Expr{Kind: "input", Type: t.InputType})
 	}
 	if typ == V4Int {
+		seen := map[int]bool{}
+		addConst := func(v int) {
+			if seen[v] {
+				return
+			}
+			seen[v] = true
+			out = append(out, V4Expr{Kind: "const-int", Type: V4Int, Int: v})
+		}
 		for i := -2; i <= 2; i++ {
-			out = append(out, V4Expr{Kind: "const-int", Type: V4Int, Int: i})
+			addConst(i)
+		}
+		// Permit concept parameters to take values represented by the current
+		// task's observed input domain. This keeps discovered abstractions
+		// executable without exposing the target program or adding a hand-coded
+		// constant set.
+		for _, v := range append(append([]V4Value{}, t.TrainInputs...), t.HoldInputs...) {
+			if v.Type == V4Int {
+				addConst(v.Int)
+			}
 		}
 	} else {
 		out = append(out,
@@ -412,7 +429,7 @@ func v4CallExprs(t V4Task, lib V4Library) []V4Expr {
 		sizeCount := 1
 		possible := true
 		for i, p := range c.Params {
-			options[i] = v4ArgAtoms(p.Type, t.InputType)
+			options[i] = v4ArgAtoms(t, p.Type)
 			if len(options[i]) == 0 {
 				possible = false
 				break
