@@ -247,31 +247,29 @@ func v12EmitEdgeTest(edge V11DirectedPatternEdge) []byte {
 }
 
 func v12EmitDecisionSelector() []byte {
-	body := []byte{0x01, 0x02, 0x7f} // candidate, base
-
-	body = append(body, 0x41, 0x00, 0x21, 0x02) // candidate = 0
-	body = append(body, 0x02, 0x40)               // block $exit
-	body = append(body, 0x03, 0x40)               // loop $next
-
-	// if candidate >= count, exit.
-	body = append(body, 0x20, 0x02, 0x20, 0x01, 0x4f)
-	body = append(body, 0x0d, 0x01)
-
-	// base = ptr + candidate*64.
-	body = append(body, 0x20, 0x00, 0x20, 0x02, 0x41, 0x40, 0x6c, 0x6a, 0x21, 0x03)
-	// The matcher function is function index 0.
-	body = append(body, 0x20, 0x03, 0x10, 0x00)
-	body = append(body, 0x04, 0x40) // if match
-	body = append(body, 0x20, 0x02, 0x0f)
-	body = append(body, 0x0b)
-
-	body = append(body, 0x20, 0x02, 0x41, 0x01, 0x6a, 0x21, 0x02)
-	body = append(body, 0x0c, 0x00)
-	body = append(body, 0x0b, 0x0b)
-	body = append(body, 0x41, 0x7f, 0x0f, 0x0b) // -1
+	// The selector is fully unrolled across the bounded ABI candidate space.
+	// This eliminates mutable candidate/base loop state from inference.
+	body := []byte{0x00} // no locals
+	for i := 0; i < V12DecisionMaxCandidates; i++ {
+		// count > i
+		body = append(body, v12LocalGet(1)...)
+		body = append(body, v12I32Const(int32(i))...)
+		body = append(body, 0x4b) // i32.gt_u
+		body = append(body, 0x04, 0x40)
+		// base = ptr + i*stride
+		body = append(body, v12LocalGet(0)...)
+		body = append(body, v12I32Const(int32(i*V12DecisionCandidateStride))...)
+		body = append(body, 0x6a)
+		body = append(body, 0x10, 0x00)
+		body = append(body, 0x04, 0x40)
+		body = append(body, v12I32Const(int32(i))...)
+		body = append(body, 0x0f)
+		body = append(body, 0x0b)
+		body = append(body, 0x0b)
+	}
+	body = append(body, 0x41, 0x7f, 0x0f, 0x0b)
 	return body
 }
-
 func v12LocalGet(index uint32) []byte {
 	return []byte{0x20, byte(index)}
 }
