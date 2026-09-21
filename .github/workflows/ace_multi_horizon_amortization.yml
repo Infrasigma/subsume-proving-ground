@@ -1,0 +1,33 @@
+name: ACE Multi-Horizon Autonomous Amortization
+
+on:
+  push:
+    branches:
+      - "feat/autonomous-abstract-compounding-20260922"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: Run multi-horizon amortization experiment
+        run: go test -mod=mod -run '^TestMultiHorizonAutonomousAmortization$' ./internal/ace -count=1 -v -timeout 45m
+      - name: Upload amortization report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ace-multi-horizon-amortization
+          path: |
+            ACE_MULTI_HORIZON_AMORTIZATION.json
+            ACE_MULTI_HORIZON_AMORTIZATION/**
+          if-no-files-found: warn
+      - name: Race verification
+        run: go test -mod=mod -race -run '^TestMultiHorizonAutonomousAmortization$' ./internal/ace -count=1 -timeout 45m
