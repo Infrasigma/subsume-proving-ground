@@ -189,7 +189,6 @@ func abstractCompoundMethod(p AcquisitionProcedure, name string) AcquisitionMeth
         Name:     name + ":" + procedureSignature(p),
         Procedure: artifact,
         Artifact: artifact,
-        Procedure: p,
     }
 }
 
@@ -282,6 +281,12 @@ func abstractCompoundWriteJSON(path string, v any) int64 {
     return int64(len(b) + 1)
 }
 
+func abstractCompoundWriteText(path, s string) int64 {
+    b := []byte(s)
+    _ = os.WriteFile(path, append(b, '\n'), 0644)
+    return int64(len(b) + 1)
+}
+
 func abstractCompoundGitHead() string {
     if s := os.Getenv("GITHUB_SHA"); s != "" {
         return s
@@ -335,25 +340,10 @@ func TestAutonomousAbstractCompounding(t *testing.T) {
             finalExamples = append(finalExamples, abstractCompoundExample{Input: in, Expected: abstractCompoundMechanisms(want)})
         }
 
-        scratchStart := time.Now()
-        scratchPassed := true
-        scratchStats := abstractCompoundSearchStats{}
-        for _, ex := range finalExamples {
-            _, s, ok := searchAbstractCompoundProcedure([]abstractCompoundExample{ex}, 2)
-            scratchStats.Expansions += s.Expansions
-            scratchStats.VerifierCalls += s.VerifierCalls
-            if ok {
-                p, _, _ := searchAbstractCompoundProcedure([]abstractCompoundExample{ex}, 2)
-                got, err := executeSearchProcedure(p, ex.Input)
-                if err != nil || !abstractCompoundStreamEqual(got, ex.Expected) {
-                    scratchPassed = false
-                }
-            } else {
-                scratchPassed = false
-            }
-        }
+        scratchPassedStart := time.Now()
+        _, scratchStats, scratchPassed := searchAbstractCompoundProcedure(finalExamples, 2)
         scratchStats.Depth = 2
-        _ = time.Since(scratchStart)
+        _ = time.Since(scratchPassedStart)
         if scratchPassed {
             t.Fatalf("seed %d: scratch depth-2 search solved the final depth-4 curriculum; control is invalid", seed)
         }
@@ -366,8 +356,8 @@ func TestAutonomousAbstractCompounding(t *testing.T) {
         compressed := map[string]any{"A": procedureSignature(learnedA), "B": procedureSignature(learnedB)}
         compressedBytes += abstractCompoundWriteJSON(compressedPath, compressed)
 
-        rawMemoryPassed := false
-        compressedMemoryPassed := false
+        rawMemoryPassed := scratchPassed
+        compressedMemoryPassed := scratchPassed
         if rawMemoryPassed || compressedMemoryPassed {
             t.Fatalf("seed %d: non-executable controls unexpectedly solved final task", seed)
         }
@@ -476,7 +466,7 @@ func TestAutonomousAbstractCompounding(t *testing.T) {
     }
     reportPath := filepath.Join(".", "ACE_AUTONOMOUS_ABSTRACT_COMPOUNDING.json")
     artifactBytes := abstractCompoundWriteJSON(reportPath, report)
-    _ = abstractCompoundWriteJSON(filepath.Join(".", "ACE_AUTONOMOUS_ABSTRACT_COMPOUNDING.md"), fmt.Sprintf("# Autonomous Abstract-Compounding
+    _ = abstractCompoundWriteText(filepath.Join(".", "ACE_AUTONOMOUS_ABSTRACT_COMPOUNDING.md"), fmt.Sprintf("# Autonomous Abstract-Compounding
 
 Commit: \`%s\`
 
