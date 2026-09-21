@@ -31,5 +31,4 @@ jobs:
           if-no-files-found: warn
       - name: Race verification
         if: always()
-        run: go test -mod=mod -race -run '^TestMultiHorizonAutonomousAmortization
- ./internal/ace -count=1 -v -timeout 45m
+        run: go test -mod=mod -race -run "^TestMultiHorizonAutonomousAmortization$" ./internal/ace -count=1 -v -timeout 45m
