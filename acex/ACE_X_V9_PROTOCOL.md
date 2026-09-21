@@ -41,3 +41,6 @@ A scientific failure after mechanical defects are excluded kills V9.
 
 V9 PASS establishes counterexample-guided symbolic generalization under the frozen language
 and bounded verifier. It does not establish AGI/ASI.
+
+
+Evaluator synchronization note: use the protected main-branch CEGIS gate; this note does not alter acceptance criteria.
