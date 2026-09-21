@@ -10,6 +10,15 @@ func TestV8AdaptiveRepresentationEntityTransferCost(t *testing.T) {
 	if entity.AdaptiveRoles.ActiveRadius < 2 {
 		t.Fatalf("entity did not retain expanded representation: radius=%d", entity.AdaptiveRoles.ActiveRadius)
 	}
+	sourceKey, sourceKeyOK := rootedNeighborhoodKey(source, sourceCorrect, entity.AdaptiveRoles.ActiveRadius)
+	if !sourceKeyOK || entity.AdaptiveRoles.Success[sourceKey] == 0 {
+		t.Fatalf("source success key missing: ok=%v key=%q successes=%v", sourceKeyOK, sourceKey, entity.AdaptiveRoles.Success)
+	}
+	targetProbe, _, targetCorrectProbe := adaptiveRoleState("entity-probe", 1)
+	targetKey, targetKeyOK := rootedNeighborhoodKey(targetProbe, targetCorrectProbe, entity.AdaptiveRoles.ActiveRadius)
+	if !targetKeyOK || targetKey != sourceKey {
+		t.Fatalf("representation did not transfer: source=%q target=%q", sourceKey, targetKey)
+	}
 
 	cost := 0
 	for stage := 0; stage < 5; stage++ {
