@@ -93,6 +93,17 @@ jobs:
           src=start()
           try:
               learn(src,6)
+          diagnostic = rpc(src,{"op":"status"})
+          print("LEARN_STATUS " + json.dumps({
+              "memory": diagnostic.get("memory"),
+              "version": diagnostic.get("version"),
+              "search_expansions": diagnostic.get("search_expansions"),
+              "directed_valid": diagnostic.get("directed_valid"),
+              "directed_retained": diagnostic.get("directed_retained"),
+              "directed_nodes": diagnostic.get("directed_nodes"),
+              "directed_edges": diagnostic.get("directed_edges"),
+              "directed_examples": diagnostic.get("directed_examples"),
+          }, sort_keys=True))
               if rpc(src,{"op":"forget_raw"})["memory"] != 0:
                   raise RuntimeError("raw memory survived deletion")
               exp=rpc(src,{"op":"export_knowledge"})
