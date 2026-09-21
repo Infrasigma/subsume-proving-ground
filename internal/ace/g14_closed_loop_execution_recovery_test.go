@@ -103,10 +103,10 @@ func g14IndependentVerify(w g14World,start,goal int,observed []int,maxDisturbanc
 
 func g14WorldForSeed(seed int) g14World {
 	r:=rand.New(rand.NewSource(int64(seed)))
-	n:=16
-	edges:=make([][2]int,0,40); seen:=map[[2]int]bool{}
+	n:=24
+	edges:=make([][2]int,0,35); seen:=map[[2]int]bool{}
 	for i:=0;i<n-1;i++ { edges=append(edges,[2]int{i,i+1}); seen[[2]int{i,i+1}]=true }
-	for len(edges)<40 {
+	for len(edges)<35 {
 		a,b:=r.Intn(n),r.Intn(n); if a==b { continue }; if a>b { a,b=b,a }
 		e:=[2]int{a,b}; if seen[e] { continue }; seen[e]=true; edges=append(edges,e)
 	}
@@ -166,7 +166,7 @@ func TestG14ClosedLoopExecutionAndRecovery(t *testing.T) {
 		report.NominalSolved++
 
 		for ti:=0;ti<singleTrials;ti++ {
-			p,baseExp,ok:=g14Plan(w,start,goal); if !ok || len(p)<5 { t.Fatalf("seed %d insufficient path",seed) }
+			p,baseExp,ok:=g14Plan(w,start,goal); if !ok || len(p)<7 { t.Fatalf("seed %d insufficient path: len=%d",seed,len(p)) }
 			step:=1+(ti%(len(p)-3))
 			f:=g14Fault{Step:step,Kind:ti%4}
 			closed,ce,cok,detected,replans:=g14Run(w,start,goal,[]g14Fault{f},true)
@@ -183,7 +183,7 @@ func TestG14ClosedLoopExecutionAndRecovery(t *testing.T) {
 
 		// Multi-fault chains: later faults are generated without giving the
 		// controller the sequence itself.
-		p,_,ok:=g14Plan(w,start,goal); if !ok || len(p)<7 { t.Fatalf("seed %d path too short for multi-fault trial",seed) }
+		p,_,ok:=g14Plan(w,start,goal); if !ok || len(p)<9 { t.Fatalf("seed %d path too short for multi-fault trial: len=%d",seed,len(p)) }
 		faults:=[]g14Fault{
 			{Step:1+(seed%3),Kind:seed%4},
 			{Step:3+(seed%4),Kind:(seed+1)%4},
