@@ -61,29 +61,23 @@ func g13Apply13(family int, p []int, x int) int {
 
 func g13Enumerate13(family,maxLen int,lib *g13Lib13) []g13Program13 {
 	ops:=g13Ops(family)
-	out:=make([]g13Program13,0,256)
+	atoms:=append([]int(nil),ops...)
+	for i:=range lib.Macros { atoms=append(atoms,-1000-i) }
+	out:=make([]g13Program13,0,4096)
 	seen:=map[string]bool{}
-	var key func([]int) string
-	key=func(p []int){ s:=[]byte{}; _=s; return "" }
-	_ = key
-	var add func([]int)
-	add=func(p []int){
-		k:=programKey13(p); if seen[k] { return }; seen[k]=true
-		out=append(out,append([]int(nil),p...))
-	}
 	var rec func([]int,int)
 	rec=func(p []int,d int){
-		if d>0 { add(p) }
-		if d==maxLen { return }
-		for _,op:=range ops { rec(append(append([]int(nil),p...),op),d+1) }
+		if d>0 {
+			full:=g13Expand13(p,lib)
+			if len(full)>0 && len(full)<=maxLen {
+				k:=programKey13(p)
+				if !seen[k] { seen[k]=true; out=append(out,append([]int(nil),p...)) }
+			}
+		}
+		if d==4 { return }
+		for _,a:=range atoms { rec(append(append([]int(nil),p...),a),d+1) }
 	}
 	rec(nil,0)
-	// Learned macros become grammar atoms represented by negative integers.
-	for i,m:=range lib.Macros {
-		if len(m)==2 {
-			out=append([]g13Program13{[]int{-1000-i}},out...)
-		}
-	}
 	return out
 }
 
