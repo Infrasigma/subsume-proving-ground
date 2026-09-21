@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   v11-directed-representation:
@@ -32,7 +33,8 @@ jobs:
         run: CGO_ENABLED=0 go build -o /tmp/acex-agent ./cmd/acex-agent
       - name: Run evaluator-owned V11 scientific gate
         run: |
-          python3 - <<'PY'
+          set -o pipefail
+          python3 - <<'PY' | tee /tmp/v11-result.txt
           import json
           import os
           import random
@@ -259,3 +261,24 @@ jobs:
           finally:
               stop_agent(restored)
           PY
+
+      - name: Publish protected evaluator result to PR
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          RESULT_FILE: /tmp/v11-result.txt
+        with:
+          script: |
+            const fs = require('fs');
+            const result = fs.existsSync(process.env.RESULT_FILE)
+              ? fs.readFileSync(process.env.RESULT_FILE, 'utf8').slice(-12000)
+              : 'Evaluator produced no result file; inspect the protected job log.';
+            const marker = result.includes('V11 DIRECTED REPRESENTATION PASS')
+              ? 'PROTECTED V11 EVALUATOR: PASS'
+              : 'PROTECTED V11 EVALUATOR: FAIL/INCONCLUSIVE';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '### ' + marker + '\n\n```text\n' + result + '\n```'
+            });
