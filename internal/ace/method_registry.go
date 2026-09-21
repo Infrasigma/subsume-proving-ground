@@ -1,6 +1,9 @@
 package ace
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 type InstalledMethodRegistry struct {
 	Methods      []AcquisitionMethodArtifact
@@ -12,8 +15,16 @@ func (r *InstalledMethodRegistry) Install(m AcquisitionMethodArtifact) error {
 	if m.ID == "" || m.Name == "" || m.Procedure == "" || m.Artifact == "" {
 		return errors.New("cannot install incomplete acquisition method")
 	}
-	if _, err := decodeAcquisitionProcedure(m.Artifact); err != nil {
+	artifactProcedure, err := decodeAcquisitionProcedure(m.Artifact)
+	if err != nil {
 		return err
+	}
+	storedProcedure, err := decodeAcquisitionProcedure(m.Procedure)
+	if err != nil {
+		return fmt.Errorf("invalid stored method procedure: %w", err)
+	}
+	if procedureSignature(artifactProcedure) != procedureSignature(storedProcedure) {
+		return errors.New("method procedure/artifact integrity mismatch")
 	}
 	for _, old := range r.Methods {
 		if old.ID == m.ID {

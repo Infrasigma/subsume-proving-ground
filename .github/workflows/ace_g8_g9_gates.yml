@@ -1,0 +1,29 @@
+name: ACE G8 G9 Causal and Belief Revision Gates
+
+on:
+  pull_request:
+
+concurrency:
+  group: ace-g8g9-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  g8-g9:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: G8 interventional causal discovery
+        run: go test -mod=mod -run '^TestG8InterventionalCausalModelDiscovery$' ./internal/ace -count=1 -v -timeout 20m
+      - name: G8 enumeration sanity
+        run: go test -mod=mod -run '^TestG8CandidateEnumerationSanity$' ./internal/ace -count=1 -v -timeout 10m
+      - name: G9 assumption-based belief revision
+        run: go test -mod=mod -run '^TestG9AssumptionBasedBeliefRevision$' ./internal/ace -count=1 -v -timeout 20m
+      - name: G8/G9 randomized race
+        run: go test -mod=mod -race -run '^(TestG8InterventionalCausalModelDiscovery|TestG8CandidateEnumerationSanity|TestG9AssumptionBasedBeliefRevision)$' ./internal/ace -count=1 -v -timeout 25m

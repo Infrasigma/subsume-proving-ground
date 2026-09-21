@@ -1,0 +1,29 @@
+name: ACE G10 G11 G12 Transfer Experiment Research Gates
+
+on:
+  pull_request:
+
+concurrency:
+  group: ace-g10-g12-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  g10-g12:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: G10 cross-domain abstraction transfer
+        run: go test -mod=mod -run '^TestG10CrossDomainAbstractionTransfer$' ./internal/ace -count=1 -v -timeout 20m
+      - name: G11 autonomous experiment selection
+        run: go test -mod=mod -run '^TestG11AutonomousExperimentSelection$' ./internal/ace -count=1 -v -timeout 20m
+      - name: G12 autonomous research loop
+        run: go test -mod=mod -run '^TestG12AutonomousResearchLoop$' ./internal/ace -count=1 -v -timeout 20m
+      - name: G10-G12 race
+        run: go test -mod=mod -race -run '^(TestG10CrossDomainAbstractionTransfer|TestG11AutonomousExperimentSelection|TestG12AutonomousResearchLoop)$' ./internal/ace -count=1 -v -timeout 30m
