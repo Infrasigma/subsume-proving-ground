@@ -87,9 +87,9 @@ func integerValue(v any) (int64, bool) {
 	case uint: if uint64(n) > uint64(^uint64(0)>>1) { return 0, false }; return int64(n), true
 	case uint8: return int64(n), true
 	case uint16: return int64(n), true
-	case uint32: return int64(n), true
 	case uint64: if n > uint64(^uint64(0)>>1) { return 0, false }; return int64(n), true
 	case float64: if n != float64(int64(n)) { return 0, false }; return int64(n), true
+	case json.Number: i, err := n.Int64(); return i, err == nil
 	case string: i, err := strconv.ParseInt(n, 10, 64); return i, err == nil
 	default: return 0, false
 	}
