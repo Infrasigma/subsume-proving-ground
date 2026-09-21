@@ -156,7 +156,7 @@ func makeAbstractCompoundStream(r *rand.Rand, n int) []ArchitectureCandidate {
             ID:          fmt.Sprintf("%s-%d", mech, i),
             Mechanism:   mech,
             Advantage:   "opaque",
-            Resources:   ResourceVector{Compute: 1 + r.Intn(15), ExperimentBudget: r.Intn(6)},
+            Resources:   ResourceVector{Compute: float64(1 + r.Intn(15)), ExperimentBudget: float64(r.Intn(6))},
         })
     }
     return out
@@ -377,7 +377,10 @@ func TestAutonomousAbstractCompounding(t *testing.T) {
 
         // Persist and rehydrate the learned capability artifacts before the causal
         // ablation, exercising the existing persistent-method substrate.
-        persisted := NewPersistentMethodRegistry(filepath.Join(rawRoot, fmt.Sprintf("methods-%d.json", seed)))
+        persisted, err := NewPersistentMethodRegistry(filepath.Join(rawRoot, fmt.Sprintf("methods-%d.json", seed)))
+        if err != nil {
+            t.Fatalf("seed %d: create persistent registry: %v", seed, err)
+        }
         if err := persistedInstall(persisted, methodA, methodB); err != nil {
             t.Fatalf("seed %d: persist methods: %v", seed, err)
         }
