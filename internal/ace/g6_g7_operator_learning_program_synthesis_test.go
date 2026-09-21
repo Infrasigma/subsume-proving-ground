@@ -358,10 +358,10 @@ func TestG6MachineInventedReusableOperators(t *testing.T) {
 	}
 	if solvedCount!=len(latentTasks){t.Fatal("not all training programs were solved")}
 	failFns:=[]func(int)int{
-		func(x int)int{return latentA(latentA(latentA(x)))},
-		func(x int)int{return latentA(latentA(latentA(x)))},
 		func(x int)int{return latentA(latentA(x))},
+		func(x int)int{return latentA(latentA(latentA(x)))},
 		func(x int)int{return latentA(latentA(latentA(latentA(x))))},
+		func(x int)int{return latentA(latentA(latentA(latentA(latentA(x)))))},
 	}
 	failures:=0
 	for _,fn:=range failFns {
@@ -449,31 +449,33 @@ func TestG7CompositionalProgramSynthesisWithInventedLibrary(t *testing.T) {
 	if !ok || !g67MacroHiddenVerified(macro,g67MakeCases(latentA,[]int{-17,-9,3,7,15,21})) {t.Fatal("G7 could not obtain an independently verified invented operator")}
 	lib:=map[string]g67Macro{macro.ID:macro}
 
-	fns:=[]func(int)int{}
-	fns=[]func(int)int{
-		func(x int)int{return latentA(latentA(x))},
-		func(x int)int{return latentA(latentA(latentA(x)))},
-		func(x int)int{return latentA(latentA(latentA(latentA(x))))},
-		func(x int)int{return latentA(latentA(latentA(latentA(latentA(x)))))},
+	type g7FutureTask struct { fn func(int) int; family string }
+	fns:=[]g7FutureTask{
+		{func(x int)int{return latentA(latentA(x))}, "depth-2"},
+		{func(x int)int{return latentA(latentA(latentA(x)))}, "depth-3"},
+		{func(x int)int{return latentA(latentA(latentA(latentA(x))))}, "depth-4"},
+		{func(x int)int{return latentA(latentA(latentA(latentA(latentA(x)))))}, "depth-5"},
 	}
 	scratchSolved,librarySolved,independent:=0,0,0
 	scratchExp,libraryExp:=make([]float64,0),make([]float64,0)
 	ratios:=make([]float64,0)
 	ablFails:=0
-	for _,fn:=range fns {
+	families:=map[string]bool{}
+	for _,task:=range fns {
+		fn:=task.fn
 		cases:=g67TaskExamples(fn)
 		s:=g67Solve(cases,5,1200,nil)
 		l:=g67Solve(cases,5,1200,lib)
 		if s.Found {scratchSolved++;scratchExp=append(scratchExp,float64(s.Expansions))}
 		if l.Found {
-			librarySolved++;libraryExp=append(libraryExp,float64(l.Expansions))
+			librarySolved++;libraryExp=append(libraryExp,float64(l.Expansions)); families[task.family]=true
 			if g67IndependentFits(l.Program,cases,lib) {independent++}
 			if s.Found && l.Expansions>0 {ratios=append(ratios,float64(s.Expansions)/float64(l.Expansions))}
 		}
 		without:=map[string]g67Macro{}
 		if !g67Solve(cases,5,1200,without).Found { ablFails++ }
 	}
-	crossFamily:=4
+	crossFamily:=len(families)
 	mean:=func(xs []float64)float64{if len(xs)==0{return 0};s:=0.0;for _,v:=range xs{s+=v};return s/float64(len(xs))}
 	class:="G7_NOT_PROVEN"
 	if librarySolved==len(fns) && independent==librarySolved && scratchSolved<librarySolved && medianFloat(ratios)>=3 && ablFails>=len(fns)-scratchSolved && crossFamily>=4 {
