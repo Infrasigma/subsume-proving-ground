@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"testing"
 )
 
@@ -232,7 +233,7 @@ func g16RunSeed(seed int, permute bool, shift bool) g16Report {
 			if c.Support<8 || c.Verified { continue }
 			matched:=make([]int,0,len(skills))
 			for si:=range skills {
-				if g16ExternalVerify(c.Body,[][]int{si},skills) { matched=append(matched,si) }
+				if g16ExternalVerify(c.Body,[]int{si},skills,verifierInputs) { matched=append(matched,si) }
 			}
 			if len(matched)==0 { continue }
 			c.Verified=true
