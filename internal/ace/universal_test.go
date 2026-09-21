@@ -56,5 +56,6 @@ func TestUniversalBuilderGeneralizesAddOne(t *testing.T) {
 			break
 		}
 	}
-	if !found { t.Fatal("no universal synthesis candidate generalized from train to holdout") }\n\t// Diagnostic marker: this commit intentionally changes no acceptance criterion.
+	if !found { t.Fatal("no universal synthesis candidate generalized from train to holdout") }
+	// Diagnostic marker: this commit intentionally changes no acceptance criterion.
 }
