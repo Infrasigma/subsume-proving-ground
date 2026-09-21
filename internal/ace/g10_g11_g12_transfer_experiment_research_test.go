@@ -487,7 +487,7 @@ func TestG10CrossDomainAbstractionTransfer(t *testing.T) {
 	noLeak := true
 	for _, task := range targetTasks {
 		ops := targetDomains[task.Domain]
-		t, ok := g10TransferSolve(task, templates, ops)
+		expansions, ok := g10TransferSolve(task, templates, ops)
 		if !ok {
 			t.Fatalf("transfer failed domain=%s op=%s depth=%d", task.Domain, task.Op, task.Depth)
 		}
@@ -502,7 +502,7 @@ func TestG10CrossDomainAbstractionTransfer(t *testing.T) {
 		if sok {
 			scratchSolved++
 			if s > 0 {
-				totalRatio = append(totalRatio, float64(s)/float64(t))
+				totalRatio = append(totalRatio, float64(s)/float64(expansions))
 			}
 		}
 		if task.Domain == "text" || task.Domain == "list" {
@@ -923,8 +923,7 @@ func TestG12AutonomousResearchLoop(t *testing.T) {
 	for seed := 1; seed <= cases; seed++ {
 		r := rand.New(rand.NewSource(int64(130000 + seed)))
 		truth := g11Hypotheses()[r.Intn(len(g11Hypotheses()))]
-		base := g11Adaptive(truth)
-		discovered := base[1]
+		_, discovered := g11Adaptive(truth)
 		followups := g12GenerateFollowups(discovered)
 		followTruth := followups[r.Intn(len(followups))].Hyp
 		remaining := append([]g12Followup(nil), followups...)
