@@ -280,7 +280,13 @@ func (r *V8ExecutableRepresentation) Synthesize() bool {
 }
 
 func (r V8ExecutableRepresentation) Select(state RelationalState, actions []string) (string, bool) {
-	if !r.Valid || r.ProgramKey == "" || !r.separates() {
+	if !r.Valid || r.ProgramKey == "" {
+		return "", false
+	}
+	// After raw-episode deletion the retained executable program remains
+	// admissible; when examples are still resident, they must continue to
+	// separate positive from negative evidence.
+	if len(r.Examples) > 0 && !r.separates() {
 		return "", false
 	}
 	matches := make([]string, 0, len(actions))
@@ -312,7 +318,7 @@ func (r V8ExecutableRepresentation) Validate() error {
 	if r.ProgramKey == "" || !r.Valid {
 		return errors.New("executable representation not valid")
 	}
-	if !r.separates() {
+	if len(r.Examples) > 0 && !r.separates() {
 		return errors.New("executable representation does not separate retained evidence")
 	}
 	return nil
