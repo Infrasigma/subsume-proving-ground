@@ -153,27 +153,45 @@ func artifactFingerprint(p AcquisitionProcedure) []byte {
 }
 
 type f10MetaProcedure struct {
-	Prefix []ProcedureStep
+	Base     AcquisitionProcedure
 	Repeated ProcedureStep
 }
 
 func f10GeneralizePair(m1, m2 AcquisitionProcedure) (f10MetaProcedure, bool) {
-	if len(m1.Steps) < 1 || len(m2.Steps) != len(m1.Steps)+1 { return f10MetaProcedure{}, false }
-	for i := range m1.Steps { if m1.Steps[i] != m2.Steps[i] { return f10MetaProcedure{}, false } }
+	// The observed recursive pattern is not textual prefix reuse. M2 first calls
+	// the admitted M1 artifact and then applies one additional transform that is
+	// already present as M1's terminal transform. Detect that structural pattern
+	// without depending on a task-specific operator such as "third-cheapest".
+	if len(m1.Steps) < 1 || len(m2.Steps) < 2 {
+		return f10MetaProcedure{}, false
+	}
+	if m2.Steps[0].Op != "call" {
+		return f10MetaProcedure{}, false
+	}
 	repeated := m1.Steps[len(m1.Steps)-1]
-	if m2.Steps[len(m2.Steps)-1] != repeated { return f10MetaProcedure{}, false }
-	return f10MetaProcedure{Prefix: append([]ProcedureStep(nil), m1.Steps[:len(m1.Steps)-1]...), Repeated: repeated}, true
+	if m2.Steps[1] != repeated {
+		return f10MetaProcedure{}, false
+	}
+	if len(m2.Steps) != 2 {
+		return f10MetaProcedure{}, false
+	}
+	return f10MetaProcedure{
+		Base:     AcquisitionProcedure{Version:1, Steps:append([]ProcedureStep(nil), m1.Steps...)},
+		Repeated: repeated,
+	}, true
 }
 
 func f10ApplyMeta(p f10MetaProcedure, candidates []ArchitectureCandidate, repeats int) []ArchitectureCandidate {
-	cur := append([]ArchitectureCandidate(nil), candidates...)
-	for _, s := range p.Prefix {
-		next, err := rcApply(AcquisitionProcedure{Version:1, Steps:[]ProcedureStep{s}}, cur, rcLibrary{})
-		if err != nil { return nil }
-		cur = next
+	cur, err := rcApply(p.Base, candidates, rcLibrary{})
+	if err != nil {
+		return nil
 	}
 	for i:=0; i<repeats; i++ {
-		next, err := rcApply(AcquisitionProcedure{Version:1, Steps:[]ProcedureStep{p.Repeated}}, cur, rcLibrary{})
+		next, err := rcApply(
+			AcquisitionProcedure{Version:1, Steps:[]ProcedureStep{p.Repeated}},
+			cur,
+			rcLibrary{},
+		)
 		if err != nil { return nil }
 		cur = next
 	}
