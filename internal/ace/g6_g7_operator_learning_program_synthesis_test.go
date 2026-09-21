@@ -221,6 +221,16 @@ func g67Digest(e *g67Expr) string {
 	return hex.EncodeToString(h[:])
 }
 
+func g67Compress(e *g67Expr,targetCanonical,macroID string) (*g67Expr,int) {
+	if e==nil { return nil,0 }
+	if g67Canonical(g67ReplaceRootVars(e))==targetCanonical {
+		return &g67Expr{Kind:"call",Value:macroID,Left:&g67Expr{Kind:"var",Value:"x"}},1
+	}
+	left,lc:=g67Compress(e.Left,targetCanonical,macroID)
+	right,rc:=g67Compress(e.Right,targetCanonical,macroID)
+	return &g67Expr{Kind:e.Kind,Value:e.Value,Left:left,Right:right},lc+rc
+}
+
 func g67ExtractOperator(programs []*g67Expr,training []ProgramTestCase) (g67Macro,bool) {
 	type bucket struct{ body *g67Expr; uses int; tasks int; taskSeen map[int]bool }
 	buckets:=map[string]*bucket{}
@@ -330,9 +340,10 @@ type g6Report struct {
 	MacroCount int
 	Accepted bool
 	HiddenOperatorVerified bool
-	FutureFailuresBefore int
-	FutureSolvedAfter int
+	CompressedProgramsVerified bool
 	CompressionGain int
+	FutureFailuresBeforeInvention int
+	FutureSolvedAfter int
 	AblationFails bool
 	Classification string
 }
@@ -384,11 +395,18 @@ func TestG6MachineInventedReusableOperators(t *testing.T) {
 	for _,fn:=range failFns {
 		if !g67Solve(g67TaskExamples(fn),5,800,nil).Found {removedFails++}
 	}
-	compression:=0
-	for _,p:=range solved {compression += g67Nodes(p)}
-	compressedNodes:=compression - macro.Uses*(macro.Nodes-1)
+	compressedVerified:=true
+	compressionGain:=0
+	targetCanonical:=g67Canonical(macro.Body)
+	for i,p:=range solved {
+		cp,uses:=g67Compress(p,targetCanonical,macro.ID)
+		if uses==0 || !g67ProgramFits(cp,training[i].Train,lib) || !g67IndependentFits(cp,training[i].Train,lib) {
+			compressedVerified=false
+		}
+		compressionGain += g67Nodes(p)-g67Nodes(cp)
+	}
 	class:="G6_NOT_PROVEN"
-	if failures>=3 && macro.ID!="" && after>=3 && removedFails>=3 && compressedNodes<compression {
+	if failures>=3 && macro.ID!="" && after>=3 && removedFails>=3 && compressedVerified && compressionGain>0 {
 		class="G6_REUSABLE_OPERATOR_INVENTION_PROVEN"
 	}
 	r:=g6Report{
@@ -397,9 +415,10 @@ func TestG6MachineInventedReusableOperators(t *testing.T) {
 		MacroCount:1,
 		Accepted:macro.ID!="",
 		HiddenOperatorVerified:ok,
-		FutureFailuresBefore:failures,
+		CompressedProgramsVerified:compressedVerified,
+		CompressionGain:compressionGain,
+		FutureFailuresBeforeInvention:failures,
 		FutureSolvedAfter:after,
-		CompressionGain:compression-compressedNodes,
 		AblationFails:removedFails>=3,
 		Classification:class,
 	}
@@ -451,7 +470,8 @@ func TestG7CompositionalProgramSynthesisWithInventedLibrary(t *testing.T) {
 
 	type g7FutureTask struct { fn func(int) int; family string }
 	fns:=[]g7FutureTask{
-		{func(x int)int{return latentA(latentA(x))}, "depth-2"},
+		{func(x int)int{return latentA(latentA(x))}, "depth-2-plus0"},
+		{func(x int)int{return latentA(latentA(x))+7}, "depth-2-plus7"},
 		{func(x int)int{return latentA(latentA(latentA(x)))}, "depth-3"},
 		{func(x int)int{return latentA(latentA(latentA(latentA(x))))}, "depth-4"},
 		{func(x int)int{return latentA(latentA(latentA(latentA(latentA(x)))))}, "depth-5"},
@@ -478,7 +498,7 @@ func TestG7CompositionalProgramSynthesisWithInventedLibrary(t *testing.T) {
 	crossFamily:=len(families)
 	mean:=func(xs []float64)float64{if len(xs)==0{return 0};s:=0.0;for _,v:=range xs{s+=v};return s/float64(len(xs))}
 	class:="G7_NOT_PROVEN"
-	if librarySolved==len(fns) && independent==librarySolved && scratchSolved<librarySolved && medianFloat(ratios)>=3 && ablFails>=len(fns)-scratchSolved && crossFamily>=4 {
+	if librarySolved==len(fns) && independent==librarySolved && scratchSolved>=2 && scratchSolved<librarySolved && len(ratios)>=2 && medianFloat(ratios)>=3 && ablFails>=len(fns)-scratchSolved && crossFamily==len(fns) {
 		class="G7_BOUNDED_OPEN_ENDED_PROGRAM_SYNTHESIS_PROVEN"
 	}
 	r:=g7Report{Tasks:len(fns),SolvedByScratch:scratchSolved,SolvedByLibrary:librarySolved,MeanScratchExpansions:mean(scratchExp),MeanLibraryExpansions:mean(libraryExp),MedianExpansionRatio:medianFloat(ratios),IndependentVerified:independent,AblationFailures:ablFails,CrossFamily:crossFamily,Class:class}
