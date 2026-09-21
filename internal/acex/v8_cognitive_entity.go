@@ -373,62 +373,62 @@ func (e V8CognitiveEntity) HasEvidence(capability string) bool {
 
 
 func (e *V8CognitiveEntity) ensureHermeticCapability() error {
-\tif e == nil {
-\t\treturn errors.New("nil V8 entity")
-\t}
-\tif len(e.HermeticArtifact) > 0 {
-\t\treturn nil
-\t}
-\tir, err := BuildV12EffectIR(e.DirectedRepresentation)
-\tif err != nil {
-\t\treturn err
-\t}
-\tcapability, err := CompileV12WasmCapability(ir)
-\tif err != nil {
-\t\treturn err
-\t}
-\te.HermeticArtifact = append([]byte(nil), capability.Module...)
-\te.HermeticArtifactHash = capability.SHA256
-\treturn nil
+	if e == nil {
+		return errors.New("nil V8 entity")
+	}
+	if len(e.HermeticArtifact) > 0 {
+		return nil
+	}
+	ir, err := BuildV12EffectIR(e.DirectedRepresentation)
+	if err != nil {
+		return err
+	}
+	capability, err := CompileV12WasmCapability(ir)
+	if err != nil {
+		return err
+	}
+	e.HermeticArtifact = append([]byte(nil), capability.Module...)
+	e.HermeticArtifactHash = capability.SHA256
+	return nil
 }
 
 func (e *V8CognitiveEntity) verifyHermeticCapability() error {
-\tif len(e.HermeticArtifact) == 0 {
-\t\treturn errors.New("no hermetic capability artifact")
-\t}
-\tcapability, err := LoadV12WasmCapability(e.HermeticArtifact)
-\tif err != nil {
-\t\treturn err
-\t}
-\tif capability.SHA256 != e.HermeticArtifactHash {
-\t\treturn errors.New("hermetic artifact hash changed")
-\t}
-\tloaded := V11DirectedExecutableRepresentation{
-\t\tRoot: capability.Pattern.Root,
-\t\tNodes: capability.Pattern.Nodes,
-\t\tEdges: append([]V11DirectedPatternEdge(nil), capability.Pattern.Edges...),
-\t\tValid: true,
-\t\tRetained: true,
-\t}
-\tif loaded.Key() != e.DirectedRepresentation.Key() {
-\t\treturn errors.New("wasm payload pattern differs from live representation")
-\t}
-\tir, err := BuildV12EffectIR(loaded)
-\tif err != nil {
-\t\treturn err
-\t}
-\tpayload, _, err := V12PatternPayload(capability.Pattern, ir)
-\tif err != nil {
-\t\treturn err
-\t}
-\tok, err := ExecuteV12Wasm(e.HermeticArtifact, V12PatternSignature(payload))
-\tif err != nil {
-\t\treturn err
-\t}
-\tif !ok {
-\t\treturn errors.New("hermetic wasm self-check rejected retained pattern")
-\t}
-\treturn nil
+	if len(e.HermeticArtifact) == 0 {
+		return errors.New("no hermetic capability artifact")
+	}
+	capability, err := LoadV12WasmCapability(e.HermeticArtifact)
+	if err != nil {
+		return err
+	}
+	if capability.SHA256 != e.HermeticArtifactHash {
+		return errors.New("hermetic artifact hash changed")
+	}
+	loaded := V11DirectedExecutableRepresentation{
+		Root: capability.Pattern.Root,
+		Nodes: capability.Pattern.Nodes,
+		Edges: append([]V11DirectedPatternEdge(nil), capability.Pattern.Edges...),
+		Valid: true,
+		Retained: true,
+	}
+	if loaded.Key() != e.DirectedRepresentation.Key() {
+		return errors.New("wasm payload pattern differs from live representation")
+	}
+	ir, err := BuildV12EffectIR(loaded)
+	if err != nil {
+		return err
+	}
+	payload, _, err := V12PatternPayload(capability.Pattern, ir)
+	if err != nil {
+		return err
+	}
+	ok, err := ExecuteV12Wasm(e.HermeticArtifact, V12PatternSignature(payload))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("hermetic wasm self-check rejected retained pattern")
+	}
+	return nil
 }
 
 func (e *V8CognitiveEntity) ForgetRawExperiences() {
