@@ -252,11 +252,12 @@ func generateAmortizationTask(seed int, methods []AcquisitionMethodArtifact) amo
 		expected := abstractCompoundReference(m2, abstractCompoundReference(m1, in))
 		return abstractCompoundExample{Input: in, Expected: abstractCompoundMechanisms(expected)}
 	}
-	// A fixed 12-example identification set is the smallest size that makes the
-	// deterministic primitive baseline universally solve the 512-task curriculum
-	// under the current procedure language; both learners receive it symmetrically.
-	train := make([]abstractCompoundExample, 0, 12)
-	for n := 11; n <= 22; n++ {
+	// G3 repair hypothesis H1: use a larger fixed, target-blind identification
+	// set after the 12-example experiment exposed one retained-solver
+	// observational collision. The input suite is independent of the hidden
+	// target pair and is shared symmetrically by scratch and retained solvers.
+	train := make([]abstractCompoundExample, 0, 32)
+	for n := 11; n <= 42; n++ {
 		train = append(train, buildExample(n))
 	}
 	holdout := make([]abstractCompoundExample, 0, 4)
