@@ -1,6 +1,9 @@
 package acex
 
-import "testing"
+import (
+	"testing"
+	"strings"
+)
 
 func v11ChainState(prefix string, reverse bool, noise int) (RelationalState, []string, string) {
 	actions := []string{prefix + "-a", prefix + "-b", prefix + "-c"}
@@ -95,7 +98,7 @@ func TestV11ArtifactContainsNoRawEpisodes(t *testing.T) {
 	if len(artifact) == 0 {
 		t.Fatal("empty artifact")
 	}
-	if containsString(artifact, "opaque-source") || containsString(artifact, "examples") || containsString(artifact, "src") {
+	if strings.Contains(artifact, "opaque-source") || strings.Contains(artifact, "examples") || strings.Contains(artifact, "src") {
 		t.Fatalf("artifact appears to contain raw episode material: %s", artifact)
 	}
 }
