@@ -1,0 +1,37 @@
+name: H3 Compression Falsification
+on:
+  push:
+    branches:
+      - h3-compression-live-20260921
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: Run H3
+        run: |
+          mkdir -p h3_artifacts
+          go run ./cmd/h3-compression | tee h3_artifacts/stdout.txt
+      - name: Upload H3 result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h3-compression
+          path: |
+            h3_artifacts/H3_RESULT.json
+            h3_artifacts/stdout.txt
+      - name: Emit verdict
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          with open("h3_artifacts/H3_RESULT.json",encoding="utf-8") as f:
+              r=json.load(f)
+          print("H3 VERDICT:",r["verdict"])
+          for x in r["reasons"]:
+              print("KILL:",x)
+          PY
