@@ -3,7 +3,9 @@ package acex
 import (
 	"fmt"
 	"math/rand"
+	"os"
 	"sort"
+	"strconv"
 	"testing"
 )
 
@@ -31,8 +33,14 @@ func insertMotif(prefix, motif, suffix []TraceStep) Trace {
 
 func TestV2AdversarialRandomizedCognitiveSweep(t *testing.T) {
 	const trials = 64
+	baseSeed := int64(900000)
+	if raw := os.Getenv("ACEX_RUNTIME_SEED"); raw != "" {
+		if v, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			baseSeed += (v % 1000000) * 1009
+		}
+	}
 	for seed := 1; seed <= trials; seed++ {
-		r := rand.New(rand.NewSource(int64(900000 + seed)))
+		r := rand.New(rand.NewSource(baseSeed + int64(seed)))
 
 		// Belief revision: generate distinct hypothesis signatures. The
 		// experimenter must repeatedly intervene and revise until the true
@@ -164,5 +172,5 @@ func TestV2AdversarialRandomizedCognitiveSweep(t *testing.T) {
 		}
 		_ = want
 	}
-	t.Logf("ACEX V2 RANDOMIZED SWEEP: PASS trials=%d", trials)
+	t.Logf("ACEX V2 RANDOMIZED SWEEP: PASS trials=%d baseSeed=%d runtimeSeed=%q", trials, baseSeed, os.Getenv("ACEX_RUNTIME_SEED"))
 }
