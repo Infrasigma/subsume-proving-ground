@@ -34,6 +34,9 @@ type V8CognitiveEntity struct {
 	Evidence         []V8CapabilityEvidence
 	HermeticArtifact []byte
 	HermeticArtifactHash string
+	HermeticExecutor *V12WasmDecisionExecutor
+	HermeticScratchCandidates [V12DecisionMaxCandidates]V12CandidateMatrix
+	HermeticScratchInput [V12DecisionMaxCandidates * V12DecisionCandidateStride]byte
 	Version          uint64
 	Failures         []string
 }
@@ -154,29 +157,30 @@ func (e *V8CognitiveEntity) ObserveAndAct(state RelationalState, actions []strin
 			e.AdaptiveRoles.InventedRepresentation(), true)
 		return action, nil
 	}
-	if action, ok := e.DirectedRepresentation.Select(state, filtered); ok {
-		if err := e.verifyHermeticCapability(); err != nil {
-			if e.DirectedRepresentation.Retained {
-				return "", err
-			}
+	// Once a directed representation is retained, its action decision is owned
+	// exclusively by the content-addressed Wasm artifact. There is deliberately
+	// no Go matcher fallback on this path.
+	if e.DirectedRepresentation.Retained {
+		action, err := e.decideHermetic(state, filtered)
+		if err != nil {
+			return "", err
 		}
-		e.attest("directed-executable-representation-transfer", "v11-directed-rep-"+e.DirectedRepresentation.Key(),
-			fmt.Sprintf("complexity=%d expansions=%d retained=%t wasm=%s", e.DirectedRepresentation.Complexity(), e.DirectedRepresentation.SearchExpansions, e.DirectedRepresentation.Retained, e.HermeticArtifactHash), true)
+		e.attest("directed-executable-representation-transfer", "v12-wasm-"+e.HermeticArtifactHash,
+			fmt.Sprintf("complexity=%d expansions=%d retained=true wasm=%s", e.DirectedRepresentation.Complexity(), e.DirectedRepresentation.SearchExpansions, e.HermeticArtifactHash), true)
 		return action, nil
 	}
 	if e.DirectedRepresentation.Synthesize() {
-		if action, ok := e.DirectedRepresentation.Select(state, filtered); ok {
-			if err := e.ensureHermeticCapability(); err != nil {
-				return "", err
-			}
-			if err := e.verifyHermeticCapability(); err != nil {
-				return "", err
-			}
-			e.Version++
-			e.attest("directed-executable-representation-invention", "v11-directed-rep-"+e.DirectedRepresentation.Key(),
-				fmt.Sprintf("complexity=%d expansions=%d wasm=%s", e.DirectedRepresentation.Complexity(), e.DirectedRepresentation.SearchExpansions, e.HermeticArtifactHash), true)
-			return action, nil
+		if err := e.ensureHermeticCapability(); err != nil {
+			return "", err
 		}
+		action, err := e.decideHermetic(state, filtered)
+		if err != nil {
+			return "", err
+		}
+		e.Version++
+		e.attest("directed-executable-representation-invention", "v12-wasm-"+e.HermeticArtifactHash,
+			fmt.Sprintf("complexity=%d expansions=%d wasm=%s", e.DirectedRepresentation.Complexity(), e.DirectedRepresentation.SearchExpansions, e.HermeticArtifactHash), true)
+		return action, nil
 	}
 	if action, ok := e.RelationalPatterns.Select(state, filtered); ok {
 		e.attest("synthesized-relational-representation", "v8-pattern-"+e.RelationalPatterns.Pattern.Key(),
@@ -230,6 +234,7 @@ func (e *V8CognitiveEntity) ObserveOutcome(before RelationalState, action string
 	oldValid := e.DirectedRepresentation.Valid
 	e.DirectedRepresentation.Record(before, action, reward, terminal)
 	if e.DirectedRepresentation.Key() != oldKey || e.DirectedRepresentation.Valid != oldValid {
+		e.closeHermeticExecutor()
 		e.HermeticArtifact = nil
 		e.HermeticArtifactHash = ""
 	}
@@ -397,6 +402,13 @@ func (e *V8CognitiveEntity) ensureHermeticCapability() error {
 		return errors.New("nil V8 entity")
 	}
 	if len(e.HermeticArtifact) > 0 {
+		if e.HermeticExecutor == nil {
+			executor, err := NewV12WasmDecisionExecutor(context.Background(), e.HermeticArtifact)
+			if err != nil {
+				return err
+			}
+			e.HermeticExecutor = executor
+		}
 		return nil
 	}
 	ir, err := BuildV12EffectIR(e.DirectedRepresentation)
@@ -407,9 +419,54 @@ func (e *V8CognitiveEntity) ensureHermeticCapability() error {
 	if err != nil {
 		return err
 	}
+	executor, err := NewV12WasmDecisionExecutor(context.Background(), capability.Module)
+	if err != nil {
+		return err
+	}
+	e.closeHermeticExecutor()
 	e.HermeticArtifact = append([]byte(nil), capability.Module...)
 	e.HermeticArtifactHash = capability.SHA256
+	e.HermeticExecutor = executor
 	return nil
+}
+
+func (e *V8CognitiveEntity) closeHermeticExecutor() {
+	if e == nil || e.HermeticExecutor == nil {
+		return
+	}
+	_ = e.HermeticExecutor.Close(context.Background())
+	e.HermeticExecutor = nil
+}
+
+func (e *V8CognitiveEntity) decideHermetic(state RelationalState, actions []string) (string, error) {
+	if e == nil {
+		return "", errors.New("nil V8 entity")
+	}
+	if !e.DirectedRepresentation.Retained {
+		return "", errors.New("hermetic decision requested before retention")
+	}
+	if len(actions) == 0 || len(actions) > V12DecisionMaxCandidates {
+		return "", fmt.Errorf("hermetic action count out of bounds: %d", len(actions))
+	}
+	if err := e.ensureHermeticCapability(); err != nil {
+		return "", err
+	}
+	count, err := BuildV12RelationalCandidates(state, actions, &e.HermeticScratchCandidates)
+	if err != nil {
+		return "", err
+	}
+	input, err := EncodeV12DecisionInput(e.HermeticScratchCandidates[:count], e.HermeticScratchInput[:])
+	if err != nil {
+		return "", err
+	}
+	index, err := e.HermeticExecutor.Decide(input, uint32(count))
+	if err != nil {
+		return "", err
+	}
+	if index < 0 || int(index) >= len(actions) {
+		return "", fmt.Errorf("hermetic artifact selected no valid action: %d", index)
+	}
+	return actions[int(index)], nil
 }
 
 func (e *V8CognitiveEntity) verifyHermeticCapability() error {
@@ -512,38 +569,30 @@ func (e *V8CognitiveEntity) LoadRetainedRepresentation(artifact string) error {
 	if e == nil {
 		return errors.New("nil V8 entity")
 	}
-	module, decodeErr := DecodeV12WasmBase64(artifact)
-	if decodeErr == nil {
-		capability, loadErr := LoadV12WasmCapability(module)
-		if loadErr == nil {
-			e.DirectedRepresentation = V11DirectedExecutableRepresentation{
-				Root: capability.Pattern.Root,
-				Nodes: capability.Pattern.Nodes,
-				Edges: append([]V11DirectedPatternEdge(nil), capability.Pattern.Edges...),
-				Budget: 20000,
-				Valid: true,
-				Retained: true,
-			}
-			e.HermeticArtifact = append([]byte(nil), module...)
-			e.HermeticArtifactHash = capability.SHA256
-		} else {
-			r, err := LoadV11DirectedRepresentation(artifact)
-			if err != nil {
-				return loadErr
-			}
-			e.DirectedRepresentation = r
-			e.HermeticArtifact = nil
-			e.HermeticArtifactHash = ""
-		}
-	} else {
-		r, err := LoadV11DirectedRepresentation(artifact)
-		if err != nil {
-			return err
-		}
-		e.DirectedRepresentation = r
-		e.HermeticArtifact = nil
-		e.HermeticArtifactHash = ""
+	module, err := DecodeV12WasmBase64(artifact)
+	if err != nil {
+		return fmt.Errorf("V12 hermetic artifact decode failed: %w", err)
 	}
+	capability, err := LoadV12WasmCapability(module)
+	if err != nil {
+		return fmt.Errorf("V12 hermetic artifact validation failed: %w", err)
+	}
+	executor, err := NewV12WasmDecisionExecutor(context.Background(), module)
+	if err != nil {
+		return err
+	}
+	e.closeHermeticExecutor()
+	e.DirectedRepresentation = V11DirectedExecutableRepresentation{
+		Root: capability.Pattern.Root,
+		Nodes: capability.Pattern.Nodes,
+		Edges: append([]V11DirectedPatternEdge(nil), capability.Pattern.Edges...),
+		Budget: 20000,
+		Valid: true,
+		Retained: true,
+	}
+	e.HermeticArtifact = append([]byte(nil), module...)
+	e.HermeticArtifactHash = capability.SHA256
+	e.HermeticExecutor = executor
 	e.StructuralRoles = NewV8StructuralRoleLearner()
 	e.AdaptiveRoles = NewV8AdaptiveStructuralRoleLearner()
 	e.RelationalPatterns = NewV8RelationalPatternInducer()
