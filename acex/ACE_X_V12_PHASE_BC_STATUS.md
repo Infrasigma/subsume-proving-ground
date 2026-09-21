@@ -16,3 +16,5 @@ TRUE_ASI_STATUS = NOT_ESTABLISHED
 
 ## Scientific status
 No V12 scientific claim is promoted yet.
+
+- Protected evaluator diagnostic revision: expose bounded V11 synthesis state before raw-memory destruction.
