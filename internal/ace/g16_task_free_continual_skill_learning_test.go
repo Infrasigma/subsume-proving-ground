@@ -228,7 +228,7 @@ func g16Retention(tasks []g16Task,methods []g16Method) (int,int) {
 	solved:=0; verified:=0
 	for _,t:=range tasks{
 		body,_,ok:=g16SolveLibraryOnly(t,methods,len(t.Body))
-		if ok && g16IndependentVerify(task,body){solved++;verified++}
+		if ok && g16IndependentVerify(t,body){solved++;verified++}
 	}
 	return solved,verified
 }
