@@ -2,3 +2,5 @@
 # Re-synchronize after trusted main evaluator hardening; scientific protocol unchanged.
 
 # Trigger fresh evaluation through main's proven protected evaluator.
+
+# Re-run through both protected evaluator trigger paths.
