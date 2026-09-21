@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   relational-pattern-transfer:
-    if: github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground' && github.event.pull_request.head.ref == 'ace-x-v10-blackbox-autonomy-20260921'
+    if: github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground' && (github.event.pull_request.head.ref == 'ace-x-v10-blackbox-autonomy-20260921' || github.event.pull_request.head.ref == 'ace-x-v10-v8-blackbox-20260921')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
