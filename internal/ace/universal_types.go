@@ -66,3 +66,9 @@ func Hash(v any) string {
 func Prov(parts ...any) string {
 	return Hash(append([]any{"provenance"}, parts...))
 }
+
+// ProgramFitsForTests exposes the independent execution predicate to the
+// V8 integration layer without exposing evaluator policy or hidden tasks.
+func ProgramFitsForTests(p UniversalProgram, cases []ProgramTestCase) bool {
+	return programFits(p, cases)
+}
