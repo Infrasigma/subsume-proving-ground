@@ -107,3 +107,19 @@ func TestV7ExplorationDoesNotPretendUnobservedTransitionsAreKnown(t *testing.T) 
 		t.Fatal("planner invented an unobserved action effect")
 	}
 }
+
+
+func TestV7GoalPlanNeverEmitsUnavailableAction(t *testing.T) {
+	agent := NewV7CognitiveAgent()
+	s0,s1,s2,s3 := v7State("x",0),v7State("x",1),v7State("x",2),v7State("x",3)
+	agent.ExecuteObserved(s0,"A",s1,0,false)
+	agent.ExecuteObserved(s1,"B",s2,0,false)
+	agent.ExecuteObserved(s2,"C",s3,1,true)
+	action,err := agent.NextAction(v7State("renamed",0),[]string{"K","Q"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if action != "K" && action != "Q" {
+		t.Fatalf("planner emitted unavailable action %q",action)
+	}
+}
