@@ -168,6 +168,7 @@ func TestG15MetacognitiveSelfModelAndRegulation(t *testing.T) {
 	passed:=0
 	sumSelfBrier,sumGlobalBrier,sumShiftStatic,sumShiftAdaptive,sumECE:=0.0,0.0,0.0,0.0,0.0
 	sumAlways,sumGlobal,sumSelf:=0.0,0.0,0.0
+	sumSuccess,sumSelfSuccess:=0.0,0.0
 	minSavings:=1.0
 	for seed:=1;seed<=seeds;seed++ {
 		r:=g15RunSeed(seed)
@@ -175,6 +176,7 @@ func TestG15MetacognitiveSelfModelAndRegulation(t *testing.T) {
 		aggregate.StationaryCases+=r.StationaryCases; aggregate.ShiftedCases+=r.ShiftedCases
 		sumSelfBrier+=r.SelfModelBrier; sumGlobalBrier+=r.GlobalBrier; sumShiftStatic+=r.StaticShiftedBrier; sumShiftAdaptive+=r.AdaptiveShiftedBrier; sumECE+=r.SelfModelECE
 		sumAlways+=r.AlwaysVerifyCost; sumGlobal+=r.GlobalRegulatedCost; sumSelf+=r.SelfRegulatedCost
+		sumSuccess+=r.SuccessRate; sumSelfSuccess+=r.SelfRegulatedSuccessRate
 		aggregate.AlwaysVerifyCalls+=r.AlwaysVerifyCalls; aggregate.GlobalRegulatedVerifies+=r.GlobalRegulatedVerifies; aggregate.SelfRegulatedVerifies+=r.SelfRegulatedVerifies
 		aggregate.OrderStressPasses+=r.OrderStressPasses; aggregate.BoundaryStressPasses+=r.BoundaryStressPasses; aggregate.ShiftAdaptationPasses+=r.ShiftAdaptationPasses
 		if r.CausalAblationPass { aggregate.CausalAblationPass=true }
@@ -184,8 +186,8 @@ func TestG15MetacognitiveSelfModelAndRegulation(t *testing.T) {
 	aggregate.SelfModelBrier=sumSelfBrier/seeds; aggregate.GlobalBrier=sumGlobalBrier/seeds
 	aggregate.StaticShiftedBrier=sumShiftStatic/seeds; aggregate.AdaptiveShiftedBrier=sumShiftAdaptive/seeds
 	aggregate.SelfModelECE=sumECE/seeds; aggregate.AlwaysVerifyCost=sumAlways/seeds; aggregate.GlobalRegulatedCost=sumGlobal/seeds; aggregate.SelfRegulatedCost=sumSelf/seeds
-	aggregate.SuccessRate=1.0
-	aggregate.SelfRegulatedSuccessRate=1.0
+	aggregate.SuccessRate=sumSuccess/seeds
+	aggregate.SelfRegulatedSuccessRate=sumSelfSuccess/seeds
 	aggregate.CausalAblationPass=passed==seeds
 	if passed==seeds &&
 		aggregate.SelfModelBrier<aggregate.GlobalBrier &&
