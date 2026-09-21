@@ -22,7 +22,7 @@ func TestV3ArchitectureTerminal(t *testing.T) {
 		base := NewV3Library()
 		first, err := V3MakeGenerationOneTasks(base, seed)
 		if err != nil { t.Fatalf("seed=%d generation1 task construction: %v", seed, err) }
-		learned, err := V3LearnGeneration(first, base, 7, 1200)
+		learned, _, _, _, err := V3LearnGeneration(first, base, 7, 1200)
 		if err != nil { t.Fatalf("seed=%d generation1 learning: %v", seed, err) }
 		var m1 string
 		for name := range learned.Macros { m1 = name; break }
