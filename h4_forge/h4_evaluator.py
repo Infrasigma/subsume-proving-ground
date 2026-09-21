@@ -268,7 +268,7 @@ def run_block(seed: int) -> dict:
     for i, concept in enumerate(learned):
         support = dataset_for_pattern(concept.atoms, seed + 6000 + i * 41, 60)
         audit = dataset_for_pattern(concept.atoms, seed + 7000 + i * 43, 120)
-        _, _, k0 = fresh_learn(support, audit)
+        _, k0 = fresh_learn(support, audit)
         prefix_lib = library_snapshots[i]
         _, acc, k1 = prefix_lib.query(support, audit)
         ratio = cost_ratio(k1 + 20 * len(prefix_lib.concepts), k0)
