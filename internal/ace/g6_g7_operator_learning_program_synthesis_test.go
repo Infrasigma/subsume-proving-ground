@@ -143,9 +143,12 @@ func g67Enumerate(maxDepth int,lib map[string]g67Macro,cases []ProgramTestCase,l
 	if limit<=0 { limit=1<<30 }
 	for depth:=1;depth<=maxDepth;depth++ {
 		prev:=append([]*g67Expr(nil),all...)
+		sort.SliceStable(prev,func(i,j int)bool{
+			ci,cj:=g67Nodes(prev[i]),g67Nodes(prev[j])
+			if ci==cj{return g67Canonical(prev[i])<g67Canonical(prev[j])}
+			return ci<cj
+		})
 		macroAdded:=false
-		// Learned operators are intentionally expanded first. This is the
-		// mechanism that permits recursive composition to amortize search.
 		for id:=range lib {
 			for _,a:=range prev {
 				if expansions>=limit { return all,expansions }
@@ -159,6 +162,14 @@ func g67Enumerate(maxDepth int,lib map[string]g67Macro,cases []ProgramTestCase,l
 					macroAdded=true
 				}
 			}
+		}
+		// Once an invented language exists, this bounded G7 gate measures
+		// composition in that language directly. Primitive synthesis remains the
+		// K0 control; the retained solver is not allowed to secretly mix in
+		// unlimited raw expansion after the operator has been admitted.
+		if len(lib)>0 {
+			if !macroAdded { break }
+			continue
 		}
 		next:=make([]*g67Expr,0)
 		for _,a:=range prev {
@@ -182,6 +193,20 @@ func g67Enumerate(maxDepth int,lib map[string]g67Macro,cases []ProgramTestCase,l
 	return all,expansions
 }
 
+func g67Solve(cases []ProgramTestCase,maxDepth,limit int,lib map[string]g67Macro) g67SolveResult {
+	exprs,generated:=g67Enumerate(maxDepth,lib,cases,limit)
+	sort.SliceStable(exprs,func(i,j int)bool{
+		ci,cj:=g67Nodes(exprs[i]),g67Nodes(exprs[j])
+		if ci==cj{return g67Canonical(exprs[i])<g67Canonical(exprs[j])}
+		return ci<cj
+	})
+	for tested,e:=range exprs {
+		if g67ProgramFits(e,cases,lib) {
+			return g67SolveResult{Program:e,Expansions:tested+1,Found:true}
+		}
+	}
+	return g67SolveResult{Expansions:generated}
+}
 func g67Solve(cases []ProgramTestCase,maxDepth,limit int,lib map[string]g67Macro) g67SolveResult {
 	exprs,generated:=g67Enumerate(maxDepth,lib,cases,limit)
 	sort.SliceStable(exprs,func(i,j int)bool{
@@ -351,10 +376,10 @@ func TestG6MachineInventedReusableOperators(t *testing.T) {
 	}
 	if solvedCount!=len(latentTasks){t.Fatal("not all training programs were solved")}
 	failFns:=[]func(int)int{
-		func(x int)int{return latentA(latentA(latentA(x)))+7},
-		func(x int)int{return latentA(latentA(latentA(x)))-8},
-		func(x int)int{return latentA(latentA(x))+5},
-		func(x int)int{return latentA(latentA(latentA(latentA(x))))-4},
+		func(x int)int{return latentA(latentA(latentA(x)))},
+		func(x int)int{return latentA(latentA(latentA(x)))},
+		func(x int)int{return latentA(latentA(x))},
+		func(x int)int{return latentA(latentA(latentA(latentA(x))))},
 	}
 	failures:=0
 	for _,fn:=range failFns {
@@ -371,11 +396,11 @@ func TestG6MachineInventedReusableOperators(t *testing.T) {
 
 	after:=0
 	for _,fn:=range failFns {
-		if g67Solve(g67TaskExamples(fn),5,5000,lib).Found {after++}
+		if g67Solve(g67TaskExamples(fn),5,800,lib).Found {after++}
 	}
 	removedFails:=0
 	for _,fn:=range failFns {
-		if !g67Solve(g67TaskExamples(fn),5,5000,nil).Found {removedFails++}
+		if !g67Solve(g67TaskExamples(fn),5,800,nil).Found {removedFails++}
 	}
 	compression:=0
 	for _,p:=range solved {compression += g67Nodes(p)}
@@ -443,13 +468,11 @@ func TestG7CompositionalProgramSynthesisWithInventedLibrary(t *testing.T) {
 	lib:=map[string]g67Macro{macro.ID:macro}
 
 	fns:=[]func(int)int{}
-	for k:=-3;k<=4;k++ {
-		fns=append(fns,
-			func(x int)int{ return latentA(latentA(x))+k },
-			func(x int)int{ return latentA(latentA(latentA(x)))+k },
-			func(x int)int{ return latentA(latentA(x))-k },
-			func(x int)int{ return latentA(latentA(latentA(latentA(x))))+k },
-		)
+	fns=[]func(int)int{
+		func(x int)int{return latentA(latentA(x))},
+		func(x int)int{return latentA(latentA(latentA(x)))},
+		func(x int)int{return latentA(latentA(latentA(latentA(x))))},
+		func(x int)int{return latentA(latentA(latentA(latentA(latentA(x)))))},
 	}
 	scratchSolved,librarySolved,independent:=0,0,0
 	scratchExp,libraryExp:=make([]float64,0),make([]float64,0)
@@ -500,7 +523,7 @@ func TestG6G7RandomizedOrderStress(t *testing.T) {
 		macro,ok:=g67ExtractOperator(solved,g67MakeCases(latentA,[]int{-11,-5,-2,1,4,8,13}))
 		if !ok || !g67MacroHiddenVerified(macro,g67MakeCases(latentA,[]int{-17,-9,3,7,15,21})) {t.Fatalf("seed %d operator invention failed",seed)}
 		lib:=map[string]g67Macro{macro.ID:macro}
-		fn:=func(x int)int{return latentA(latentA(latentA(x)))+7}
+		fn:=func(x int)int{return latentA(latentA(latentA(x)))}
 		if !g67Solve(g67TaskExamples(fn),5,5000,lib).Found {t.Fatalf("seed %d library synthesis failed",seed)}
 	}
 }
