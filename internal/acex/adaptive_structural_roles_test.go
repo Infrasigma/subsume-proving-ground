@@ -9,32 +9,43 @@ func adaptiveRoleState(prefix string, surface int) (RelationalState, []string, s
 	if surface == 1 {
 		actionKind, supportKind, edgeKind = "token", "port", "route"
 	}
-	nodes := make([]RelNode, 0, 12)
-	edges := make([]RelEdge, 0, 16)
+	nodes := make([]RelNode, 0, 20)
+	edges := make([]RelEdge, 0, 24)
 	for _, a := range actions {
 		nodes = append(nodes, RelNode{ID:a, Kind:actionKind, Attrs:map[string]string{"surface": "opaque"}})
 	}
-	addSupport := func(action, id string) {
-		nodes = append(nodes, RelNode{ID:id, Kind:supportKind, Attrs:map[string]string{"surface": "opaque"}})
-		edges = append(edges, RelEdge{From:action, To:id, Kind:edgeKind})
+	addNode := func(id string) {
+		nodes = append(nodes, RelNode{ID:id, Kind:supportKind, Attrs:map[string]string{"surface":"opaque"}})
+	}
+	addEdge := func(from,to string) {
+		edges = append(edges, RelEdge{From:from, To:to, Kind:edgeKind})
 	}
 
-	// Correct action: its two neighbors are adjacent, forming a triangle.
+	// Correct action: two immediate neighbors, sharing one radius-2 node.
 	c1 := prefix+"-c1"
 	c2 := prefix+"-c2"
-	addSupport(correct, c1)
-	addSupport(correct, c2)
-	edges = append(edges, RelEdge{From:c1, To:c2, Kind:edgeKind})
+	cShared := prefix+"-c-shared"
+	addNode(c1)
+	addNode(c2)
+	addNode(cShared)
+	addEdge(correct, c1)
+	addEdge(correct, c2)
+	addEdge(c1, cShared)
+	addEdge(c2, cShared)
 
-	// Distractors: same radius-1 degree statistics, but their two neighbors
-	// extend outward instead of connecting to each other.
+	// Distractors: identical radius-1 counts, but each neighbor reaches
+	// its own separate radius-2 leaf. Radius 1 cannot distinguish these.
 	for _, a := range []string{actions[0], actions[2]} {
 		n1, n2 := a+"-n1", a+"-n2"
 		l1, l2 := a+"-l1", a+"-l2"
-		addSupport(a, n1)
-		addSupport(a, n2)
-		addSupport(n1, l1)
-		addSupport(n2, l2)
+		addNode(n1)
+		addNode(n2)
+		addNode(l1)
+		addNode(l2)
+		addEdge(a, n1)
+		addEdge(a, n2)
+		addEdge(n1, l1)
+		addEdge(n2, l2)
 	}
 
 	return RelationalState{Nodes:nodes, Edges:edges}, actions, correct
