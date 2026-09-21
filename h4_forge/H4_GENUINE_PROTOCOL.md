@@ -58,3 +58,5 @@ Any failure after mechanical implementation defects are fixed => KILLED.
 All gates on both blocks => PASS.
 This protocol does not claim ASI; it tests whether H4 concept reuse survives stronger
 representation and negative-control challenges.
+
+Frozen test revision: G1-G8; no post-result threshold changes permitted.
