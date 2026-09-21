@@ -134,12 +134,13 @@ func g14FarthestGoal(w g14World,start int) int {
 	best:=start; bestD:=-1
 	for goal:=0;goal<w.N;goal++ {
 		if goal==start {continue}
-		_,exp,ok:=g14Plan(w,start,goal)
+		path,_,ok:=g14Plan(w,start,goal)
 		if !ok {continue}
-		// Use a deterministic preference for longer nominal plans. exp is
+		// Use a deterministic preference for longer nominal plans. Path length is
 		// monotone enough for this tiny bounded graph, while the independent
 		// evaluator only requires actual reachability.
-		if exp>bestD {bestD=exp;best=goal}
+		d:=len(path)-1
+		if d>bestD {bestD=d;best=goal}
 	}
 	return best
 }
