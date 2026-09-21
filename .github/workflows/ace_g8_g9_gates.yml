@@ -1,10 +1,11 @@
 name: ACE G8 G9 Causal and Belief Revision Gates
 
 on:
-  push:
-    branches:
-      - "feat/autonomous-abstract-compounding-20260922"
   pull_request:
+
+concurrency:
+  group: ace-g8g9-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
