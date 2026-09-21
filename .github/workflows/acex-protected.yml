@@ -25,19 +25,13 @@ jobs:
           cache: false
       - name: Resolve module checksums
         run: go mod download
-      - name: Run ACE-X pure-substrate terminal gate
+      - name: Run ACE-X protected terminal gate
         env:
-          ACEX_V2_SEEDS: "610117,830921"
+          ACEX_RUNTIME_SEED: ${{ github.run_id }}
+          ACEX_SEEDS: "610117,830921"
         run: |
           set -euo pipefail
-          go test -mod=mod -run '^TestV2Terminal ./internal/acex -count=1 -timeout=12m -v | tee acex-result.txt
-      - name: Publish ACE-X forensic result
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: acex-v2-protected-result
-          path: acex-result.txt
- ./internal/acex -count=1 -timeout=12m -v | tee acex-result.txt
+          go test -mod=mod -run '^TestV2ArchitectureTerminal$' ./internal/acex -count=1 -timeout=12m -v | tee acex-result.txt
       - name: Publish ACE-X forensic result
         if: always()
         uses: actions/upload-artifact@v4
