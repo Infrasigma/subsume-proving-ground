@@ -36,3 +36,5 @@ KILL when any gate fails on either block after mechanical defects are excluded.
 No threshold, hidden seed, evaluator, or task-family-specific mechanism may be changed after observing scientific results.
 
 Optional model interfaces are replaceable components only. The evaluator remains model-independent.
+
+CI-trigger revision: integrated gate unchanged.
