@@ -143,11 +143,36 @@ func g16Write(name string,v any){
 	_ = os.WriteFile(filepath.Join(ws,name),append(b,'\n'),0644)
 }
 
+func g16SolveLibraryComposition(examples []g16Observation, lib []g16LearnedSkill, maxCalls int) ([]string, bool) {
+	if len(lib)==0 { return nil,false }
+	for depth:=1; depth<=maxCalls; depth++ {
+		idx:=make([]int,depth)
+		var rec func(int) ([]string,bool)
+		rec=func(pos int)([]string,bool){
+			if pos==depth {
+				body:=make([]string,0,depth*4)
+				for _,i:=range idx { body=append(body,lib[i].Body...) }
+				for _,ex:=range examples {
+					if g16Apply(body,ex.In)!=ex.Out { return nil,false }
+				}
+				return body,true
+			}
+			for i:=range lib {
+				idx[pos]=i
+				if body,ok:=rec(pos+1); ok { return body,true }
+			}
+			return nil,false
+		}
+		if body,ok:=rec(0); ok { return body,true }
+	}
+	return nil,false
+}
+
 func g16RunSeed(seed int, permute bool, shift bool) g16Report {
 	const memory=4
 	const observations=1600
 	skills:=g16Skills()
-	programs:=g16AllPrograms(3)
+	programs:=g16AllPrograms(4)
 	counts:=map[string]*g16LearnedSkill{}
 	for _,p:=range programs { counts[g16Key(p)]=&g16LearnedSkill{Body:p,Key:g16Key(p)} }
 
@@ -210,7 +235,7 @@ func g16RunSeed(seed int, permute bool, shift bool) g16Report {
 	report:=g16Report{Seeds:1,StreamObservations:observations,SkillsVerified:len(library),Class:"G16_NOT_PROVEN"}
 	for _,m:=range library {
 		if m.Verified { report.IndependentVerificationPasses++ }
-		if len(m.Body)<=3 { report.MemoryBoundPasses++ }
+		if len(m.Body)<=4 { report.MemoryBoundPasses++ }
 	}
 
 	ret:=g16Retention(library,skills)
@@ -230,28 +255,35 @@ func g16RunSeed(seed int, permute bool, shift bool) g16Report {
 	report.RandomRetention=float64(randomWeighted)/float64(totalW)
 	report.FIFORetention=float64(fifoWeighted)/float64(totalW)
 
-	// Hidden recombination probes. The exact composite program is not part of
-	// the learner's stream and cannot be stored as one of the latent skills.
+	// Hidden recombination probes. The exact composite program is never
+	// presented as an observation and is not a stored latent skill.
 	recombOK:=0
 	rejections:=0
 	for i:=0;i<4;i++ {
-		a:=i
-		b:=7-i
+		a,b:=i,7-i
 		composite:=append(append([]string(nil),skills[a]...),skills[b]...)
 		stored:=false
-		for _,m:=range library { if m.Key==g16Key(composite) { stored=true } }
-		if !stored {
-			rejections++
-			componentsPresent:=ret[a] && ret[b]
-			correct:=true
-			for _,x:=range []int{-21,-4,0,9,18} {
-				if g16Apply(composite,x)!=g16Apply(skills[a],g16Apply(skills[b],x)) { correct=false }
-			}
-			if componentsPresent && correct { recombOK++ }
+		for _,m:=range library { if m.Key==g16Key(composite) { stored=true; break } }
+		if stored { continue }
+		rejections++
+		if !ret[a] || !ret[b] { continue }
+		examples:=make([]g16Observation,0,6)
+		for _,x:=range []int{-21,-4,0,9,18,31} {
+			examples=append(examples,g16Observation{In:x,Out:g16Apply(composite,x)})
 		}
+		candidate,ok:=g16SolveLibraryComposition(examples,library,2)
+		if !ok { continue }
+		// Independent hidden verification uses fresh inputs and the hidden target,
+		// not the examples used during composition search.
+		verified:=true
+		for _,x:=range []int{-37,-11,5,14,27} {
+			if g16Apply(candidate,x)!=g16Apply(composite,x) { verified=false; break }
+		}
+		if verified { recombOK++ }
 	}
 	report.RecombinationSuccess=float64(recombOK)/4.0
 	report.ExactFutureStorageRejections=rejections
+
 	report.OrderStressPasses=1
 	if shift { report.ShiftStressPasses=1 }
 
