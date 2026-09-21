@@ -134,3 +134,70 @@ func TestV8FailureMemoryBlocksRepeatedBadAction(t *testing.T) {
 		t.Fatalf("failure memory did not alter action selection: %q", action)
 	}
 }
+
+
+func TestV8ExecutableRepresentationDiscoversAndPersistsDirectionRule(t *testing.T) {
+	entity := NewV8CognitiveEntity()
+	makeState := func(prefix string) RelationalState {
+		correct := prefix + "-b"
+		nodes := []RelNode{
+			{ID: prefix + "-a", Kind: "action"},
+			{ID: correct, Kind: "action"},
+			{ID: prefix + "-c", Kind: "action"},
+		}
+		edges := []RelEdge{}
+		for _, action := range []string{prefix + "-a", correct, prefix + "-c"} {
+			n1 := action + "-n1"
+			n2 := action + "-n2"
+			nodes = append(nodes,
+				RelNode{ID:n1, Kind:"support"},
+				RelNode{ID:n2, Kind:"support"},
+			)
+			if action == correct {
+				edges = append(edges,
+					RelEdge{From:action, To:n1, Kind:"link"},
+					RelEdge{From:action, To:n2, Kind:"link"},
+				)
+			} else {
+				edges = append(edges,
+					RelEdge{From:n1, To:action, Kind:"link"},
+					RelEdge{From:n2, To:action, Kind:"link"},
+				)
+			}
+		}
+		return RelationalState{Nodes:nodes,Edges:edges}
+	}
+
+	state := makeState("src")
+	actions := []string{"src-a","src-b","src-c"}
+	if got, err := entity.ObserveAndAct(state, actions); err != nil || got == "" {
+		t.Fatalf("initial action selection failed: %q %v", got, err)
+	}
+	// Explicitly record the discriminating source experience so synthesis sees
+	// both positive and negative evidence for the latent relation.
+	entity.ObserveOutcome(state, "src-a", state, -1, false)
+	entity.ObserveOutcome(state, "src-b", state, 1, true)
+	entity.ObserveOutcome(state, "src-c", state, -1, false)
+
+	if !entity.ExecutableRepresentation.Synthesize() {
+		t.Fatalf("generic executable representation synthesis failed: examples=%d", len(entity.ExecutableRepresentation.Examples))
+	}
+	if err := entity.ExecutableRepresentation.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	programKey := entity.ExecutableRepresentation.ProgramKey
+
+	entity.ForgetRawExperiences()
+	if len(entity.ExecutableRepresentation.Examples) != 0 {
+		t.Fatalf("raw examples were not deleted: %d", len(entity.ExecutableRepresentation.Examples))
+	}
+	if entity.ExecutableRepresentation.ProgramKey != programKey {
+		t.Fatalf("retained executable representation changed during raw deletion: %q -> %q", programKey, entity.ExecutableRepresentation.ProgramKey)
+	}
+
+	target := makeState("tgt")
+	got, ok := entity.ExecutableRepresentation.Select(target, []string{"tgt-a","tgt-b","tgt-c"})
+	if !ok || got != "tgt-b" {
+		t.Fatalf("retained executable representation failed target transfer: got=%q ok=%t program=%s", got, ok, entity.ExecutableRepresentation.Description())
+	}
+}
