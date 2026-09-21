@@ -6,6 +6,7 @@ import (
 )
 
 func TestV3TypedLibraryGrowthCore(t *testing.T) {
+	if !v3KillMode { t.Skip("V3 route is preserved as a scientific KILL; run with -tags v3kill") }
 	lib := NewV3Library()
 	first, err := V3MakeGenerationOneTasks(lib, 101)
 	if err != nil { t.Fatal(err) }
@@ -45,6 +46,7 @@ func TestV3TypedLibraryGrowthCore(t *testing.T) {
 }
 
 func TestV3RuntimePromotionAndRollback(t *testing.T) {
+	if !v3KillMode { t.Skip("V3 route is preserved as a scientific KILL; run with -tags v3kill") }
 	r := NewCognitiveRuntime()
 	base := NewV3Library()
 	first, err := V3MakeGenerationOneTasks(base, 202)
