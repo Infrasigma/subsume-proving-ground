@@ -100,7 +100,7 @@ func v12EmitPatternMatcher(pattern V11DirectedPatternArtifact) []byte {
 
 func v12EmitSearchLevel(pattern V11DirectedPatternArtifact, depth int) []byte {
 	var out []byte
-	localIndex := uint32(depth)
+	localIndex := uint32(depth + 1)
 	out = append(out, 0x02, 0x40) // block $exit
 	out = append(out, 0x03, 0x40) // loop $continue
 
