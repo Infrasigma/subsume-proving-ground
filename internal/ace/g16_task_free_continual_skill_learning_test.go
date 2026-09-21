@@ -100,27 +100,33 @@ func g16FindMethod(methods []g16Method,id string) (g16Method,bool) {
 }
 
 func g16CandidateBodies(methods []g16Method,maxLen int) [][]string {
-	out:=make([][]string,0,64)
-	base:=append([]string(nil),g16PrimitiveNames...)
-	for _,op:=range base{out=append(out,[]string{op})}
-	for _,m:=range methods{if len(m.Body)<=maxLen{out=append(out,append([]string(nil),m.Body...))}}
+	out:=make([][]string,0,8+1364)
 	seen:=map[string]bool{}
-	for _,b:=range out{seen[g16Sig(b)]=true}
-	for depth:=2;depth<=maxLen;depth++ {
-		prev:=append([][]string(nil),out...)
-		for _,a:=range prev {
-			if len(a)>=depth{continue}
-			for _,op:=range base {
-				b:=append(append([]string(nil),a...),op)
-				if len(b)>maxLen{continue}; k:=g16Sig(b); if !seen[k]{seen[k]=true;out=append(out,b)}
-			}
-			for _,m:=range methods {
-				b:=append(append([]string(nil),a...),m.Body...)
-				if len(b)>maxLen{continue}; k:=g16Sig(b); if !seen[k]{seen[k]=true;out=append(out,b)}
-			}
+	for _,m:=range methods {
+		if len(m.Body)<=maxLen && !seen[g16Sig(m.Body)] {
+			seen[g16Sig(m.Body)]=true
+			out=append(out,append([]string(nil),m.Body...))
 		}
 	}
-	sort.Slice(out,func(i,j int)bool{if len(out[i])==len(out[j]){return g16Sig(out[i])<g16Sig(out[j])};return len(out[i])<len(out[j])})
+	var build func([]string,int)
+	build=func(prefix []string,depth int){
+		if depth>0 {
+			b:=append([]string(nil),prefix...)
+			if !seen[g16Sig(b)] {seen[g16Sig(b)]=true;out=append(out,b)}
+		}
+		if depth==maxLen {return}
+		for _,op:=range g16PrimitiveNames {build(append(append([]string(nil),prefix...),op),depth+1)}
+	}
+	build(nil,0)
+	sort.Slice(out,func(i,j int)bool{
+		if len(out[i])==len(out[j]) {return g16Sig(out[i])<g16Sig(out[j])}
+		// Retained methods are listed before same-length scratch programs.
+		hasI:=false; hasJ:=false
+		for _,m:=range methods {if g16Sig(m.Body)==g16Sig(out[i]){hasI=true;break}}
+		for _,m:=range methods {if g16Sig(m.Body)==g16Sig(out[j]){hasJ=true;break}}
+		if hasI!=hasJ{return hasI}
+		return len(out[i])<len(out[j])
+	})
 	return out
 }
 
