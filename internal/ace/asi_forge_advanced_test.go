@@ -23,14 +23,18 @@ func TestF7CrossDomainStructuralTransfer(t *testing.T) {
 	// The learned mechanism is structurally "order ascending by a comparable
 	// numeric field, then rotate once". The target domain changes from the
 	// ArchitectureCandidate representation to graph-node-like records.
+	f7Train := []rcCase{
+		{Candidates: rcCandidates([]int{8, 2, 7, 11}, "a"), Desired: ""},
+		{Candidates: rcCandidates([]int{9, 4, 13, 6}, "b"), Desired: ""},
+	}
+	f7Hidden := []rcCase{
+		{Candidates: rcCandidates([]int{17, 3, 9, 14}, "h"), Desired: ""},
+	}
+	for i := range f7Train { f7Train[i].Desired = rcSecondCheapest(f7Train[i].Candidates) }
+	for i := range f7Hidden { f7Hidden[i].Desired = rcSecondCheapest(f7Hidden[i].Candidates) }
 	learned, ok := rcSearch(
-		[]rcCase{
-			{Candidates: rcCandidates([]int{8, 2, 7, 11}, "a"), Desired: ""},
-			{Candidates: rcCandidates([]int{9, 4, 13, 6}, "b"), Desired: ""},
-		},
-		[]rcCase{
-			{Candidates: rcCandidates([]int{17, 3, 9, 14}, "h"), Desired: ""},
-		},
+		f7Train,
+		f7Hidden,
 		rcLibrary{Procedures: map[string]AcquisitionProcedure{}},
 		2,
 	)
@@ -148,39 +152,30 @@ func artifactFingerprint(p AcquisitionProcedure) []byte {
 	return b
 }
 
-func f10GeneralizePair(m1, m2 AcquisitionProcedure) (AcquisitionProcedure, bool) {
-	if len(m1.Steps) < 1 || len(m2.Steps) != len(m1.Steps)+1 { return AcquisitionProcedure{}, false }
-	for i := range m1.Steps {
-		if m1.Steps[i] != m2.Steps[i] { return AcquisitionProcedure{}, false }
-	}
-	if m2.Steps[len(m2.Steps)-1].Op != "rotate" || m2.Steps[len(m2.Steps)-1].Arg != 1 {
-		return AcquisitionProcedure{}, false
-	}
-	// Generic anti-unification of two procedure traces: common prefix plus a
-	// repeated final transform. The resulting abstraction is represented with
-	// a parameterized repeat count in metadata outside the primitive language.
-	return AcquisitionProcedure{
-		Version: 1,
-		Steps: []ProcedureStep{
-			{Op:"sort-cost"},
-			{Op:"rotate",Arg:3},
-		},
-	}, true
+type f10MetaProcedure struct {
+	Prefix []ProcedureStep
+	Repeated ProcedureStep
 }
 
-func f10ApplyRanked(p AcquisitionProcedure, candidates []ArchitectureCandidate, repeats int) []ArchitectureCandidate {
+func f10GeneralizePair(m1, m2 AcquisitionProcedure) (f10MetaProcedure, bool) {
+	if len(m1.Steps) < 1 || len(m2.Steps) != len(m1.Steps)+1 { return f10MetaProcedure{}, false }
+	for i := range m1.Steps { if m1.Steps[i] != m2.Steps[i] { return f10MetaProcedure{}, false } }
+	repeated := m1.Steps[len(m1.Steps)-1]
+	if m2.Steps[len(m2.Steps)-1] != repeated { return f10MetaProcedure{}, false }
+	return f10MetaProcedure{Prefix: append([]ProcedureStep(nil), m1.Steps[:len(m1.Steps)-1]...), Repeated: repeated}, true
+}
+
+func f10ApplyMeta(p f10MetaProcedure, candidates []ArchitectureCandidate, repeats int) []ArchitectureCandidate {
 	cur := append([]ArchitectureCandidate(nil), candidates...)
-	for _, s := range p.Steps {
-		switch s.Op {
-		case "sort-cost":
-			sort.SliceStable(cur, func(i,j int) bool { return cur[i].Resources.Compute < cur[j].Resources.Compute })
-		case "rotate":
-			n := repeats
-			if n < 0 { n = 0 }
-			for i := 0; i < n && len(cur) > 1; i++ {
-				cur = append(append([]ArchitectureCandidate(nil), cur[1:]...), cur[:1]...)
-			}
-		}
+	for _, s := range p.Prefix {
+		next, err := rcApply(AcquisitionProcedure{Version:1, Steps:[]ProcedureStep{s}}, cur, rcLibrary{})
+		if err != nil { return nil }
+		cur = next
+	}
+	for i:=0; i<repeats; i++ {
+		next, err := rcApply(AcquisitionProcedure{Version:1, Steps:[]ProcedureStep{p.Repeated}}, cur, rcLibrary{})
+		if err != nil { return nil }
+		cur = next
 	}
 	return cur
 }
@@ -232,10 +227,10 @@ func TestF10AutonomousRecursiveAbstractionImprovesDiscoveryCost(t *testing.T) {
 	generalizedPass := false
 	for repeats := 0; repeats <= 4; repeats++ {
 		evaluated++
-		candidate := f10ApplyRanked(generalized, g2Train[0].Candidates, repeats)
+		candidate := f10ApplyMeta(generalized, g2Train[0].Candidates, repeats)
 		if len(candidate) > 0 && candidate[0].Mechanism == g2Train[0].Desired {
 			for _, h := range g2Hidden {
-				ch := f10ApplyRanked(generalized, h.Candidates, repeats)
+				ch := f10ApplyMeta(generalized, h.Candidates, repeats)
 				if len(ch) == 0 || ch[0].Mechanism != h.Desired { generalizedPass = false; break }
 				generalizedPass = true
 			}
