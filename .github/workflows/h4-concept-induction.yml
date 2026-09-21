@@ -1,0 +1,32 @@
+name: H4 autonomous concept induction
+
+on:
+  push:
+    branches:
+      - h4-concept-live-20260921
+
+permissions:
+  contents: read
+
+jobs:
+  h4-kill-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact H4 commit
+        uses: actions/checkout@v4
+
+      - name: Run frozen H4 evaluator
+        env:
+          H4_SEED_A: "431171"
+          H4_SEED_B: "928437"
+          PYTHONHASHSEED: "0"
+        run: |
+          python3 h4_forge/h4_evaluator.py | tee h4-result.txt
+
+      - name: Publish forensic result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h4-result
+          path: h4-result.txt
