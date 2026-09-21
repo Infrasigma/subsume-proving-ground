@@ -46,25 +46,22 @@ func makeBalanced(seed int64, family hiddenFamily, conceptIndex int, count int, 
 	r := rand.New(rand.NewSource(seed))
 	tokens := permutedTokens(stableTokenSeed(family, int64(conceptIndex)), family, "opaque")
 	positives, negatives := make([]Observation, 0, count/2), make([]Observation, 0, count/2)
-	tries := 0
+	negativeIndex := 0
 	for len(positives) < count/2 || len(negatives) < count/2 {
-		tries++
-		if tries > count*10000 {
-			panic("dataset balancing failed")
-		}
 		label := len(positives) < count/2 && (len(negatives) >= count/2 || r.Float64() < 0.5)
 		features := make([]string, 0, 10)
 		if label {
 			features = append(features, tokens...)
 		} else {
+			// Every negative contains exactly two of the three latent atoms.
+			// Missing-atom rotation makes every 1/2-atom subset occur in
+			// negatives, preventing a lower-complexity shortcut.
+			missing := negativeIndex % len(tokens)
+			negativeIndex++
 			for i, token := range tokens {
-				if r.Float64() >= family.Removals[i] {
+				if i != missing {
 					features = append(features, token)
 				}
-			}
-			// Force at least one latent atom out of every negative.
-			if len(features) == len(tokens) {
-				features = features[:len(features)-1]
 			}
 		}
 		for i, n := range family.Noise {
@@ -87,73 +84,39 @@ func makeBalanced(seed int64, family hiddenFamily, conceptIndex int, count int, 
 	return Dataset{Examples: append(positives, negatives...)}
 }
 
-func mappedConcept(source Dataset, target Dataset, c Concept) (Concept, Resource, error) {
-	rep, _, cost, err := MapRepresentation(source, target, c)
-	if err != nil {
-		return Concept{}, cost, err
-	}
-	mapped := make([]string, 0, len(c.Features))
-	for _, f := range c.Features {
-		x, ok := rep.Map[f]
-		if !ok {
-			return Concept{}, cost, fmt.Errorf("missing mapped feature %q", f)
-		}
-		mapped = append(mapped, x)
-	}
-	sort.Strings(mapped)
-	c.Features = mapped
-	c.ID = strings.Join(mapped, "+")
-	c.TransferSig = rep.Name
-	return c, cost, nil
-}
-
 func makeComposedTarget(seed int64, family hiddenFamily, count int) (Dataset, Dataset, Dataset) {
 	r := rand.New(rand.NewSource(seed))
 	aTokens := permutedTokens(stableTokenSeed(family, 0), family, "opaque")
 	bTokens := permutedTokens(stableTokenSeed(family, 1), family, "opaque")
-	makeSet := func(requireBoth bool) Dataset {
-		pos, neg := make([]Observation, 0, count/2), make([]Observation, 0, count/2)
-		for len(pos) < count/2 || len(neg) < count/2 {
-			label := len(pos) < count/2 && (len(neg) >= count/2 || r.Float64() < 0.5)
-			features := make([]string, 0, 16)
-			if label {
-				features = append(features, aTokens...)
-				if requireBoth {
-					features = append(features, bTokens...)
-				}
+	pos, neg := make([]Observation, 0, count/2), make([]Observation, 0, count/2)
+	for len(pos) < count/2 || len(neg) < count/2 {
+		label := len(pos) < count/2 && (len(neg) >= count/2 || r.Float64() < 0.5)
+		features := make([]string, 0, 12)
+		if label {
+			features = append(features, aTokens...)
+			features = append(features, bTokens...)
+		} else {
+			// Negative examples satisfy at most one component, never both.
+			if r.Intn(2) == 0 {
+				features = append(features, aTokens[0], aTokens[1])
 			} else {
-				for _, token := range aTokens {
-					if r.Float64() > 0.45 {
-						features = append(features, token)
-					}
-				}
-				if requireBoth {
-					for _, token := range bTokens {
-						if r.Float64() > 0.60 {
-							features = append(features, token)
-						}
-					}
-				}
-				if requireBoth && len(features) == len(aTokens)+len(bTokens) {
-					features = features[:len(features)-1]
-				}
-			}
-			for i, n := range family.Noise {
-				if r.Float64() < 0.15+float64(i)*0.08 {
-					features = append(features, fmt.Sprintf("compose-%s-%d", n, r.Intn(7)))
-				}
-			}
-			sort.Strings(features)
-			ex := Observation{Features: features, Label: label}
-			if label {
-				pos = append(pos, ex)
-			} else {
-				neg = append(neg, ex)
+				features = append(features, bTokens[0], bTokens[1])
 			}
 		}
-		return Dataset{Examples: append(pos, neg...)}
+		for i, n := range family.Noise {
+			if r.Float64() < 0.15+float64(i)*0.08 {
+				features = append(features, fmt.Sprintf("compose-%s-%d", n, r.Intn(7)))
+			}
+		}
+		sort.Strings(features)
+		ex := Observation{Features: features, Label: label}
+		if label {
+			pos = append(pos, ex)
+		} else {
+			neg = append(neg, ex)
+		}
 	}
-	return makeSet(false), makeSet(true), Dataset{Examples: append([]Observation(nil), makeSet(true).Examples...)}
+	return Dataset{Examples: append(pos, neg...)}, Dataset{}, Dataset{}
 }
 
 func split(data Dataset) (Dataset, Dataset) {
