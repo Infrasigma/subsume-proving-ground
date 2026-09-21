@@ -38,7 +38,20 @@ jobs:
               ;;
             ace-x-v8-unified-cognitive-20260921)
               go test -mod=mod -run '^TestUniversalProgramBuilderLearnsExecutableCapability$' ./internal/ace -count=1 -timeout=5m -v
-              go test -mod=mod -run '^TestV8UnifiedCognitiveEntity$|^TestV8SurpriseMemoryAffectsRetrieval$' ./internal/acex -count=1 -timeout=20m -v
+              go test -mod=mod -run '^TestV8UnifiedCognitiveEntity$|^TestV8SurpriseMemoryAffectsRetrieval$|^TestV8FailureMemoryBlocksRepeatedBadAction
+              ;;
+            *)
+              echo "unexpected candidate ref: $HEAD_REF" >&2
+              exit 2
+              ;;
+          esac
+      - name: Emit forensic marker
+        if: always()
+        run: |
+          echo "CANDIDATE_REF=${{ github.event.pull_request.head.ref }}"
+          echo "CANDIDATE_SHA=${{ github.event.pull_request.head.sha }}"
+          echo "RUN_ID=${{ github.run_id }}"
+ ./internal/acex -count=1 -timeout=20m -v
               ;;
             *)
               echo "unexpected candidate ref: $HEAD_REF" >&2
