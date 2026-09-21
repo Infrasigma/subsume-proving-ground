@@ -495,6 +495,16 @@ func TestAutonomousAbstractCompounding(t *testing.T) {
     // Rewrite the report with the final resource snapshot after artifact creation.
     _ = abstractCompoundWriteJSON(reportPath, report)
 
+    totalLifetimeSearch := 0
+    for _, trial := range trials {
+        totalLifetimeSearch += trial.Resources.HypothesisCount
+    }
+    meanScratch := sumScratch / float64(len(seeds))
+    meanLifetime := float64(totalLifetimeSearch) / float64(len(seeds))
+    ratio := meanLifetime / meanScratch
+    fmt.Printf("ACE_COMPOUNDING_SUMMARY seeds=%d mean_scratch_expansions=%.2f mean_retained_search_expansions=%.2f mean_lifetime_search_expansions=%.2f lifetime_to_scratch_ratio=%.6f retained_bytes=%d raw_memory_bytes=%d compressed_memory_bytes=%d wall_ms=%d peak_rss_bytes=%d persistent_bytes=%d discarded_bytes=%d\\n",
+        len(seeds), meanScratch, sumCap/float64(len(seeds)), meanLifetime, ratio, retainedBytes, rawExamplesBytes, compressedBytes,
+        elapsed.Milliseconds(), abstractCompoundPeakRSS(), abstractCompoundFileBytes(rawRoot), int64(0))
     if len(trials) != len(seeds) {
         t.Fatalf("expected %d trials, got %d", len(seeds), len(trials))
     }
