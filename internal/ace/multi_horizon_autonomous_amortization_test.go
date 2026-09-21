@@ -46,12 +46,12 @@ type amortizationHorizon struct {
 }
 
 type amortizationSeedReport struct {
-	Seed                    int                 `json:"seed"`
+	Seed                    int                   `json:"seed"`
 	Horizons                []amortizationHorizon `json:"horizons"`
-	AcquisitionExpansions   int                 `json:"acquisition_expansions"`
-	AcquisitionVerifierCalls int                `json:"acquisition_verifier_calls"`
-	RetainedBytes           int64               `json:"retained_bytes"`
-	RawMemoryBytes          int64               `json:"raw_memory_bytes"`
+	AcquisitionExpansions   int                   `json:"acquisition_expansions"`
+	AcquisitionVerifierCalls int                  `json:"acquisition_verifier_calls"`
+	RetainedBytes           int64                 `json:"retained_bytes"`
+	RawMemoryBytes          int64                 `json:"raw_memory_bytes"`
 	CompressedMemoryBytes   int64               `json:"compressed_memory_bytes"`
 	ProcessRestartPassed    bool                `json:"process_restart_passed"`
 	RuntimeTamperRejected   bool                `json:"runtime_tamper_rejected"`
@@ -314,8 +314,8 @@ func procedureSignatureMust(artifact string) string {
 }
 
 func amortizationHoldoutVerify(methods []AcquisitionMethodArtifact, task amortizationTask) bool {
-	got, err := amortizationSelectPair(methods, task)
-	if err != nil || !gotOk(got) {
+	got, _, ok := amortizationSelectPair(methods, task)
+	if !ok || !gotOk(got) {
 		return false
 	}
 	for _, ex := range task.Holdout {
@@ -483,9 +483,9 @@ func TestMultiHorizonAutonomousAmortization(t *testing.T) {
 
 		for i, task := range tasks {
 			s0 := time.Now()
-			learned, stats, ok := searchAbstractCompoundProcedure(task.Train, 4)
-			stats.WallMS = time.Since(s0).Milliseconds()
-			scratch[i] = amortizationSearchStats{Expansions: stats.Expansions, VerifierCalls: stats.VerifierCalls, WallMS: stats.WallMS}
+			learned, searchStats, ok := searchAbstractCompoundProcedure(task.Train, 4)
+			wallMS := time.Since(s0).Milliseconds()
+			scratch[i] = amortizationSearchStats{Expansions: searchStats.Expansions, VerifierCalls: searchStats.VerifierCalls, WallMS: wallMS}
 			if ok {
 				scratchOK[i] = true
 				for _, ex := range task.Holdout {
