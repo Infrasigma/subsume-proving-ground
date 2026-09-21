@@ -8,6 +8,7 @@ import (
 )
 
 func TestV3ArchitectureTerminal(t *testing.T) {
+	if !v3KillMode { t.Skip("V3 route is preserved as a scientific KILL; run with -tags v3kill") }
 	seeds := []int64{610117, 830921}
 	runtimeSeed := int64(0)
 	if raw := os.Getenv("ACEX_RUNTIME_SEED"); raw != "" {
