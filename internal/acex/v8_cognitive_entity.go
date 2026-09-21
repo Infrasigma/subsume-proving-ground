@@ -1,6 +1,7 @@
 package acex
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -21,6 +22,7 @@ type V8CognitiveEntity struct {
 	Experience       *V7CognitiveAgent
 	Memory           V5AdaptiveMemory
 	Inquiry          InquiryManager
+	PendingIntervention string
 	Evidence         []V8CapabilityEvidence
 	Version          uint64
 	Failures         []string
@@ -78,6 +80,7 @@ func (e *V8CognitiveEntity) Inquire(h []V5Hypothesis, observedAction, observedOu
 		return err
 	}
 	if observedAction == "" {
+		e.PendingIntervention = plan.Action
 		e.attest("causal-inquiry", "v8-inquiry-"+plan.Action, "selected discriminating intervention", true)
 		return nil
 	}
@@ -86,6 +89,7 @@ func (e *V8CognitiveEntity) Inquire(h []V5Hypothesis, observedAction, observedOu
 		e.Failures = append(e.Failures, "causal-model-refuted:"+observedAction)
 		return err
 	}
+	if e.PendingIntervention == observedAction { e.PendingIntervention = "" }
 	e.attest("causal-inquiry", "v8-belief-"+observedAction, fmt.Sprintf("surviving-hypotheses=%d", len(post)), true)
 	return nil
 }
@@ -94,13 +98,54 @@ func (e *V8CognitiveEntity) ObserveAndAct(state RelationalState, actions []strin
 	if e == nil || e.Experience == nil {
 		return "", errors.New("V8 experience core unavailable")
 	}
-	action, err := e.Experience.NextAction(state, actions)
+	stateKey := V7StateKey(state)
+	if e.PendingIntervention != "" {
+		for _, action := range actions {
+			if action == e.PendingIntervention {
+				e.attest("causal-action-selection", "v8-intervention-"+action, "pending discriminating intervention selected", true)
+				return action, nil
+			}
+		}
+	}
+	blocked := map[string]bool{}
+	for _, memory := range e.Memory.Retrieve([]string{stateKey}, 16) {
+		if !memory.Failure || memory.PredictionErr < 0.5 {
+			continue
+		}
+		for _, token := range memory.Context {
+			for _, action := range actions {
+				if token == action {
+					blocked[action] = true
+				}
+			}
+		}
+	}
+	filtered := make([]string, 0, len(actions))
+	for _, action := range actions {
+		if !blocked[action] {
+			filtered = append(filtered, action)
+		}
+	}
+	if len(filtered) == 0 {
+		filtered = append(filtered, actions...)
+	}
+	action, err := e.Experience.NextAction(state, filtered)
 	if err != nil {
 		e.Failures = append(e.Failures, "action-selection:"+err.Error())
 		return "", err
 	}
-	e.attest("interactive-action-selection", "v8-act-"+V7StateKey(state), "selected action from verified experience/novelty", true)
+	e.attest("interactive-action-selection", "v8-act-"+stateKey,
+		fmt.Sprintf("selected action from verified experience/novelty; blocked=%v", sortedStringSet(blocked)), true)
 	return action, nil
+}
+
+func sortedStringSet(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k, v := range m {
+		if v { out = append(out, k) }
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (e *V8CognitiveEntity) ObserveOutcome(before RelationalState, action string, after RelationalState, reward float64, terminal bool) V7Step {
@@ -184,11 +229,14 @@ func (e *V8CognitiveEntity) SolveStatic(task V4Task, maxSize, beam int) (V4Searc
 	return V6SolveWithStrategy(e.ActiveStrategy, task, maxSize, beam)
 }
 
-func (e *V8CognitiveEntity) InventTool(task Task, examples []ProgramTestCase) (ModificationProposal, error) {
+func (e *V8CognitiveEntity) InventTool(task Task, training, holdout []ProgramTestCase) (ModificationProposal, error) {
 	if e == nil {
 		return ModificationProposal{}, errors.New("nil V8 entity")
 	}
-	spec, err := GeneralCapabilitySpecification(task, examples)
+	if len(holdout) < 2 {
+		return ModificationProposal{}, errors.New("independent tool holdout required")
+	}
+	spec, err := GeneralCapabilitySpecification(task, training)
 	if err != nil {
 		return ModificationProposal{}, err
 	}
@@ -201,12 +249,19 @@ func (e *V8CognitiveEntity) InventTool(task Task, examples []ProgramTestCase) (M
 		if buildErr != nil {
 			continue
 		}
+		var program UniversalProgram
+		if err := json.Unmarshal([]byte(proposal.Artifact), &program); err != nil {
+			continue
+		}
+		if !programFits(program, holdout) {
+			continue
+		}
 		e.attest("tool-invention", proposal.ID,
-			"symbolically synthesized executable capability from behavioral evidence", true)
+			"symbolically synthesized executable capability; independently verified on holdout", true)
 		return proposal, nil
 	}
-	e.Failures = append(e.Failures, "tool-invention:search-exhausted")
-	return ModificationProposal{}, errors.New("tool synthesis exhausted all mechanisms")
+	e.Failures = append(e.Failures, "tool-invention:holdout-rejected")
+	return ModificationProposal{}, errors.New("tool synthesis failed independent holdout")
 }
 
 func (e *V8CognitiveEntity) RollbackMechanism() error {
