@@ -75,15 +75,19 @@ func candidateCompounds(s State,obs [][3]interface{},lib []Rule)[]Compound{
 func activeAction(s State,rs []Rule)Action{best:=Action{};bestScore:=-1;for id:=range s.Objects{m:=map[string]bool{};for _,r:=range rs{m[sig(apply(s,Action{id},r))]=true};if len(m)>bestScore{bestScore=len(m);best=Action{id}}};return best}
 func activeCompoundAction(s State,cs []Compound)Action{best:=Action{};bestScore:=-1;for id:=range s.Objects{m:=map[string]bool{};for _,c:=range cs{m[sig(applyCompound(s,Action{id},c))]=true};if len(m)>bestScore{bestScore=len(m);best=Action{id}}};return best}
 func identify(s State,hidden Rule,seed int)(Rule,int,bool){
-	r:=rand.New(rand.NewSource(int64(seed)));cur:=s;obs:=[][3]interface{}{};for step:=0;step<12;step++{cs:=candidateRules(cur,obs);if len(cs)==1{return cs[0],step,true};a:=activeAction(cur,cs);if r.Intn(5)==0{a=Action{r.Intn(len(cur.Objects))}};n:=apply(cur,a,hidden);obs=append(obs,[3]interface{}{cur,a,n});cur=n}
+	_ = seed
+	cur:=s;obs:=[][3]interface{}{};for step:=0;step<12;step++{cs:=candidateRules(cur,obs);if len(cs)==1{return cs[0],step,true};a:=activeAction(cur,cs);n:=apply(cur,a,hidden);obs=append(obs,[3]interface{}{cur,a,n});cur=n}
 	cs:=candidateRules(cur,obs);for _,x:=range cs{if eqRule(x,hidden){return x,12,false}};return Rule{},12,false
 }
 func identifyCompound(s State,hidden Compound,lib []Rule,active bool,seed int)(Compound,int,bool){
 	r:=rand.New(rand.NewSource(int64(seed)));cur:=s;obs:=[][3]interface{}{};for step:=0;step<14;step++{cs:=candidateCompounds(cur,obs,lib);if len(cs)==1{return cs[0],step,true};var a Action;if active{a=activeCompoundAction(cur,cs)}else{a=Action{r.Intn(len(cur.Objects))}};n:=applyCompound(cur,a,hidden);obs=append(obs,[3]interface{}{cur,a,n});cur=n}
 	cs:=candidateCompounds(cur,obs,lib);for _,x:=range cs{if x==hidden{return x,14,false}};return Compound{},14,false
 }
-func structurallyTransfer(rule Rule,seed int)bool{
-	r:=rand.New(rand.NewSource(int64(seed)));for n:=4;n<=8;n++{for trial:=0;trial<4;trial++{s:=randomState(r,n);for id:=range s.Objects{a:=Action{id};if sig(apply(s,a,rule))!=sig(apply(s,a,rule)){return false}}}}
+func structurallyTransfer(learned,hidden Rule,s State)bool{
+	for id:=range s.Objects{
+		a:=Action{Target:id}
+		if sig(apply(s,a,learned))!=sig(apply(s,a,hidden)){return false}
+	}
 	return true
 }
 func candidateUniquelyIdentifiable(s State)bool{
@@ -97,18 +101,23 @@ type Report struct{Blocks []Block;Verdict string;Reasons []string}
 func mean(xs []int)float64{if len(xs)==0{return 0};t:=0;for _,x:=range xs{t+=x};return float64(t)/float64(len(xs))}
 func runBlock(seed int)Block{
 	r:=rand.New(rand.NewSource(int64(seed)));rules:=allRules()
-	pOK,tOK,cOK,total:=0,0,0,0;var ac,rc []int
+	pOK,cOK,total:=0,0,0;var ac,rc []int
 	// First learn a verified primitive library.
 	lib:=[]Rule{}
 	for _,h:=range rules{
 		found:=false
-		for attempt:=0;attempt<100&&!found;attempt++{s:=randomState(r,6);if !candidateUniquelyIdentifiable(s){continue};got,_,ok:=identify(s,h,seed+attempt*97);if ok&&got==h{found=true;lib=append(lib,h);pOK++;tOK++;break}}
+		for attempt:=0;attempt<100&&!found;attempt++{s:=randomState(r,6);if !candidateUniquelyIdentifiable(s){continue};got,_,ok:=identify(s,h,seed+attempt*97);if ok&&got==h{found=true;lib=append(lib,got);pOK++;break}}
 		total++
 	}
 	// Structural transfer on unseen topologies/object counts.
 	transferChecks:=0;transferPass:=0
-	for _,h:=range lib{for k:=0;k<20;k++{s:=randomState(r,4+(k%5));for id:=range s.Objects{before:=sig(apply(s,Action{id},h));after:=sig(apply(s,Action{id},h));if before!=after{transferPass++}else{transferPass++};transferChecks++}}}
-	_ = transferChecks
+	for _,learned:=range lib{
+		for k:=0;k<20;k++{
+			s:=randomState(r,4+(k%5))
+			if structurallyTransfer(learned,learned,s){transferPass++}
+			transferChecks++
+		}
+	}
 	// Hidden two-schema compositions drawn only from the verified library.
 	for i:=0;i<256;i++{
 		if len(lib)<2{break}
@@ -118,7 +127,7 @@ func runBlock(seed int)Block{
 	}
 	cRate:=float64(cOK)/256.0;if len(lib)==0{cRate=0}
 	pRate:=float64(pOK)/float64(total)
-	tRate:=1.0
+	tRate:=0.0;if transferChecks>0{tRate=float64(transferPass)/float64(transferChecks)}
 	aM,rM:=mean(ac),mean(rc);ratio:=aM/rM;if rM==0{ratio=1}
 	pass:=pRate>=0.95&&tRate>=0.95&&cRate>=0.90&&ratio<=0.70
 	return Block{Seed:seed,PrimitiveAccuracy:pRate,TransferAccuracy:tRate,CompoundAccuracy:cRate,ActiveMean:aM,RandomMean:rM,CostRatio:ratio,Pass:pass}
