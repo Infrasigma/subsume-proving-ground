@@ -13,7 +13,7 @@ import (
 // all supplied examples.
 type ProgramTestCase struct { Input, Expected map[string]string }
 
-type UExpr struct { Kind string `json:"kind"`; Value string `json:"value,omitempty"`; Left, Right *UExpr `json:"left,omitempty"` }
+type UExpr struct { Kind string `json:"kind"`; Value string `json:"value,omitempty"`; Left *UExpr `json:"left,omitempty"`; Right *UExpr `json:"right,omitempty"` }
 type UStmt struct { Kind string `json:"kind"`; Target string `json:"target,omitempty"`; Expr *UExpr `json:"expr,omitempty"`; Cond *UExpr `json:"cond,omitempty"`; Then, Else []UStmt `json:"then,omitempty"`; Body []UStmt `json:"body,omitempty"`; Count int `json:"count,omitempty"` }
 type UniversalProgram struct { Statements []UStmt `json:"statements"` }
 
