@@ -222,7 +222,7 @@ func g16Retention(tasks []g16Task,methods []g16Method) (int,int) {
 	solved:=0; verified:=0
 	for _,t:=range tasks{
 		body,_,ok:=g16SolveLibraryOnly(t,methods,len(t.Body))
-		if ok && g16IndependentVerify(t,body){solved++;verified++}
+		if ok && g16IndependentVerify(task,body){solved++;verified++}
 	}
 	return solved,verified
 }
@@ -236,19 +236,19 @@ func TestG16TaskFreeContinualSkillLearning(t *testing.T){
 	coreSeen:=map[string]bool{}
 	seenTasks:=make([]g16Task,0)
 	continual:=0; acquisitions:=0; hiddenVerified:=0; composition:=0; memoryPass:=0
-	for i,t:=range stream{
-		body,_,ok:=g16Solve(t,replay.Methods,5)
+	for i,task:=range stream{
+		body,_,ok:=g16Solve(task,replay.Methods,5)
 		if !ok{
-			body,_,ok=g16Solve(t,nil,5)
+			body,_,ok=g16Solve(task,nil,5)
 		}
 		if !ok{t.Fatalf("stream task %d could not be solved",i)}
 		if g16IndependentVerify(t,body){hiddenVerified++}else{t.Fatalf("task %d hidden verification failed",i)}
-		replay.insert(body,t); acquisitions++;continual++
+		replay.insert(body,task); acquisitions++;continual++
 		// Count compositional transfer when a later task is solved using at
 		// least one retained non-primitive method rather than scratch.
 		if len(replay.Methods)>0{
 			for _,m:=range replay.Methods{
-				if len(m.Body)>1 && g16Apply(m.Body,t.Train[0][0])==t.Train[0][1]{composition++;break}
+				if len(m.Body)>1 && g16Apply(m.Body,task.Train[0][0])==task.Train[0][1]{composition++;break}
 			}
 		}
 		if len(replay.Methods)<=memory{memoryPass++}
@@ -257,13 +257,13 @@ func TestG16TaskFreeContinualSkillLearning(t *testing.T){
 		if len(randomLib)>0{randomLib=g16BaselineRandom(randomLib,r,memory,body)}
 		randomLib=append(randomLib,g16Method{ID:"r-"+strconv.Itoa(i),Body:append([]string(nil),body...),Uses:1,LastSeen:i,Verified:true,Anchor:t.ID})
 		if len(randomLib)>memory{randomLib=randomLib[1:]}
-		seenTasks=append(seenTasks,t)
-		if len(t.Body)>=2{coreSeen[g16Sig(t.Body)]=true}
+		seenTasks=append(seenTasks,task)
+		if len(task.Body)>=2{coreSeen[g16Sig(task.Body)]=true}
 	}
 	// Rehearsal/retention is evaluated on a fixed set of previously seen skills;
 	// no task-boundary metadata is supplied to the learner.
 	solved,verified:=g16Retention(seenTasks,replay.Methods)
-	randomSolved,_:=g16Retention(seenTasks,randomLib)
+	_ , _ = g16Retention(seenTasks,randomLib)
 	coreTasks:=make([]g16Task,0,8)
 	for i,body:=range g16CoreBodies(){
 		task:=g16MakeTask("core-"+strconv.Itoa(i),body)
