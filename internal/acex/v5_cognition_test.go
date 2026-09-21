@@ -74,7 +74,7 @@ func TestV5GroundingMemoryAndCausalLoop(t *testing.T) {
 	}
 
 	var check map[string]any
-	if err := json.Unmarshal([]byte("{"digest":""+a.Digest+""}"), &check); err != nil {
+	if err := json.Unmarshal([]byte("{\"digest\":\""+a.Digest+"\"}"), &check); err != nil {
 		t.Fatal(err)
 	}
 }
