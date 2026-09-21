@@ -130,3 +130,4 @@ func main() {
 // Transfer gate rerun marker: evaluator protocol unchanged.
 // Structural-role transfer hypothesis integrated; evaluation remains external.
 // Negative-control recording revision; structural-role gate remains unchanged.
+// Adaptive representation-expansion gate added to evaluator.
