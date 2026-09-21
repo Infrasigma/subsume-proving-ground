@@ -22,6 +22,18 @@ func TestV8UnifiedCognitiveEntity(t *testing.T) {
 	if err := entity.SelectMechanism(visible, hidden, 9, 1200); err != nil {
 		t.Fatal(err)
 	}
+	if entity.ActiveStrategy.Strategy != V6SemanticSearch || len(entity.StrategyHistory) != 1 {
+		t.Fatalf("selected mechanism was not persisted: %+v history=%d", entity.ActiveStrategy, len(entity.StrategyHistory))
+	}
+	if _, err := entity.SolveStatic(future[0], 9, 1200); err != nil {
+		t.Fatal(err)
+	}
+	if err := entity.RollbackMechanism(); err != nil {
+		t.Fatal(err)
+	}
+	if entity.ActiveStrategy.Strategy != V6BaselineSearch {
+		t.Fatalf("strategy rollback did not restore baseline: %+v", entity.ActiveStrategy)
+	}
 
 	h := []V5Hypothesis{
 		{ID:"h0", Prior:.5, Outcome:map[string]string{"probe-a":"bad","probe-b":"same"}},
