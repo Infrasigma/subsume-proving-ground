@@ -58,3 +58,6 @@ A V3 PASS establishes recursive symbolic library growth under the frozen task fa
 resource model. It is not, by itself, a claim of AGI or ASI. A later terminal battery must
 cross independent domains, richer causal environments, open-ended grounding, and broader
 self-directed research loops.
+
+
+Protected evaluator installation was added to main; this marker changes no scientific acceptance rule.
