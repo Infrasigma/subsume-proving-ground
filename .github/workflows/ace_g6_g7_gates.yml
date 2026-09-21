@@ -2,10 +2,11 @@
 name: ACE G6 G7 Operator Learning and Program Synthesis
 
 on:
-  push:
-    branches:
-      - "feat/autonomous-abstract-compounding-20260922"
   pull_request:
+
+concurrency:
+  group: ace-g6g7-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
