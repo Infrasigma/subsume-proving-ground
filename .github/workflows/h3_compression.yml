@@ -31,8 +31,8 @@ jobs:
           import json
           with open("h3_artifacts/H3_RESULT.json",encoding="utf-8") as f:
               r=json.load(f)
-          print("H3 VERDICT:",r["verdict"])
-          for x in r["reasons"]:
+          print("H3 VERDICT:",r["Verdict"])
+          for x in r["Reasons"]:
               print("KILL:",x)
           PY
 # frozen H3 workflow marker
