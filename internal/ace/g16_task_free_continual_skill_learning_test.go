@@ -93,7 +93,7 @@ func g16SampleSkill(r *rand.Rand,w []int) int {
 	return len(w)-1
 }
 
-func g16ExternalVerify(candidate []string, hiddenSkills [][]int, skills [][]string) bool {
+func g16ExternalVerify(candidate []string, hiddenSkills []int, skills [][]string) bool {
 	for _,skill:=range hiddenSkills {
 		ok:=true
 		for _,x:=range []int{-31,-17,-5,6,19,37} {
@@ -217,7 +217,7 @@ func g16RunSeed(seed int, permute bool, shift bool) g16Report {
 	ret:=g16Retention(library,skills)
 	rret:=g16Retention(randomLib,skills)
 	fret:=g16Retention(fifoLib,skills)
-	retained:=0; weighted=0; randomWeighted=0; fifoWeighted=0; totalW=0
+	retained:=0; weighted:=0; randomWeighted:=0; fifoWeighted:=0; totalW:=0
 	fw:=g16FutureWeights()
 	for i,w:=range fw {
 		if ret[i] { retained++ }
