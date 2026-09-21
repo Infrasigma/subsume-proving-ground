@@ -87,7 +87,7 @@ func v12EmitPatternMatcher(pattern V11DirectedPatternArtifact) []byte {
 
 	for i := 0; i < pattern.Nodes-1; i++ {
 		body = append(body, v12I32Const(1)...)
-		body = append(body, v12LocalSet(uint32(i))...)
+		body = append(body, v12LocalSet(uint32(i+1))...)
 	}
 
 	body = append(body, v12EmitSearchLevel(pattern, 0)...)
@@ -151,22 +151,18 @@ func v12EmitMappingBody(pattern V11DirectedPatternArtifact) []byte {
 
 func v12EmitEdgeTest(edge V11DirectedPatternEdge) []byte {
 	var out []byte
-
-	// Load the 32-bit adjacency row of the source node.
-	out = append(out, v12LocalGet(0xFFFFFFFF)...)
-	_ = out
 	if edge.From == 0 {
 		out = append(out, v12LocalGet(0)...)
 	} else {
-		out = append(out, v12LocalGet(uint32(edge.From-1))...)
+		out = append(out, v12LocalGet(uint32(edge.From))...)
 	}
-	out = append(out, 0x41, 0x02, 0x74) // shift left by two = row byte offset
-	out = append(out, 0x6a)              // add base
-	out = append(out, 0x28, 0x02, 0x00) // i32.load align=4
+	out = append(out, 0x41, 0x02, 0x74) // << 2
+	out = append(out, 0x6a)              // + base
+	out = append(out, 0x28, 0x02, 0x00) // i32.load
 	if edge.To == 0 {
 		out = append(out, 0x41, 0x00)
 	} else {
-		out = append(out, v12LocalGet(uint32(edge.To-1))...)
+		out = append(out, v12LocalGet(uint32(edge.To))...)
 	}
 	out = append(out, 0x76)       // shr_u
 	out = append(out, 0x41, 0x01) // bit 0
@@ -177,23 +173,23 @@ func v12EmitEdgeTest(edge V11DirectedPatternEdge) []byte {
 func v12EmitDecisionSelector() []byte {
 	body := []byte{0x01, 0x02, 0x7f} // candidate, base
 
-	body = append(body, 0x41, 0x00, 0x21, 0x00) // candidate = 0
+	body = append(body, 0x41, 0x00, 0x21, 0x02) // candidate = 0
 	body = append(body, 0x02, 0x40)               // block $exit
 	body = append(body, 0x03, 0x40)               // loop $next
 
 	// if candidate >= count, exit.
-	body = append(body, 0x20, 0x00, 0x20, 0x01, 0x4f)
+	body = append(body, 0x20, 0x02, 0x20, 0x01, 0x4f)
 	body = append(body, 0x0d, 0x01)
 
 	// base = ptr + candidate*64.
-	body = append(body, 0x20, 0x00, 0x20, 0x01, 0x41, 0x40, 0x6c, 0x6a, 0x21, 0x01)
+	body = append(body, 0x20, 0x00, 0x20, 0x02, 0x41, 0x40, 0x6c, 0x6a, 0x21, 0x03)
 	// The matcher function is function index 0.
-	body = append(body, 0x20, 0x01, 0x10, 0x00)
+	body = append(body, 0x20, 0x03, 0x10, 0x00)
 	body = append(body, 0x04, 0x40) // if match
-	body = append(body, 0x20, 0x01, 0x0f)
+	body = append(body, 0x20, 0x02, 0x0f)
 	body = append(body, 0x0b)
 
-	body = append(body, 0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01)
+	body = append(body, 0x20, 0x02, 0x41, 0x01, 0x6a, 0x21, 0x02)
 	body = append(body, 0x0c, 0x00)
 	body = append(body, 0x0b, 0x0b)
 	body = append(body, 0x41, 0x7f, 0x0f, 0x0b) // -1
