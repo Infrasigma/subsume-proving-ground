@@ -23,6 +23,7 @@ type V8CognitiveEntity struct {
 	StrategyHistory  []V6Strategy
 	Experience       *V7CognitiveAgent
 	Memory           V5AdaptiveMemory
+	AdaptiveRole     AdaptiveRoleLearner
 	Inquiry          InquiryManager
 	PendingIntervention string
 	Evidence         []V8CapabilityEvidence
@@ -36,6 +37,7 @@ func NewV8CognitiveEntity() *V8CognitiveEntity {
 		StaticLibrary: NewV4Library(),
 		ActiveStrategy: V6Strategy{Name:"baseline", Strategy:V6BaselineSearch, Library:NewV4Library()},
 		Experience:    NewV7CognitiveAgent(),
+		AdaptiveRole:  NewAdaptiveRoleLearner(),
 	}
 }
 
@@ -101,6 +103,10 @@ func (e *V8CognitiveEntity) ObserveAndAct(state RelationalState, actions []strin
 		return "", errors.New("V8 experience core unavailable")
 	}
 	stateKey := V7StateKey(state)
+	if action, ok := e.AdaptiveRole.Predict(state, actions); ok {
+		e.attest("adaptive-representation-action", "v8-adaptive-role", fmt.Sprintf("radius=%d", e.AdaptiveRole.Radius), true)
+		return action, nil
+	}
 	if e.PendingIntervention != "" {
 		for _, action := range actions {
 			if action == e.PendingIntervention {
@@ -152,6 +158,7 @@ func sortedStringSet(m map[string]bool) []string {
 
 func (e *V8CognitiveEntity) ObserveOutcome(before RelationalState, action string, after RelationalState, reward float64, terminal bool) V7Step {
 	step := e.Experience.ExecuteObserved(before, action, after, reward, terminal)
+	e.AdaptiveRole.Observe(before, action, reward > 0)
 	err := e.Remember(V5MemoryTrace{
 		ID:            "experience-" + V7ActionEffectSignature(step),
 		Context:       []string{step.Before, action, step.After},
