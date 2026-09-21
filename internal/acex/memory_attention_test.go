@@ -89,5 +89,6 @@ func TestV2ArchitectureTerminal(t *testing.T) {
 	TestV2ModelIndependentInterfaceAblation(t)
 	TestV2InquiryJudgmentAndCritiqueMemory(t)
 	TestV2CognitiveComputationScheduler(t)
+	TestV2AutonomousCurriculum(t)
 	t.Log("ACEX V2 COGNITIVE SUBSTRATE: PASS")
 }
