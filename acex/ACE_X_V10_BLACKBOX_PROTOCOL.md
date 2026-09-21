@@ -34,3 +34,6 @@ Clears the candidate runtime state.
 `{"op":"status"}`
 
 Returns only non-authoritative local capability metadata.
+
+
+Protected evaluator synchronization: hidden checks are owned by main-branch infrastructure.
