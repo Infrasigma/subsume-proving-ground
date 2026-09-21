@@ -275,7 +275,13 @@ func (a *V7CognitiveAgent) NextAction(state RelationalState, actions []string) (
 		if p,err := a.Graph.Plan(key,func(e V7Step)bool {
 			return e.After==goal.StateKey && (e.Reward>0 || e.Terminal)
 		}); err==nil && len(p.Actions)>0 {
-			return p.Actions[0],nil
+			// A stored plan may contain action identifiers from a prior surface/domain.
+			// Never emit an action that the current environment did not offer.
+			for _, available := range actions {
+				if p.Actions[0] == available {
+					return p.Actions[0],nil
+				}
+			}
 		}
 	}
 	return a.Explorer.Choose(key,actions,a.Graph)
