@@ -22,6 +22,7 @@ type request struct {
 	NextState       acex.RelationalState     `json:"next_state"`
 	Reward          float64                  `json:"reward"`
 	Terminal        bool                     `json:"terminal"`
+	Artifact        string                   `json:"artifact"`
 }
 
 type response struct {
@@ -30,7 +31,8 @@ type response struct {
 	Artifact string `json:"artifact,omitempty"`
 	Action   string `json:"action,omitempty"`
 	Memory   int    `json:"memory"`
-	Version  uint64 `json:"version,omitempty"`
+	Version           uint64 `json:"version,omitempty"`
+	SearchExpansions int    `json:"search_expansions,omitempty"`
 }
 
 type agent struct {
@@ -85,14 +87,14 @@ func (a *agent) handle(in request) response {
 		a.lastState = in.State
 		a.lastAction = action
 		a.havePrevious = true
-		return response{OK:true,Action:action,Memory:len(a.entity.Memory.Items),Version:a.entity.Version}
+		return response{OK:true,Action:action,Memory:len(a.entity.Memory.Items),Version:a.entity.Version,SearchExpansions:a.entity.DirectedRepresentation.SearchExpansions}
 	case "observe":
 		if !a.havePrevious {
 			return response{Error:"observe requires a preceding act"}
 		}
 		a.entity.ObserveOutcome(a.lastState, a.lastAction, in.NextState, in.Reward, in.Terminal)
 		a.havePrevious = false
-		return response{OK:true,Memory:len(a.entity.Memory.Items),Version:a.entity.Version}
+		return response{OK:true,Memory:len(a.entity.Memory.Items),Version:a.entity.Version,SearchExpansions:a.entity.DirectedRepresentation.SearchExpansions}
 	case "reset":
 		a.entity = acex.NewV8CognitiveEntity()
 		a.havePrevious = false
@@ -104,9 +106,20 @@ func (a *agent) handle(in request) response {
 		a.havePrevious = false
 		a.lastAction = ""
 		a.lastState = acex.RelationalState{}
-		return response{OK:true,Memory:len(a.entity.Memory.Items),Version:a.entity.Version}
+		return response{OK:true,Memory:len(a.entity.Memory.Items),Version:a.entity.Version,SearchExpansions:a.entity.DirectedRepresentation.SearchExpansions}
+	case "export_knowledge":
+		artifact, err := a.entity.ExportRetainedRepresentation()
+		if err != nil {
+			return response{Error:err.Error()}
+		}
+		return response{OK:true,Artifact:artifact,Memory:len(a.entity.Memory.Items),Version:a.entity.Version,SearchExpansions:a.entity.DirectedRepresentation.SearchExpansions}
+	case "load_knowledge":
+		if err := a.entity.LoadRetainedRepresentation(in.Artifact); err != nil {
+			return response{Error:err.Error()}
+		}
+		return response{OK:true,Memory:len(a.entity.Memory.Items),Version:a.entity.Version,SearchExpansions:a.entity.DirectedRepresentation.SearchExpansions}
 	case "status":
-		return response{OK:true,Memory:len(a.entity.Memory.Items),Version:a.entity.Version}
+		return response{OK:true,Memory:len(a.entity.Memory.Items),Version:a.entity.Version,SearchExpansions:a.entity.DirectedRepresentation.SearchExpansions}
 	default:
 		return response{Error:fmt.Sprintf("unknown op %q",in.Op)}
 	}
