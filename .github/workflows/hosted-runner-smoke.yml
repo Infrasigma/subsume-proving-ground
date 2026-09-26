@@ -1,0 +1,23 @@
+name: hosted-runner-smoke
+
+on:
+  push:
+    paths:
+      - ".github/workflows/hosted-runner-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Runner started
+        run: |
+          set -eu
+          echo "RUNNER_STARTED"
+          echo "RUNNER_OS=$RUNNER_OS"
+          echo "RUNNER_ARCH=$RUNNER_ARCH"
+          uname -a
+          python3 --version
