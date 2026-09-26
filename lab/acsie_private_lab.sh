@@ -73,4 +73,7 @@ python research/native_failure_directed_recovery_v1.py 424242424242 24
 # Phase Q2: fresh cross-structure generalization on unseen multi-step programs.
 python research/native_q2_cross_structure_generalization_v1.py 731991 36
 
+# Phase Q4: recursive improvement of the native learning procedure on fresh populations.
+python research/native_q4_recursive_learning_v1.py 913771 12
+
 echo "ACSIE_PRIVATE_LAB_RESULT=PASS"
