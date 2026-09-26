@@ -25,12 +25,22 @@ chmod 700 "$ASKPASS"
 export GIT_ASKPASS="$ASKPASS"
 export GIT_TERMINAL_PROMPT=0
 
-git clone --depth 1 --branch "$ACSIE_REF"   https://github.com/Infrasigma/ACSIE.git "$WORK"
+mkdir -p "$WORK"
+git -C "$WORK" init
+git -C "$WORK" remote add origin https://github.com/Infrasigma/ACSIE.git
+git -C "$WORK" fetch --no-tags --depth 1 origin "$ACSIE_REF"
+git -C "$WORK" checkout --detach --force FETCH_HEAD
 
 cd "$WORK"
 
-echo "ACSIE_COMMIT=$(git rev-parse HEAD)"
-echo "ACSIE_TREE=$(git rev-parse HEAD^{tree})"
+ACTUAL_COMMIT="$(git rev-parse HEAD)"
+ACTUAL_TREE="$(git rev-parse HEAD^{tree})"
+echo "ACSIE_COMMIT=$ACTUAL_COMMIT"
+echo "ACSIE_TREE=$ACTUAL_TREE"
+if [[ "$ACSIE_REF" =~ ^[0-9a-fA-F]{40}$ ]] && [[ "$ACTUAL_COMMIT" != "$ACSIE_REF" ]]; then
+  echo "ERROR: exact commit pin mismatch: requested=$ACSIE_REF actual=$ACTUAL_COMMIT" >&2
+  exit 21
+fi
 
 python3 -m venv "$VENV"
 . "$VENV/bin/activate"
