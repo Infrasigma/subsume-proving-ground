@@ -1,0 +1,88 @@
+name: ACSIE private-source lab v3
+
+on:
+  workflow_dispatch:
+    inputs:
+      acsie_ref:
+        description: "Private ACSIE branch or commit to test"
+        required: true
+        default: "repair/q0-candidate-20260926-r3"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  acsie-lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout private ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ inputs.acsie_ref }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Record source identity
+        working-directory: acsie
+        run: |
+          set -eu
+          echo "ACSIE_COMMIT=$(git rev-parse HEAD)"
+          echo "ACSIE_TREE=$(git rev-parse HEAD^{tree})"
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pytest
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Compile cognitive core
+        working-directory: acsie
+        run: python -m compileall -q cognitive_core
+
+      - name: CORE-013 H003 integration
+        working-directory: acsie
+        env:
+          PYTHONPATH: ${{ github.workspace }}/acsie
+        run: pytest -q tests/test_core013_h003_integration.py
+
+      - name: CORE-013 cognitive-core import smoke
+        working-directory: acsie
+        run: |
+          python - <<'PY'
+from cognitive_core import GeneralLearner, CognitiveProcedure
+from cognitive_core import continual_learning, open_capability, interactive_learning
+l = GeneralLearner()
+assert not l.cognitive_evolution_state()["enabled"]
+assert CognitiveProcedure is not None
+assert continual_learning is not None
+assert open_capability is not None
+assert interactive_learning is not None
+print("current cognitive_core smoke: PASS")
+PY
+
+      - name: CORE-015 semantic operator gate
+        working-directory: acsie
+        run: python -m pytest -q tests/test_core015_semantic_operator_discovery.py
+
+      - name: CORE-016 semantic operator-class gate
+        working-directory: acsie
+        run: python -m pytest -q tests/test_core016_open_semantic_substrate.py
+
+      - name: Native core tests
+        working-directory: acsie
+        run: python -m pytest -q tests/test_native_independent_core.py tests/test_native_recursive_intelligence.py
+
+      - name: Native final pre-flight gate
+        working-directory: acsie
+        run: python research/native_independent_final_gate.py
+
+      - name: Remove private source
+        if: always()
+        run: rm -rf acsie
