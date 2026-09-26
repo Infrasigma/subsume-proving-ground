@@ -56,4 +56,8 @@ python -m pytest -q tests/test_core016_open_semantic_substrate.py
 python -m pytest -q tests/test_native_independent_core.py tests/test_native_recursive_intelligence.py
 python research/native_independent_final_gate.py
 
+python -m pytest -q tests/test_adaptive_capability_repair.py tests/test_asi_claim_gate.py
+
+python research/native_failure_directed_recovery_v1.py 424242424242 24
+
 echo "ACSIE_PRIVATE_LAB_RESULT=PASS"
