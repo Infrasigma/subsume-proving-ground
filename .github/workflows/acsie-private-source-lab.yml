@@ -4,6 +4,9 @@ on:
   push:
     paths:
       - ".github/workflows/acsie-private-source-lab.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/acsie-private-source-lab.yml"
   workflow_dispatch:
     inputs:
       acsie_ref:
