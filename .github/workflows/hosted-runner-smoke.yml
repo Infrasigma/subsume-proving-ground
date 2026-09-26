@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/hosted-runner-smoke.yml"
       - "lab/acsie_private_lab.sh"
+      - "lab/current_acsie_ref.txt"
   workflow_dispatch:
 
 permissions:
@@ -12,7 +13,7 @@ permissions:
 
 jobs:
   acsie-lab:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
