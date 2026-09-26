@@ -1,6 +1,9 @@
 name: ACSIE private-source lab v3
 
 on:
+  push:
+    paths:
+      - "lab/current_acsie_ref.txt"
   workflow_dispatch:
     inputs:
       acsie_ref:
@@ -17,11 +20,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Checkout public lab harness
+        uses: actions/checkout@v4
+        with:
+          path: lab-harness
+          fetch-depth: 1
+
+      - name: Select ACSIE ref
+        id: acsie-ref
+        shell: bash
+        run: |
+          set -eu
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            ref="$(cat lab-harness/lab/current_acsie_ref.txt)"
+          else
+            ref="${{ inputs.acsie_ref }}"
+          fi
+          test -n "$ref"
+          echo "ref=$ref" >> "${GITHUB_OUTPUT}"
+          echo "Testing ACSIE ref: $ref"
+
       - name: Checkout private ACSIE source
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: ${{ inputs.acsie_ref }}
+          ref: ${{ steps.acsie-ref.outputs.ref }}
           token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie
           fetch-depth: 1
