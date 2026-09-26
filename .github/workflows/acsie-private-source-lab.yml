@@ -1,6 +1,9 @@
 name: ACSIE private-source lab
 
 on:
+  push:
+    paths:
+      - ".github/workflows/acsie-private-source-lab.yml"
   workflow_dispatch:
     inputs:
       acsie_ref:
