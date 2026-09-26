@@ -4,6 +4,9 @@ on:
   push:
     paths:
       - ".github/workflows/hosted-runner-smoke.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/hosted-runner-smoke.yml"
   workflow_dispatch:
 
 permissions:
