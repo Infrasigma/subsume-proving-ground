@@ -5,22 +5,24 @@ on:
     paths:
       - ".github/workflows/hosted-runner-smoke.yml"
       - "lab/acsie_private_lab.sh"
-      - "lab/current_acsie_ref.txt"
   workflow_dispatch:
+    inputs:
+      acsie_ref:
+        description: "Exact ACSIE commit SHA (preferred) or trusted ref"
+        required: true
+        default: "012d1f6ad9b5890dc4b1666036454df6b61203a5"
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   acsie-lab:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: bash lab/acsie_private_lab.sh
+      - name: Run pinned ACSIE lab
+        run: bash lab/acsie_private_lab.sh
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: repair/q0-candidate-20260926-r3
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '012d1f6ad9b5890dc4b1666036454df6b61203a5' }}
