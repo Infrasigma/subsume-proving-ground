@@ -1,0 +1,2529 @@
+RUN_ID=36300255197
+JOB_NAME=q4-sequential-once
+PROVING_GROUND_SHA=59db42fef6bc77af394004d6567d80639c2a987b
+ACSIE_REF=21b7bb18ae9e6ff5aef4ae3dbb8ea0dfe40f82d8
+EXIT_STATUS=2
+STARTED_AT=1
+===== LAB LOG =====
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: will change to "main" in Git 3.0. To configure the initial branch name
+hint: to use in all of your new repositories, which will suppress this warning,
+hint: call:
+hint:
+hint: 	git config --global init.defaultBranch <name>
+hint:
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint:
+hint: 	git branch -m <name>
+hint:
+hint: Disable this message with "git config set advice.defaultBranchName false"
+Initialized empty Git repository in /tmp/acsie-private-lab/.git/
+From https://github.com/Infrasigma/ACSIE
+ * branch            21b7bb18ae9e6ff5aef4ae3dbb8ea0dfe40f82d8 -> FETCH_HEAD
+HEAD is now at 21b7bb1 fix(q4): make sequential transfer probe hierarchically discriminating
+ACSIE_COMMIT=21b7bb18ae9e6ff5aef4ae3dbb8ea0dfe40f82d8
+ACSIE_TREE=e4c55e8930f29efcde10a905209b17980d6567aa
+Requirement already satisfied: pip in /tmp/acsie-venv/lib/python3.12/site-packages (24.0)
+Collecting pip
+  Downloading pip-26.2.1-py3-none-any.whl.metadata (4.6 kB)
+Collecting pytest
+  Downloading pytest-9.1.1-py3-none-any.whl.metadata (7.6 kB)
+Collecting iniconfig>=1.0.1 (from pytest)
+  Downloading iniconfig-2.3.0-py3-none-any.whl.metadata (2.5 kB)
+Collecting packaging>=22 (from pytest)
+  Downloading packaging-26.3-py3-none-any.whl.metadata (3.5 kB)
+Collecting pluggy<2,>=1.5 (from pytest)
+  Downloading pluggy-1.6.0-py3-none-any.whl.metadata (4.8 kB)
+Collecting pygments>=2.7.2 (from pytest)
+  Downloading pygments-2.21.0-py3-none-any.whl.metadata (2.5 kB)
+Downloading pip-26.2.1-py3-none-any.whl (1.8 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.8/1.8 MB 69.1 MB/s eta 0:00:00
+Downloading pytest-9.1.1-py3-none-any.whl (386 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 386.5/386.5 kB 88.2 MB/s eta 0:00:00
+Downloading iniconfig-2.3.0-py3-none-any.whl (7.5 kB)
+Downloading packaging-26.3-py3-none-any.whl (129 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 130.0/130.0 kB 48.8 MB/s eta 0:00:00
+Downloading pluggy-1.6.0-py3-none-any.whl (20 kB)
+Downloading pygments-2.21.0-py3-none-any.whl (1.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 112.4 MB/s eta 0:00:00
+Installing collected packages: pygments, pluggy, pip, packaging, iniconfig, pytest
+  Attempting uninstall: pip
+    Found existing installation: pip 24.0
+    Uninstalling pip-24.0:
+      Successfully uninstalled pip-24.0
+Successfully installed iniconfig-2.3.0 packaging-26.3 pip-26.2.1 pluggy-1.6.0 pygments-2.21.0 pytest-9.1.1
+..                                                                       [100%]
+2 passed in 0.20s
+current cognitive_core smoke: PASS
+.                                                                        [100%]
+1 passed in 1.32s
+......                                                                   [100%]
+6 passed in 1.48s
+..............................                                           [100%]
+30 passed in 69.02s (0:01:09)
+.........                                                                [100%]
+9 passed in 10.09s
+{
+  "asi_claim": false,
+  "gates": [
+    {
+      "details": "",
+      "metric": 1.0,
+      "name": "heldout-prediction",
+      "passed": true,
+      "threshold": 0.9
+    },
+    {
+      "details": "up=1.000, down=1.000",
+      "metric": 1.0,
+      "name": "contextual-transfer",
+      "passed": true,
+      "threshold": 0.75
+    },
+    {
+      "details": "",
+      "metric": 1.0,
+      "name": "negative-transfer-retention",
+      "passed": true,
+      "threshold": 0.75
+    },
+    {
+      "details": "verified_recursive_learning_improvement",
+      "metric": 1.0,
+      "name": "recursive-learning-kernel",
+      "passed": true,
+      "threshold": 1.0
+    },
+    {
+      "details": "",
+      "metric": 1.0,
+      "name": "capability-surface",
+      "passed": true,
+      "threshold": 1.0
+    },
+    {
+      "details": "",
+      "metric": 1.0,
+      "name": "fresh-state-roundtrip",
+      "passed": true,
+      "threshold": 1.0
+    },
+    {
+      "details": "",
+      "metric": 1.0,
+      "name": "fresh-process-isolation",
+      "passed": true,
+      "threshold": 1.0
+    },
+    {
+      "details": "",
+      "metric": 1.0,
+      "name": "source-model-independence",
+      "passed": true,
+      "threshold": 1.0
+    }
+  ],
+  "ready_for_final_test": true
+}
+.....................                                                    [100%]
+21 passed in 5.61s
+{
+  "asi_claim": false,
+  "failed_portfolio_kinds": [
+    1,
+    7,
+    11
+  ],
+  "metrics": {
+    "failure_diagnosis_rate": 1.0,
+    "final_adversarial_mean": 1.0,
+    "final_holdout_mean": 1.0,
+    "final_transfer_mean": 1.0,
+    "initial_portfolio_success_rate": 0.8333333333333334,
+    "initial_success_rate": 0.0,
+    "recovery_rate": 1.0,
+    "repeat_reuse_rate": 1.0,
+    "restart_reuse_rate": 1.0,
+    "tasks": 24
+  },
+  "ready_for_external_final_judgement": true,
+  "seed": 424242424242,
+  "task_records": [
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 0,
+      "portfolio_initial_verified": true,
+      "program": [
+        "reverse"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 0,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 1,
+      "portfolio_initial_verified": true,
+      "program": [
+        "rotate:1"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 1,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 2,
+      "portfolio_initial_verified": true,
+      "program": [
+        "map_mul:-3"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 2,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 3,
+      "portfolio_initial_verified": true,
+      "program": [
+        "map_add:1",
+        "reverse"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 3,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 4,
+      "portfolio_initial_verified": true,
+      "program": [
+        "transpose"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 4,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 5,
+      "portfolio_initial_verified": true,
+      "program": [
+        "zip_add"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 5,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 3,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": true,
+      "holdout": 1.0,
+      "kind": 6,
+      "portfolio_initial_verified": true,
+      "program": [
+        "macro:WyJmaWx0ZXJfZ3Q6MDowIiwicHJvamVjdDoyIl0="
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 6,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 3,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": true,
+      "holdout": 1.0,
+      "kind": 7,
+      "portfolio_initial_verified": false,
+      "program": [
+        "macro:WyJmaWx0ZXJfZXE6MDpcImFcIiJd"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 7,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 8,
+      "portfolio_initial_verified": true,
+      "program": [
+        "dict_get:\"b\""
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 8,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 9,
+      "portfolio_initial_verified": true,
+      "program": [
+        "chunk:3"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 9,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 10,
+      "portfolio_initial_verified": true,
+      "program": [
+        "flatten"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 10,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 11,
+      "portfolio_initial_verified": true,
+      "program": [
+        "map_mul:2",
+        "rotate:1"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 11,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 0,
+      "portfolio_initial_verified": true,
+      "program": [
+        "reverse"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 12,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 3,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": true,
+      "holdout": 1.0,
+      "kind": 1,
+      "portfolio_initial_verified": false,
+      "program": [
+        "macro:WyJyb3RhdGVfY2xhbXBlZDozIl0="
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 13,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 2,
+      "portfolio_initial_verified": true,
+      "program": [
+        "map_mul:-2",
+        "map_mul:-2"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 14,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 3,
+      "portfolio_initial_verified": true,
+      "program": [
+        "map_add:-2",
+        "reverse"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 15,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 4,
+      "portfolio_initial_verified": true,
+      "program": [
+        "transpose"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 16,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 5,
+      "portfolio_initial_verified": true,
+      "program": [
+        "zip_add"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 17,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 3,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": true,
+      "holdout": 1.0,
+      "kind": 6,
+      "portfolio_initial_verified": true,
+      "program": [
+        "macro:WyJmaWx0ZXJfZ3Q6MDowIiwicHJvamVjdDoyIl0="
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 18,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 3,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": true,
+      "holdout": 1.0,
+      "kind": 7,
+      "portfolio_initial_verified": false,
+      "program": [
+        "macro:WyJmaWx0ZXJfZXE6MDpcImFcIiJd"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 19,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 8,
+      "portfolio_initial_verified": true,
+      "program": [
+        "dict_get:\"b\""
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 20,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 9,
+      "portfolio_initial_verified": true,
+      "program": [
+        "chunk:3"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 21,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 0,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "kind": 10,
+      "portfolio_initial_verified": true,
+      "program": [
+        "flatten"
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 22,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "attempts": 3,
+      "baseline_prediction_score": 0.0,
+      "diagnosed": true,
+      "holdout": 1.0,
+      "kind": 11,
+      "portfolio_initial_verified": false,
+      "program": [
+        "macro:WyJtYXBfbXVsOjMiLCJyb3RhdGVfY2xhbXBlZDozIl0="
+      ],
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "task_index": 23,
+      "transfer": 1.0
+    }
+  ],
+  "unrecovered_portfolio_kinds": [],
+  "version": "native-failure-directed-recovery-v1"
+}
+{
+  "asi_claim": false,
+  "metrics": {
+    "failure_diagnosis_rate": 0.9230769230769231,
+    "final_adversarial_mean": 0.9583333333333334,
+    "final_holdout_mean": 0.9444444444444444,
+    "final_transfer_mean": 0.9375,
+    "initial_portfolio_success_rate": 0.6388888888888888,
+    "novel_program_rate": 1.0,
+    "recovery_rate": 0.8461538461538461,
+    "repeat_reuse_rate": 0.9444444444444444,
+    "restart_reuse_rate": 0.9444444444444444,
+    "tasks": 36
+  },
+  "ready_for_next_phase": true,
+  "seed": 731991,
+  "task_records": [
+    {
+      "adversarial": 1.0,
+      "diagnosed": true,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "numeric_composition",
+      "portfolio_initial_verified": false,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "1f0d2f1c1221a377dba194f76810e4335f7376885fa790c5e40647980c232aff",
+      "target_program_length": 3,
+      "task_index": 0,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 0.0,
+      "diagnosed": true,
+      "holdout": 0.0,
+      "learned_program_length": 4,
+      "mode": "nested_composition",
+      "portfolio_initial_verified": false,
+      "repair_solved": false,
+      "repeat_ok": false,
+      "restart_ok": false,
+      "target_program_hash": "27f90b892fd224d0a2803eb0ecb5d10852a348eacfc7e1c7bce2a337aa283a01",
+      "target_program_length": 4,
+      "task_index": 1,
+      "transfer": 0.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "numeric_composition",
+      "portfolio_initial_verified": false,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "8a11d7944df8e98dd546a936aaf2dd42a13192e60090030b278a65b2043d3ad0",
+      "target_program_length": 2,
+      "task_index": 2,
+      "transfer": 0.75
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "nested_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "3e558898ab571f036114c7d54f9cf62942364b1f668af1b2c0bb342b91267e1b",
+      "target_program_length": 2,
+      "task_index": 3,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": true,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "numeric_composition",
+      "portfolio_initial_verified": false,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "031ed0aecc6848b805354c2acbbe196007ce16e513f1f93e09b423e0483b926c",
+      "target_program_length": 3,
+      "task_index": 4,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": true,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "nested_composition",
+      "portfolio_initial_verified": false,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "2af715d7c23d8c8ec67482a36d62c2ca45e7187e523e08c329ea59c38c601871",
+      "target_program_length": 4,
+      "task_index": 5,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": true,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "numeric_composition",
+      "portfolio_initial_verified": false,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "7620ee8f55c3344d45b9e9539ebd5add6f50185e843b1cd7cb1df115a97fe2b1",
+      "target_program_length": 4,
+      "task_index": 6,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "nested_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "67626bee55a5abf9c17f5edd7db12b6604dc19b07fb49316259bd673c289ffab",
+      "target_program_length": 2,
+      "task_index": 7,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": true,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "numeric_composition",
+      "portfolio_initial_verified": false,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "980bdb21f5938b1180c514bf8c46533e208e8aba139d978fe8f71b34246b45f3",
+      "target_program_length": 2,
+      "task_index": 8,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "nested_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "0d23a133fbbdc115d72efeba628b8b490aeb36c31066b5f46ef99a2ab5c76ebe",
+      "target_program_length": 3,
+      "task_index": 9,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": true,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "numeric_composition",
+      "portfolio_initial_verified": false,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "1dff4683b9776948d7f1d835186444b8b23dc5984f05733a0fc4a4436daa42d1",
+      "target_program_length": 2,
+      "task_index": 10,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "nested_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "152939afdb71082f15b3425b011d494c909fff5d2229bb64e4c22e9b6f5bbb72",
+      "target_program_length": 3,
+      "task_index": 11,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": true,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "numeric_composition",
+      "portfolio_initial_verified": false,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "39339f46240ec3ea2f4b3b9de16b3ded316298abec5aa89d77f91a97f108a419",
+      "target_program_length": 4,
+      "task_index": 12,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": true,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "nested_composition",
+      "portfolio_initial_verified": false,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "b689061643090aff1b115f1360eb59ff4f2a7f293efe88cf6cf706009331e1fd",
+      "target_program_length": 2,
+      "task_index": 13,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 0.5,
+      "diagnosed": true,
+      "holdout": 0.0,
+      "learned_program_length": 2,
+      "mode": "numeric_composition",
+      "portfolio_initial_verified": false,
+      "repair_solved": false,
+      "repeat_ok": false,
+      "restart_ok": false,
+      "target_program_hash": "15fa026a92d1f1ddfcb4f10488df3ab53dc71a76b37c9dd5e335029181acf740",
+      "target_program_length": 3,
+      "task_index": 14,
+      "transfer": 0.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "nested_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "03b6c7eeeac5df1519c19969f5e8e415d72e993962e63f119df29953541c0814",
+      "target_program_length": 2,
+      "task_index": 15,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": true,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "numeric_composition",
+      "portfolio_initial_verified": false,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "348e955f862ef270cf82a2933cd863acf0b807c859ca92ffbaa4142f7dd0d369",
+      "target_program_length": 3,
+      "task_index": 16,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": true,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "nested_composition",
+      "portfolio_initial_verified": false,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "c35eb86bb719e238e4c7d915b721ed935b34857ee51d59bde7336b5fc80d1272",
+      "target_program_length": 3,
+      "task_index": 17,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "27d843c2fa990df09426a958c34e05d0a30f0ae3555c178aeacb4a0d1a8c8d2c",
+      "target_program_length": 2,
+      "task_index": 18,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "b16a4a023e52f298f9d1ed040e1efc75249182f35c8c2f4dd4065b4703b38766",
+      "target_program_length": 2,
+      "task_index": 19,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "28fb65e05fe7480abb3ae1a29008d35f3880cef51e424a90feaa3a55f30225ce",
+      "target_program_length": 2,
+      "task_index": 20,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "739d84cc7b4863a974889a5353748319b2bef16acdc199d885f9ebbb2e7a967f",
+      "target_program_length": 2,
+      "task_index": 21,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "e8b3866f03eba2de5716af6274f965b4cf11af84e355d737a10c8627a3dd4269",
+      "target_program_length": 2,
+      "task_index": 22,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "56e09a50db3899617ce40da7529a37fa30574fbb51f6c4ed8076191c61a47fe6",
+      "target_program_length": 3,
+      "task_index": 23,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "27d843c2fa990df09426a958c34e05d0a30f0ae3555c178aeacb4a0d1a8c8d2c",
+      "target_program_length": 2,
+      "task_index": 24,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "d8f07a438b592e9aa5529ea8ee5f1d9374ae442b609b88b7c204cc04e877c387",
+      "target_program_length": 2,
+      "task_index": 25,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "6851ccead7242afb7080302c91dd1d21804089f586cff2763194daec09a77a83",
+      "target_program_length": 2,
+      "task_index": 26,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "6851ccead7242afb7080302c91dd1d21804089f586cff2763194daec09a77a83",
+      "target_program_length": 2,
+      "task_index": 27,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "1ab071659eabc7a29fd21649e61ef4bbcf7caeb7192f8dc75b74b05eb47774cb",
+      "target_program_length": 2,
+      "task_index": 28,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "d8f07a438b592e9aa5529ea8ee5f1d9374ae442b609b88b7c204cc04e877c387",
+      "target_program_length": 2,
+      "task_index": 29,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 1,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "1ab071659eabc7a29fd21649e61ef4bbcf7caeb7192f8dc75b74b05eb47774cb",
+      "target_program_length": 2,
+      "task_index": 30,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "27d843c2fa990df09426a958c34e05d0a30f0ae3555c178aeacb4a0d1a8c8d2c",
+      "target_program_length": 2,
+      "task_index": 31,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "739d84cc7b4863a974889a5353748319b2bef16acdc199d885f9ebbb2e7a967f",
+      "target_program_length": 2,
+      "task_index": 32,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "6851ccead7242afb7080302c91dd1d21804089f586cff2763194daec09a77a83",
+      "target_program_length": 2,
+      "task_index": 33,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "b16a4a023e52f298f9d1ed040e1efc75249182f35c8c2f4dd4065b4703b38766",
+      "target_program_length": 2,
+      "task_index": 34,
+      "transfer": 1.0
+    },
+    {
+      "adversarial": 1.0,
+      "diagnosed": false,
+      "holdout": 1.0,
+      "learned_program_length": 2,
+      "mode": "pair_composition",
+      "portfolio_initial_verified": true,
+      "repair_solved": true,
+      "repeat_ok": true,
+      "restart_ok": true,
+      "target_program_hash": "1bc5502eb7a7f423a47c871ba5fc79485e24f2d7bce0b500ab34196d5751361f",
+      "target_program_length": 3,
+      "task_index": 35,
+      "transfer": 1.0
+    }
+  ],
+  "version": "native-q2-cross-structure-generalization-v1"
+}
+{
+  "candidate_count": 18,
+  "ready_for_next_hypothesis": false,
+  "same_domain_confirmed": [],
+  "same_domain_confirmed_count": 0,
+  "seed": 913771,
+  "single_task_results": [
+    {
+      "base": {
+        "holdout": 1.0,
+        "train": 0.0,
+        "transfer": 1.0
+      },
+      "candidate_scores": [
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 4,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 5,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 192,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 256,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 192,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 4,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 256,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 5,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 32,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 64,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 32,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 4,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 64,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 4,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 6,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 96,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 128,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.25,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.5,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.75,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 32,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.5,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 64,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.5,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        }
+      ],
+      "domain": "numeric",
+      "task_index": 0
+    },
+    {
+      "base": {
+        "holdout": 0.0,
+        "train": 0.0,
+        "transfer": 0.0
+      },
+      "candidate_scores": [
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 4,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 5,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 192,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 256,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 192,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 4,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 256,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 5,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 32,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 64,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 32,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 4,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 64,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 4,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 6,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 96,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 128,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.25,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.5,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.75,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 32,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.5,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 64,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.5,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        }
+      ],
+      "domain": "nested",
+      "task_index": 1
+    },
+    {
+      "base": {
+        "holdout": 1.0,
+        "train": 1.0,
+        "transfer": 1.0
+      },
+      "candidate_scores": [
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 4,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 5,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 192,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 256,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 192,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 4,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 256,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 5,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 32,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 64,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 32,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 4,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 64,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 4,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 6,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 96,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 128,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.25,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.5,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.75,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 32,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.5,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 64,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.5,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 1.0,
+          "holdout_delta": 0.0,
+          "train": 1.0,
+          "transfer": 1.0,
+          "transfer_delta": 0.0
+        }
+      ],
+      "domain": "pair",
+      "task_index": 2
+    },
+    {
+      "base": {
+        "holdout": 0.0,
+        "train": 0.0,
+        "transfer": 0.0
+      },
+      "candidate_scores": [
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 4,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 5,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 192,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 256,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 192,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 4,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 256,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 5,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 32,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 64,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 32,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 4,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 64,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 4,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 6,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 96,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 128,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.0,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.25,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.5,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 0,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.75,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 32,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.5,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        },
+        {
+          "candidate": {
+            "abstract_verified_subprograms": false,
+            "beam": 128,
+            "beam_growth": 64,
+            "curiosity_weight": 0.35,
+            "frontier_diversity": 0.5,
+            "intervention_budget": 4,
+            "max_expression_depth": 3,
+            "memory_limit": 512,
+            "mutation_rate": 0.3
+          },
+          "holdout": 0.0,
+          "holdout_delta": 0.0,
+          "train": 0.0,
+          "transfer": 0.0,
+          "transfer_delta": 0.0
+        }
+      ],
+      "domain": "dict",
+      "task_index": 3
+    }
+  ],
+  "single_task_winner_count": 0,
+  "version": "native-q4-subset-probe-v1"
+}
+{
+  "attempt": 27,
+  "learned_seed_hash": "f225a231b0e48d99cc16a6121de9bb3b2bc20f2a424b4b96272ebee816d52cb9",
+  "learned_seed_length": 3,
+  "passed": true,
+  "results": [
+    {
+      "abstraction_entries": 0,
+      "library_size_after_seed": 1,
+      "policy": "baseline",
+      "seed_solved": true,
+      "seed_steps": [
+        "unique",
+        "prefix_sum",
+        "reverse"
+      ],
+      "transfer_holdout": 0.0,
+      "transfer_solved": false,
+      "transfer_transfer": 0.0
+    },
+    {
+      "abstraction_entries": 2,
+      "library_size_after_seed": 4,
+      "policy": "abstraction",
+      "seed_solved": true,
+      "seed_steps": [
+        "unique",
+        "prefix_sum",
+        "reverse"
+      ],
+      "transfer_holdout": 1.0,
+      "transfer_solved": true,
+      "transfer_transfer": 1.0
+    }
+  ],
+  "seed": 913771,
+  "seed_source_hash": "f225a231b0e48d99cc16a6121de9bb3b2bc20f2a424b4b96272ebee816d52cb9",
+  "shared_length": 2,
+  "tail": "chunk:2",
+  "target_length": 3,
+  "version": "native-q4-library-abstraction-probe-v2"
+}
+{
+  "attempts": 256,
+  "last_case": null,
+  "passed": false,
+  "reason": "no_discriminating_two_transfer_sequence_found",
+  "seed": 913771,
+  "version": "native-q4-sequential-library-probe-v2"
+}
