@@ -26,3 +26,5 @@ jobs:
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
           ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '1a67903eb56ec32b829769f7d842d44b3edc410b' }}
+
+# Gen3 probe trigger: lab script pins the exact ACSIE commit.
