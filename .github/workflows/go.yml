@@ -91,7 +91,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: 4214bd75a395e43c7495e547385e3c9bac122dee
+          ref: d0ebeab9430e5961c6974ec12b5161033fb44177
           token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie
           fetch-depth: 1
@@ -112,7 +112,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/acsie
         run: |
           set +e
-          python research/gen2_persistent_hypothesis_inventory_v1.py > gen3_result.json 2>&1
+          python research/gen2_context_regeneration_diagnostic_v1.py > gen3_result.json 2>&1
           rc=$?
           cat gen3_result.json
           if [ "$rc" -eq 0 ]; then
