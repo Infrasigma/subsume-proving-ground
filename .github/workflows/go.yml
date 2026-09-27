@@ -112,7 +112,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/acsie
         run: |
           set +e
-          python research/native_self_learning_kernel_gen3_compositional_retention_v2_safe_predecessor.py > gen3_result.json 2>&1
+          python research/native_self_learning_kernel_gen3_compositional_retention_v3_parallel.py > gen3_result.json 2>&1
           rc=$?
           cat gen3_result.json
           if [ "$rc" -eq 0 ]; then
