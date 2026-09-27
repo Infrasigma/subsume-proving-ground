@@ -92,7 +92,7 @@ jobs:
       - name: Run exact-fdca ACSIE interference diagnostic
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "82b1eacec5d571148204b8138b0ad84ea5976854"
+          ACSIE_REF: "d3c6ede728386477a64f88714b6ce210b12ca1c6"
         run: |
           set -euo pipefail
           : "${ACSIE_READ_TOKEN:?ACSIE_READ_TOKEN is required}"
