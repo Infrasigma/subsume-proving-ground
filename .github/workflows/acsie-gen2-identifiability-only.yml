@@ -1,0 +1,47 @@
+name: ACSIE Gen2 identifiability only
+
+on:
+  push:
+    branches:
+      - acsie-gen2-identifiability-20260927
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  identifiability:
+    if: github.event_name == 'push' || github.event.pull_request.head.ref == 'acsie-gen2-identifiability-20260927'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run ACSIE Gen2 identifiability probe
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "b8b1220af41fdae8164f40955b870088c582b48c"
+        run: |
+          set -euo pipefail
+          WORK=/tmp/acsie-identifiability
+          ASKPASS=/tmp/acsie-askpass.sh
+          VENV=/tmp/acsie-venv
+          trap 'rm -rf "$WORK" "$VENV" "$ASKPASS"' EXIT
+          : "${ACSIE_READ_TOKEN:?ACSIE_READ_TOKEN is required}"
+          cat > "$ASKPASS" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS"
+          export GIT_TERMINAL_PROMPT=0
+          git clone -q --no-checkout https://github.com/Infrasigma/ACSIE.git "$WORK"
+          git -C "$WORK" checkout --detach --force "$ACSIE_REF"
+          [[ "$(git -C "$WORK" rev-parse HEAD)" == "$ACSIE_REF" ]]
+          cd "$WORK"
+          python3 -m venv "$VENV"
+          . "$VENV/bin/activate"
+          PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_identifiability_probe.py
