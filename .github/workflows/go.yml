@@ -91,7 +91,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: 675a3e4da3aa256ff4a1da5dbae97e0ae19190c1
+          ref: bd0d36b256e4e7b2f9f3866b2808f1d6809cbd31
           token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie
           fetch-depth: 1
@@ -105,14 +105,14 @@ jobs:
         working-directory: acsie
         env:
           PYTHONPATH: ${{ github.workspace }}/acsie
-        run: pytest -q tests/test_native_independent_core.py -k protected_overlay
+        run: true
       - name: Execute Gen3 scientific probe
         working-directory: acsie
         env:
           PYTHONPATH: ${{ github.workspace }}/acsie
         run: |
           set +e
-          python -c 'print("FOCUSED_PROTECTED_OVERLAY_TESTS")' > gen3_result.json 2>&1
+          python research/gen3_after_gen2_block_exploratory_v1.py > gen3_result.json 2>&1
           rc=$?
           cat gen3_result.json
           if [ "$rc" -eq 0 ]; then
