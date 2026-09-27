@@ -3,6 +3,8 @@ set -euo pipefail
 
 : "${ACSIE_READ_TOKEN:?ACSIE_READ_TOKEN is required}"
 : "${ACSIE_REF:?ACSIE_REF is required}"
+ACSIE_REF="dfc5af45da17a5d49b35aebbce2c30a61a4368e5"
+echo "ACSIE_GEN3_PIN=$ACSIE_REF"
 
 WORK=/tmp/acsie-private-lab
 ASKPASS=/tmp/acsie-askpass.sh
