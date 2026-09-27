@@ -1,0 +1,66 @@
+name: ACSIE historical Gen2 provenance sweep
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-historical-gen2-provenance.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: gen2-initial
+            sha: 1e2430e804ed4cd079f556929a2f72d33c4f14bd
+            script: research/native_self_learning_kernel_v2.py
+          - label: gen2-stateful
+            sha: 4831d3fa4ea21149b22ed8bd329bfedde2f7d6d1
+            script: research/native_self_learning_kernel_v2.py
+          - label: gen2-retention-preserved
+            sha: 575673d331004a7add6e216cbdfec971fe193631
+            script: research/native_self_learning_kernel_v2.py
+          - label: gen2-selection-probe
+            sha: 1ec99e03faee50081242a5ad959c74bba062d30f
+            script: research/native_self_learning_kernel_gen2_selection_probe.py
+          - label: gen2-rebased
+            sha: 15faeb036999c94c6e9f5cc0d35c2aae99d9830b
+            script: research/native_self_learning_kernel_gen2_corrected_retention_v1.py
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ matrix.sha }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify source
+        working-directory: acsie
+        run: test "$(git rev-parse HEAD)" = "${{ matrix.sha }}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - name: Run historical Gen2 experiment
+        working-directory: acsie
+        shell: bash
+        run: |
+          set +e
+          PYTHONPATH=. python ${{ matrix.script }} 2>&1 | tee ../result-${{ matrix.label }}.txt
+          rc=${PIPESTATUS[0]}
+          echo "RC=$rc" | tee ../result-${{ matrix.label }}.rc
+          exit 0
+      - name: Upload historical result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-historical-gen2-${{ matrix.label }}-${{ github.run_id }}
+          path: |
+            result-${{ matrix.label }}.txt
+            result-${{ matrix.label }}.rc
