@@ -105,14 +105,14 @@ jobs:
         working-directory: acsie
         env:
           PYTHONPATH: ${{ github.workspace }}/acsie
-        run: pytest -q tests/test_native_independent_core.py -k self_improve_learning_enforces_historical_competence_non_regression
+        run: pytest -q tests/test_native_independent_core.py
       - name: Execute Gen3 scientific probe
         working-directory: acsie
         env:
           PYTHONPATH: ${{ github.workspace }}/acsie
         run: |
           set +e
-          python research/gen2_historical_retention_gate_smoke_v1.py > gen3_result.json 2>&1
+          python research/native_self_learning_kernel_gen3_compositional_retention_v1.py > gen3_result.json 2>&1
           rc=$?
           cat gen3_result.json
           if [ "$rc" -eq 0 ]; then
