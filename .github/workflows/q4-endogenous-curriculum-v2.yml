@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - ".github/workflows/q4-endogenous-curriculum-v2.yml"
+      - ".github/workflows/q4-endogenous-curriculum-v2-trigger.txt"
   workflow_dispatch:
     inputs:
       acsie_ref:
@@ -60,3 +61,5 @@ jobs:
           PYTHONPATH="$WORK" python research/native_endogenous_curriculum_v2.py 441177 6 4
 
 # exact-trigger
+
+# sentinel-watch
