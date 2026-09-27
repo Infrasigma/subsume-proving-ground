@@ -23,8 +23,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run pinned paired-counterfactual curriculum v3
         env:
-          ACSIE_READ_TOKEN: \${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: \${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '9d66a9b005fb2fe006a1a2ccd169c7b1469553bc' }}
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '9d66a9b005fb2fe006a1a2ccd169c7b1469553bc' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-q4-curriculum-v3
