@@ -106,6 +106,26 @@ PY
         working-directory: acsie
         run: python research/native_independent_final_gate.py
 
+      - name: Gen3 cross-feature context probe
+        working-directory: acsie
+        env:
+          PYTHONPATH: ${{ github.workspace }}/acsie
+        run: |
+          set +e
+          python research/native_self_learning_kernel_gen3_cross_feature_context_v1.py > gen3_result.json 2>&1
+          rc=$?
+          cat gen3_result.json
+          if [ "$rc" -eq 0 ]; then
+            echo "ACSIE_GEN3_SCIENTIFIC_STATUS=PASSED"
+            exit 0
+          fi
+          if [ "$rc" -eq 2 ]; then
+            echo "ACSIE_GEN3_SCIENTIFIC_STATUS=FAILED"
+            exit 0
+          fi
+          echo "ACSIE_GEN3_SCIENTIFIC_STATUS=EXECUTION_FAILURE" >&2
+          exit "$rc"
+
       - name: Remove private source
         if: always()
         run: rm -rf acsie
