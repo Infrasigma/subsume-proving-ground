@@ -17,7 +17,7 @@ jobs:
       - name: Run fresh Gen2 adaptive-union probe
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "e6f236443c51bbdf1eee8f2101c3eef1f1b3999d"
+          ACSIE_REF: "c17120b77cddaffbd5abbb57899bddc6fedea61b"
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-fresh-union
@@ -38,4 +38,4 @@ jobs:
           git -C "$WORK" checkout --detach --force "$ACSIE_REF"
           [[ "$(git -C "$WORK" rev-parse HEAD)" == "$ACSIE_REF" ]]
           cd "$WORK"
-          PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_fresh_union_probe.py
+          PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_corrected_retention_v1.py
