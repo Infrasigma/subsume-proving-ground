@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - ".github/workflows/q4-endogenous-curriculum-v2.yml"
+      - ".github/workflows/q4-endogenous-curriculum-v2-pool-trigger.txt"
       - ".github/workflows/q4-endogenous-curriculum-v2-trigger.txt"
   workflow_dispatch:
     inputs:
