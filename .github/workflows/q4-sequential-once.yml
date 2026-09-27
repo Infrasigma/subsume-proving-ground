@@ -1,0 +1,48 @@
+name: q4-sequential-once
+
+on:
+  push:
+    branches:
+      - ci/q4-sequential-run-20260927
+    paths:
+      - ".github/workflows/q4-sequential-once.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run pinned ACSIE Q4 sequential experiment
+        shell: bash
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: 21b7bb18ae9e6ff5aef4ae3dbb8ea0dfe40f82d8
+        run: |
+          set +e
+          bash lab/acsie_private_lab.sh > /tmp/q4-sequential.log 2>&1
+          status=$?
+          set -e
+
+          mkdir -p evidence
+          {
+            echo "RUN_ID=${GITHUB_RUN_ID}"
+            echo "JOB_NAME=q4-sequential-once"
+            echo "PROVING_GROUND_SHA=${GITHUB_SHA}"
+            echo "ACSIE_REF=${ACSIE_REF}"
+            echo "EXIT_STATUS=${status}"
+            echo "STARTED_AT=${GITHUB_RUN_ATTEMPT}"
+            echo "===== LAB LOG ====="
+            cat /tmp/q4-sequential.log
+          } > evidence/q4-sequential-run.txt
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add evidence/q4-sequential-run.txt
+          git commit -m "ci: record q4 sequential hosted run ${GITHUB_RUN_ID}"
+          git push origin "HEAD:${GITHUB_REF_NAME}" || true
+
+          exit "${status}"
