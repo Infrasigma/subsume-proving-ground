@@ -22,8 +22,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run pinned ACSIE native metaprogram search
         env:
-          ACSIE_READ_TOKEN: \${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: \${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'eadb6f3f4bc336c2e95c74dd541f8b0798b656d6' }}
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'eadb6f3f4bc336c2e95c74dd541f8b0798b656d6' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-q4-meta
