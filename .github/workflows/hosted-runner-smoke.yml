@@ -10,7 +10,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE commit SHA (preferred) or trusted ref"
         required: true
-        default: "012d1f6ad9b5890dc4b1666036454df6b61203a5"
+        default: "1a67903eb56ec32b829769f7d842d44b3edc410b"
         type: string
 
 permissions:
@@ -24,5 +24,5 @@ jobs:
       - name: Run pinned ACSIE lab
         run: bash lab/acsie_private_lab.sh
         env:
-          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '012d1f6ad9b5890dc4b1666036454df6b61203a5' }}
+          ACSIE_READ_TOKEN: \${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: \${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '1a67903eb56ec32b829769f7d842d44b3edc410b' }}

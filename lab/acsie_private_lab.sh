@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${ACSIE_READ_TOKEN:?ACSIE_READ_TOKEN is required}"
-: "${ACSIE_REF:?ACSIE_REF is required}"
+: "\${ACSIE_READ_TOKEN:?ACSIE_READ_TOKEN is required}"
+: "\${ACSIE_REF:?ACSIE_REF is required}"
 
 WORK=/tmp/acsie-private-lab
 ASKPASS=/tmp/acsie-askpass.sh
@@ -101,7 +101,11 @@ run_q4_hypothesis python research/native_q4_library_abstraction_probe_v1.py 9137
 # created during the first fresh transfer on the same persistent core.
 run_q4_hypothesis python research/native_q4_sequential_library_probe_v1.py 913771
 
-# Phase Q4: recursive improvement of the native learning procedure on fresh populations.
-python research/native_q4_recursive_learning_v1.py 913771 12
+# Phase Q4: smallest procedure-selection gate built on the verified recursive library mechanism.
+run_q4_hypothesis python research/native_q4_recursive_library_procedure_v1.py 271828 6 6
+
+# Legacy Q4 policy-only recursive-learning evaluator retained as a negative control.
+# It is recorded, not allowed to abort the scientific lab after the newer mechanism is tested.
+run_q4_hypothesis python research/native_q4_recursive_learning_v1.py 913771 12
 
 echo "ACSIE_PRIVATE_LAB_RESULT=PASS"
