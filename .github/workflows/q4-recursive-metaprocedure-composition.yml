@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - ".github/workflows/q4-recursive-metaprocedure-composition.yml"
+      - ".github/workflows/q4-recursive-meta-trigger.txt"
   workflow_dispatch:
     inputs:
       acsie_ref:
