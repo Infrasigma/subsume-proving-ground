@@ -328,7 +328,7 @@ func runBlock(seed int64) blockResult {
 	details["g5_diagnosis"] = diag
 
 	// X6: endogenous next-challenge generation.
-	next, curriculumErr := (Curriculum{}).Next(Dataset{Examples: throttled.Examples[:60]})
+	next, curriculumErr := (Curriculum{}).Next([]Dataset{{Examples: throttled.Examples[:60]}})
 	gates["G6"] = curriculumErr == nil && len(next.Examples) == 60
 	details["g6_size"] = len(next.Examples)
 
