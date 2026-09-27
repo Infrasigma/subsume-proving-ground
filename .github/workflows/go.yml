@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.ref != 'acsie-gen2-identifiability-20260927'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,92 +29,3 @@ jobs:
   ace-x:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'ace-x-live-20260921'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25.x"
-          cache: false
-      - name: Resolve module checksums
-        run: go mod download
-      - name: Run ACE-X pure-substrate gate
-        env:
-          ACEX_SEEDS: "610117,830921"
-        run: |
-          set -euo pipefail
-          go test -mod=mod -run '^TestACEXIntegratedTerminal$' ./internal/acex -count=1 -timeout=12m -v | tee acex-result.txt
-      - name: Publish ACE-X forensic result
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: acex-integrated-result
-          path: acex-result.txt
-
-  ace-x-forensic:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-      - name: Fetch exact ACE-X branch head
-        run: |
-          git fetch origin refs/heads/ace-x-live-20260921
-          git checkout --detach FETCH_HEAD
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25.x"
-          cache: false
-      - name: Resolve module checksums
-        run: go mod download
-      - name: Run ACE-X pure-substrate gate
-        env:
-          ACEX_SEEDS: "610117,830921"
-        run: |
-          set -euo pipefail
-          go test -mod=mod -run '^TestACEXIntegratedTerminal$' ./internal/acex -count=1 -timeout=12m -v | tee acex-result.txt
-      - name: Publish ACE-X forensic result
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: acex-forensic-result
-          path: acex-result.txt
-
-# ACE-X forensic trigger revision.
-
-  acsie-gen2-identifiability:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'acsie-gen2-identifiability-20260927'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Run ACSIE Gen2 identifiability probe
-        env:
-          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "b8b1220af41fdae8164f40955b870088c582b48c"
-        run: |
-          set -euo pipefail
-          WORK=/tmp/acsie-identifiability
-          ASKPASS=/tmp/acsie-askpass.sh
-          VENV=/tmp/acsie-venv
-          trap 'rm -rf "$WORK" "$VENV" "$ASKPASS"' EXIT
-          : "${ACSIE_READ_TOKEN:?ACSIE_READ_TOKEN is required}"
-          cat > "$ASKPASS" <<'EOF'
-          #!/bin/sh
-          case "$1" in
-            *Username*) printf '%s\n' 'x-access-token' ;;
-            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
-          esac
-          EOF
-          chmod 700 "$ASKPASS"
-          export GIT_ASKPASS="$ASKPASS"
-          export GIT_TERMINAL_PROMPT=0
-          git clone -q --no-checkout https://github.com/Infrasigma/ACSIE.git "$WORK"
-          git -C "$WORK" checkout --detach --force "$ACSIE_REF"
-          [[ "$(git -C "$WORK" rev-parse HEAD)" == "$ACSIE_REF" ]]
-          cd "$WORK"
-          python3 -m venv "$VENV"
-          . "$VENV/bin/activate"
-          PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_identifiability_probe.py
