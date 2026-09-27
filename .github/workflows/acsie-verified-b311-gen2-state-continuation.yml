@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: e876eaca1446e26295702d0a1ccca64d99f6276e
+          ref: da6883ca2d5f742557701c755b4c3d3fd5884e71
           token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie-current
           fetch-depth: 1
@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C acsie-old rev-parse HEAD)" = "94a2a770a5799fd386217998bc21b585632ef7ed"
-          test "$(git -C acsie-current rev-parse HEAD)" = "e876eaca1446e26295702d0a1ccca64d99f6276e"
+          test "$(git -C acsie-current rev-parse HEAD)" = "da6883ca2d5f742557701c755b4c3d3fd5884e71"
           echo OLD_EXPORT_SOURCE=$(git -C acsie-old rev-parse HEAD)
           echo CURRENT_SOURCE=$(git -C acsie-current rev-parse HEAD)
       - uses: actions/setup-python@v5
@@ -76,7 +76,7 @@ jobs:
           sha256sum verified-gen2-state.json | tee evidence/state.sha256
           echo "historical_parent=b31109864ae547320d877e6c1575b805d950edf9" | tee evidence/provenance.txt
           echo "export_source=94a2a770a5799fd386217998bc21b585632ef7ed" | tee -a evidence/provenance.txt
-          echo "current_source=e876eaca1446e26295702d0a1ccca64d99f6276e" | tee -a evidence/provenance.txt
+          echo "current_source=da6883ca2d5f742557701c755b4c3d3fd5884e71" | tee -a evidence/provenance.txt
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
