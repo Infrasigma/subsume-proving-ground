@@ -38,4 +38,4 @@ jobs:
           git -C "$WORK" checkout --detach --force "$ACSIE_REF"
           [[ "$(git -C "$WORK" rev-parse HEAD)" == "$ACSIE_REF" ]]
           cd "$WORK"
-          PYTHONPATH="$WORK" python research/research/native_self_learning_kernel_gen2_corrected_retention_v1.py
+          PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_corrected_retention_v1.py
