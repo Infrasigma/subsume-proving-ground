@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C acsie-old rev-parse HEAD)" = "94a2a770a5799fd386217998bc21b585632ef7ed"
-          test "$(git -C acsie-current rev-parse HEAD)" = "eced0c7ed816b0baa15769fd841abde62fcccbd5
+          test "$(git -C acsie-current rev-parse HEAD)" = "eced0c7ed816b0baa15769fd841abde62fcccbd5"
           echo OLD_EXPORT_SOURCE=$(git -C acsie-old rev-parse HEAD)
           echo CURRENT_SOURCE=$(git -C acsie-current rev-parse HEAD)
       - uses: actions/setup-python@v5
