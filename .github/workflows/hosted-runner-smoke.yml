@@ -1,5 +1,7 @@
 name: hosted-runner-smoke
 
+# gen2-repair-trigger
+
 on:
   push:
     paths:
