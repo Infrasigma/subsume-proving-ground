@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/q4-self-learning-kernel.yml"
       - ".github/workflows/q4-self-learning-kernel-trigger.txt"
+  pull_request:
   workflow_dispatch:
     inputs:
       acsie_ref:
