@@ -12,7 +12,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE diagnostic commit SHA"
         required: true
-        default: "68f37e925e381ffe4bd0625f0c3e9c87108e1f55"
+        default: "5633185a3baf47238330f3fc95a98bd2aafe56e5"
         type: string
 
 permissions:
@@ -27,7 +27,7 @@ jobs:
       - name: Run ACSIE Gen2 mechanistic diagnostic
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '68f37e925e381ffe4bd0625f0c3e9c87108e1f55' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '5633185a3baf47238330f3fc95a98bd2aafe56e5' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-gen2-interference-diagnostic
