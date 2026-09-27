@@ -1,0 +1,85 @@
+name: ACSIE verified-b311 Gen2 state export and current Gen3 continuation
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-verified-b311-gen2-state-continuation.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout verified historical Gen2 exporter
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: 94a2a770a5799fd386217998bc21b585632ef7ed
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-old
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout current compositional source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: e876eaca1446e26295702d0a1ccca64d99f6276e
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-current
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact sources
+        run: |
+          set -euo pipefail
+          test "$(git -C acsie-old rev-parse HEAD)" = "94a2a770a5799fd386217998bc21b585632ef7ed"
+          test "$(git -C acsie-current rev-parse HEAD)" = "e876eaca1446e26295702d0a1ccca64d99f6276e"
+          echo OLD_EXPORT_SOURCE=$(git -C acsie-old rev-parse HEAD)
+          echo CURRENT_SOURCE=$(git -C acsie-current rev-parse HEAD)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - name: Export verified Gen2 state from b311 lineage
+        working-directory: acsie-old
+        run: PYTHONPATH=. python research/export_verified_gen2_state_from_b311_v1.py > ../verified-gen2-export.json
+      - name: Extract and validate frozen state
+        run: |
+          python - <<'PY'
+          import json
+          r=json.load(open('verified-gen2-export.json'))
+          assert r['scientific_status']=='PASSED', r
+          assert r['scientific_parent_commit']=='b31109864ae547320d877e6c1575b805d950edf9', r
+          assert abs(r['verified_gen2_protocol']['holdout_gain']-0.10416666666666663) < 1e-12, r
+          assert abs(r['verified_gen2_protocol']['transfer_gain']-0.0625) < 1e-12, r
+          json.dump(r['frozen_state'], open('verified-gen2-state.json','w'), sort_keys=True)
+          print('VERIFIED_GEN2_STATE_READY')
+          print('HOLDOUT_GAIN', r['verified_gen2_protocol']['holdout_gain'])
+          print('TRANSFER_GAIN', r['verified_gen2_protocol']['transfer_gain'])
+          print('PARENT', r['scientific_parent_commit'])
+          PY
+      - name: Current compositional continuation from verified state
+        working-directory: acsie-current
+        run: |
+          set +e
+          PYTHONPATH=. python research/gen3_from_frozen_verified_gen2_v1.py ../verified-gen2-state.json | tee ../gen3-from-verified-gen2.json
+          rc=${PIPESTATUS[0]}
+          echo "GEN3_RC=$rc"
+          exit 0
+      - name: Package evidence
+        if: always()
+        run: |
+          mkdir -p evidence
+          cp verified-gen2-export.json gen3-from-verified-gen2.json evidence/
+          sha256sum verified-gen2-state.json | tee evidence/state.sha256
+          echo "historical_parent=b31109864ae547320d877e6c1575b805d950edf9" | tee evidence/provenance.txt
+          echo "export_source=94a2a770a5799fd386217998bc21b585632ef7ed" | tee -a evidence/provenance.txt
+          echo "current_source=e876eaca1446e26295702d0a1ccca64d99f6276e" | tee -a evidence/provenance.txt
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-verified-b311-gen2-continuation-${{ github.run_id }}
+          path: evidence/
