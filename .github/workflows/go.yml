@@ -92,7 +92,7 @@ jobs:
       - name: Run fast ACSIE repair probe
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "54a514d9f76b5ec9e01f643a862fdb7d83b1f734"
+          ACSIE_REF: "1ec99e03faee50081242a5ad959c74bba062d30f"
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-fast-probe
