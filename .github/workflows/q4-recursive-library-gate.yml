@@ -9,7 +9,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE commit SHA"
         required: true
-        default: "1a67903eb56ec32b829769f7d842d44b3edc410b"
+        default: "64cb3c5f009c416522d3937824b427e17318ec13"
         type: string
 
 permissions:
@@ -23,7 +23,7 @@ jobs:
       - name: Run pinned ACSIE recursive library gate
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '1a67903eb56ec32b829769f7d842d44b3edc410b' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '64cb3c5f009c416522d3937824b427e17318ec13' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-q4
