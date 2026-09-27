@@ -10,7 +10,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE commit SHA"
         required: true
-        default: "d9b93b192237cbc1239ed5786e095cbc53bf4939"
+        default: "27730cc2a745f8868720ea91a02658decc54cfde"
         type: string
 
 permissions:
@@ -24,7 +24,7 @@ jobs:
       - name: Run pinned two-generation self-learning kernel gate
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'd9b93b192237cbc1239ed5786e095cbc53bf4939' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '27730cc2a745f8868720ea91a02658decc54cfde' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-q4-self-kernel-gen2
