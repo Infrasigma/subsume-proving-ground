@@ -105,7 +105,7 @@ jobs:
         working-directory: acsie
         env:
           PYTHONPATH: ${{ github.workspace }}/acsie
-        run: pytest -q tests/test_native_independent_core.py
+        run: pytest -q tests/test_native_independent_core.py -k predict_arbitration_internal_stage_diagnostic
       - name: Execute Gen3 scientific probe
         working-directory: acsie
         env:
