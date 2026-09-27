@@ -1,0 +1,60 @@
+name: q4-recursive-metaprocedure-composition
+
+on:
+  push:
+    paths:
+      - ".github/workflows/q4-recursive-metaprocedure-composition.yml"
+  workflow_dispatch:
+    inputs:
+      acsie_ref:
+        description: "Exact ACSIE commit SHA"
+        required: true
+        default: "dfcf322ec58e306f2b9ca459221227931c3cdefa"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  q4-recursive-metaprocedure-composition:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run pinned recursive metaprocedure composition gate
+        env:
+          ACSIE_READ_TOKEN: \${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: \${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'dfcf322ec58e306f2b9ca459221227931c3cdefa' }}
+        run: |
+          set -euo pipefail
+          WORK=/tmp/acsie-q4-recursive-meta
+          ASKPASS=/tmp/acsie-askpass.sh
+          VENV=/tmp/acsie-venv
+          cleanup() { rm -rf "$WORK" "$VENV" "$ASKPASS"; }
+          trap cleanup EXIT
+          cat > "$ASKPASS" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS"
+          export GIT_TERMINAL_PROMPT=0
+          mkdir -p "$WORK"
+          git -C "$WORK" init
+          git -C "$WORK" remote add origin https://github.com/Infrasigma/ACSIE.git
+          git -C "$WORK" fetch --no-tags --depth 1 origin "$ACSIE_REF"
+          git -C "$WORK" checkout --detach --force FETCH_HEAD
+          cd "$WORK"
+          ACTUAL_COMMIT="$(git rev-parse HEAD)"
+          ACTUAL_TREE="$(git rev-parse HEAD^{tree})"
+          echo "ACSIE_COMMIT=$ACTUAL_COMMIT"
+          echo "ACSIE_TREE=$ACTUAL_TREE"
+          [[ "$ACTUAL_COMMIT" == "$ACSIE_REF" ]]
+          python3 -m venv "$VENV"
+          . "$VENV/bin/activate"
+          python -m pip install --upgrade pip pytest
+          python -m compileall -q cognitive_core
+          PYTHONPATH="$WORK" pytest -q tests/test_native_independent_core.py
+          PYTHONPATH="$WORK" python research/native_q4_recursive_metaprocedure_composition_v1.py 424242 6 6
