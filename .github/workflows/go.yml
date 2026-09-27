@@ -92,7 +92,7 @@ jobs:
       - name: Run exact-fdca ACSIE interference diagnostic
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "d3c6ede728386477a64f88714b6ce210b12ca1c6"
+          ACSIE_REF: "4128b0b9b3d9a0639c17fa7845e6a742c561936b"
         run: |
           set -euo pipefail
           : "${ACSIE_READ_TOKEN:?ACSIE_READ_TOKEN is required}"
@@ -131,7 +131,7 @@ jobs:
           python -m pip install --upgrade pip pytest
           python -m compileall -q cognitive_core research
           PYTHONPATH="$WORK" pytest -q tests/test_native_independent_core.py tests/test_native_self_learning_kernel_v2.py
-          PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_interference_diagnostic_v1.py | tee "$GITHUB_WORKSPACE/gen2-interference-diagnostic.json"
+          PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_interference_diagnostic_v2.py | tee "$GITHUB_WORKSPACE/gen2-interference-diagnostic.json"
 
       - name: Publish exact-fdca diagnostic evidence
         if: always()
