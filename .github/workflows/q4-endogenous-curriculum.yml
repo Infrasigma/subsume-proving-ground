@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - ".github/workflows/q4-endogenous-curriculum.yml"
+      - ".github/workflows/q4-endogenous-curriculum-trigger.txt"
   workflow_dispatch:
     inputs:
       acsie_ref:
