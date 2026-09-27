@@ -23,8 +23,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run pinned self-policy improvement gate
         env:
-          ACSIE_READ_TOKEN: \${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: \${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '21fb35094fb80dc2d12ca818131a707a21abc70e' }}
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '21fb35094fb80dc2d12ca818131a707a21abc70e' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-q4-self-policy
