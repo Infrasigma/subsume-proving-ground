@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - research/gen2-interference-diagnostic-20260927
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
