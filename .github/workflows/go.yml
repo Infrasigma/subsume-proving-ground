@@ -91,7 +91,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: b544d5d9708a0369a082568ab45976a59725ad52
+          ref: 45998c06baa2b910605c72ea8c34ebfb44820e5a
           token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie
           fetch-depth: 1
@@ -105,7 +105,7 @@ jobs:
         working-directory: acsie
         env:
           PYTHONPATH: ${{ github.workspace }}/acsie
-        run: git rev-parse HEAD | grep -F b544d5d9708a0369a082568ab45976a59725ad52
+        run: git rev-parse HEAD | grep -F 45998c06baa2b910605c72ea8c34ebfb44820e5a
       - name: Execute Gen3 scientific probe
         working-directory: acsie
         env:
