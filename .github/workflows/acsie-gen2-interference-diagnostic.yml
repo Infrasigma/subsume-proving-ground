@@ -1,4 +1,5 @@
 name: acsie-gen2-interference-diagnostic
+# temporary pinned research execution
 
 on:
   push:
