@@ -17,7 +17,7 @@ jobs:
       - name: Run fresh Gen2 adaptive-union probe
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "0a44cac412423499c4454e45522c3a43f8607050"
+          ACSIE_REF: "69dd1edc33261d29d9d5f568edfb5e9b2ed86070"
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-fresh-union
