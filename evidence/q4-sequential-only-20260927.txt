@@ -1,0 +1,14 @@
+RUN_ID=36301338226
+WORKFLOW=q4-sequential-only-20260927
+ACSIE_REF=21b7bb18ae9e6ff5aef4ae3dbb8ea0dfe40f82d8
+ACSIE_TREE=e4c55e8930f29efcde10a905209b17980d6567aa
+EXIT_STATUS=2
+===== PROBE RESULT =====
+{
+  "attempts": 256,
+  "last_case": null,
+  "passed": false,
+  "reason": "no_discriminating_two_transfer_sequence_found",
+  "seed": 913771,
+  "version": "native-q4-sequential-library-probe-v2"
+}
