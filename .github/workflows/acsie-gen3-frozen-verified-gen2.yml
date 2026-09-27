@@ -48,14 +48,15 @@ jobs:
       - name: Extract frozen predecessor state
         run: |
           python - <<'PY'
-import json
-r=json.load(open('frozen-gen2-result.json'))
-assert r['scientific_status']=='PASSED', r
-assert r['source_commit']=='c17120b77cddaffbd5abbb57899bddc6fedea61b', r['source_commit']
-json.dump(r['frozen_state'], open('frozen-gen2-state.json','w'), sort_keys=True)
-print('frozen predecessor verified:', r['source_commit'])
-print('Gen2 holdout gain:', r['gen2_holdout_gain'])
-print('Gen2 transfer gain:', r['gen2_transfer_gain'])
+          import json
+          r=json.load(open('frozen-gen2-result.json'))
+          assert r['scientific_status']=='PASSED', r
+          assert r['source_commit']=='c17120b77cddaffbd5abbb57899bddc6fedea61b', r['source_commit']
+          json.dump(r['frozen_state'], open('frozen-gen2-state.json','w'), sort_keys=True)
+          print('frozen predecessor verified:', r['source_commit'])
+          print('Gen2 holdout gain:', r['gen2_holdout_gain'])
+          print('Gen2 transfer gain:', r['gen2_transfer_gain'])
+          PY
       - name: Run Gen3 from frozen predecessor
         working-directory: acsie-current
         run: PYTHONPATH=. python research/gen3_from_frozen_verified_gen2_v1.py ../frozen-gen2-state.json | tee ../gen3-frozen-result.json
