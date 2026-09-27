@@ -38,5 +38,8 @@ jobs:
           git -C "$WORK" checkout --detach --force "$ACSIE_REF"
           [[ "$(git -C "$WORK" rev-parse HEAD)" == "$ACSIE_REF" ]]
           cd "$WORK"
+          python3 -m venv "$WORK/.venv"
+          . "$WORK/.venv/bin/activate"
+          python -m pip install -q pytest
           PYTHONPATH="$WORK" pytest -q tests/test_native_independent_core.py
           PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_corrected_retention_v1.py
