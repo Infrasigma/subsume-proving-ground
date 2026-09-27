@@ -22,8 +22,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run pinned ACSIE recursive library gate
         env:
-          ACSIE_READ_TOKEN: \${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: \${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '1a67903eb56ec32b829769f7d842d44b3edc410b' }}
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '1a67903eb56ec32b829769f7d842d44b3edc410b' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-q4
