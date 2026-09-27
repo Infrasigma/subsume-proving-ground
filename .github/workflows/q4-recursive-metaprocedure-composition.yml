@@ -22,8 +22,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run pinned recursive metaprocedure composition gate
         env:
-          ACSIE_READ_TOKEN: \${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: \${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'dfcf322ec58e306f2b9ca459221227931c3cdefa' }}
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'dfcf322ec58e306f2b9ca459221227931c3cdefa' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-q4-recursive-meta
