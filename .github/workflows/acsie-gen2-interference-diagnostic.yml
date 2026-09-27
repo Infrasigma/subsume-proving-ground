@@ -66,4 +66,4 @@ jobs:
           python -m pip install --upgrade pip pytest
           python -m compileall -q cognitive_core research
           PYTHONPATH="$WORK" pytest -q tests/test_native_independent_core.py tests/test_native_self_learning_kernel_v2.py
-          PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_interference_diagnostic_v1.py
+          PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_interference_diagnostic_v2.py
