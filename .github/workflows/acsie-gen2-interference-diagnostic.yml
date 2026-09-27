@@ -12,7 +12,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE diagnostic commit SHA"
         required: true
-        default: "4128b0b9b3d9a0639c17fa7845e6a742c561936b"
+        default: "e44b4037b439d2c160099f11598547b8fbda3306"
         type: string
 
 permissions:
@@ -27,7 +27,7 @@ jobs:
       - name: Run ACSIE Gen2 mechanistic diagnostic
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '4128b0b9b3d9a0639c17fa7845e6a742c561936b' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'e44b4037b439d2c160099f11598547b8fbda3306' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-gen2-interference-diagnostic
@@ -66,4 +66,4 @@ jobs:
           python -m pip install --upgrade pip pytest
           python -m compileall -q cognitive_core research
           PYTHONPATH="$WORK" pytest -q tests/test_native_independent_core.py tests/test_native_self_learning_kernel_v2.py
-          PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_interference_diagnostic_v2.py
+          PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_interference_diagnostic_v3.py
