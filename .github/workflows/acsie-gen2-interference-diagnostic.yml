@@ -1,0 +1,61 @@
+name: acsie-gen2-interference-diagnostic
+
+on:
+  push:
+    branches:
+      - research/gen2-interference-diagnostic-20260927
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run pinned ACSIE interference diagnostic
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "4957431cdfb4232670644788f538ad0f84f830b1"
+        run: |
+          set -euo pipefail
+          WORK=/tmp/acsie-gen2-interference-diagnostic
+          ASKPASS=/tmp/acsie-askpass.sh
+          VENV=/tmp/acsie-venv
+          cleanup() { rm -rf "$WORK" "$VENV" "$ASKPASS"; }
+          trap cleanup EXIT
+
+          cat > "$ASKPASS" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS"
+          export GIT_TERMINAL_PROMPT=0
+
+          mkdir -p "$WORK"
+          git -C "$WORK" init
+          git -C "$WORK" remote add origin https://github.com/Infrasigma/ACSIE.git
+          git -C "$WORK" fetch --no-tags --depth 1 origin "$ACSIE_REF"
+          git -C "$WORK" checkout --detach --force FETCH_HEAD
+          cd "$WORK"
+
+          ACTUAL_COMMIT="$(git rev-parse HEAD)"
+          ACTUAL_TREE="$(git rev-parse HEAD^{tree})"
+          echo "ACSIE_COMMIT=$ACTUAL_COMMIT"
+          echo "ACSIE_TREE=$ACTUAL_TREE"
+          test "$ACTUAL_COMMIT" = "$ACSIE_REF"
+
+          python3 -m venv "$VENV"
+          . "$VENV/bin/activate"
+          python -m pip install --upgrade pip pytest
+          python -m compileall -q cognitive_core research
+          PYTHONPATH="$WORK" pytest -q             tests/test_native_self_learning_kernel_gen2_interference_diagnostic_v1.py
+          PYTHONPATH="$WORK" python             research/native_self_learning_kernel_gen2_interference_diagnostic_v1.py
