@@ -1,0 +1,75 @@
+name: ACSIE Gen3 frozen verified-Gen2 continuation
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-gen3-frozen-verified-gen2.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout verified historical Gen2 source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: e83279de7c766d8d813205a97e51f27ad2dee373
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-old
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout current Gen3 source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: 9203e044750f5f1ba9e86ec5b967c834d5e66aa7
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-current
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact source commits
+        run: |
+          set -euo pipefail
+          test "$(git -C acsie-old rev-parse HEAD)" = "e83279de7c766d8d813205a97e51f27ad2dee373"
+          test "$(git -C acsie-current rev-parse HEAD)" = "9203e044750f5f1ba9e86ec5b967c834d5e66aa7"
+          echo OLD_SOURCE=$(git -C acsie-old rev-parse HEAD)
+          echo CURRENT_SOURCE=$(git -C acsie-current rev-parse HEAD)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - name: Export frozen verified Gen2 state
+        working-directory: acsie-old
+        run: PYTHONPATH=. python research/export_verified_gen2_state_v1.py > ../frozen-gen2-result.json
+      - name: Extract frozen predecessor state
+        run: |
+          python - <<'PY'
+import json
+r=json.load(open('frozen-gen2-result.json'))
+assert r['scientific_status']=='PASSED', r
+assert r['source_commit']=='c17120b77cddaffbd5abbb57899bddc6fedea61b', r['source_commit']
+json.dump(r['frozen_state'], open('frozen-gen2-state.json','w'), sort_keys=True)
+print('frozen predecessor verified:', r['source_commit'])
+print('Gen2 holdout gain:', r['gen2_holdout_gain'])
+print('Gen2 transfer gain:', r['gen2_transfer_gain'])
+      - name: Run Gen3 from frozen predecessor
+        working-directory: acsie-current
+        run: PYTHONPATH=. python research/gen3_from_frozen_verified_gen2_v1.py ../frozen-gen2-state.json | tee ../gen3-frozen-result.json
+      - name: Package evidence
+        if: always()
+        run: |
+          mkdir -p evidence
+          cp frozen-gen2-result.json gen3-frozen-result.json evidence/
+          sha256sum frozen-gen2-state.json | tee evidence/frozen-state.sha256
+          echo "historical_source=c17120b77cddaffbd5abbb57899bddc6fedea61b" | tee evidence/provenance.txt
+          echo "current_source=9203e044750f5f1ba9e86ec5b967c834d5e66aa7" | tee -a evidence/provenance.txt
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-gen3-frozen-verified-gen2-${{ github.run_id }}
+          path: evidence/
