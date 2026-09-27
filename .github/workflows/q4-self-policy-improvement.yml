@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - ".github/workflows/q4-self-policy-improvement.yml"
+      - ".github/workflows/q4-self-policy-improvement-trigger.txt"
   workflow_dispatch:
     inputs:
       acsie_ref:
