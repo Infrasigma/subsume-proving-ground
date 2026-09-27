@@ -4,13 +4,12 @@ on:
   push:
     paths:
       - ".github/workflows/hosted-runner-smoke.yml"
-      - "lab/acsie_private_lab.sh"
   workflow_dispatch:
     inputs:
       acsie_ref:
-        description: "Exact ACSIE commit SHA (preferred) or trusted ref"
+        description: "Exact ACSIE commit SHA"
         required: true
-        default: "1a67903eb56ec32b829769f7d842d44b3edc410b"
+        default: "cbb3379bf97ab749a86ca37a141ce6fd0fb60322"
         type: string
 
 permissions:
@@ -19,10 +18,62 @@ permissions:
 jobs:
   acsie-lab:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Run pinned ACSIE lab
-        run: bash lab/acsie_private_lab.sh
+
+      - name: Run exact ACSIE Gen2 repair
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '1a67903eb56ec32b829769f7d842d44b3edc410b' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'cbb3379bf97ab749a86ca37a141ce6fd0fb60322' }}
+        run: |
+          set -euo pipefail
+          WORK=/tmp/acsie-gen2-repair
+          ASKPASS=/tmp/acsie-askpass.sh
+          VENV=/tmp/acsie-venv
+          mkdir -p "$WORK"
+
+          cat > "$ASKPASS" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s
+' 'x-access-token' ;;
+            *) printf '%s
+' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS"
+          export GIT_TERMINAL_PROMPT=0
+
+          git -C "$WORK" init
+          git -C "$WORK" remote add origin https://github.com/Infrasigma/ACSIE.git
+          git -C "$WORK" fetch --no-tags --depth 1 origin "$ACSIE_REF"
+          git -C "$WORK" checkout --detach --force FETCH_HEAD
+          cd "$WORK"
+
+          ACTUAL_COMMIT="$(git rev-parse HEAD)"
+          ACTUAL_TREE="$(git rev-parse HEAD^{tree})"
+          echo "ACSIE_COMMIT=$ACTUAL_COMMIT"
+          echo "ACSIE_TREE=$ACTUAL_TREE"
+          test "$ACTUAL_COMMIT" = "$ACSIE_REF"
+
+          python3 -m venv "$VENV"
+          . "$VENV/bin/activate"
+          python -m pip install --upgrade pip pytest
+          python -m compileall -q cognitive_core research
+
+          python -m pytest -q \
+            tests/test_native_independent_core.py::test_native_core_roundtrip_is_exact \
+            tests/test_native_independent_core.py::test_native_core_roundtrip_restores_relation_expression_ast \
+            tests/test_native_independent_core.py::test_native_observe_batch_matches_sequential_final_state \
+            tests/test_gen2_regime_memory_repair.py::test_observe_batch_preserves_existing_final_state_contract \
+            tests/test_gen2_regime_memory_repair.py::test_regime_archive_is_generic_and_persistent \
+            tests/test_gen2_regime_memory_repair.py::test_prediction_context_reset_is_explicit
+
+          set +e
+          PYTHONPATH="$WORK" python -u -m research.native_self_learning_kernel_v2
+          RC=$?
+          set -e
+          echo "ACSIE_GEN2_REPAIR_EXIT_CODE=$RC"
+          exit "$RC"
