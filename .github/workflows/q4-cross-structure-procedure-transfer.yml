@@ -60,3 +60,5 @@ jobs:
           PYTHONPATH="$WORK" python research/native_q4_library_abstraction_probe_v1.py 913771
           PYTHONPATH="$WORK" python research/native_q4_sequential_library_probe_v1.py 913771
           PYTHONPATH="$WORK" python research/native_q4_cross_structure_procedure_transfer_v1.py 314159 6 6
+
+# exact-commit-trigger
