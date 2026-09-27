@@ -92,7 +92,7 @@ jobs:
       - name: Run repaired ACSIE Gen2 scientific gate
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "18d491fb5d3bd5611c37b69b992ffe0a5d622022"
+          ACSIE_REF: "945936d3e572d2739de2811cc7131b6871abb476"
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-gen2-preservation-repair
