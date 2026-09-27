@@ -108,4 +108,25 @@ run_q4_hypothesis python research/native_q4_recursive_library_procedure_v1.py 27
 # It is recorded, not allowed to abort the scientific lab after the newer mechanism is tested.
 run_q4_hypothesis python research/native_q4_recursive_learning_v1.py 913771 12
 
+run_gen3_hypothesis() {
+  set +e
+  python research/native_self_learning_kernel_gen3_cross_feature_context_v1.py
+  local rc=$?
+  set -e
+  if [[ "$rc" -eq 0 ]]; then
+    echo "ACSIE_GEN3_RESULT=PASS"
+    return 0
+  fi
+  if [[ "$rc" -eq 2 ]]; then
+    echo "ACSIE_GEN3_RESULT=SCIENTIFIC_FAILURE"
+    return 0
+  fi
+  echo "ACSIE_GEN3_RESULT=EXECUTION_FAILURE" >&2
+  return "$rc"
+}
+
+# Phase Gen3: genuinely novel two-feature context interaction. Scientific exit
+# code 2 is recorded rather than treated as an engineering failure.
+run_gen3_hypothesis python research/native_self_learning_kernel_gen3_cross_feature_context_v1.py
+
 echo "ACSIE_PRIVATE_LAB_RESULT=PASS"
