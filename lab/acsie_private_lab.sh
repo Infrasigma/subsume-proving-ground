@@ -64,6 +64,7 @@ PY
 python -m pytest -q tests/test_core015_semantic_operator_discovery.py
 python -m pytest -q tests/test_core016_open_semantic_substrate.py
 python -m pytest -q tests/test_native_independent_core.py tests/test_native_recursive_intelligence.py
+python -m pytest -q tests/test_native_q4_recursive_learning.py
 python research/native_independent_final_gate.py
 
 python -m pytest -q tests/test_adaptive_capability_repair.py tests/test_asi_claim_gate.py
