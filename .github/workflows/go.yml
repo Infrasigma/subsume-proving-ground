@@ -135,6 +135,8 @@ jobs:
             tests/test_native_independent_core.py \
             tests/test_native_self_learning_kernel_v2.py
 
+          PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_repair_probe.py | tee "$GITHUB_WORKSPACE/gen2-repair-probe.json"
+
           PYTHONPATH="$WORK" python research/native_self_learning_kernel_v2.py \
             | tee "$GITHUB_WORKSPACE/gen2-repair-result.json"
 
