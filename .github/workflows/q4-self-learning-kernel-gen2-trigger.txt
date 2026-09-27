@@ -1,1 +1,3 @@
-two-generation self-learning kernel trigger\n20260927\n
+two-generation self-learning kernel trigger
+20260927
+crash-fix-rerun
