@@ -1,0 +1,50 @@
+name: ACSIE protected-overlay science-only run
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-protected-overlay-science.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  science:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: e876eaca1446e26295702d0a1ccca64d99f6276e
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify source
+        working-directory: acsie
+        run: git rev-parse HEAD && git rev-parse HEAD^{tree}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - name: Exact candidate diagnostic
+        working-directory: acsie
+        run: PYTHONPATH=. python research/gen3_exact_candidate_retention_gate_v1.py | tee ../exact-candidate.json
+      - name: Autonomous compositional Gen3
+        working-directory: acsie
+        shell: bash
+        run: |
+          set +e
+          PYTHONPATH=. python research/native_self_learning_kernel_gen3_compositional_retention_v1.py | tee ../autonomous-gen3.json
+          rc=${PIPESTATUS[0]}
+          echo "AUTONOMOUS_RC=$rc"
+          exit 0
+      - name: Upload science evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-overlay-science-${{ github.run_id }}
+          path: |
+            exact-candidate.json
+            autonomous-gen3.json
