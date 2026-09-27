@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - ".github/workflows/q4-native-model-update.yml"
+      - ".github/workflows/q4-native-model-update-trigger.txt"
   workflow_dispatch:
     inputs:
       acsie_ref:
