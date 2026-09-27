@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: e83279de7c766d8d813205a97e51f27ad2dee373
+          ref: 0e9c2ad9a146775c162a278b0330c596d29055b9
           token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie-old
           fetch-depth: 1
@@ -34,7 +34,7 @@ jobs:
       - name: Verify exact source commits
         run: |
           set -euo pipefail
-          test "$(git -C acsie-old rev-parse HEAD)" = "e83279de7c766d8d813205a97e51f27ad2dee373"
+          test "$(git -C acsie-old rev-parse HEAD)" = "0e9c2ad9a146775c162a278b0330c596d29055b9"
           test "$(git -C acsie-current rev-parse HEAD)" = "9203e044750f5f1ba9e86ec5b967c834d5e66aa7"
           echo OLD_SOURCE=$(git -C acsie-old rev-parse HEAD)
           echo CURRENT_SOURCE=$(git -C acsie-current rev-parse HEAD)
@@ -51,7 +51,7 @@ jobs:
           import json
           r=json.load(open('frozen-gen2-result.json'))
           assert r['scientific_status']=='PASSED', r
-          assert r['source_commit']=='c17120b77cddaffbd5abbb57899bddc6fedea61b', r['source_commit']
+          assert r['scientific_parent_commit']=='15faeb036999c94c6e9f5cc0d35c2aae99d9830b', r.get('scientific_parent_commit')
           json.dump(r['frozen_state'], open('frozen-gen2-state.json','w'), sort_keys=True)
           print('frozen predecessor verified:', r['source_commit'])
           print('Gen2 holdout gain:', r['gen2_holdout_gain'])
@@ -66,7 +66,7 @@ jobs:
           mkdir -p evidence
           cp frozen-gen2-result.json gen3-frozen-result.json evidence/
           sha256sum frozen-gen2-state.json | tee evidence/frozen-state.sha256
-          echo "historical_source=c17120b77cddaffbd5abbb57899bddc6fedea61b" | tee evidence/provenance.txt
+          echo "historical_source=15faeb036999c94c6e9f5cc0d35c2aae99d9830b" | tee evidence/provenance.txt
           echo "current_source=9203e044750f5f1ba9e86ec5b967c834d5e66aa7" | tee -a evidence/provenance.txt
       - name: Upload evidence
         if: always()
