@@ -1,0 +1,39 @@
+name: ACSIE autonomous compositional overlay from Gen1
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-gen1-compositional-overlay.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: 092c75d0bced4140bbc7060b48fecdf62910d76e
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify source
+        working-directory: acsie
+        run: git rev-parse HEAD && git rev-parse HEAD^{tree}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - name: Autonomous Gen1-to-compositional experiment
+        working-directory: acsie
+        run: PYTHONPATH=. python research/gen1_to_autonomous_compositional_overlay_v1.py | tee ../gen1-to-compositional.json
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-gen1-compositional-${{ github.run_id }}
+          path: gen1-to-compositional.json
