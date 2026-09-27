@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - ".github/workflows/q4-recursive-metaprocedure-depth2.yml"
+      - ".github/workflows/q4-recursive-metaprocedure-depth2-trigger.txt"
   workflow_dispatch:
     inputs:
       acsie_ref:
@@ -58,3 +59,5 @@ jobs:
           python -m compileall -q cognitive_core
           PYTHONPATH="$WORK" pytest -q tests/test_native_independent_core.py
           PYTHONPATH="$WORK" python research/native_q4_recursive_metaprocedure_depth2_v1.py 602244 5
+
+# trigger
