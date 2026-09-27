@@ -91,7 +91,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: b31109864ae547320d877e6c1575b805d950edf9
+          ref: 1e983485e35b5650ba605c7aae9ffeece11c98f9
           token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie
           fetch-depth: 1
@@ -112,7 +112,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/acsie
         run: |
           set +e
-          python research/native_self_learning_kernel_gen3_cross_feature_context_v1.py > gen3_result.json 2>&1
+          python research/native_self_learning_kernel_gen3_retention_constrained_selection_v1.py > gen3_result.json 2>&1
           rc=$?
           cat gen3_result.json
           if [ "$rc" -eq 0 ]; then
