@@ -23,5 +23,5 @@ jobs:
       - name: Run pinned ACSIE lab
         run: bash lab/acsie_private_lab.sh
         env:
-          ACSIE_READ_TOKEN: ${ secrets.ACSIE_READ_TOKEN }
-          ACSIE_REF: ${ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'dfc5af45da17a5d49b35aebbce2c30a61a4368e5' }
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'dfc5af45da17a5d49b35aebbce2c30a61a4368e5' }
