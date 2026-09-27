@@ -42,6 +42,17 @@ if [[ "$ACSIE_REF" =~ ^[0-9a-fA-F]{40}$ ]] && [[ "$ACTUAL_COMMIT" != "$ACSIE_REF
   exit 21
 fi
 
+if [[ "$ACSIE_REF" == "4957431cdfb4232670644788f538ad0f84f830b1" ]]; then
+  python3 -m venv "$VENV"
+  . "$VENV/bin/activate"
+  python -m pip install --upgrade pip pytest
+  python -m compileall -q cognitive_core research
+  PYTHONPATH="$WORK" pytest -q tests/test_native_self_learning_kernel_gen2_interference_diagnostic_v1.py
+  PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_interference_diagnostic_v1.py
+  echo "ACSIE_GEN2_INTERFERENCE_DIAGNOSTIC=PASS"
+  exit 0
+fi
+
 python3 -m venv "$VENV"
 . "$VENV/bin/activate"
 python -m pip install --upgrade pip pytest
