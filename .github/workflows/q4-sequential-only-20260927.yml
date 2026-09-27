@@ -1,0 +1,73 @@
+name: q4-sequential-only-20260927
+
+on:
+  push:
+    paths:
+      - ".github/workflows/q4-sequential-only-20260927.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run only the sequential recursion probe
+        shell: bash
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: 21b7bb18ae9e6ff5aef4ae3dbb8ea0dfe40f82d8
+        run: |
+          set +e
+          TMP=/tmp/acsie-sequential-only
+          ASKPASS=/tmp/acsie-sequential-askpass.sh
+          rm -rf "$TMP" "$ASKPASS"
+          mkdir -p "$TMP"
+          cat > "$ASKPASS" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS"
+          export GIT_TERMINAL_PROMPT=0
+
+          git -C "$TMP" init
+          git -C "$TMP" remote add origin https://github.com/Infrasigma/ACSIE.git
+          git -C "$TMP" fetch --no-tags --depth 1 origin "$ACSIE_REF"
+          git -C "$TMP" checkout --detach --force FETCH_HEAD
+          cd "$TMP"
+
+          python3 -m venv /tmp/acsie-sequential-venv
+          . /tmp/acsie-sequential-venv/bin/activate
+          python -m pip install --upgrade pip pytest
+          python -m compileall -q cognitive_core
+          PYTHONPATH="$TMP" pytest -q tests/test_native_q4_recursive_learning.py
+          python research/native_q4_library_abstraction_probe_v1.py 913771
+          python research/native_q4_sequential_library_probe_v1.py 913771 > /tmp/sequential-result.json
+          status=$?
+          set -e
+
+          cd "${GITHUB_WORKSPACE}"
+          mkdir -p evidence
+          {
+            echo "RUN_ID=${GITHUB_RUN_ID}"
+            echo "WORKFLOW=q4-sequential-only-20260927"
+            echo "ACSIE_REF=${ACSIE_REF}"
+            echo "ACSIE_TREE=$(git -C "$TMP" rev-parse HEAD^{tree})"
+            echo "EXIT_STATUS=${status}"
+            echo "===== PROBE RESULT ====="
+            cat /tmp/sequential-result.json
+          } > evidence/q4-sequential-only-20260927.txt
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add evidence/q4-sequential-only-20260927.txt
+          git commit -m "ci: record q4 sequential-only run ${GITHUB_RUN_ID}"
+          git push origin HEAD:${GITHUB_REF_NAME} || true
+
+          exit "${status}"
