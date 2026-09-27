@@ -1,0 +1,61 @@
+name: q4-self-learning-kernel-gen2
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/q4-self-learning-kernel-gen2.yml"
+      - ".github/workflows/q4-self-learning-kernel-gen2-trigger.txt"
+  workflow_dispatch:
+    inputs:
+      acsie_ref:
+        description: "Exact ACSIE commit SHA"
+        required: true
+        default: "d9b93b192237cbc1239ed5786e095cbc53bf4939"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  q4-self-learning-kernel-gen2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run pinned two-generation self-learning kernel gate
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'd9b93b192237cbc1239ed5786e095cbc53bf4939' }}
+        run: |
+          set -euo pipefail
+          WORK=/tmp/acsie-q4-self-kernel-gen2
+          ASKPASS=/tmp/acsie-askpass.sh
+          VENV=/tmp/acsie-venv
+          cleanup() { rm -rf "$WORK" "$VENV" "$ASKPASS"; }
+          trap cleanup EXIT
+          cat > "$ASKPASS" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS"
+          export GIT_TERMINAL_PROMPT=0
+          mkdir -p "$WORK"
+          git -C "$WORK" init
+          git -C "$WORK" remote add origin https://github.com/Infrasigma/ACSIE.git
+          git -C "$WORK" fetch --no-tags --depth 1 origin "$ACSIE_REF"
+          git -C "$WORK" checkout --detach --force FETCH_HEAD
+          cd "$WORK"
+          ACTUAL_COMMIT="$(git rev-parse HEAD)"
+          ACTUAL_TREE="$(git rev-parse HEAD^{tree})"
+          echo "ACSIE_COMMIT=$ACTUAL_COMMIT"
+          echo "ACSIE_TREE=$ACTUAL_TREE"
+          [[ "$ACTUAL_COMMIT" == "$ACSIE_REF" ]]
+          python3 -m venv "$VENV"
+          . "$VENV/bin/activate"
+          python -m pip install --upgrade pip pytest
+          python -m compileall -q cognitive_core research
+          PYTHONPATH="$WORK" pytest -q tests/test_native_independent_core.py tests/test_native_self_learning_kernel_v2.py
+          PYTHONPATH="$WORK" python research/native_self_learning_kernel_v2.py
