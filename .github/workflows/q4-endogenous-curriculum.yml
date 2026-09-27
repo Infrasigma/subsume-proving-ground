@@ -23,8 +23,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run pinned endogenous curriculum gate
         env:
-          ACSIE_READ_TOKEN: \${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: \${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'ee5441aa07db50825553f42574597e05e7a4443a' }}
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'ee5441aa07db50825553f42574597e05e7a4443a' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-q4-curriculum
