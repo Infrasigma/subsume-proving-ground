@@ -23,8 +23,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run pinned recursive metaprocedure depth-2 gate
         env:
-          ACSIE_READ_TOKEN: \${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: \${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'adc04bf642132e0e7d57df4e547dee6d3ee715ec' }}
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'adc04bf642132e0e7d57df4e547dee6d3ee715ec' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-q4-depth2
