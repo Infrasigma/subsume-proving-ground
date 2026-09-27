@@ -25,4 +25,4 @@ jobs:
         run: bash lab/acsie_private_lab.sh
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'd56ca63cf3039752ca0dd96d1b262bab794dc0d0' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '012d1f6ad9b5890dc4b1666036454df6b61203a5' }}
