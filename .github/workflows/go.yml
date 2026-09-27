@@ -105,7 +105,7 @@ jobs:
         working-directory: acsie
         env:
           PYTHONPATH: ${{ github.workspace }}/acsie
-        run: git rev-parse HEAD | grep -F f288c41c556c49d0d4857a0fdc6abe8cc907b59a
+        run: git rev-parse HEAD | grep -F 1a7901014cdecff247b76d7ea333efdc94fa897e
       - name: Execute Gen3 scientific probe
         working-directory: acsie
         env:
