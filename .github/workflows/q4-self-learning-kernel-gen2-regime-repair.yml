@@ -1,6 +1,9 @@
 name: q4 self-learning kernel Gen2 regime-memory repair
 
 on:
+  push:
+    paths:
+      - ".github/workflows/q4-self-learning-kernel-gen2-regime-repair.yml"
   workflow_dispatch:
     inputs:
       acsie_ref:
