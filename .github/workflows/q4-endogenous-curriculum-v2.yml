@@ -10,7 +10,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE commit SHA"
         required: true
-        default: "9b41f9f48e4f2389ed6673acc3410df57597910e"
+        default: "9262d7c19809ee9a9f3a13ca0408dad787b1feb4"
         type: string
 
 permissions:
@@ -24,7 +24,7 @@ jobs:
       - name: Run pinned endogenous curriculum v2
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '9b41f9f48e4f2389ed6673acc3410df57597910e' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '9262d7c19809ee9a9f3a13ca0408dad787b1feb4' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-q4-curriculum-v2
