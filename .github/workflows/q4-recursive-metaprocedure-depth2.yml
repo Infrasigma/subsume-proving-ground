@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - ".github/workflows/q4-recursive-metaprocedure-depth2.yml"
+      - ".github/workflows/q4-recursive-metaprocedure-depth2-fixed-trigger.txt"
       - ".github/workflows/q4-recursive-metaprocedure-depth2-trigger.txt"
   workflow_dispatch:
     inputs:
@@ -61,3 +62,5 @@ jobs:
           PYTHONPATH="$WORK" python research/native_q4_recursive_metaprocedure_depth2_v1.py 602244 5
 
 # trigger
+
+# corrected trigger
