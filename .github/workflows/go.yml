@@ -117,4 +117,4 @@ jobs:
           python3 -m venv "$VENV"
           . "$VENV/bin/activate"
           python -m pip install -q --upgrade pip pytest
-          python research/native_self_learning_kernel_gen2_frontier_probe.py
+          PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_frontier_probe.py
