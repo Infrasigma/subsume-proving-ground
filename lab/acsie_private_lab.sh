@@ -79,6 +79,7 @@ python research/native_q4_subset_probe_v1.py 913771
 
 # Phase Q4 hypothesis probe: verified subprogram abstraction and cross-task library transfer.
 python research/native_q4_library_abstraction_probe_v1.py 913771
+python research/native_q4_recursive_library_chain_probe_v1.py 913771
 
 # Phase Q4: recursive improvement of the native learning procedure on fresh populations.
 python research/native_q4_recursive_learning_v1.py 913771 12
