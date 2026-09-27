@@ -74,6 +74,9 @@ python research/native_failure_directed_recovery_v1.py 424242424242 24
 # Phase Q2: fresh cross-structure generalization on unseen multi-step programs.
 python research/native_q2_cross_structure_generalization_v1.py 731991 36
 
+# Phase Q4 diagnostic: smallest inner-only subset ladder before full recursive-learning gate.
+python research/native_q4_subset_probe_v1.py 913771
+
 # Phase Q4: recursive improvement of the native learning procedure on fresh populations.
 python research/native_q4_recursive_learning_v1.py 913771 12
 
