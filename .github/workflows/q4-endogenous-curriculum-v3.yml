@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - ".github/workflows/q4-endogenous-curriculum-v3.yml"
+      - ".github/workflows/q4-endogenous-curriculum-v3-fixed-trigger.txt"
       - ".github/workflows/q4-endogenous-curriculum-v3-trigger.txt"
   workflow_dispatch:
     inputs:
@@ -59,3 +60,5 @@ jobs:
           python -m compileall -q cognitive_core
           PYTHONPATH="$WORK" pytest -q tests/test_native_independent_core.py
           PYTHONPATH="$WORK" python research/native_endogenous_curriculum_v3.py 552211 6 10
+
+# corrected trigger
