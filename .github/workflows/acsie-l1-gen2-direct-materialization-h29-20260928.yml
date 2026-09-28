@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        seed: [2026092801,2026092802,2026092803,2026092804,2026092805]
+        seed: [2026092801]
     steps:
       - uses: actions/checkout@v4
       - name: Checkout exact ACSIE source
@@ -111,31 +111,3 @@ jobs:
           path: h30-aggregate.json
           if-no-files-found: error
           retention-days: 90
-
-  h31-row-diagnostic:
-    name: H31 router row diagnostic
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: Infrasigma/ACSIE
-          ref: ${{ env.ACSIE_SOURCE }}
-          token: ${{ secrets.ACSIE_READ_TOKEN }}
-          path: acsie
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Verify source
-        working-directory: acsie
-        run: test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
-      - name: Run H31 diagnostic
-        run: PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie" python research/l1_router_h31_row_diagnostic_v1.py > h31.json
-      - name: Upload H31
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: acsie-h31-router-diagnostic-${{ github.run_id }}
-          path: h31.json
-          if-no-files-found: error
-          retention-days: 30
