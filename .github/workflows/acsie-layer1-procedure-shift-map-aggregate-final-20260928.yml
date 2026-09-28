@@ -1,0 +1,156 @@
+name: acsie-layer1-procedure-shift-map-aggregate-final-20260928
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-layer1-procedure-shift-map-aggregate-final-20260928.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  ORIGINAL_RUN_ID: "36395762007"
+  ACSIE_SOURCE_COMMIT: "b1c4052423bef9a0235ae3ffab3daa92da3196ab"
+
+jobs:
+  aggregate-final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download completed seed evidence
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Infrasigma/subsume-proving-ground
+          run-id: ${{ env.ORIGINAL_RUN_ID }}
+          pattern: acsie-layer1-hierarchical-v2-seed-*-${{ env.ORIGINAL_RUN_ID }}
+          path: multiseed-evidence
+          merge-multiple: true
+
+      - name: Validate and aggregate recursive evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib, sys
+
+          root = pathlib.Path("multiseed-evidence")
+          rows = []
+          sources = []
+          failures = []
+
+          for p in sorted(root.rglob("*.stdout.json")):
+              try:
+                  rows.append((p, json.loads(p.read_text())))
+              except Exception as exc:
+                  failures.append(f"{p}: invalid JSON: {exc}")
+
+          for p in sorted(root.rglob("acsie.commit")):
+              sources.append(p.read_text().strip())
+
+          expected_seeds = [2026092801,2026092802,2026092803,2026092804,2026092805]
+          observed_seeds = sorted(
+              int(data.get("seed", data.get("partition", {}).get("seed", 0)))
+              for _p, data in rows
+          )
+
+          all_h15 = len(rows) == 5 and all(
+              data.get("decisions", {}).get("H15_context_schema_router") == "PASSED"
+              for _p, data in rows
+          )
+          all_h17 = len(rows) == 5 and all(
+              data.get("decisions", {}).get("H17_error_challenger_online_adaptation") == "PASSED"
+              for _p, data in rows
+          )
+          all_h18 = len(rows) == 5 and all(
+              data.get("decisions", {}).get("H18_useful_post_error_abstention") == "PASSED"
+              for _p, data in rows
+          )
+          all_replay = len(rows) == 5 and all(
+              data.get("replay", {}).get("deterministic_replay") is True
+              for _p, data in rows
+          )
+          all_integrity = len(rows) == 5 and all(
+              data.get("preconditions", {}).get("all_pass") is True
+              and not any(data.get("integrity", {}).values())
+              for _p, data in rows
+          )
+          all_source = (
+              len(sources) == 5
+              and set(sources) == {"b1c4052423bef9a0235ae3ffab3daa92da3196ab"}
+          )
+
+          aggregate_status = (
+              "CRASHED" if failures or len(rows) != 5 else
+              "PASSED" if (
+                  observed_seeds == expected_seeds
+                  and all_h15 and all_h17 and all_h18
+                  and all_replay and all_integrity and all_source
+              ) else "FAILED"
+          )
+
+          out = {
+              "schema": "ACSIE.layer1-procedure-shift-map-router-v1-final-multiseed",
+              "scientific_status": aggregate_status,
+              "original_scientific_run": 36395762007,
+              "source_commit": "b1c4052423bef9a0235ae3ffab3daa92da3196ab",
+              "seed_count": len(rows),
+              "expected_seeds": expected_seeds,
+              "observed_seeds": observed_seeds,
+              "strict_context_schema": all_h15,
+              "strict_challenger_adaptation": all_h17,
+              "strict_useful_abstention": all_h18,
+              "strict_replay": all_replay,
+              "strict_integrity": all_integrity,
+              "strict_source_provenance": all_source,
+              "decision_matrix": {
+                  "H15_context_schema_router": [
+                      data.get("decisions", {}).get("H15_context_schema_router")
+                      for _p, data in rows
+                  ],
+                  "H17_error_challenger_online_adaptation": [
+                      data.get("decisions", {}).get("H17_error_challenger_online_adaptation")
+                      for _p, data in rows
+                  ],
+                  "H18_useful_post_error_abstention": [
+                      data.get("decisions", {}).get("H18_useful_post_error_abstention")
+                      for _p, data in rows
+                  ],
+              },
+              "failures": failures,
+              "source_commit_values": sorted(set(sources)),
+          }
+
+          pathlib.Path("final-multiseed-aggregate.json").write_text(
+              json.dumps(out, indent=2, sort_keys=True)
+          )
+          print(json.dumps(out, indent=2, sort_keys=True))
+
+          if aggregate_status != "PASSED":
+              sys.exit(1)
+          PY
+
+      - name: Hash final aggregate
+        run: |
+          sha256sum final-multiseed-aggregate.json > final-multiseed-aggregate.sha256
+          {
+            echo "aggregation_run=${{ github.run_id }}"
+            echo "original_scientific_run=36395762007"
+            echo "source_commit=b1c4052423bef9a0235ae3ffab3daa92da3196ab"
+            echo "seed_count=5"
+            echo "aggregation_only=true"
+            echo "scientific_execution_reused=true"
+          } > final-aggregate.provenance
+
+      - name: Upload final aggregate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-layer1-procedure-shift-map-final-aggregate-${{ github.run_id }}
+          path: |
+            final-multiseed-aggregate.json
+            final-multiseed-aggregate.sha256
+            final-aggregate.provenance
+          if-no-files-found: error
+          retention-days: 90
