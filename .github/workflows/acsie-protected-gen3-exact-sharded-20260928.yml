@@ -1,0 +1,210 @@
+name: ACSIE exact protected Gen3 deterministic sharded continuation
+
+on:
+  push:
+    branches:
+      - acsie/protected-gen3-exact-sharded-20260928
+    paths:
+      - ".github/workflows/acsie-protected-gen3-exact-sharded-20260928.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_SOURCE: "409586808b9c8ecfa5e88b7e417413f779c1b686"
+  ACSIE_EXPORT_SOURCE: "94a2a770a5799fd386217998bc21b585632ef7ed"
+  VERIFIED_PARENT: "b31109864ae547320d877e6c1575b805d950edf9"
+  SHARD_COUNT: "8"
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact historical Gen2 exporter
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_EXPORT_SOURCE }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-old
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exporter source
+        working-directory: acsie-old
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${ACSIE_EXPORT_SOURCE}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Export and validate frozen Gen2 state
+        working-directory: acsie-old
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. python research/export_verified_gen2_state_from_b311_v1.py > ../verified-gen2-export.json
+          python - <<'PY'
+          import json
+          import hashlib
+          r=json.load(open("verified-gen2-export.json"))
+          assert r["scientific_status"] == "PASSED", r
+          assert r["scientific_parent_commit"] == "b31109864ae547320d877e6c1575b805d950edf9", r
+          assert abs(r["verified_gen2_protocol"]["holdout_gain"]-0.10416666666666663) < 1e-12, r
+          assert abs(r["verified_gen2_protocol"]["transfer_gain"]-0.0625) < 1e-12, r
+          json.dump(r["frozen_state"], open("verified-gen2-state.json","w"), sort_keys=True)
+          h=hashlib.sha256(open("verified-gen2-state.json","rb").read()).hexdigest()
+          assert h == "0b599e436c4578115cc0312dd6545f5d56c14777fcb55562592c5d8f4e8f80a9", h
+          print("VERIFIED_GEN2_STATE_READY")
+          print("STATE_SHA256", h)
+          PY
+      - name: Package frozen input
+        run: |
+          mkdir -p input
+          cp verified-gen2-export.json verified-gen2-state.json input/
+          printf '%s\n' \
+            "historical_parent=${VERIFIED_PARENT}" \
+            "export_source=${ACSIE_EXPORT_SOURCE}" \
+            "acsie_source=${ACSIE_SOURCE}" \
+            "shard_count=${SHARD_COUNT}" > input/provenance.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acsie-verified-gen2-input-${{ github.run_id }}
+          path: input/
+
+  shards:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact ACSIE continuation source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_SOURCE }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact ACSIE source
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
+          echo "ACSIE_SOURCE=$(git rev-parse HEAD)"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: acsie-verified-gen2-input-${{ github.run_id }}
+          path: .
+      - name: Run exact candidate shard ${{ matrix.shard }}
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. python research/gen3_frozen_verified_gen2_sharded_v1.py \
+            ../verified-gen2-export.json \
+            --shard-index ${{ matrix.shard }} \
+            --shard-count ${SHARD_COUNT} \
+            > ../shard-${{ matrix.shard }}.json
+          python - <<'PY'
+          import json
+          p="../shard-${{ matrix.shard }}.json"
+          r=json.load(open(p))
+          assert r["scientific_status"]=="COMPUTATION_COMPLETE", r
+          assert r["protocol"]["candidate_count"]==128, r
+          print("SHARD", r["shard"]["index"], "CANDIDATES", r["shard"]["candidate_count"])
+          print("SOURCE", r["provenance"]["executed_source_commit"])
+          print("SET_DIGEST", r["protocol"]["candidate_set_digest"])
+          PY
+      - name: Upload shard evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-gen3-exact-shard-${{ matrix.shard }}-${{ github.run_id }}
+          path: shard-${{ matrix.shard }}.json
+
+  merge:
+    needs: shards
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact ACSIE continuation source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_SOURCE }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact ACSIE source
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: acsie-verified-gen2-input-${{ github.run_id }}
+          path: input
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: acsie-gen3-exact-shard-*-${{ github.run_id }}
+          path: shards
+          merge-multiple: true
+      - name: Verify all eight shards are present
+        run: |
+          set -euo pipefail
+          ls -l shards
+          test "$(find shards -maxdepth 1 -name 'shard-*.json' | wc -l)" = "8"
+      - name: Merge exact candidate evaluations and run unchanged final gate
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. python research/gen3_frozen_verified_gen2_sharded_v1.py \
+            ../input/verified-gen2-export.json \
+            --merge \
+            ../shards/shard-0.json \
+            ../shards/shard-1.json \
+            ../shards/shard-2.json \
+            ../shards/shard-3.json \
+            ../shards/shard-4.json \
+            ../shards/shard-5.json \
+            ../shards/shard-6.json \
+            ../shards/shard-7.json \
+            > ../gen3-final.json
+          cat ../gen3-final.json
+      - name: Package complete evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp input/verified-gen2-export.json evidence/
+          cp input/verified-gen2-state.json evidence/
+          cp input/provenance.txt evidence/
+          cp gen3-final.json evidence/
+          cp shards/shard-*.json evidence/
+          printf '%s\n' \
+            "historical_parent=${VERIFIED_PARENT}" \
+            "export_source=${ACSIE_EXPORT_SOURCE}" \
+            "acsie_source=${ACSIE_SOURCE}" \
+            "candidate_count=128" \
+            "shard_count=${SHARD_COUNT}" \
+            "workflow_run=${{ github.run_id }}" \
+            "workflow_sha=${{ github.sha }}" > evidence/execution-provenance.txt
+          sha256sum evidence/verified-gen2-state.json > evidence/state.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acsie-gen3-exact-sharded-final-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: error
