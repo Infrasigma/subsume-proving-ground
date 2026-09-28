@@ -9,7 +9,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE commit SHA"
         required: true
-        default: "57efad77e4f16aed4214685729a1f956a22ac9b9"
+        default: "8bbe028825ed9f19d82f290de54114992edab1b6"
         type: string
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
       - name: Checkout exact private ACSIE source
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '57efad77e4f16aed4214685729a1f956a22ac9b9' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '8bbe028825ed9f19d82f290de54114992edab1b6' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-l1-hier-v2
@@ -175,7 +175,7 @@ jobs:
                   "H7": [r.get("decisions",{}).get("H16") for r in rows],
                   "H8": [r.get("decisions",{}).get("H17") for r in rows],
               },
-              "source_commit": "57efad77e4f16aed4214685729a1f956a22ac9b9",
+              "source_commit": "8bbe028825ed9f19d82f290de54114992edab1b6",
               "workflow_run": "${{ github.run_id }}",
               "workflow_sha": "${{ github.sha }}",
               "failures": bad,
@@ -206,3 +206,5 @@ jobs:
 # shift thresholds corrected retrigger
 
 # global shift detector threshold-fix retrigger
+
+# sequential shift exploration probe
