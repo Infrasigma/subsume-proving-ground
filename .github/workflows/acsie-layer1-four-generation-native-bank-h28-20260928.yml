@@ -11,7 +11,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE source commit"
         required: true
-        default: "cc6c5d8e83e4b698550638bb440b2c51fb8b9f1a1"
+        default: "cc6c5d8e83e4b698550638bb440b2c51fb8b9f1a"
         type: string
 
 permissions:
@@ -19,7 +19,7 @@ permissions:
   actions: read
 
 env:
-  ACSIE_SOURCE: "cc6c5d8e83e4b698550638bb440b2c51fb8b9f1a1"
+  ACSIE_SOURCE: "cc6c5d8e83e4b698550638bb440b2c51fb8b9f1a"
   ACSIE_BRANCH: "acsie/l1-four-generation-native-bank-h28-20260928"
   SOURCE_RUN: "36376031059"
   VERIFIED_PARENT: "b31109864ae547320d877e6c1575b805d950edf9"
@@ -196,7 +196,7 @@ jobs:
             "scientific_status":status,
             "seed_count":len(rows),
             "strict":strict,
-            "source_commit":"cc6c5d8e83e4b698550638bb440b2c51fb8b9f1a1",
+            "source_commit":"cc6c5d8e83e4b698550638bb440b2c51fb8b9f1a",
             "gen2_exact":[r.get("reconstruction",{}).get("gen2_exact") for r in rows],
             "replay":[r.get("replay",{}).get("deterministic_replay") for r in rows],
             "phase_metrics":[r.get("phase_metrics") for r in rows],
