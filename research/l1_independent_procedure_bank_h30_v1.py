@@ -73,20 +73,32 @@ class ProcedureBank:
     def _train_episode(procedure, stream, stream_index):
         rows = list(stream)
         split = max(2, len(rows) * 2 // 3)
-        probe_split = max(1, split // 2)
+        prefix = tuple(rows[:split])
 
-        probe = NativeCognitiveCore(seed=920000 + procedure.index * 10000 + stream_index * 2)
-        probe.learning_kernel = copy.deepcopy(procedure.kernel)
-        _train(probe, (tuple(rows[:probe_split]),))
-        probe_vals = [
-            float(probe.predict(obs, action).get("prediction") == nxt)
-            for obs, action, nxt in rows[probe_split:split]
-        ]
-        local_score = statistics.mean(probe_vals) if probe_vals else 0.0
+        # Symmetric two-fold applicability probe over the observed prefix.
+        # The holdout suffix remains completely untouched by this router test.
+        fold_scores = []
+        for fold in (0, 1):
+            train_rows = prefix[fold::2]
+            valid_rows = prefix[1 - fold::2]
+            if not train_rows or not valid_rows:
+                continue
+            probe = NativeCognitiveCore(
+                seed=920000 + procedure.index * 10000 + stream_index * 4 + fold
+            )
+            probe.learning_kernel = copy.deepcopy(procedure.kernel)
+            _train(probe, (tuple(train_rows),))
+            fold_scores.extend(
+                float(probe.predict(obs, action).get("prediction") == nxt)
+                for obs, action, nxt in valid_rows
+            )
+        local_score = statistics.mean(fold_scores) if fold_scores else 0.0
 
-        core = NativeCognitiveCore(seed=920000 + procedure.index * 10000 + stream_index * 2 + 1)
+        core = NativeCognitiveCore(
+            seed=920000 + procedure.index * 10000 + stream_index * 4 + 2
+        )
         core.learning_kernel = copy.deepcopy(procedure.kernel)
-        _train(core, (tuple(rows[:split]),))
+        _train(core, (prefix,))
         return EpisodeModel(procedure, core, rows[split:], local_score)
 
     def build_models(self, streams):
@@ -127,11 +139,17 @@ class ProcedureBank:
                     self.global_stats[p.name][1] += 1.0
 
     @staticmethod
-    def _joint_score(native_score, historical_score, local_score):
-        vals = [v for v in (native_score, historical_score, local_score) if v > 0.0]
-        if len(vals) < 3:
+    def _harmonic(values):
+        vals=[float(v) for v in values if float(v)>0.0]
+        if len(vals)<2:
             return 0.0
-        return 3.0 / sum(1.0 / v for v in vals)
+        return len(vals)/sum(1.0/v for v in vals)
+
+    @classmethod
+    def _joint_score(cls, native_score, historical_score, local_score, history_available):
+        if history_available:
+            return cls._harmonic((native_score, historical_score, local_score))
+        return cls._harmonic((native_score, local_score))
 
     def _rank(self, items):
         ranked = []
@@ -149,18 +167,22 @@ class ProcedureBank:
                 historical = statistics.mean(v[0] for v in top)
                 support = min(v[1] for v in top) if len(top) >= 2 else top[0][1]
                 basis_count = len(key_metrics)
+                history_available = True
             else:
                 rec = self.global_stats[x["procedure"]]
                 support = float(rec[1])
                 historical = (float(rec[0]) + 1.0) / (support + 2.0) if support else 0.0
                 basis_count = 0
+                history_available = False
+
             native = float(x.get("native_score", 0.0))
             local = float(x.get("local_score", 0.0))
-            joint = self._joint_score(native, historical, local)
+            joint = self._joint_score(native, historical, local, history_available)
             ranked.append({
                 **x,
                 "support": support,
                 "historical_score": historical,
+                "history_available": history_available,
                 "native_score": native,
                 "local_score": local,
                 "native_uncertainty": float(x.get("native_uncertainty", 1.0)),
@@ -169,7 +191,10 @@ class ProcedureBank:
             })
         return sorted(
             [x for x in ranked if x["prediction"] is not None],
-            key=lambda x: (x["score"], x["local_score"], x["basis_count"], x["support"], x["native_score"], -x["index"]),
+            key=lambda x: (
+                x["score"], x["local_score"], x["basis_count"],
+                x["support"], x["native_score"], -x["index"]
+            ),
             reverse=True,
         )
 
@@ -185,62 +210,64 @@ class ProcedureBank:
             group_rows.append({
                 "members": members,
                 "mean_score": statistics.mean(x["score"] for x in members),
-                "min_basis": min(x["basis_count"] for x in members),
                 "min_support": min(x["support"] for x in members),
                 "min_native": min(x["native_score"] for x in members),
                 "min_local": min(x["local_score"] for x in members),
                 "max_uncertainty": max(x["native_uncertainty"] for x in members),
             })
         group_rows.sort(
-            key=lambda g: (len(g["members"]), g["mean_score"], g["min_local"], g["min_basis"], g["min_native"], g["min_support"]),
+            key=lambda g: (
+                len(g["members"]), g["mean_score"], g["min_local"],
+                g["min_native"], g["min_support"]
+            ),
             reverse=True,
         )
-        best_group = group_rows[0]
-        best = max(best_group["members"], key=lambda x: (x["score"], x["local_score"], x["basis_count"], x["native_score"], x["support"], -x["index"]))
+        best_group=group_rows[0]
+        best=max(
+            best_group["members"],
+            key=lambda x:(x["score"],x["local_score"],x["native_score"],x["support"],-x["index"])
+        )
 
-        if len(group_rows) == 1:
-            emit = (
-                best_group["min_basis"] >= 1
-                and best_group["min_support"] >= MIN_SUPPORT
+        if len(group_rows)==1:
+            emit=(
+                best_group["min_support"] >= MIN_SUPPORT
                 and best_group["min_native"] >= 0.50
                 and best_group["min_local"] >= 0.50
                 and best_group["max_uncertainty"] <= 0.60
                 and best_group["mean_score"] >= 0.62
             )
         else:
-            runner = group_rows[1]
-            margin = best_group["mean_score"] - runner["mean_score"]
-            consensus = (
-                len(best_group["members"]) >= 2
-                and best_group["min_basis"] >= 1
+            runner=group_rows[1]
+            margin=best_group["mean_score"]-runner["mean_score"]
+            consensus=(
+                len(best_group["members"])>=2
                 and best_group["min_support"] >= MIN_SUPPORT
                 and best_group["min_native"] >= 0.50
                 and best_group["min_local"] >= 0.50
                 and best_group["max_uncertainty"] <= 0.60
                 and best_group["mean_score"] >= 0.62
             )
-            strong_single = (
-                best_group["min_basis"] >= 2
-                and best_group["min_support"] >= MIN_SUPPORT
-                and best_group["min_native"] >= 0.60
-                and best_group["min_local"] >= 0.65
+            strong_single=(
+                best_group["min_support"] >= MIN_SUPPORT
+                and best_group["min_native"] >= 0.65
+                and best_group["min_local"] >= 0.75
                 and best_group["max_uncertainty"] <= 0.50
-                and best_group["mean_score"] >= 0.70
+                and best_group["mean_score"] >= 0.68
                 and margin >= 0.10
             )
-            emit = consensus or strong_single
+            emit=consensus or strong_single
 
-        selected = copy.deepcopy(best) if emit else None
+        selected=copy.deepcopy(best) if emit else None
         if feedback:
-            target = items[0]["target"] if items else None
+            target=items[0]["target"] if items else None
             if target is not None:
                 for x in ranked:
-                    for key in x.get("evidence_keys", ()):
-                        rec = self.stats[x["procedure"]].setdefault(key, [0.0, 0.0])
-                        rec[0] = rec[0] * 0.97 + float(x["prediction"] == target)
-                        rec[1] = rec[1] * 0.97 + 1.0
-                    self.global_stats[x["procedure"]][0] = self.global_stats[x["procedure"]][0] * 0.97 + float(x["prediction"] == target)
-                    self.global_stats[x["procedure"]][1] = self.global_stats[x["procedure"]][1] * 0.97 + 1.0
+                    for key in x.get("evidence_keys",()):
+                        rec=self.stats[x["procedure"]].setdefault(key,[0.0,0.0])
+                        rec[0]=rec[0]*0.97+float(x["prediction"]==target)
+                        rec[1]=rec[1]*0.97+1.0
+                    self.global_stats[x["procedure"]][0]=self.global_stats[x["procedure"]][0]*0.97+float(x["prediction"]==target)
+                    self.global_stats[x["procedure"]][1]=self.global_stats[x["procedure"]][1]*0.97+1.0
         return selected
 
     def route_models(self, models, stream_index_offset=0):
