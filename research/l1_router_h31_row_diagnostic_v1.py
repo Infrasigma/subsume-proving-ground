@@ -77,3 +77,5 @@ def main():
 
 if __name__=="__main__":
     main()
+
+# trigger current row diagnostic against H32 router.
