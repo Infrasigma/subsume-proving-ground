@@ -9,7 +9,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE commit SHA"
         required: true
-        default: "5c5ba96c55762828af28a21aee523a953388219e"
+        default: "d0adeeb639fa73fe8e9c5920a70533c18fc6a32a"
         type: string
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
       - name: Checkout exact private ACSIE source
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '5c5ba96c55762828af28a21aee523a953388219e' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'd0adeeb639fa73fe8e9c5920a70533c18fc6a32a' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-l1-hier-v2
@@ -149,10 +149,14 @@ jobs:
               and not any(r.get("integrity",{}).values())
               for r in rows
           )
+          strict_abstention = len(rows) == 5 and all(
+              r.get("decisions",{}).get("H18") == "PASSED"
+              for r in rows
+          )
 
           if bad or len(rows) < 5 or any(r.get("scientific_status") == "CRASHED" for r in rows):
               status = "CRASHED"
-          elif strict_static and strict_online and strict_integrity:
+          elif strict_static and strict_online and strict_abstention and strict_integrity:
               status = "PASSED"
           else:
               status = "FAILED"
@@ -171,7 +175,7 @@ jobs:
                   "H7": [r.get("decisions",{}).get("H16") for r in rows],
                   "H8": [r.get("decisions",{}).get("H17") for r in rows],
               },
-              "source_commit": "5c5ba96c55762828af28a21aee523a953388219e",
+              "source_commit": "d0adeeb639fa73fe8e9c5920a70533c18fc6a32a",
               "workflow_run": "${{ github.run_id }}",
               "workflow_sha": "${{ github.sha }}",
               "failures": bad,
