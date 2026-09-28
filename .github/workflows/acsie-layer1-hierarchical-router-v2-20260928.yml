@@ -9,7 +9,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE commit SHA"
         required: true
-        default: "60f7e9975e86320212ee3d4fa67577b0aebbc5d2"
+        default: "380e85a3e9c68ff9ed5b9be5e1505429ce80e135"
         type: string
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
       - name: Checkout exact private ACSIE source
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '60f7e9975e86320212ee3d4fa67577b0aebbc5d2' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '380e85a3e9c68ff9ed5b9be5e1505429ce80e135' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-l1-hier-v2
@@ -66,10 +66,10 @@ jobs:
           mkdir -p "$EVIDENCE"
           cp acsie.commit "$EVIDENCE/acsie.commit"
           cp acsie.tree "$EVIDENCE/acsie.tree"
-          cp "$WORK/research/l1_hierarchical_router_v1.py" "$EVIDENCE/l1_hierarchical_router_v2.py"
-          sha256sum "$EVIDENCE/l1_hierarchical_router_v2.py" > "$EVIDENCE/source.sha256"
+          cp "$WORK/research/l1_compositional_ucb_router_v1.py" "$EVIDENCE/l1_compositional_ucb_router_v1.py"
+          sha256sum "$EVIDENCE/l1_compositional_ucb_router_v1.py" > "$EVIDENCE/source.sha256"
           set +e
-          PYTHONHASHSEED=0 PYTHONPATH="$WORK" timeout 900s python "$WORK/research/l1_hierarchical_router_v1.py" "$SEED" > "$EVIDENCE/$SEED.stdout.json" 2> "$EVIDENCE/$SEED.stderr.log"
+          PYTHONHASHSEED=0 PYTHONPATH="$WORK" timeout 900s python "$WORK/research/l1_compositional_ucb_router_v1.py" "$SEED" > "$EVIDENCE/$SEED.stdout.json" 2> "$EVIDENCE/$SEED.stderr.log"
           RC=$?
           set -e
           printf '%s\n' "$RC" > "$EVIDENCE/exit_code"
@@ -135,13 +135,13 @@ jobs:
                   bad.append(f"{p.name}: {exc}")
 
           strict_static = len(rows) == 5 and all(
-              r.get("decisions",{}).get("H2") == "PASSED"
-              and r.get("decisions",{}).get("H3") == "PASSED"
-              and r.get("decisions",{}).get("H4") == "PASSED"
+              r.get("decisions",{}).get("H6") == "PASSED"
+              and r.get("decisions",{}).get("H7") == "PASSED"
+              and r.get("decisions",{}).get("H7") == "PASSED"
               for r in rows
           )
           strict_online = len(rows) == 5 and all(
-              r.get("decisions",{}).get("H5") == "PASSED"
+              r.get("decisions",{}).get("H8") == "PASSED"
               for r in rows
           )
           strict_integrity = len(rows) == 5 and all(
@@ -167,12 +167,12 @@ jobs:
               "strict_online_adaptation": strict_online,
               "strict_integrity": strict_integrity,
               "decision_matrix": {
-                  "H2": [r.get("decisions",{}).get("H2") for r in rows],
-                  "H3": [r.get("decisions",{}).get("H3") for r in rows],
-                  "H4": [r.get("decisions",{}).get("H4") for r in rows],
-                  "H5": [r.get("decisions",{}).get("H5") for r in rows],
+                  "H6": [r.get("decisions",{}).get("H6") for r in rows],
+                  "H7": [r.get("decisions",{}).get("H7") for r in rows],
+                  "H7": [r.get("decisions",{}).get("H7") for r in rows],
+                  "H8": [r.get("decisions",{}).get("H8") for r in rows],
               },
-              "source_commit": "60f7e9975e86320212ee3d4fa67577b0aebbc5d2",
+              "source_commit": "380e85a3e9c68ff9ed5b9be5e1505429ce80e135",
               "workflow_run": "${{ github.run_id }}",
               "workflow_sha": "${{ github.sha }}",
               "failures": bad,
