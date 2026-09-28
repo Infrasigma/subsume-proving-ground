@@ -1,10 +1,19 @@
 from __future__ import annotations
-import copy, json, random
+import copy, json, random, importlib.util, pathlib
 from cognitive_core.native_independent_core import NativeCognitiveCore
-from research.l1_independent_procedure_bank_h30_v1 import (
-    Procedure, ProcedureBank, _make_gen3_kernel, _make_gen4_kernel,
-    _make_gen1_branch, _make_gen12_streams, _make_gen3_streams, _make_gen4_streams,
-)
+
+spec=importlib.util.spec_from_file_location("h30", pathlib.Path(__file__).with_name("l1_independent_procedure_bank_h30_v1.py"))
+h30=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(h30)
+Procedure=h30.Procedure
+ProcedureBank=h30.ProcedureBank
+_make_gen3_kernel=h30._make_gen3_kernel
+_make_gen4_kernel=h30._make_gen4_kernel
+_make_gen1_branch=h30._make_gen1_branch
+_make_gen12_streams=h30._make_gen12_streams
+_make_gen3_streams=h30._make_gen3_streams
+_make_gen4_streams=h30._make_gen4_streams
+_evidence_key=h30._evidence_key
 
 SEED=2026092801
 
