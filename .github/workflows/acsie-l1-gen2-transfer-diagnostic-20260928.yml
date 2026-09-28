@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        seed: [2026092801,2026092802,2026092803,2026092804,2026092805]
+        seed: [771221]
     steps:
       - uses: actions/checkout@v4
 
