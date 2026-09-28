@@ -196,3 +196,5 @@ jobs:
           retention-days: 90
 
 # adaptive confirmation probe retrigger
+
+# adaptive confirmation corrected-state retrigger
