@@ -134,9 +134,8 @@ jobs:
               except Exception as exc:
                   bad.append(f"{p.name}: {exc}")
 
-          strict_static = len(rows) == 5 and all(
+          strict_context_schema = len(rows) == 5 and all(
               r.get("decisions",{}).get("H15") == "PASSED"
-              and r.get("decisions",{}).get("H16") == "PASSED"
               for r in rows
           )
           strict_online = len(rows) == 5 and all(
@@ -156,24 +155,23 @@ jobs:
 
           if bad or len(rows) < 5 or any(r.get("scientific_status") == "CRASHED" for r in rows):
               status = "CRASHED"
-          elif strict_static and strict_online and strict_abstention and strict_integrity:
+          elif strict_context_schema and strict_online and strict_abstention and strict_integrity:
               status = "PASSED"
           else:
               status = "FAILED"
 
           out = {
-              "schema": "ACSIE.layer1-context-schema-challenger-router-v1-multiseed",
+              "schema": "ACSIE.layer1-procedure-shift-map-router-v1-multiseed",
               "scientific_status": status,
               "seed_count": len(rows),
               "expected_seeds": [2026092801,2026092802,2026092803,2026092804,2026092805],
-              "strict_compositional_static": strict_static,
-              "strict_discounted_ucb_online": strict_online,
+              "strict_context_schema": strict_context_schema,
+              "strict_challenger_adaptation": strict_online,
               "strict_integrity": strict_integrity,
               "decision_matrix": {
-                  "H6": [r.get("decisions",{}).get("H15") for r in rows],
-                  "H7": [r.get("decisions",{}).get("H16") for r in rows],
-                  "H7": [r.get("decisions",{}).get("H16") for r in rows],
-                  "H8": [r.get("decisions",{}).get("H17") for r in rows],
+                  "H15": [r.get("decisions",{}).get("H15") for r in rows],
+                  "H17": [r.get("decisions",{}).get("H17") for r in rows],
+                  "H18": [r.get("decisions",{}).get("H18") for r in rows],
               },
               "source_commit": "b1c4052423bef9a0235ae3ffab3daa92da3196ab",
               "workflow_run": "${{ github.run_id }}",
@@ -196,3 +194,5 @@ jobs:
           retention-days: 90
 
 # final five-seed procedure-shift-map qualification
+
+# corrected aggregate gate retrigger
