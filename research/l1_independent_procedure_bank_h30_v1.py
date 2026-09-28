@@ -500,3 +500,5 @@ if __name__ == "__main__":
     main()
 
 # H32 stable-observable-basis screen trigger.
+
+# H33 native-confidence arbitration trigger.
