@@ -63,7 +63,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: acsie-l1-gen2-static-transfer-*- ${{ github.run_id }}
+          pattern: acsie-l1-gen2-static-transfer-*-${{ github.run_id }}
           path: diagnostic
           merge-multiple: true
       - name: Aggregate
