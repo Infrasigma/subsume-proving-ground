@@ -1,0 +1,46 @@
+name: ACSIE L1 Gen2 direct materialization H29 20260928
+
+on:
+  push:
+    branches:
+      - acsie/l1-gen2-direct-materialization-h29-20260928
+    paths:
+      - ".github/workflows/acsie-l1-gen2-direct-materialization-h29-20260928.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_SOURCE: "cc6c5d8e83e4b698550638bb440b2c51fb8b9f1a"
+
+jobs:
+  screen:
+    name: canonical Gen2 screen
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_SOURCE }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify source
+        working-directory: acsie
+        run: test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
+      - name: Execute H29 screen
+        run: |
+          set -euo pipefail
+          PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie"             python acsie/research/l1_gen2_direct_materialization_h29_v1.py --seed 771221 > h29.json
+      - name: Upload screen
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l1-gen2-direct-materialization-h29-${{ github.run_id }}
+          path: h29.json
+          if-no-files-found: error
+          retention-days: 90
