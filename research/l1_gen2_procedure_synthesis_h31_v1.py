@@ -24,9 +24,12 @@ def run(seed):
     d1=core.self_improve_learning(gen1_inner)
     for s in legacy: core.observe_batch(s)
 
-    discovery=[r for s in gen2_inner[:4] for r in s if r[1]=="step"]
-    holdout=[r for s in [gen2_inner[4]] for r in s if r[1]=="step"]
-    transfer=[r for s in [gen2_inner[5]] for r in s if r[1]=="step"]
+    transition_rows=lambda streams: [
+        (obs, nxt) for stream in streams for obs, action, nxt in stream if action=="step"
+    ]
+    discovery=transition_rows(gen2_inner[:4])
+    holdout=transition_rows([gen2_inner[4]])
+    transfer=transition_rows([gen2_inner[5]])
     candidate=core.solve_examples_anytime(discovery,holdout,transfer,budget=256)
 
     if not candidate.verified:
