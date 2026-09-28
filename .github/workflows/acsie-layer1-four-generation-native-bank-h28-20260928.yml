@@ -58,6 +58,7 @@ jobs:
           echo "EXPECTED_SHA=$ACSIE_SOURCE"
           test "$ACTUAL_SHA" = "$ACSIE_SOURCE"
           test -n "$ACTUAL_TREE"
+          printf '%s\n' "$GITHUB_WORKSPACE/acsie" > ../acsie.work
           printf '%s\n' "$ACTUAL_SHA" > ../acsie.commit
           printf '%s\n' "$ACTUAL_TREE" > ../acsie.tree
 
