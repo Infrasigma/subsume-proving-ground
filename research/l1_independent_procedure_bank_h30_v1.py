@@ -174,6 +174,34 @@ class ProcedureBank:
             for p in self.procedures
         }
 
+    def _prefix_historical_score(self, procedure_name, model):
+        values = []
+        for experience in model.core.experience:
+            key_metrics = []
+            for key in _stable_context_keys(
+                model.core,
+                experience.observation,
+                experience.action,
+            ):
+                rec = self.stats[procedure_name].get(key)
+                if rec is None or rec[1] < MIN_SUPPORT:
+                    continue
+                reliability = (float(rec[0]) + 1.0) / (float(rec[1]) + 2.0)
+                key_metrics.append((reliability, float(rec[1])))
+            if key_metrics:
+                key_metrics.sort(reverse=True)
+                values.append(statistics.mean(
+                    reliability for reliability, _support in key_metrics[:3]
+                ))
+        if values:
+            return statistics.mean(values)
+        historical = self.global_stats[procedure_name]
+        return (
+            (float(historical[0]) + 1.0) / (float(historical[1]) + 2.0)
+            if historical[1]
+            else 0.0
+        )
+
     @staticmethod
     def candidates(model):
         out = []
