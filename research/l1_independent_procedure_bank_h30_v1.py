@@ -101,15 +101,44 @@ class ProcedureBank:
         ranked = self._rank(items)
         if not ranked:
             return None
-        best = ranked[0]
-        runner = ranked[1] if len(ranked) > 1 else None
-        consensus = any(
-            x["prediction"] == best["prediction"] and x["support"] >= MIN_SUPPORT
-            for x in ranked[1:]
+
+        # Group candidates by predicted outcome. A single surviving procedure is
+        # not enough by itself: it must have strong historical support and reliability.
+        groups = {}
+        for item in ranked:
+            key = repr(item["prediction"])
+            groups.setdefault(key, []).append(item)
+
+        group_rows = []
+        for key, members in groups.items():
+            group_rows.append({
+                "key": key,
+                "members": members,
+                "count": len(members),
+                "mean_score": statistics.mean(x["score"] for x in members),
+                "support": sum(x["support"] for x in members),
+                "max_score": max(x["score"] for x in members),
+                "max_support": max(x["support"] for x in members),
+            })
+        group_rows.sort(
+            key=lambda g: (g["count"], g["mean_score"], g["support"], g["max_score"]),
+            reverse=True,
         )
-        margin = best["score"] - (runner["score"] if runner else 0.0)
-        emit = consensus or runner is None or (
-            best["support"] >= MIN_SUPPORT and margin >= ROUTER_MARGIN
+        best_group = group_rows[0]
+        runner_score = group_rows[1]["mean_score"] if len(group_rows) > 1 else 0.0
+        margin = best_group["mean_score"] - runner_score
+        best = max(best_group["members"], key=lambda x: (x["score"], x["support"], -x["index"]))
+
+        consensus = best_group["count"] >= 2
+        singleton_strong = (
+            best_group["count"] == 1
+            and best_group["max_support"] >= 4
+            and best_group["max_score"] >= 0.85
+            and margin >= 0.10
+        )
+        emit = (
+            (consensus and best_group["max_support"] >= MIN_SUPPORT and margin >= ROUTER_MARGIN)
+            or singleton_strong
         )
         selected = copy.deepcopy(best) if emit else None
 
