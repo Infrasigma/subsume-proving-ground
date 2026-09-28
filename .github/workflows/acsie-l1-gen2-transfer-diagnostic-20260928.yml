@@ -17,6 +17,7 @@ env:
   ACSIE_BRANCH: "acsie/l1-gen2-transfer-diagnostic-20260928"
   SOURCE_RUN: "36376031059"
   VERIFIED_STATE_SHA256: "0b599e436c4578115cc0312dd6545f5d56c14777fcb55562592c5d8f4e8f80a9"
+  DIAGNOSTIC_VERSION: "exporter-live-vs-serialized-1"
 
 jobs:
   diagnostic:
