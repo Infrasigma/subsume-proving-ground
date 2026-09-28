@@ -60,12 +60,10 @@ class Procedure:
         rows = tuple(prefix)
         fold_scores = []
         native_scores = []
-        for fold in range(4):
-            valid_rows = tuple(rows[fold::4])
-            train_rows = tuple(
-                row for idx, row in enumerate(rows)
-                if idx % 4 != fold
-            )
+        block_size = max(1, len(rows) // 4)
+        for fold in range(1, 4):
+            train_rows = tuple(rows[: fold * block_size])
+            valid_rows = tuple(rows[fold * block_size : (fold + 1) * block_size])
             if not train_rows or not valid_rows:
                 continue
             probe = NativeCognitiveCore(
