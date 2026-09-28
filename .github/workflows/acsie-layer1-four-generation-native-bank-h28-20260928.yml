@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - acsie/l1-four-generation-native-bank-h28-20260928
+      - acsie/l1-four-generation-native-bank-h28-gen2-reconstruct-20260928
     paths:
       - ".github/workflows/acsie-layer1-four-generation-native-bank-h28-20260928.yml"
   workflow_dispatch:
