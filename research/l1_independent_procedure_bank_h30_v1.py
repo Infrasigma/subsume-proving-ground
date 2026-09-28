@@ -294,16 +294,11 @@ class ProcedureBank:
                 "local_score": float(model.local_score),
             })
 
-        # Primary criterion: current-episode applicability. Stable historical
-        # reliability is only a deterministic tie-break when applicability ties.
-        def historical_mean(procedure_name):
-            rec = self.global_stats[procedure_name]
-            return (float(rec[0]) + 1.0) / (float(rec[1]) + 2.0) if rec[1] else 0.0
-
+        # Primary criterion: current-episode applicability. Tie-breaking is
+        # immutable so replay cannot depend on feedback accumulated later.
         candidates.sort(
             key=lambda x: (
                 x["local_score"],
-                historical_mean(x["procedure"]),
                 -x["index"],
             ),
             reverse=True,
@@ -476,7 +471,7 @@ def run_seed(seed, kernel2):
                 for p in procedures
             }
             episode_model_sets[label].append(models_by_proc)
-            episode_metrics.append(bank.route_stream_models(models_by_proc))
+            episode_metrics.append(bank.route_episode_models(models_by_proc))
         phase[label] = _aggregate_episode_metrics(episode_metrics)
 
     # Standalone procedure competence on the same current episode.
@@ -516,7 +511,7 @@ def run_seed(seed, kernel2):
         p.name: bank._train_episode(p, gen4_outer[-1], 2000 + p.index)
         for p in procedures
     }
-    unseen = unseen_bank.route_stream_models(final_unseen_models)
+    unseen = unseen_bank.route_episode_models(final_unseen_models)
 
     # Retention across all prior episodes with the procedure descriptors held immutable.
     before = {p.name: digest(asdict(p.kernel)) for p in procedures}
