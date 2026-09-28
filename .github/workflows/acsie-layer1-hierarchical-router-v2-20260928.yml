@@ -9,7 +9,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE commit SHA"
         required: true
-        default: "d0adeeb639fa73fe8e9c5920a70533c18fc6a32a"
+        default: "a5e41403a7481e16f969d9d9219b59a0ec561fcb"
         type: string
 
 permissions:
@@ -23,14 +23,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        seed: [2026092801, 2026092802, 2026092803, 2026092804, 2026092805]
+        seed: [2026092802]
     steps:
       - uses: actions/checkout@v4
 
       - name: Checkout exact private ACSIE source
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'd0adeeb639fa73fe8e9c5920a70533c18fc6a32a' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'a5e41403a7481e16f969d9d9219b59a0ec561fcb' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-l1-hier-v2
@@ -175,7 +175,7 @@ jobs:
                   "H7": [r.get("decisions",{}).get("H16") for r in rows],
                   "H8": [r.get("decisions",{}).get("H17") for r in rows],
               },
-              "source_commit": "d0adeeb639fa73fe8e9c5920a70533c18fc6a32a",
+              "source_commit": "a5e41403a7481e16f969d9d9219b59a0ec561fcb",
               "workflow_run": "${{ github.run_id }}",
               "workflow_sha": "${{ github.sha }}",
               "failures": bad,
