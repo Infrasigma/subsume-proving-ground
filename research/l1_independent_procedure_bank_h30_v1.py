@@ -206,7 +206,6 @@ def _procedure_own_metrics(procedure, streams):
 def run(frozen_state_path, seed=SEED):
     frozen = json.load(open(frozen_state_path))
     kernel2 = LearningKernel(**frozen["learning_kernel"])
-    gen2_protected = copy.deepcopy(frozen["hypotheses"])
 
     # Gen1 procedure discovery is reproduced per seed; only the resulting generic
     # learning procedure is stored in the bank.
@@ -222,17 +221,12 @@ def run(frozen_state_path, seed=SEED):
     gen3_inner = _make_gen3_streams(seed + 8000, 6, rule="parity_relation")
     gen3_outer = _make_gen3_streams(seed + 9200, 6, rule="parity_relation")
     gen3_kernel = _make_gen3_kernel()
-    gen3_reconstruction = NativeCognitiveCore.from_state(frozen)
-    gen3_reconstruction.protected_hypotheses = copy.deepcopy(gen2_protected)
-    gen3_reconstruction.learning_kernel = copy.deepcopy(gen3_kernel)
-    _train(gen3_reconstruction, gen3_inner)
-    gen3_protected = copy.deepcopy(gen3_reconstruction.hypotheses)
-    gen3_proc = Procedure("p2", copy.deepcopy(gen3_kernel), gen2_protected)
+    gen3_proc = Procedure("p2", copy.deepcopy(gen3_kernel), {})
 
     gen4_inner = _make_gen4_streams(seed + 12000, 6)
     gen4_outer = _make_gen4_streams(seed + 13200, 6)
     gen4_kernel = _make_gen4_kernel()
-    gen4_proc = Procedure("p3", copy.deepcopy(gen4_kernel), gen3_protected)
+    gen4_proc = Procedure("p3", copy.deepcopy(gen4_kernel), {})
 
     procedures = (gen1_proc, gen2_proc, gen3_proc, gen4_proc)
 
