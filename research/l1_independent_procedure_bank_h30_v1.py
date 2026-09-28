@@ -497,3 +497,5 @@ if __name__ == "__main__":
 # H32 stable-observable-basis screen trigger.
 
 # H33 native-confidence arbitration trigger.
+
+# H34 current-episode applicability trigger.
