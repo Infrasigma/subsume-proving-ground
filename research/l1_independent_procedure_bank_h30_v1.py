@@ -78,18 +78,42 @@ class Procedure:
         local_score = statistics.mean(fold_scores) if fold_scores else 0.0
         native_score = statistics.mean(native_scores) if native_scores else 0.0
 
-        core = NativeCognitiveCore(
-            seed=920000 + self.index * 10000 + stream_index * 4 + 2
+        causal_core = NativeCognitiveCore(
+            seed=920000 + self.index * 10000 + stream_index * 4 + 7
         )
-        core.learning_kernel = copy.deepcopy(self.kernel)
-        core.observe_batch(rows)
+        causal_core.learning_kernel = copy.deepcopy(self.kernel)
+        causal_scores = []
+        causal_native_scores = []
+        for obs, action, nxt in rows:
+            info = causal_core.predict(obs, action)
+            if info.get("prediction") is not None:
+                causal_scores.append(
+                    float(info.get("prediction") == nxt)
+                )
+                causal_native_scores.append(
+                    float(info.get("arbitration_score", 0.0))
+                )
+            causal_core.observe(obs, action, nxt)
+        causal_score = statistics.mean(causal_scores) if causal_scores else 0.0
+        causal_native_score = (
+            statistics.mean(causal_native_scores)
+            if causal_native_scores else 0.0
+        )
+
+        core = causal_core
         fit_scores = []
         for obs, action, _nxt in rows:
             info = core.predict(obs, action)
             fit_scores.append(float(info.get("arbitration_score", 0.0)))
         fit_native_score = statistics.mean(fit_scores) if fit_scores else 0.0
         return ApplicableProcedure(
-            self, core, local_score, native_score, fit_native_score
+            self,
+            core,
+            local_score,
+            native_score,
+            fit_native_score,
+            causal_score,
+            causal_native_score,
         )
 
 
@@ -102,14 +126,29 @@ class ApplicableProcedure:
         "local_score",
         "native_score",
         "fit_native_score",
+        "causal_score",
+        "causal_native_score",
     )
 
-    def __init__(self, procedure, core, local_score, native_score, fit_native_score):
+    def __init__(
+        self,
+        procedure,
+        core,
+        local_score,
+        native_score,
+        fit_native_score,
+        causal_score,
+        causal_native_score,
+    ):
         self.procedure = procedure
         self.core = core
         self.local_score = float(local_score)
         self.native_score = float(native_score)
         self.fit_native_score = float(fit_native_score)
+        self.causal_score = float(causal_score)
+        self.causal_native_score = float(causal_native_score)
+        self.causal_score = float(causal_score)
+        self.causal_native_score = float(causal_native_score)
 
     def predict(self, suffix):
         """Predict on the post-selection suffix without inspecting its targets."""
@@ -126,6 +165,8 @@ class EpisodeModel:
         "local_score",
         "native_score",
         "fit_native_score",
+        "causal_score",
+        "causal_native_score",
     )
     def __init__(
         self,
@@ -135,6 +176,8 @@ class EpisodeModel:
         local_score,
         native_score,
         fit_native_score,
+        causal_score,
+        causal_native_score,
     ):
         self.procedure = procedure
         self.core = core
@@ -164,6 +207,8 @@ class ProcedureBank:
             applicable.local_score,
             applicable.native_score,
             applicable.fit_native_score,
+            applicable.causal_score,
+            applicable.causal_native_score,
         )
 
     def build_models(self, streams):
@@ -397,6 +442,8 @@ class ProcedureBank:
                 "local_score": float(model.local_score),
                 "native_score": float(model.native_score),
                 "fit_native_score": float(model.fit_native_score),
+                "causal_score": float(model.causal_score),
+                "causal_native_score": float(model.causal_native_score),
                 "contextual_historical_score": contextual_historical_score,
                 "historical_score": historical_score,
             })
@@ -408,6 +455,7 @@ class ProcedureBank:
         # participates here.
         candidates.sort(
             key=lambda x: (
+                x["causal_score"],
                 x["local_score"],
                 x["native_score"],
                 x["fit_native_score"],
@@ -437,6 +485,8 @@ class ProcedureBank:
             selected_model.local_score,
             selected_model.native_score,
             selected_model.fit_native_score,
+            selected_model.causal_score,
+            selected_model.causal_native_score,
         )
         predictions = selected_procedure.predict(selected_model.holdout)
 
