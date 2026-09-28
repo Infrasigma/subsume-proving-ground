@@ -1,0 +1,168 @@
+name: ACSIE Gen5 autonomous acquisition isolated 20260928
+
+on:
+  push:
+    branches:
+      - acsie/gen5-autonomous-acquisition-20260928
+    paths:
+      - ".github/workflows/acsie-gen5-autonomous-acquisition-20260928.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  ACSIE_SOURCE_COMMIT: "eafa43db1635381287e5cf6fcfe977fbe187d300"
+  GEN2_FREEZE_RUN: "36407812884"
+  GEN2_STATE_SHA256: "3fc90234b00093d7303ca26d9f5f88824f9d1419ba2ada718213f3c4b547e04b"
+  SEED: "2026092801"
+
+jobs:
+  isolated:
+    name: Gen5 isolated acquisition seed \${{ env.SEED }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: \${{ env.ACSIE_SOURCE_COMMIT }}
+          token: \${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact ACSIE source
+        working-directory: acsie
+        run: |
+          test "$(git rev-parse HEAD)" = "$ACSIE_SOURCE_COMMIT"
+          test -f research/l1_gen5_autonomous_acquisition_v1.py
+          echo "source_commit=$(git rev-parse HEAD)" > ../source.txt
+          echo "source_tree=$(git rev-parse HEAD^{tree})" >> ../source.txt
+
+      - name: Download verified Gen2 freeze
+        uses: actions/download-artifact@v4
+        with:
+          name: acsie-gen2-behavioral-frozen-state-20260928-36407812884
+          path: input
+          run-id: \${{ env.GEN2_FREEZE_RUN }}
+          repository: Infrasigma/subsume-proving-ground
+          github-token: \${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify frozen input
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          raw = open("input/verified-gen2-state.json", "rb").read()
+          digest = hashlib.sha256(raw).hexdigest()
+          assert digest == "3fc90234b00093d7303ca26d9f5f88824f9d1419ba2ada718213f3c4b547e04b"
+          export_row = json.load(open("input/verified-gen2-export.json"))
+          assert export_row["scientific_status"] == "PASSED"
+          print("verified_gen2_state_sha256=" + digest)
+          PY
+
+      - name: Execute isolated Gen5 gate
+        run: |
+          set +e
+          PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie" \
+            python acsie/research/l1_gen5_autonomous_acquisition_v1.py \
+            input/verified-gen2-state.json \
+            --seed "$SEED" \
+            --source-commit "$ACSIE_SOURCE_COMMIT" \
+            > "gen5-$SEED.json" 2> "gen5-$SEED.stderr"
+          rc=$?
+          printf '%s\n' "$rc" > "gen5-$SEED.exit_code"
+          exit 0
+
+      - name: Build seed evidence manifest
+        if: always()
+        run: |
+          python - <<'PY'
+          import hashlib, json, pathlib, os
+          seed = os.environ["SEED"]
+          def sha(path):
+              return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
+          manifest = {
+              "schema": "ACSIE.layer1-gen5-evidence-manifest.v1",
+              "seed": int(seed),
+              "source_commit": open("source.txt").read().split("=",1)[1].splitlines()[0],
+              "source_tree": open("source.txt").read().splitlines()[1].split("=",1)[1],
+              "frozen_gen2_state_sha256": sha("input/verified-gen2-state.json"),
+              "experiment_stdout_sha256": sha(f"gen5-{seed}.json"),
+              "experiment_stderr_sha256": sha(f"gen5-{seed}.stderr"),
+              "exit_code": int(pathlib.Path(f"gen5-{seed}.exit_code").read_text()),
+          }
+          pathlib.Path(f"gen5-{seed}-manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload isolated evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-gen5-isolated-seed-\${{ env.SEED }}-\${{ github.run_id }}
+          path: |
+            gen5-\${{ env.SEED }}.json
+            gen5-\${{ env.SEED }}.stderr
+            gen5-\${{ env.SEED }}.exit_code
+            gen5-\${{ env.SEED }}-manifest.json
+            source.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  aggregate:
+    needs: isolated
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: acsie-gen5-isolated-seed-*-\${{ github.run_id }}
+          path: evidence
+          merge-multiple: true
+
+      - name: Strict isolated aggregate
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+          files = sorted(pathlib.Path("evidence").glob("gen5-*.json"))
+          expected = {2026092801}
+          rows = []
+          failures = []
+          for p in files:
+              try:
+                  row = json.loads(p.read_text())
+                  rows.append(row)
+              except Exception as exc:
+                  failures.append(f"{p.name}: {exc}")
+          seeds = {r.get("seed") for r in rows}
+          if failures or len(rows) != 1 or seeds != expected:
+              status = "CRASHED"
+          else:
+              status = "PASSED" if rows[0].get("scientific_status") == "PASSED" else "FAILED"
+          out = {
+              "schema": "ACSIE.layer1-gen5-autonomous-acquisition-isolated.v1",
+              "scientific_status": status,
+              "strict": bool(status == "PASSED"),
+              "seed_count": len(rows),
+              "expected_seeds": sorted(expected),
+              "source_commit": "eafa43db1635381287e5cf6fcfe977fbe187d300",
+              "workflow_run": "\${{ github.run_id }}",
+              "rows": rows,
+              "failures": failures,
+          }
+          pathlib.Path("gen5-isolated-aggregate.json").write_text(json.dumps(out, indent=2, sort_keys=True))
+          print(json.dumps(out, indent=2, sort_keys=True))
+          sys.exit(0 if status in {"PASSED","FAILED"} else 1)
+          PY
+
+      - name: Upload aggregate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-gen5-isolated-aggregate-\${{ github.run_id }}
+          path: gen5-isolated-aggregate.json
+          if-no-files-found: error
+          retention-days: 90
