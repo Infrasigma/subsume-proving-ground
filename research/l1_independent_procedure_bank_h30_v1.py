@@ -526,3 +526,5 @@ if __name__ == "__main__":
 # H33 native-confidence arbitration trigger.
 
 # H34 current-episode applicability trigger.
+
+# H35 symmetric applicability screen trigger.
