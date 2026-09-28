@@ -87,7 +87,7 @@ jobs:
         working-directory: acsie
         run: |
           set -u
-          PYTHONPATH=. python research/gen4_multi_transition_v1.py \
+          PYTHONPATH=. python research/gen4_kernel_overlay_retention_v1.py \
             ../input/verified-gen2-export.json \
             --merge \
             ../shards/shard-0.json \
@@ -132,8 +132,8 @@ jobs:
           cp gen4-final.json evidence/
           sha256sum evidence/verified-gen2-state.json > evidence/state.sha256
           printf '%s\n' \
-            "source_candidate_run=${SOURCE_RUN}
-            experiment=h-gen4-kernel-overlay" \
+            "source_candidate_run=${SOURCE_RUN}" \
+            "experiment=h-gen4-kernel-overlay" \
             "recovery_workflow=${{ github.run_id }}" \
             "recovery_workflow_sha=${{ github.sha }}" \
             "acsie_source=${ACSIE_SOURCE}" \
