@@ -26,6 +26,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
+      - name: Report workflow entry
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "ACSIE evidence-router workflow entered: commit=${{ github.sha }} run=${{ github.run_id }}" > workflow-entry.txt
+          gh issue comment 82 --repo Infrasigma/subsume-proving-ground --body-file workflow-entry.txt
       - uses: actions/checkout@v4
       - name: Checkout exact evidence-router harness
         uses: actions/checkout@v4
