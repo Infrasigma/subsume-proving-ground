@@ -38,23 +38,13 @@ jobs:
       - name: Verify exact evidence-router harness
         working-directory: acsie
         run: |
-          set -u
-          PYTHONPATH=. python research/gen4_three_way_evidence_router_v1.py             ../input/verified-gen2-export.json             --merge             ../shards/shard-0.json             ../shards/shard-1.json             ../shards/shard-2.json             ../shards/shard-3.json             ../shards/shard-4.json             ../shards/shard-5.json             ../shards/shard-6.json             ../shards/shard-7.json             --seed 771223             > ../three-way-evidence-router-final.json
-          rc=$?
-          cat ../three-way-evidence-router-final.json
-          python - <<'PY'
-          import json
-          r=json.load(open("../three-way-evidence-router-final.json"))
-          print("SCIENTIFIC_STATUS",r["scientific_status"])
-          print("GEN4_HOLDOUT_GAIN",r["gen4_gate"]["holdout_gain"])
-          print("GEN4_TRANSFER_GAIN",r["gen4_gate"]["transfer_gain"])
-          print("GEN1_RETENTION_PASS",r["retention"]["gen1_retention_pass"])
-          print("GEN2_RETENTION_PASS",r["retention"]["gen2_retention_pass"])
-          print("GEN3_RETENTION_PASS",r["retention"]["gen3_retention_pass"])
-          print("DETERMINISTIC_REPLAY",r["replay"]["deterministic_replay"])
-          assert r["scientific_status"] in {"PASSED","FAILED"}
-          PY
-          test "$rc" = "0"
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
+          test -f research/gen4_three_way_evidence_router_v1.py
+          test -f research/gen4_three_way_router_protocol_20260928.json
+          ! grep -F "\\n" research/gen4_three_way_evidence_router_v1.py
+          sha256sum research/gen4_three_way_evidence_router_v1.py
+          sha256sum research/gen4_three_way_router_protocol_20260928.json
       - name: Download exact frozen Gen2 input
         uses: actions/download-artifact@v4
         with:
@@ -86,7 +76,7 @@ jobs:
           h=hashlib.sha256(open("input/verified-gen2-state.json","rb").read()).hexdigest()
           assert h == "0b599e436c4578115cc0312dd6545f5d56c14777fcb55562592c5d8f4e8f80a9", h
           PY
-      - name: Execute exact evidence-calibrated gate
+      - name: Execute preregistered three-way gate
         working-directory: acsie
         run: |
           set -u
@@ -101,18 +91,19 @@ jobs:
             ../shards/shard-5.json \
             ../shards/shard-6.json \
             ../shards/shard-7.json \
-            > ../evidence-router-final.json
+            --seed 771223 \
+            > ../three-way-evidence-router-final.json
           rc=$?
-          cat ../evidence-router-final.json
+          cat ../three-way-evidence-router-final.json
           python - <<'PY'
           import json
-          r=json.load(open("../evidence-router-final.json"))
+          r=json.load(open("../three-way-evidence-router-final.json"))
           print("SCIENTIFIC_STATUS",r["scientific_status"])
-          print("GEN4_HOLDOUT_GAIN",r["gen4_overlay"]["holdout_gain"])
-          print("GEN4_TRANSFER_GAIN",r["gen4_overlay"]["transfer_gain"])
-          print("GEN1_OVERLAY",r["retention"]["gen1_base"],r["retention"]["gen1_overlay"])
-          print("GEN2_OVERLAY",r["retention"]["gen2_base"],r["retention"]["gen2_overlay"])
-          print("GEN3_OVERLAY",r["retention"]["gen3_base"],r["retention"]["gen3_overlay"])
+          print("GEN4_HOLDOUT_GAIN",r["gen4_gate"]["holdout_gain"])
+          print("GEN4_TRANSFER_GAIN",r["gen4_gate"]["transfer_gain"])
+          print("GEN1_RETENTION_PASS",r["retention"]["gen1_retention_pass"])
+          print("GEN2_RETENTION_PASS",r["retention"]["gen2_retention_pass"])
+          print("GEN3_RETENTION_PASS",r["retention"]["gen3_retention_pass"])
           print("DETERMINISTIC_REPLAY",r["replay"]["deterministic_replay"])
           assert r["scientific_status"] in {"PASSED","FAILED"}
           PY
@@ -125,12 +116,12 @@ jobs:
           cp input/verified-gen2-export.json evidence/
           cp input/verified-gen2-state.json evidence/
           cp shards/shard-*.json evidence/
-          cp evidence-router-final.json evidence/
+          cp three-way-evidence-router-final.json evidence/
           sha256sum evidence/verified-gen2-state.json > evidence/state.sha256
           printf "%s\n" \
-            "experiment=H-GEN4-EVIDENCE-ROUTER" \
+            "experiment=H-MULTI-BRANCH-ROUTER-3WAY" \
             "source_candidate_run=${SOURCE_RUN}" \
-            "evidence_router_harness=${ACSIE_SOURCE}" \
+            "acsie_source_commit=${ACSIE_SOURCE}" \
             "workflow_run=${{ github.run_id }}" \
             "workflow_sha=${{ github.sha }}" \
             "verified_state_sha256=${VERIFIED_STATE_SHA256}" \
