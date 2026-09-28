@@ -6,6 +6,13 @@ on:
       - acsie/gen5-autonomous-acquisition-20260928
     paths:
       - ".github/workflows/acsie-gen5-autonomous-acquisition-20260928.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/acsie-gen5-autonomous-acquisition-20260928.yml"
+      - ".github/workflows/go.yml"
+      - "research/l1_gen5_autonomous_acquisition_v1.py"
   workflow_dispatch:
 
 permissions:
