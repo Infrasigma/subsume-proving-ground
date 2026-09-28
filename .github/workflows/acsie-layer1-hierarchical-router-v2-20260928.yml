@@ -9,7 +9,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE commit SHA"
         required: true
-        default: "48edf51bad173497904ae9f0e5452ad002775db7"
+        default: "9c40a381ed7affbbedd79c99b3e622837650287c"
         type: string
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
       - name: Checkout exact private ACSIE source
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '48edf51bad173497904ae9f0e5452ad002775db7' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '9c40a381ed7affbbedd79c99b3e622837650287c' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-l1-hier-v2
@@ -66,10 +66,10 @@ jobs:
           mkdir -p "$EVIDENCE"
           cp acsie.commit "$EVIDENCE/acsie.commit"
           cp acsie.tree "$EVIDENCE/acsie.tree"
-          cp "$WORK/research/l1_error_burst_adaptive_challenger_v1.py" "$EVIDENCE/l1_error_burst_adaptive_challenger_v1.py"
-          sha256sum "$EVIDENCE/l1_error_burst_adaptive_challenger_v1.py" > "$EVIDENCE/source.sha256"
+          cp "$WORK/research/l1_full_information_router_v1.py" "$EVIDENCE/l1_full_information_router_v1.py"
+          sha256sum "$EVIDENCE/l1_full_information_router_v1.py" > "$EVIDENCE/source.sha256"
           set +e
-          PYTHONHASHSEED=0 PYTHONPATH="$WORK" timeout 900s python "$WORK/research/l1_error_burst_adaptive_challenger_v1.py" "$SEED" > "$EVIDENCE/$SEED.stdout.json" 2> "$EVIDENCE/$SEED.stderr.log"
+          PYTHONHASHSEED=0 PYTHONPATH="$WORK" timeout 900s python "$WORK/research/l1_full_information_router_v1.py" "$SEED" > "$EVIDENCE/$SEED.stdout.json" 2> "$EVIDENCE/$SEED.stderr.log"
           RC=$?
           set -e
           printf '%s\n' "$RC" > "$EVIDENCE/exit_code"
@@ -136,7 +136,7 @@ jobs:
 
           strict_layer1 = len(rows) == 5 and all(
               r.get("decisions",{}).get("H15") == "PASSED"
-              and r.get("decisions",{}).get("H22") == "PASSED"
+              and r.get("decisions",{}).get("H23") == "PASSED"
               and r.get("decisions",{}).get("H18") == "PASSED"
               for r in rows
           )
@@ -155,7 +155,7 @@ jobs:
               status = "FAILED"
 
           out = {
-              "schema": "ACSIE.layer1-error-burst-adaptive-challenger-v1-multiseed",
+              "schema": "ACSIE.layer1-full-information-router-v1-multiseed",
               "scientific_status": status,
               "seed_count": len(rows),
               "expected_seeds": [2026092801,2026092802,2026092803,2026092804,2026092805],
@@ -164,9 +164,9 @@ jobs:
               "decision_matrix": {
                   "H15": [r.get("decisions",{}).get("H15") for r in rows],
                   "H18": [r.get("decisions",{}).get("H18") for r in rows],
-                  "H22": [r.get("decisions",{}).get("H22") for r in rows],
+                  "H23": [r.get("decisions",{}).get("H23") for r in rows],
               },
-              "source_commit": "48edf51bad173497904ae9f0e5452ad002775db7",
+              "source_commit": "9c40a381ed7affbbedd79c99b3e622837650287c",
               "workflow_run": "${{ github.run_id }}",
               "workflow_sha": "${{ github.sha }}",
               "failures": bad,
