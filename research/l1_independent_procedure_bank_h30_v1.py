@@ -73,11 +73,12 @@ class Procedure:
             )
             probe.learning_kernel = copy.deepcopy(self.kernel)
             probe.observe_batch(tuple(train_rows))
-            fold_scores.extend(
-                float(probe.predict(obs, action).get("prediction") == nxt)
-                for obs, action, nxt in valid_rows
-            )
+            for obs, action, nxt in valid_rows:
+                info = probe.predict(obs, action)
+                fold_scores.append(float(info.get("prediction") == nxt))
+                native_scores.append(float(info.get("arbitration_score", 0.0)))
         local_score = statistics.mean(fold_scores) if fold_scores else 0.0
+        native_score = statistics.mean(native_scores) if native_scores else 0.0
 
         core = NativeCognitiveCore(
             seed=920000 + self.index * 10000 + stream_index * 4 + 2
