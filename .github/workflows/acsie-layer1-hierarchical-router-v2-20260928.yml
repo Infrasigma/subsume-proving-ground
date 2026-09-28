@@ -17,8 +17,13 @@ permissions:
 
 jobs:
   layer1-hierarchical-router-v2:
+    name: seed MATRIX_SEED
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026092801, 2026092802, 2026092803, 2026092804, 2026092805]
     steps:
       - uses: actions/checkout@v4
 
@@ -47,26 +52,28 @@ jobs:
           git -C "$WORK" fetch --no-tags --depth 1 origin "$ACSIE_REF"
           git -C "$WORK" checkout --detach --force FETCH_HEAD
           test "$(git -C "$WORK" rev-parse HEAD)" = "$ACSIE_REF"
-          echo "$WORK" > "$GITHUB_WORKSPACE/acsie.work"
-          git -C "$WORK" rev-parse HEAD > "$GITHUB_WORKSPACE/acsie.commit"
-          git -C "$WORK" rev-parse HEAD^{tree} > "$GITHUB_WORKSPACE/acsie.tree"
+          echo "$WORK" > acsie.work
+          git -C "$WORK" rev-parse HEAD > acsie.commit
+          git -C "$WORK" rev-parse HEAD^{tree} > acsie.tree
 
       - name: Execute v2 diagnostic
+        env:
+          SEED: ${{ matrix.seed }}
         run: |
           set -u
           WORK="$(cat acsie.work)"
-          EVIDENCE="$GITHUB_WORKSPACE/evidence-layer1-hierarchical-v2-${{ github.run_id }}"
+          EVIDENCE="$GITHUB_WORKSPACE/evidence-layer1-hierarchical-v2-$SEED-${{ github.run_id }}"
           mkdir -p "$EVIDENCE"
           cp acsie.commit "$EVIDENCE/acsie.commit"
           cp acsie.tree "$EVIDENCE/acsie.tree"
           cp "$WORK/research/l1_hierarchical_router_v1.py" "$EVIDENCE/l1_hierarchical_router_v2.py"
           sha256sum "$EVIDENCE/l1_hierarchical_router_v2.py" > "$EVIDENCE/source.sha256"
           set +e
-          PYTHONPATH="$WORK" timeout 420s python "$WORK/research/l1_hierarchical_router_v1.py" 2026092801 > "$EVIDENCE/results.json" 2> "$EVIDENCE/stderr.log"
+          PYTHONHASHSEED=0 PYTHONPATH="$WORK" timeout 900s python "$WORK/research/l1_hierarchical_router_v1.py" "$SEED" > "$EVIDENCE/$SEED.stdout.json" 2> "$EVIDENCE/$SEED.stderr.log"
           RC=$?
           set -e
           printf '%s\n' "$RC" > "$EVIDENCE/exit_code"
-          python - "$EVIDENCE/results.json" "$EVIDENCE/scientific_status.txt" <<'PY'
+          python - "$EVIDENCE/$SEED.stdout.json" "$EVIDENCE/scientific_status.txt" <<'PY'
           import json,sys
           try:
               x=json.load(open(sys.argv[1]))
@@ -78,21 +85,109 @@ jobs:
           {
             echo "workflow_run=${{ github.run_id }}"
             echo "workflow_sha=${{ github.sha }}"
+            echo "seed=$SEED"
             echo "acsie_ref=$(cat acsie.commit)"
-            echo "inherited_gen4_run=36386355578"
-            echo "inherited_gen4_artifact=10954382992"
-            echo "inherited_gen4_artifact_sha256=9f1ffc606a143cf8f70101ec10dbb935c066fa8a742e592159bbeb964091fda3"
+            echo "acsie_tree=$(cat acsie.tree)"
+            echo "fresh_process_per_seed=true"
+            echo "external_model=false"
+            echo "network_dependency=false"
+            echo "task_routing=false"
+            echo "holdout_contamination=false"
+            echo "manual_runtime_strategy=false"
           } > "$EVIDENCE/execution.provenance"
           sha256sum "$EVIDENCE"/* > "$EVIDENCE/manifest.sha256"
           cat "$EVIDENCE/scientific_status.txt"
           echo "EVIDENCE_DIR=$EVIDENCE"
 
-      - name: Upload evidence
+      - name: Upload seed evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: acsie-layer1-hierarchical-v2-${{ github.run_id }}
-          path: evidence-layer1-hierarchical-v2-${{ github.run_id }}
+          name: acsie-layer1-hierarchical-v2-seed-${{ matrix.seed }}-${{ github.run_id }}
+          path: evidence-layer1-hierarchical-v2-${{ matrix.seed }}-${{ github.run_id }}
           if-no-files-found: error
           retention-days: 90
 
-# retrigger v2 evidence gate
+  aggregate:
+    name: aggregate five-seed evidence
+    needs: layer1-hierarchical-router-v2
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: acsie-layer1-hierarchical-v2-seed-*-${{ github.run_id }}
+          path: multiseed-evidence
+          merge-multiple: true
+
+      - name: Aggregate
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib, sys
+          root = pathlib.Path("multiseed-evidence")
+          rows, bad = [], []
+          for p in sorted(root.glob("*.stdout.json")):
+              try:
+                  rows.append(json.loads(p.read_text()))
+              except Exception as exc:
+                  bad.append(f"{p.name}: {exc}")
+
+          strict_static = len(rows) == 5 and all(
+              r.get("decisions",{}).get("H2") == "PASSED"
+              and r.get("decisions",{}).get("H3") == "PASSED"
+              and r.get("decisions",{}).get("H4") == "PASSED"
+              for r in rows
+          )
+          strict_online = len(rows) == 5 and all(
+              r.get("decisions",{}).get("H5") == "PASSED"
+              for r in rows
+          )
+          strict_integrity = len(rows) == 5 and all(
+              r.get("replay",{}).get("deterministic_replay") is True
+              and r.get("preconditions",{}).get("all_pass") is True
+              and not any(r.get("integrity",{}).values())
+              for r in rows
+          )
+
+          if bad or len(rows) < 5 or any(r.get("scientific_status") == "CRASHED" for r in rows):
+              status = "CRASHED"
+          elif strict_static and strict_online and strict_integrity:
+              status = "PASSED"
+          else:
+              status = "FAILED"
+
+          out = {
+              "schema": "ACSIE.layer1-hierarchical-router-v2-multiseed",
+              "scientific_status": status,
+              "seed_count": len(rows),
+              "expected_seeds": [2026092801,2026092802,2026092803,2026092804,2026092805],
+              "strict_static_layer1": strict_static,
+              "strict_online_adaptation": strict_online,
+              "strict_integrity": strict_integrity,
+              "decision_matrix": {
+                  "H2": [r.get("decisions",{}).get("H2") for r in rows],
+                  "H3": [r.get("decisions",{}).get("H3") for r in rows],
+                  "H4": [r.get("decisions",{}).get("H4") for r in rows],
+                  "H5": [r.get("decisions",{}).get("H5") for r in rows],
+              },
+              "source_commit": "fc0f8ca0e9440e51bf2e9aaf31b9e8293bd0f875",
+              "workflow_run": "${{ github.run_id }}",
+              "workflow_sha": "${{ github.sha }}",
+              "failures": bad,
+          }
+          pathlib.Path("multiseed-aggregate.json").write_text(json.dumps(out, indent=2, sort_keys=True))
+          print(json.dumps(out, indent=2, sort_keys=True))
+          if status != "PASSED":
+              sys.exit(1)
+          PY
+
+      - name: Upload aggregate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-layer1-hierarchical-v2-multiseed-aggregate-${{ github.run_id }}
+          path: multiseed-aggregate.json
+          if-no-files-found: error
+          retention-days: 90
