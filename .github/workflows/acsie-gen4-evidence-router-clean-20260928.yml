@@ -12,6 +12,7 @@ on:
 permissions:
   contents: read
   actions: read
+  issues: write
 
 env:
   ACSIE_SOURCE: "acsie/gen4-evidence-router-calibration-repair-20260928"
@@ -112,6 +113,49 @@ jobs:
           assert r["scientific_status"] in {"PASSED","FAILED"}
           PY
           test "$rc" = "0"
+      - name: Publish compact execution result
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -f evidence-router-final.json ]; then
+            python - <<'PY'
+          import json
+          r=json.load(open("evidence-router-final.json"))
+          p=r.get("provenance",{})
+          g=r.get("gen4_overlay",{})
+          ret=r.get("retention",{})
+          replay=r.get("replay",{})
+          print("## ACSIE H-GEN4-EVIDENCE-ROUTER execution")
+          print(f"- workflow_run: ${{ github.run_id }}")
+          print(f"- workflow_sha: ${{ github.sha }}")
+          print(f"- ACSIE source ref: ${{ env.ACSIE_SOURCE }}")
+          print(f"- executed_harness_commit: {p.get('executed_harness_commit')}")
+          print(f"- scientific_core_source_commit: {p.get('scientific_core_source_commit')}")
+          print(f"- shard_source_run: {p.get('shard_source_run')}")
+          print(f"- scientific_status: {r.get('scientific_status')}")
+          print(f"- selected_candidate: {r.get('selected',{}).get('fingerprint')}")
+          print(f"- selected_context_program: {r.get('selected',{}).get('context_program')}")
+          print(f"- gen4_holdout_gain: {g.get('holdout_gain')}")
+          print(f"- gen4_transfer_gain: {g.get('transfer_gain')}")
+          print(f"- gen1_base_overlay: {ret.get('gen1_base')} -> {ret.get('gen1_overlay')}")
+          print(f"- gen2_base_overlay: {ret.get('gen2_base')} -> {ret.get('gen2_overlay')}")
+          print(f"- gen3_base_overlay: {ret.get('gen3_base')} -> {ret.get('gen3_overlay')}")
+          print(f"- stored_preserved: {ret.get('stored_preserved')}")
+          print(f"- gen3_branch_unchanged: {ret.get('gen3_branch_unchanged')}")
+          print(f"- deterministic_replay: {replay.get('deterministic_replay')}")
+          print(f"- failure_boundary: {r.get('failure_boundary')}")
+          print(f"- candidate_set_digest: {r.get('candidate_set_digest')}")
+          print(f"- stream_digest: {r.get('stream_digest')}")
+          PY
+          else
+            echo "## ACSIE H-GEN4-EVIDENCE-ROUTER execution"
+            echo "- scientific_status: BLOCKED"
+            echo "- reason: evidence-router-final.json was not produced"
+          fi > execution-comment.md
+          gh issue comment 82 --repo Infrasigma/subsume-proving-ground --body-file execution-comment.md
+
       - name: Package evidence
         if: always()
         run: |
