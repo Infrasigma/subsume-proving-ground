@@ -50,7 +50,7 @@ jobs:
           path: input
           run-id: ${{ env.SOURCE_RUN }}
           repository: Infrasigma/subsume-proving-ground
-          token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download all eight exact candidate shard artifacts
         uses: actions/download-artifact@v4
         with:
@@ -59,7 +59,7 @@ jobs:
           merge-multiple: true
           run-id: ${{ env.SOURCE_RUN }}
           repository: Infrasigma/subsume-proving-ground
-          token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify exact shard coverage and hashes
         run: |
           set -euo pipefail
