@@ -3,7 +3,7 @@ name: ACSIE clean Gen4 evidence router qualification
 on:
   push:
     branches:
-      - acsie/gen4-evidence-router-clean-20260928
+      - acsie/gen4-evidence-router-calibration-repair-20260928
     paths:
       - ".github/workflows/acsie-gen4-evidence-router-clean-20260928.yml"
   workflow_dispatch:
@@ -126,7 +126,7 @@ jobs:
             "source_candidate_run=${SOURCE_RUN}" \
             "evidence_router_harness=${ACSIE_SOURCE}" \
             "acsie_source_commit=$(git -C acsie rev-parse HEAD)" \
-            "router_source_sha256=$(sha256sum acsie/research/gen4_evidence_router_v1.py | cut -d" " -f1)" \
+            "router_source_sha256=$(sha256sum acsie/research/gen4_evidence_router_v1.py | awk '{print $1}')" \
             "workflow_run=${{ github.run_id }}" \
             "workflow_sha=${{ github.sha }}" \
             "verified_state_sha256=${VERIFIED_STATE_SHA256}" \
