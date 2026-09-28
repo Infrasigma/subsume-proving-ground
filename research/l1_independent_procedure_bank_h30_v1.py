@@ -146,10 +146,10 @@ class ProcedureBank:
         return len(vals)/sum(1.0/v for v in vals)
 
     @classmethod
-    def _joint_score(cls, native_score, historical_score, local_score, history_available):
+    def _joint_score(cls, native_score, historical_score, history_available):
         if history_available:
-            return cls._harmonic((native_score, historical_score, local_score))
-        return cls._harmonic((native_score, local_score))
+            return cls._harmonic((native_score, historical_score))
+        return float(native_score)
 
     def _rank(self, items):
         ranked = []
@@ -216,25 +216,18 @@ class ProcedureBank:
                 "max_uncertainty": max(x["native_uncertainty"] for x in members),
             })
         group_rows.sort(
-            key=lambda g: (
-                len(g["members"]), g["mean_score"], g["min_local"],
-                g["min_native"], g["min_support"]
-            ),
+            key=lambda g:(len(g["members"]),g["mean_score"],g["min_local"],g["min_native"],g["min_support"]),
             reverse=True,
         )
         best_group=group_rows[0]
-        best=max(
-            best_group["members"],
-            key=lambda x:(x["score"],x["local_score"],x["native_score"],x["support"],-x["index"])
-        )
+        best=max(best_group["members"],key=lambda x:(x["score"],x["native_score"],x["local_score"],x["support"],-x["index"]))
 
         if len(group_rows)==1:
             emit=(
                 best_group["min_support"] >= MIN_SUPPORT
                 and best_group["min_native"] >= 0.50
-                and best_group["min_local"] >= 0.50
                 and best_group["max_uncertainty"] <= 0.60
-                and best_group["mean_score"] >= 0.62
+                and best_group["mean_score"] >= 0.50
             )
         else:
             runner=group_rows[1]
@@ -243,21 +236,19 @@ class ProcedureBank:
                 len(best_group["members"])>=2
                 and best_group["min_support"] >= MIN_SUPPORT
                 and best_group["min_native"] >= 0.50
-                and best_group["min_local"] >= 0.50
                 and best_group["max_uncertainty"] <= 0.60
-                and best_group["mean_score"] >= 0.62
+                and best_group["mean_score"] >= 0.50
             )
             strong_single=(
                 best_group["min_support"] >= MIN_SUPPORT
                 and best_group["min_native"] >= 0.65
-                and best_group["min_local"] >= 0.75
                 and best_group["max_uncertainty"] <= 0.50
-                and best_group["mean_score"] >= 0.68
+                and best_group["mean_score"] >= 0.60
                 and margin >= 0.10
             )
             emit=consensus or strong_single
-
         selected=copy.deepcopy(best) if emit else None
+
         if feedback:
             target=items[0]["target"] if items else None
             if target is not None:
