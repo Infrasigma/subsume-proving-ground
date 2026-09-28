@@ -59,9 +59,12 @@ class Procedure:
         """Evaluate this procedure using only the observed episode prefix."""
         rows = tuple(prefix)
         fold_scores = []
-        for fold in (0, 1):
-            train_rows = rows[fold::2]
-            valid_rows = rows[1 - fold::2]
+        for fold in range(4):
+            valid_rows = tuple(rows[fold::4])
+            train_rows = tuple(
+                row for idx, row in enumerate(rows)
+                if idx % 4 != fold
+            )
             if not train_rows or not valid_rows:
                 continue
             probe = NativeCognitiveCore(
