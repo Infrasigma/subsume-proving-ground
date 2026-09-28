@@ -230,6 +230,8 @@ def run_seed(seed, kernel2):
     gen2_outer = _make_gen12_streams(seed + 4000, 6, rule="sign")
     p1 = Procedure("p1", 1, copy.deepcopy(kernel2))
 
+    gen3_inner = _make_gen3_streams(seed + 8000, 6, rule="parity_relation")
+    gen3_outer = _make_gen3_streams(seed + 9200, 6, rule="parity_relation")
     p2 = Procedure("p2", 2, _make_gen3_kernel())
 
     gen4_inner = _make_gen4_streams(seed + 12000, 6)
