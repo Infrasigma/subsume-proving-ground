@@ -2,6 +2,7 @@ from __future__ import annotations
 import argparse, hashlib, json, statistics
 from pathlib import Path
 from cognitive_core.native_independent_core import NativeCognitiveCore, digest
+from research.native_self_learning_kernel_gen2_corrected_retention_v1 import run as historical_gen2_run
 try:
     from research.native_self_learning_kernel_v2 import _make_streams
 except Exception:
@@ -28,6 +29,7 @@ def run(export_path,seed,source_commit):
     core=NativeCognitiveCore.from_state(state)
     roundtrip=core.export_state()
     return {
+      "historical_reexecution": historical_gen2_run(seed=771221),
       "schema":"ACSIE.l1-gen2-historical-core-compatibility.v1",
       "scientific_status":"COMPLETED",
       "seed":seed,
