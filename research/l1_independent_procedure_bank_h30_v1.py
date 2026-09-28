@@ -460,3 +460,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# H32 stable-observable-basis screen trigger.
