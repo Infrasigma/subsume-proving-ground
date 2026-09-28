@@ -1,39 +1,49 @@
-name: acsie-layer1-hierarchical-router-v2-20260928
+name: ACSIE Layer1 four-generation native H28 bank 20260928
 
 on:
   push:
+    branches:
+      - acsie/l1-four-generation-native-bank-h28-20260928
     paths:
       - ".github/workflows/acsie-layer1-four-generation-native-bank-h28-20260928.yml"
   workflow_dispatch:
     inputs:
       acsie_ref:
-        description: "Exact ACSIE commit SHA"
+        description: "Exact ACSIE source commit"
         required: true
-        default: "cf5c811a9cd0f0549ea07571602a6f24e367e455"
+        default: "6d6e76228f4efea9a35a3420b7fa89bbfdb57661"
         type: string
 
 permissions:
   contents: read
+  actions: read
+
+env:
+  ACSIE_SOURCE: "6d6e76228f4efea9a35a3420b7fa89bbfdb57661"
+  SOURCE_RUN: "36376031059"
+  VERIFIED_PARENT: "b31109864ae547320d877e6c1575b805d950edf9"
+  EXPORT_SOURCE: "94a2a770a5799fd386217998bc21b585632ef7ed"
+  VERIFIED_STATE_SHA256: "0b599e436c4578115cc0312dd6545f5d56c14777fcb55562592c5d8f4e8f80a9"
 
 jobs:
-  layer1-hierarchical-router-v2:
-    name: seed MATRIX_SEED
+  bank:
+    name: seed ${{ matrix.seed }}
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        seed: [2026092801, 2026092802, 2026092803, 2026092804, 2026092805]
+        seed: [2026092801,2026092802,2026092803,2026092804,2026092805]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout exact private ACSIE source
+      - name: Checkout exact ACSIE source
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'cf5c811a9cd0f0549ea07571602a6f24e367e455' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || env.ACSIE_SOURCE }}
         run: |
           set -euo pipefail
-          WORK=/tmp/acsie-l1-hier-v2
+          WORK=/tmp/acsie-l1-fourgen
           ASKPASS=/tmp/acsie-askpass.sh
           rm -rf "$WORK" "$ASKPASS"
           cat > "$ASKPASS" <<'EOF'
@@ -56,20 +66,54 @@ jobs:
           git -C "$WORK" rev-parse HEAD > acsie.commit
           git -C "$WORK" rev-parse HEAD^{tree} > acsie.tree
 
-      - name: Execute v2 diagnostic
+      - name: Download exact frozen Gen2 input
+        uses: actions/download-artifact@v4
+        with:
+          name: acsie-gen4-verified-gen2-input-${{ env.SOURCE_RUN }}
+          path: input
+          run-id: ${{ env.SOURCE_RUN }}
+          repository: Infrasigma/subsume-proving-ground
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download exact eight Gen4 shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: acsie-gen4-multi-shard-*-${{ env.SOURCE_RUN }}
+          path: shards
+          merge-multiple: true
+          run-id: ${{ env.SOURCE_RUN }}
+          repository: Infrasigma/subsume-proving-ground
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify exact inputs
+        run: |
+          set -euo pipefail
+          test -f input/verified-gen2-export.json
+          test -f input/verified-gen2-state.json
+          test "$(find shards -maxdepth 1 -name 'shard-*.json' | wc -l)" = "8"
+          python - <<'PY'
+          import hashlib, json
+          r=json.load(open("input/verified-gen2-export.json"))
+          assert r["scientific_status"] == "PASSED"
+          assert r["scientific_parent_commit"] == "b31109864ae547320d877e6c1575b805d950edf9"
+          h=hashlib.sha256(open("input/verified-gen2-state.json","rb").read()).hexdigest()
+          assert h == "0b599e436c4578115cc0312dd6545f5d56c14777fcb55562592c5d8f4e8f80a9"
+          PY
+
+      - name: Execute four-generation H28 bank
         env:
           SEED: ${{ matrix.seed }}
         run: |
           set -u
           WORK="$(cat acsie.work)"
-          EVIDENCE="$GITHUB_WORKSPACE/evidence-layer1-hierarchical-v2-$SEED-${{ github.run_id }}"
+          EVIDENCE="$GITHUB_WORKSPACE/evidence-fourgen-$SEED-${{ github.run_id }}"
           mkdir -p "$EVIDENCE"
           cp acsie.commit "$EVIDENCE/acsie.commit"
           cp acsie.tree "$EVIDENCE/acsie.tree"
-          cp "$WORK/research/l1_prediction_consensus_router_v1.py" "$EVIDENCE/l1_prediction_consensus_router_v1.py"
-          sha256sum "$EVIDENCE/l1_prediction_consensus_router_v1.py" > "$EVIDENCE/source.sha256"
+          cp "$WORK/research/l1_four_generation_native_bank_h28_v1.py" "$EVIDENCE/l1_four_generation_native_bank_h28_v1.py"
+          sha256sum "$EVIDENCE/l1_four_generation_native_bank_h28_v1.py" > "$EVIDENCE/source.sha256"
           set +e
-          PYTHONHASHSEED=0 PYTHONPATH="$WORK" timeout 900s python "$WORK/research/l1_prediction_consensus_router_v1.py" "$SEED" > "$EVIDENCE/$SEED.stdout.json" 2> "$EVIDENCE/$SEED.stderr.log"
+          PYTHONHASHSEED=0 PYTHONPATH="$WORK" timeout 1500s python             "$WORK/research/l1_four_generation_native_bank_h28_v1.py"             input/verified-gen2-export.json             --merge             shards/shard-0.json             shards/shard-1.json             shards/shard-2.json             shards/shard-3.json             shards/shard-4.json             shards/shard-5.json             shards/shard-6.json             shards/shard-7.json             --seed "$SEED"             > "$EVIDENCE/$SEED.stdout.json"             2> "$EVIDENCE/$SEED.stderr.log"
           RC=$?
           set -e
           printf '%s\n' "$RC" > "$EVIDENCE/exit_code"
@@ -88,13 +132,17 @@ jobs:
             echo "seed=$SEED"
             echo "acsie_ref=$(cat acsie.commit)"
             echo "acsie_tree=$(cat acsie.tree)"
-            echo "fresh_process_per_seed=true"
+            echo "verified_state_sha256=${VERIFIED_STATE_SHA256}"
+            echo "router_labels_exposed=false"
+            echo "task_routing=false"
             echo "external_model=false"
             echo "network_dependency=false"
-            echo "task_routing=false"
             echo "holdout_contamination=false"
             echo "manual_runtime_strategy=false"
           } > "$EVIDENCE/execution.provenance"
+          cp input/verified-gen2-export.json "$EVIDENCE/verified-gen2-export.json"
+          cp input/verified-gen2-state.json "$EVIDENCE/verified-gen2-state.json"
+          cp shards/shard-*.json "$EVIDENCE"/
           sha256sum "$EVIDENCE"/* > "$EVIDENCE/manifest.sha256"
           cat "$EVIDENCE/scientific_status.txt"
           echo "EVIDENCE_DIR=$EVIDENCE"
@@ -103,88 +151,74 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: acsie-layer1-hierarchical-v2-seed-${{ matrix.seed }}-${{ github.run_id }}
-          path: evidence-layer1-hierarchical-v2-${{ matrix.seed }}-${{ github.run_id }}
+          name: acsie-l1-fourgen-seed-${{ matrix.seed }}-${{ github.run_id }}
+          path: evidence-fourgen-${{ matrix.seed }}-${{ github.run_id }}
           if-no-files-found: error
           retention-days: 90
 
   aggregate:
     name: aggregate five-seed evidence
-    needs: layer1-hierarchical-router-v2
+    needs: bank
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: acsie-layer1-hierarchical-v2-seed-*-${{ github.run_id }}
-          path: multiseed-evidence
+          pattern: acsie-l1-fourgen-seed-*-${{ github.run_id }}
+          path: multiseed
           merge-multiple: true
 
-      - name: Aggregate
+      - name: Strict aggregate
         run: |
           set -euo pipefail
           python - <<'PY'
           import json, pathlib, sys
-          root = pathlib.Path("multiseed-evidence")
-          rows, bad = [], []
+          root=pathlib.Path("multiseed")
+          rows=[]; bad=[]
           for p in sorted(root.glob("*.stdout.json")):
-              try:
-                  rows.append(json.loads(p.read_text()))
-              except Exception as exc:
-                  bad.append(f"{p.name}: {exc}")
-
-          strict_layer1 = len(rows) == 5 and all(
-              r.get("decisions",{}).get("H15") == "PASSED"
-              and r.get("decisions",{}).get("H27") == "PASSED"
-              and r.get("decisions",{}).get("H18") == "PASSED"
-              for r in rows
-          )
-          strict_integrity = len(rows) == 5 and all(
-              r.get("replay",{}).get("deterministic_replay") is True
-              and r.get("preconditions",{}).get("all_pass") is True
-              and not any(r.get("integrity",{}).values())
-              for r in rows
-          )
-
-          if bad or len(rows) < 5 or any(r.get("scientific_status") == "CRASHED" for r in rows):
-              status = "CRASHED"
-          elif strict_layer1 and strict_integrity:
-              status = "PASSED"
-          else:
-              status = "FAILED"
-
-          out = {
-              "schema": "ACSIE.layer1-prediction-consensus-router-v1-multiseed",
-              "scientific_status": status,
-              "seed_count": len(rows),
-              "expected_seeds": [2026092801,2026092802,2026092803,2026092804,2026092805],
-              "strict_layer1": strict_layer1,
-              "strict_integrity": strict_integrity,
-              "decision_matrix": {
-                  "H15": [r.get("decisions",{}).get("H15") for r in rows],
-                  "H18": [r.get("decisions",{}).get("H18") for r in rows],
-                  "H23": [r.get("decisions",{}).get("H23") for r in rows],
-                  "H27": [r.get("decisions",{}).get("H27") for r in rows],
-              },
-              "source_commit": "cf5c811a9cd0f0549ea07571602a6f24e367e455",
-              "workflow_run": "${{ github.run_id }}",
-              "workflow_sha": "${{ github.sha }}",
-              "failures": bad,
+              try: rows.append(json.loads(p.read_text()))
+              except Exception as exc: bad.append(f"{p.name}: {exc}")
+          def good(r):
+              pm=r.get("phase_metrics",{})
+              return (
+                  r.get("scientific_status")=="PASSED"
+                  and r.get("reconstruction",{}).get("gen2_exact") is True
+                  and r.get("replay",{}).get("deterministic_replay") is True
+                  and all(pm.get(g,{}).get("coverage",0.0)>=0.70 and pm.get(g,{}).get("accuracy_on_covered",0.0)>=0.75 for g in ("gen1","gen2","gen3","gen4"))
+                  and r.get("conflict",{}).get("coverage",1.0)<=0.25
+                  and (r.get("conflict",{}).get("coverage",0.0)==0.0 or r.get("conflict",{}).get("accuracy_on_covered",1.0)<=0.50)
+                  and r.get("unseen_gen4",{}).get("coverage",0.0)>=0.70
+                  and r.get("unseen_gen4",{}).get("accuracy_on_covered",0.0)>=0.75
+                  and all(v>=0.60 for v in r.get("retention_after_sequence",{}).values())
+                  and not any(r.get("integrity",{}).values())
+              )
+          strict=len(rows)==5 and all(good(r) for r in rows)
+          status="CRASHED" if bad or len(rows)<5 else ("PASSED" if strict else "FAILED")
+          out={
+            "schema":"ACSIE.layer1-four-generation-native-bank-h28-v1-multiseed",
+            "scientific_status":status,
+            "seed_count":len(rows),
+            "strict":strict,
+            "source_commit":"6d6e76228f4efea9a35a3420b7fa89bbfdb57661",
+            "gen2_exact":[r.get("reconstruction",{}).get("gen2_exact") for r in rows],
+            "replay":[r.get("replay",{}).get("deterministic_replay") for r in rows],
+            "phase_metrics":[r.get("phase_metrics") for r in rows],
+            "conflict":[r.get("conflict") for r in rows],
+            "unseen_gen4":[r.get("unseen_gen4") for r in rows],
+            "retention":[r.get("retention_after_sequence") for r in rows],
+            "failures":bad,
           }
-          pathlib.Path("multiseed-aggregate.json").write_text(json.dumps(out, indent=2, sort_keys=True))
-          print(json.dumps(out, indent=2, sort_keys=True))
-          if status != "PASSED":
-              sys.exit(1)
+          pathlib.Path("multiseed-aggregate.json").write_text(json.dumps(out,indent=2,sort_keys=True))
+          print(json.dumps(out,indent=2,sort_keys=True))
+          if status!="PASSED": sys.exit(1)
           PY
 
       - name: Upload aggregate
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: acsie-layer1-hierarchical-v2-multiseed-aggregate-${{ github.run_id }}
+          name: acsie-l1-fourgen-aggregate-${{ github.run_id }}
           path: multiseed-aggregate.json
           if-no-files-found: error
           retention-days: 90
-
-# retrigger D42 challenger validation without scientific source changes
