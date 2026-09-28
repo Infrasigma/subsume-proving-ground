@@ -87,13 +87,16 @@ class ProcedureBank:
     def candidates(model):
         out = []
         for obs, action, nxt in model.holdout:
-            pred = model.core.predict(obs, action).get("prediction")
+            info = model.core.predict(obs, action)
+            pred = info.get("prediction")
             keys = _stable_context_keys(model.core, obs, action)
             out.append({
                 "procedure": model.procedure.name,
                 "index": model.procedure.index,
                 "prediction": copy.deepcopy(pred),
                 "evidence_keys": keys,
+                "native_score": float(info.get("arbitration_score", 0.0)),
+                "native_uncertainty": float(info.get("uncertainty", 1.0)),
                 "target": nxt,
             })
         return out
@@ -110,6 +113,12 @@ class ProcedureBank:
                     self.global_stats[p.name][0] += float(item["prediction"] == item["target"])
                     self.global_stats[p.name][1] += 1.0
 
+    @staticmethod
+    def _joint_score(native_score, historical_score):
+        if native_score <= 0.0 or historical_score <= 0.0:
+            return 0.0
+        return 2.0 * native_score * historical_score / (native_score + historical_score)
+
     def _rank(self, items):
         ranked = []
         for x in items:
@@ -124,24 +133,35 @@ class ProcedureBank:
 
             if key_metrics:
                 top = key_metrics[:3]
-                score = statistics.mean(v[0] for v in top)
+                historical = statistics.mean(v[0] for v in top)
                 support = min(v[1] for v in top) if len(top) >= 2 else top[0][1]
                 basis_count = len(key_metrics)
             else:
                 rec = self.global_stats[x["procedure"]]
                 support = float(rec[1])
-                score = (float(rec[0]) + 1.0) / (support + 2.0) if support else 0.0
+                historical = (float(rec[0]) + 1.0) / (support + 2.0) if support else 0.0
                 basis_count = 0
 
+            native = float(x.get("native_score", 0.0))
+            joint = self._joint_score(native, historical)
             ranked.append({
                 **x,
                 "support": support,
-                "score": score,
+                "historical_score": historical,
+                "native_score": native,
+                "native_uncertainty": float(x.get("native_uncertainty", 1.0)),
+                "score": joint,
                 "basis_count": basis_count,
             })
         return sorted(
             [x for x in ranked if x["prediction"] is not None],
-            key=lambda x: (x["score"], x["basis_count"], x["support"], -x["index"]),
+            key=lambda x: (
+                x["score"],
+                x["basis_count"],
+                x["support"],
+                x["native_score"],
+                -x["index"],
+            ),
             reverse=True,
         )
 
@@ -161,35 +181,53 @@ class ProcedureBank:
                 "mean_score": statistics.mean(x["score"] for x in members),
                 "min_basis": min(x["basis_count"] for x in members),
                 "min_support": min(x["support"] for x in members),
+                "min_native": min(x["native_score"] for x in members),
+                "max_uncertainty": max(x["native_uncertainty"] for x in members),
             })
         group_rows.sort(
-            key=lambda g: (len(g["members"]), g["mean_score"], g["min_basis"], g["min_support"]),
+            key=lambda g: (
+                len(g["members"]),
+                g["mean_score"],
+                g["min_basis"],
+                g["min_native"],
+                g["min_support"],
+            ),
             reverse=True,
         )
         best_group = group_rows[0]
         best = max(
             best_group["members"],
-            key=lambda x: (x["score"], x["basis_count"], x["support"], -x["index"]),
+            key=lambda x: (x["score"], x["basis_count"], x["native_score"], x["support"], -x["index"]),
         )
 
         if len(group_rows) == 1:
             emit = (
-                best_group["min_basis"] >= 2
+                best_group["min_basis"] >= 1
                 and best_group["min_support"] >= MIN_SUPPORT
+                and best_group["min_native"] >= 0.60
+                and best_group["max_uncertainty"] <= 0.50
                 and best_group["mean_score"] >= 0.70
             )
         else:
             runner = group_rows[1]
             margin = best_group["mean_score"] - runner["mean_score"]
-            consensus = len(best_group["members"]) >= 2
+            consensus = (
+                len(best_group["members"]) >= 2
+                and best_group["min_basis"] >= 1
+                and best_group["min_support"] >= MIN_SUPPORT
+                and best_group["min_native"] >= 0.60
+                and best_group["max_uncertainty"] <= 0.50
+                and best_group["mean_score"] >= 0.70
+            )
             strong_single = (
                 best_group["min_basis"] >= 2
                 and best_group["min_support"] >= MIN_SUPPORT
+                and best_group["min_native"] >= 0.70
+                and best_group["max_uncertainty"] <= 0.40
                 and best_group["mean_score"] >= 0.80
                 and margin >= 0.15
             )
-            emit = consensus and best_group["mean_score"] >= 0.70 and best_group["min_support"] >= MIN_SUPPORT
-            emit = emit or strong_single
+            emit = consensus or strong_single
 
         selected = copy.deepcopy(best) if emit else None
 
