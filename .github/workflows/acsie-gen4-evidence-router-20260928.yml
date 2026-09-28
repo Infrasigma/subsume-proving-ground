@@ -13,7 +13,7 @@ permissions:
   actions: read
 
 env:
-  ACSIE_SOURCE: "84e452c1067a4ebfa8721baec2d0046ce129a1a5"
+  ACSIE_SOURCE: "ea4a3dbb5c709b9914ab39063c9a352547798cf2"
   SOURCE_RUN: "36376031059"
   VERIFIED_PARENT: "b31109864ae547320d877e6c1575b805d950edf9"
   EXPORT_SOURCE: "94a2a770a5799fd386217998bc21b585632ef7ed"
@@ -39,8 +39,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
-          test -f research/gen4_evidence_router_v1.py
-          ! grep -F "\\n" research/gen4_evidence_router_v1.py
+          test -f research/gen4_context_calibrated_bank_v1.py
+          ! grep -F "\\n" research/gen4_context_calibrated_bank_v1.py
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
