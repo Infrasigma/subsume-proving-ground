@@ -54,7 +54,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f input/verified-gen2-state.json
-          PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie"             python research/l1_independent_procedure_bank_h30_v1.py             "$GITHUB_WORKSPACE/input/verified-gen2-state.json"             --seed "$SEED" > "h30-$SEED.json"
+          PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie" python research/l1_independent_procedure_bank_h30_v1.py "$GITHUB_WORKSPACE/input/verified-gen2-state.json" --seed "$SEED" > "h30-$SEED.json"
 
       - name: Upload H30 evidence
         if: always()
@@ -95,3 +95,4 @@ jobs:
           path: h30-aggregate.json
           if-no-files-found: error
           retention-days: 7
+# retrigger after workflow registration
