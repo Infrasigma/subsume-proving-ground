@@ -190,3 +190,5 @@ jobs:
           path: multiseed-aggregate.json
           if-no-files-found: error
           retention-days: 90
+
+# retrigger D42 challenger validation without scientific source changes
