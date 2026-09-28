@@ -1,23 +1,24 @@
-name: ACSIE L1 Gen2 direct materialization H29 20260928
+name: ACSIE L1 Gen2 materialization H29b diagnostic 20260928
 
 on:
   push:
     branches:
-      - acsie/l1-gen2-direct-materialization-h29-20260928
+      - acsie/l1-gen2-materialization-h29b-20260928
     paths:
-      - ".github/workflows/acsie-l1-gen2-direct-materialization-h29-20260928.yml"
+      - ".github/workflows/acsie-l1-gen2-direct-materialization-h2928.yml"
+      - "research/l1_gen2_materialization_h29b_v1.py"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  ACSIE_SOURCE: "cc6c5d8e83e4b698550638bb440b2c51fb8b9f1a"
-  DIAGNOSTIC_VERSION: "h29-1"
+  ACSIE_SOURCE: "4ee969818df26c54dddccd8f3683e9e33778e3db"
+  DIAGNOSTIC_VERSION: "h29b-1"
 
 jobs:
   screen:
-    name: canonical Gen2 screen
+    name: Gen2 materialization mechanism diagnostic
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -34,14 +35,14 @@ jobs:
       - name: Verify source
         working-directory: acsie
         run: test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
-      - name: Execute H29 screen
+      - name: Execute H29b diagnostic
         run: |
           set -euo pipefail
-          PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie"             python research/l1_gen2_direct_materialization_h29_v1.py --seed 771221 > h29.json
-      - name: Upload screen
+          PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie" python research/l1_gen2_materialization_h29b_v1.py --seed 771221 > h29b.json
+      - name: Upload diagnostic
         uses: actions/upload-artifact@v4
         with:
-          name: acsie-l1-gen2-direct-materialization-h29-${{ github.run_id }}
-          path: h29.json
+          name: acsie-l1-gen2-materialization-h29b-${{ github.run_id }}
+          path: h29b.json
           if-no-files-found: error
           retention-days: 90
