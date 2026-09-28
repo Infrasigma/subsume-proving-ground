@@ -121,7 +121,8 @@ jobs:
           assert r["scientific_status"]=="COMPUTATION_COMPLETE", r
           assert r["protocol"]["candidate_count"]==128, r
           print("SHARD", r["shard"]["index"], "CANDIDATES", r["shard"]["candidate_count"])
-          print("SOURCE", r["provenance"]["executed_source_commit"])
+          print("HARNESS_SOURCE", r["provenance"]["executed_harness_commit"])
+          print("SCIENTIFIC_CORE_SOURCE", r["provenance"]["scientific_core_source_commit"])
           print("SET_DIGEST", r["protocol"]["candidate_set_digest"])
           PY
       - name: Upload shard evidence
