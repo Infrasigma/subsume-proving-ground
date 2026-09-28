@@ -1,0 +1,119 @@
+name: ACSIE merge preserved exact Gen3 shard evidence
+
+on:
+  push:
+    branches:
+      - acsie/protected-gen3-exact-sharded-20260928
+    paths:
+      - ".github/workflows/acsie-gen3-merge-preserved-shards-20260928.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_SOURCE: "08e3d6732c5555e765cf32ea4030f9cd02d711f7"
+  PRIOR_RUN_ID: "36373562036"
+  ACSIE_EXPORT_SOURCE: "94a2a770a5799fd386217998bc21b585632ef7ed"
+  VERIFIED_PARENT: "b31109864ae547320d877e6c1575b805d950edf9"
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact patched ACSIE merge harness
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_SOURCE }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact harness source and scientific core ancestry
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
+          test -f research/gen3_frozen_verified_gen2_sharded_v1.py
+          git diff --name-only eced0c7ed816b0baa15769fd841abde62fcccbd5 | tee ../core-diff.txt
+          test "$(cat ../core-diff.txt)" = "research/gen3_frozen_verified_gen2_sharded_v1.py"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download frozen Gen2 input from preserved run
+        uses: actions/download-artifact@v4
+        with:
+          name: acsie-verified-gen2-input-${{ env.PRIOR_RUN_ID }}
+          path: input
+          repository: Infrasigma/subsume-proving-ground
+          run-id: ${{ env.PRIOR_RUN_ID }}
+
+      - name: Download all eight preserved shard artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: acsie-gen3-exact-shard-*-${{ env.PRIOR_RUN_ID }}
+          path: shards
+          merge-multiple: true
+          repository: Infrasigma/subsume-proving-ground
+          run-id: ${{ env.PRIOR_RUN_ID }}
+
+      - name: Verify preserved artifact coverage
+        run: |
+          set -euo pipefail
+          test "$(find shards -maxdepth 1 -name 'shard-*.json' | wc -l)" = "8"
+          sha256sum shards/shard-*.json | tee shard-artifact-sha256.txt
+          cat input/provenance.txt
+          cat core-diff.txt
+
+      - name: Merge preserved exact candidate evaluations and run unchanged final gate
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. python research/gen3_frozen_verified_gen2_sharded_v1.py \
+            ../input/verified-gen2-export.json \
+            --merge \
+            ../shards/shard-0.json \
+            ../shards/shard-1.json \
+            ../shards/shard-2.json \
+            ../shards/shard-3.json \
+            ../shards/shard-4.json \
+            ../shards/shard-5.json \
+            ../shards/shard-6.json \
+            ../shards/shard-7.json \
+            > ../gen3-final.json
+          cat ../gen3-final.json
+
+      - name: Package final evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp input/verified-gen2-export.json evidence/
+          cp input/verified-gen2-state.json evidence/
+          cp input/provenance.txt evidence/
+          cp core-diff.txt evidence/
+          cp shard-artifact-sha256.txt evidence/
+          cp gen3-final.json evidence/
+          cp shards/shard-*.json evidence/
+          printf '%s\n' \
+            "prior_workflow_run=${{ env.PRIOR_RUN_ID }}" \
+            "merge_workflow_run=${{ github.run_id }}" \
+            "merge_workflow_sha=${{ github.sha }}" \
+            "acsie_merge_harness=${{ env.ACSIE_SOURCE }}" \
+            "scientific_core_source=eced0c7ed816b0baa15769fd841abde62fcccbd5" \
+            "historical_parent=${{ env.VERIFIED_PARENT }}" \
+            "candidate_count=128" > evidence/merge-provenance.txt
+          sha256sum evidence/verified-gen2-state.json > evidence/state.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acsie-gen3-merged-preserved-evidence-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: error
