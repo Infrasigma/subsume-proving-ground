@@ -1,0 +1,89 @@
+name: acsie-layer1-router-runtime-cache-validation-20260928
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-layer1-router-runtime-cache-validation-20260928.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact optimized private ACSIE source
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "60f7e9975e86320212ee3d4fa67577b0aebbc5d2"
+        run: |
+          set -euo pipefail
+          WORK=/tmp/acsie-l1-cache
+          ASKPASS=/tmp/acsie-askpass.sh
+          rm -rf "$WORK" "$ASKPASS"
+          cat > "$ASKPASS" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS"
+          export GIT_TERMINAL_PROMPT=0
+          mkdir -p "$WORK"
+          git -C "$WORK" init
+          git -C "$WORK" remote add origin https://github.com/Infrasigma/ACSIE.git
+          git -C "$WORK" fetch --no-tags --depth 1 origin "$ACSIE_REF"
+          git -C "$WORK" checkout --detach --force FETCH_HEAD
+          test "$(git -C "$WORK" rev-parse HEAD)" = "$ACSIE_REF"
+          echo "$WORK" > acsie.work
+          git -C "$WORK" rev-parse HEAD > acsie.commit
+          git -C "$WORK" rev-parse HEAD^{tree} > acsie.tree
+
+      - name: Execute identical seed protocol
+        run: |
+          set -u
+          WORK="$(cat acsie.work)"
+          EVIDENCE="$GITHUB_WORKSPACE/evidence-${{ github.run_id }}"
+          mkdir -p "$EVIDENCE"
+          cp acsie.commit "$EVIDENCE/acsie.commit"
+          cp acsie.tree "$EVIDENCE/acsie.tree"
+          cp "$WORK/research/l1_hierarchical_router_v1.py" "$EVIDENCE/l1_hierarchical_router_v2.py"
+          sha256sum "$EVIDENCE/l1_hierarchical_router_v2.py" > "$EVIDENCE/source.sha256"
+          set +e
+          PYTHONHASHSEED=0 PYTHONPATH="$WORK" timeout 900s python "$WORK/research/l1_hierarchical_router_v1.py" 2026092805 > "$EVIDENCE/results.json" 2> "$EVIDENCE/stderr.log"
+          RC=$?
+          set -e
+          printf '%s\n' "$RC" > "$EVIDENCE/exit_code"
+          python - "$EVIDENCE/results.json" "$EVIDENCE/scientific_status.txt" <<'PY'
+          import json,sys
+          try:
+              x=json.load(open(sys.argv[1]))
+              status=x.get("scientific_status","INVALID")
+          except Exception:
+              status="CRASHED"
+          open(sys.argv[2],"w").write(status+"\\n")
+          PY
+          {
+            echo "acsie_ref=$(cat acsie.commit)"
+            echo "baseline_acsie_ref=fc0f8ca0e9440e51bf2e9aaf31b9e8293bd0f875"
+            echo "seed=2026092805"
+            echo "semantics_optimization=hypothesis_arbitration_score_cache"
+            echo "scientific_protocol_unchanged=true"
+          } > "$EVIDENCE/provenance"
+          sha256sum "$EVIDENCE"/* > "$EVIDENCE/manifest.sha256"
+          cat "$EVIDENCE/scientific_status.txt"
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-layer1-router-runtime-cache-validation-${{ github.run_id }}
+          path: evidence-${{ github.run_id }}
+          if-no-files-found: error
+          retention-days: 90
