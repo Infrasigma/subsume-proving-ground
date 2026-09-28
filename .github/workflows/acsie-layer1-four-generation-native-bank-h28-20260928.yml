@@ -61,8 +61,10 @@ jobs:
           git -C "$WORK" init
           git -C "$WORK" remote add origin https://github.com/Infrasigma/ACSIE.git
           git -C "$WORK" fetch --no-tags --depth 1 origin "$ACSIE_BRANCH"
-          git -C "$WORK" checkout --detach --force "$ACSIE_SOURCE"
-          test "$(git -C "$WORK" rev-parse HEAD)" = "$ACSIE_SOURCE"
+          git -C "$WORK" checkout --detach --force "origin/$ACSIE_BRANCH"
+          ACTUAL_SHA="$(git -C "$WORK" rev-parse HEAD)"
+          test "$ACTUAL_SHA" = "$ACSIE_SOURCE"
+          test "$(git -C "$WORK" rev-parse HEAD^{tree})" != ""
           echo "$WORK" > acsie.work
           git -C "$WORK" rev-parse HEAD > acsie.commit
           git -C "$WORK" rev-parse HEAD^{tree} > acsie.tree
