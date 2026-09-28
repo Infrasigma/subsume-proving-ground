@@ -134,3 +134,5 @@ jobs:
           path: evidence/
           if-no-files-found: error
 # trigger branch-purity qualification
+
+# rerun after harness normalization
