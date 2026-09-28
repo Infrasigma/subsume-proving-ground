@@ -9,7 +9,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE commit SHA"
         required: true
-        default: "fc0f8ca0e9440e51bf2e9aaf31b9e8293bd0f875"
+        default: "60f7e9975e86320212ee3d4fa67577b0aebbc5d2"
         type: string
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
       - name: Checkout exact private ACSIE source
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'fc0f8ca0e9440e51bf2e9aaf31b9e8293bd0f875' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '60f7e9975e86320212ee3d4fa67577b0aebbc5d2' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-l1-hier-v2
@@ -172,7 +172,7 @@ jobs:
                   "H4": [r.get("decisions",{}).get("H4") for r in rows],
                   "H5": [r.get("decisions",{}).get("H5") for r in rows],
               },
-              "source_commit": "fc0f8ca0e9440e51bf2e9aaf31b9e8293bd0f875",
+              "source_commit": "60f7e9975e86320212ee3d4fa67577b0aebbc5d2",
               "workflow_run": "${{ github.run_id }}",
               "workflow_sha": "${{ github.sha }}",
               "failures": bad,
