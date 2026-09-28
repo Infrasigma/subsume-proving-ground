@@ -1,4 +1,5 @@
 name: ACSIE exact protected Gen3 deterministic sharded continuation
+# Reproduction pin: canonicalized protocol-sequence harness
 
 on:
   push:
