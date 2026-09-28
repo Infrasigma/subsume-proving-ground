@@ -1,143 +1,18 @@
-name: ACSIE clean Gen4 evidence router qualification
-
+name: ACSIE evidence-router same-path probe
 on:
   push:
     branches:
-      - acsie/gen4-evidence-router-clean-20260928
-    paths:
-      - ".github/workflows/acsie-gen4-evidence-router-clean-20260928.yml"
-  workflow_dispatch:
-
+      - acsie/gen4-evidence-router-calibration-repair-20260928
 permissions:
-  contents: read
-  actions: read
-
-env:
-  ACSIE_SOURCE: "acsie/gen4-evidence-router-clean-20260928"
-  SOURCE_RUN: "36376031059"
-  VERIFIED_PARENT: "b31109864ae547320d877e6c1575b805d950edf9"
-  EXPORT_SOURCE: "94a2a770a5799fd386217998bc21b585632ef7ed"
-  VERIFIED_STATE_SHA256: "0b599e436c4578115cc0312dd6545f5d56c14777fcb55562592c5d8f4e8f80a9"
-
+  issues: write
 jobs:
-  evidence-router-clean:
+  probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout exact evidence-router harness
-        uses: actions/checkout@v4
-        with:
-          repository: Infrasigma/ACSIE
-          ref: ${{ env.ACSIE_SOURCE }}
-          token: ${{ secrets.ACSIE_READ_TOKEN }}
-          path: acsie
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Verify exact evidence-router harness
-        working-directory: acsie
+      - name: Probe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
-          expected_sha="$(git rev-parse "${ACSIE_SOURCE}")"
-          test "$(git rev-parse HEAD)" = "${expected_sha}"
-          test -f research/gen4_evidence_router_v1.py
-          ! grep -F "\\n" research/gen4_evidence_router_v1.py
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Download exact frozen Gen2 input
-        uses: actions/download-artifact@v4
-        with:
-          name: acsie-gen4-verified-gen2-input-${{ env.SOURCE_RUN }}
-          path: input
-          run-id: ${{ env.SOURCE_RUN }}
-          repository: Infrasigma/subsume-proving-ground
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Download exact eight Gen4 shards
-        uses: actions/download-artifact@v4
-        with:
-          pattern: acsie-gen4-multi-shard-*-${{ env.SOURCE_RUN }}
-          path: shards
-          merge-multiple: true
-          run-id: ${{ env.SOURCE_RUN }}
-          repository: Infrasigma/subsume-proving-ground
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Verify exact inputs
-        run: |
-          set -euo pipefail
-          test -f input/verified-gen2-export.json
-          test -f input/verified-gen2-state.json
-          test "$(find shards -maxdepth 1 -name "shard-*.json" | wc -l)" = "8"
-          python - <<'PY'
-          import hashlib, json
-          r=json.load(open("input/verified-gen2-export.json"))
-          assert r["scientific_status"] == "PASSED", r
-          assert r["scientific_parent_commit"] == "b31109864ae547320d877e6c1575b805d950edf9", r
-          h=hashlib.sha256(open("input/verified-gen2-state.json","rb").read()).hexdigest()
-          assert h == "0b599e436c4578115cc0312dd6545f5d56c14777fcb55562592c5d8f4e8f80a9", h
-          PY
-      - name: Execute exact evidence-calibrated gate
-        working-directory: acsie
-        run: |
-          set -u
-          PYTHONPATH=. python research/gen4_evidence_router_v1.py \
-            ../input/verified-gen2-export.json \
-            --merge \
-            ../shards/shard-0.json \
-            ../shards/shard-1.json \
-            ../shards/shard-2.json \
-            ../shards/shard-3.json \
-            ../shards/shard-4.json \
-            ../shards/shard-5.json \
-            ../shards/shard-6.json \
-            ../shards/shard-7.json \
-            > ../evidence-router-final.json
-          rc=$?
-          cat ../evidence-router-final.json
-          python - <<'PY'
-          import json
-          r=json.load(open("../evidence-router-final.json"))
-          print("SCIENTIFIC_STATUS",r["scientific_status"])
-          print("GEN4_HOLDOUT_GAIN",r["gen4_overlay"]["holdout_gain"])
-          print("GEN4_TRANSFER_GAIN",r["gen4_overlay"]["transfer_gain"])
-          print("GEN1_OVERLAY",r["retention"]["gen1_base"],r["retention"]["gen1_overlay"])
-          print("GEN2_OVERLAY",r["retention"]["gen2_base"],r["retention"]["gen2_overlay"])
-          print("GEN3_OVERLAY",r["retention"]["gen3_base"],r["retention"]["gen3_overlay"])
-          print("DETERMINISTIC_REPLAY",r["replay"]["deterministic_replay"])
-          assert r["scientific_status"] in {"PASSED","FAILED"}
-          PY
-          test "$rc" = "0"
-      - name: Package evidence
-        if: always()
-        run: |
-          set -euo pipefail
-          mkdir -p evidence
-          cp input/verified-gen2-export.json evidence/
-          cp input/verified-gen2-state.json evidence/
-          cp shards/shard-*.json evidence/
-          cp evidence-router-final.json evidence/
-          sha256sum evidence/verified-gen2-state.json > evidence/state.sha256
-          printf "%s\n" \
-            "experiment=H-GEN4-EVIDENCE-ROUTER" \
-            "source_candidate_run=${SOURCE_RUN}" \
-            "evidence_router_harness=${ACSIE_SOURCE}" \
-            "workflow_run=${{ github.run_id }}" \
-            "workflow_sha=${{ github.sha }}" \
-            "verified_state_sha256=${VERIFIED_STATE_SHA256}" \
-            "candidate_count=128" \
-            "shard_count=8" > evidence/execution-provenance.txt
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: acsie-gen4-evidence-router-clean-${{ github.run_id }}
-          path: evidence/
-          if-no-files-found: error
-# trigger clean evidence-router qualification
-
-# pin corrected ACSIE commit
-
-# resolve ACSIE clean branch by name
-
-# fix branch-vs-SHA provenance check
-
-# trigger corrected provenance check
+          echo "same-path probe reached: run=${{ github.run_id }} sha=${{ github.sha }}" > same-path.txt
+          gh issue comment 82 --repo Infrasigma/subsume-proving-ground --body-file same-path.txt

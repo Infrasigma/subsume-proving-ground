@@ -1,0 +1,17 @@
+name: ACSIE router CI trigger smoke
+on:
+  push:
+    branches:
+      - acsie/gen4-evidence-router-calibration-repair-20260928
+permissions:
+  issues: write
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report trigger
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf 'CI smoke reached runner: workflow_run=%s workflow_sha=%s\n' "${{ github.run_id }}" "${{ github.sha }}" > smoke.txt
+          gh issue comment 82 --repo Infrasigma/subsume-proving-ground --body-file smoke.txt
