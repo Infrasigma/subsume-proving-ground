@@ -38,6 +38,7 @@ jobs:
           root = pathlib.Path("multiseed-evidence")
           rows = []
           sources = []
+          provenance = []
           failures = []
 
           for p in sorted(root.rglob("*.stdout.json")):
@@ -48,6 +49,8 @@ jobs:
 
           for p in sorted(root.rglob("acsie.commit")):
               sources.append(p.read_text().strip())
+          for p in sorted(root.rglob("execution.provenance")):
+              provenance.append(p.read_text())
 
           expected_seeds = [2026092801,2026092802,2026092803,2026092804,2026092805]
           observed_seeds = sorted(
@@ -76,9 +79,18 @@ jobs:
               and not any(data.get("integrity", {}).values())
               for _p, data in rows
           )
+          provenance_refs = []
+          provenance_seeds = []
+          for provenance_text in provenance:
+              for line in provenance_text.splitlines():
+                  if line.startswith("acsie_ref="):
+                      provenance_refs.append(line.split("=", 1)[1].strip())
+                  if line.startswith("seed="):
+                      provenance_seeds.append(int(line.split("=", 1)[1].strip()))
           all_source = (
-              len(sources) == 5
-              and set(sources) == {"b1c4052423bef9a0235ae3ffab3daa92da3196ab"}
+              len(provenance_refs) == 5
+              and set(provenance_refs) == {"b1c4052423bef9a0235ae3ffab3daa92da3196ab"}
+              and sorted(provenance_seeds) == expected_seeds
           )
 
           aggregate_status = (
@@ -120,6 +132,8 @@ jobs:
               },
               "failures": failures,
               "source_commit_values": sorted(set(sources)),
+              "provenance_record_count": len(provenance),
+              "provenance_seed_values": sorted(provenance_seeds),
           }
 
           pathlib.Path("final-multiseed-aggregate.json").write_text(
