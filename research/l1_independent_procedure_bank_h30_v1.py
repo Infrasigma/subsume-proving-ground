@@ -185,6 +185,8 @@ class EpisodeModel:
         self.local_score = float(local_score)
         self.native_score = float(native_score)
         self.fit_native_score = float(fit_native_score)
+        self.causal_score = float(causal_score)
+        self.causal_native_score = float(causal_native_score)
 
 class ProcedureBank:
     def __init__(self, procedures):
