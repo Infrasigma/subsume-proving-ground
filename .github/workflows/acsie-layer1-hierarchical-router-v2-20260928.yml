@@ -9,7 +9,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE commit SHA"
         required: true
-        default: "d42bdc639c0ee24eb647fe09ca84783783e6c793"
+        default: "726db9b1d51ec620cecba25d69e41b0910b8ae1a"
         type: string
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
       - name: Checkout exact private ACSIE source
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'd42bdc639c0ee24eb647fe09ca84783783e6c793' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '726db9b1d51ec620cecba25d69e41b0910b8ae1a' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-l1-hier-v2
@@ -66,10 +66,10 @@ jobs:
           mkdir -p "$EVIDENCE"
           cp acsie.commit "$EVIDENCE/acsie.commit"
           cp acsie.tree "$EVIDENCE/acsie.tree"
-          cp "$WORK/research/l1_context_schema_challenger_v1.py" "$EVIDENCE/l1_context_schema_challenger_v1.py"
-          sha256sum "$EVIDENCE/l1_context_schema_challenger_v1.py" > "$EVIDENCE/source.sha256"
+          cp "$WORK/research/l1_context_schema_one_success_challenger_v1.py" "$EVIDENCE/l1_context_schema_one_success_challenger_v1.py"
+          sha256sum "$EVIDENCE/l1_context_schema_one_success_challenger_v1.py" > "$EVIDENCE/source.sha256"
           set +e
-          PYTHONHASHSEED=0 PYTHONPATH="$WORK" timeout 900s python "$WORK/research/l1_context_schema_challenger_v1.py" "$SEED" > "$EVIDENCE/$SEED.stdout.json" 2> "$EVIDENCE/$SEED.stderr.log"
+          PYTHONHASHSEED=0 PYTHONPATH="$WORK" timeout 900s python "$WORK/research/l1_context_schema_one_success_challenger_v1.py" "$SEED" > "$EVIDENCE/$SEED.stdout.json" 2> "$EVIDENCE/$SEED.stderr.log"
           RC=$?
           set -e
           printf '%s\n' "$RC" > "$EVIDENCE/exit_code"
@@ -134,13 +134,10 @@ jobs:
               except Exception as exc:
                   bad.append(f"{p.name}: {exc}")
 
-          strict_static = len(rows) == 5 and all(
+          strict_layer1 = len(rows) == 5 and all(
               r.get("decisions",{}).get("H15") == "PASSED"
-              and r.get("decisions",{}).get("H16") == "PASSED"
-              for r in rows
-          )
-          strict_online = len(rows) == 5 and all(
-              r.get("decisions",{}).get("H17") == "PASSED"
+              and r.get("decisions",{}).get("H20") == "PASSED"
+              and r.get("decisions",{}).get("H18") == "PASSED"
               for r in rows
           )
           strict_integrity = len(rows) == 5 and all(
@@ -152,26 +149,25 @@ jobs:
 
           if bad or len(rows) < 5 or any(r.get("scientific_status") == "CRASHED" for r in rows):
               status = "CRASHED"
-          elif strict_static and strict_online and strict_integrity:
+          elif strict_layer1 and strict_integrity:
               status = "PASSED"
           else:
               status = "FAILED"
 
           out = {
-              "schema": "ACSIE.layer1-context-schema-challenger-router-v1-multiseed",
+              "schema": "ACSIE.layer1-context-schema-one-success-challenger-v1-multiseed",
               "scientific_status": status,
               "seed_count": len(rows),
               "expected_seeds": [2026092801,2026092802,2026092803,2026092804,2026092805],
-              "strict_compositional_static": strict_static,
-              "strict_discounted_ucb_online": strict_online,
+              "strict_layer1": strict_layer1,
               "strict_integrity": strict_integrity,
               "decision_matrix": {
-                  "H6": [r.get("decisions",{}).get("H15") for r in rows],
-                  "H7": [r.get("decisions",{}).get("H16") for r in rows],
-                  "H7": [r.get("decisions",{}).get("H16") for r in rows],
-                  "H8": [r.get("decisions",{}).get("H17") for r in rows],
+                  "H15": [r.get("decisions",{}).get("H15") for r in rows],
+                  "H18": [r.get("decisions",{}).get("H18") for r in rows],
+                  "H20": [r.get("decisions",{}).get("H20") for r in rows],
+                  "H17_control": [r.get("decisions",{}).get("H17") for r in rows],
               },
-              "source_commit": "d42bdc639c0ee24eb647fe09ca84783783e6c793",
+              "source_commit": "726db9b1d51ec620cecba25d69e41b0910b8ae1a",
               "workflow_run": "${{ github.run_id }}",
               "workflow_sha": "${{ github.sha }}",
               "failures": bad,
