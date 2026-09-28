@@ -98,13 +98,20 @@ class Procedure:
 class ApplicableProcedure:
     """A procedure bound to one episode prefix, usable only after selection."""
 
-    __slots__ = ("procedure", "core", "local_score", "native_score")
+    __slots__ = (
+        "procedure",
+        "core",
+        "local_score",
+        "native_score",
+        "fit_native_score",
+    )
 
-    def __init__(self, procedure, core, local_score, native_score):
+    def __init__(self, procedure, core, local_score, native_score, fit_native_score):
         self.procedure = procedure
         self.core = core
         self.local_score = float(local_score)
         self.native_score = float(native_score)
+        self.fit_native_score = float(fit_native_score)
 
     def predict(self, suffix):
         """Predict on the post-selection suffix without inspecting its targets."""
@@ -114,13 +121,29 @@ class ApplicableProcedure:
         )
 
 class EpisodeModel:
-    __slots__ = ("procedure", "core", "holdout", "local_score", "native_score")
-    def __init__(self, procedure, core, holdout, local_score, native_score):
+    __slots__ = (
+        "procedure",
+        "core",
+        "holdout",
+        "local_score",
+        "native_score",
+        "fit_native_score",
+    )
+    def __init__(
+        self,
+        procedure,
+        core,
+        holdout,
+        local_score,
+        native_score,
+        fit_native_score,
+    ):
         self.procedure = procedure
         self.core = core
         self.holdout = tuple(holdout)
         self.local_score = float(local_score)
         self.native_score = float(native_score)
+        self.fit_native_score = float(fit_native_score)
 
 class ProcedureBank:
     def __init__(self, procedures):
@@ -142,6 +165,7 @@ class ProcedureBank:
             rows[split:],
             applicable.local_score,
             applicable.native_score,
+            applicable.fit_native_score,
         )
 
     def build_models(self, streams):
