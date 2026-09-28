@@ -131,3 +131,4 @@ jobs:
           name: acsie-gen4-evidence-router-${{ github.run_id }}
           path: evidence/
           if-no-files-found: error
+# trigger evidence-router qualification
