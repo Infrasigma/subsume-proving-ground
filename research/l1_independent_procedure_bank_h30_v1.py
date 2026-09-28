@@ -55,6 +55,51 @@ class Procedure:
     index: int
     kernel: LearningKernel
 
+    def evaluate_applicability(self, prefix, stream_index):
+        """Evaluate this procedure using only the observed episode prefix."""
+        rows = tuple(prefix)
+        fold_scores = []
+        for fold in (0, 1):
+            train_rows = rows[fold::2]
+            valid_rows = rows[1 - fold::2]
+            if not train_rows or not valid_rows:
+                continue
+            probe = NativeCognitiveCore(
+                seed=920000 + self.index * 10000 + stream_index * 4 + fold
+            )
+            probe.learning_kernel = copy.deepcopy(self.kernel)
+            probe.observe_batch(tuple(train_rows))
+            fold_scores.extend(
+                float(probe.predict(obs, action).get("prediction") == nxt)
+                for obs, action, nxt in valid_rows
+            )
+        local_score = statistics.mean(fold_scores) if fold_scores else 0.0
+
+        core = NativeCognitiveCore(
+            seed=920000 + self.index * 10000 + stream_index * 4 + 2
+        )
+        core.learning_kernel = copy.deepcopy(self.kernel)
+        core.observe_batch(rows)
+        return ApplicableProcedure(self, core, local_score)
+
+
+class ApplicableProcedure:
+    """A procedure bound to one episode prefix, usable only after selection."""
+
+    __slots__ = ("procedure", "core", "local_score")
+
+    def __init__(self, procedure, core, local_score):
+        self.procedure = procedure
+        self.core = core
+        self.local_score = float(local_score)
+
+    def predict(self, suffix):
+        """Predict on the post-selection suffix without inspecting its targets."""
+        return tuple(
+            (copy.deepcopy(obs), action, self.core.predict(obs, action))
+            for obs, action, _target in suffix
+        )
+
 class EpisodeModel:
     __slots__ = ("procedure", "core", "holdout", "local_score")
     def __init__(self, procedure, core, holdout, local_score):
@@ -75,31 +120,14 @@ class ProcedureBank:
         split = max(2, len(rows) * 2 // 3)
         prefix = tuple(rows[:split])
 
-        # Symmetric two-fold applicability probe over the observed prefix.
-        # The holdout suffix remains completely untouched by this router test.
-        fold_scores = []
-        for fold in (0, 1):
-            train_rows = prefix[fold::2]
-            valid_rows = prefix[1 - fold::2]
-            if not train_rows or not valid_rows:
-                continue
-            probe = NativeCognitiveCore(
-                seed=920000 + procedure.index * 10000 + stream_index * 4 + fold
-            )
-            probe.learning_kernel = copy.deepcopy(procedure.kernel)
-            probe.observe_batch(tuple(train_rows))
-            fold_scores.extend(
-                float(probe.predict(obs, action).get("prediction") == nxt)
-                for obs, action, nxt in valid_rows
-            )
-        local_score = statistics.mean(fold_scores) if fold_scores else 0.0
-
-        core = NativeCognitiveCore(
-            seed=920000 + procedure.index * 10000 + stream_index * 4 + 2
+        # Applicability is evaluated independently from the observed prefix only.
+        applicable = procedure.evaluate_applicability(prefix, stream_index)
+        return EpisodeModel(
+            procedure,
+            applicable.core,
+            rows[split:],
+            applicable.local_score,
         )
-        core.learning_kernel = copy.deepcopy(procedure.kernel)
-        core.observe_batch(prefix)
-        return EpisodeModel(procedure, core, rows[split:], local_score)
 
     def build_models(self, streams):
         return {
@@ -303,23 +331,45 @@ class ProcedureBank:
             ),
             reverse=True,
         )
-        selected_name = candidates[0]["procedure"]
-        selected_model = episode_models[selected_name]
-        rows = self.candidates(selected_model)
+        selected_name = candidates[0]["procedure"] if candidates else None
+        if selected_name is None:
+            return {
+                "selected_procedure": None,
+                "procedure_local_scores": candidates,
+                "rows": len(next(iter(episode_models.values())).holdout) if episode_models else 0,
+                "coverage": 0.0,
+                "accuracy_on_covered": 0.0,
+            }
 
-        # Outcome feedback is applied after prediction, never to the applicability
-        # selection that was made from the observed prefix.
+        selected_model = episode_models[selected_name]
+
+        # Selection has already been made from prefix-only applicability scores.
+        # Only now is the selected procedure permitted to predict on the suffix.
+        selected_procedure = ApplicableProcedure(
+            selected_model.procedure,
+            selected_model.core,
+            selected_model.local_score,
+        )
+        predictions = selected_procedure.predict(selected_model.holdout)
+
+        # Outcome feedback is applied after suffix prediction, never to applicability
+        # selection itself.
         covered = []
-        for item in rows:
-            if item["prediction"] is not None:
-                covered.append(float(item["prediction"] == item["target"]))
-                for key in item.get("evidence_keys", ()):
+        for (obs, action, info), (_target_obs, _target_action, target) in zip(
+            predictions,
+            selected_model.holdout,
+        ):
+            pred = info.get("prediction")
+            if pred is not None:
+                covered.append(float(pred == target))
+                item_keys = _stable_context_keys(selected_model.core, obs, action)
+                for key in item_keys:
                     rec = self.stats[selected_name].setdefault(key, [0.0, 0.0])
-                    rec[0] = rec[0] * 0.97 + float(item["prediction"] == item["target"])
+                    rec[0] = rec[0] * 0.97 + float(pred == target)
                     rec[1] = rec[1] * 0.97 + 1.0
                 self.global_stats[selected_name][0] = (
                     self.global_stats[selected_name][0] * 0.97
-                    + float(item["prediction"] == item["target"])
+                    + float(pred == target)
                 )
                 self.global_stats[selected_name][1] = (
                     self.global_stats[selected_name][1] * 0.97 + 1.0
@@ -328,8 +378,8 @@ class ProcedureBank:
         return {
             "selected_procedure": selected_name,
             "procedure_local_scores": candidates,
-            "rows": len(rows),
-            "coverage": len(covered) / max(1, len(rows)),
+            "rows": len(selected_model.holdout),
+            "coverage": len(covered) / max(1, len(selected_model.holdout)),
             "accuracy_on_covered": statistics.mean(covered) if covered else 0.0,
         }
 
