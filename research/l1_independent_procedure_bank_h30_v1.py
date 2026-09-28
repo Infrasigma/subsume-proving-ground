@@ -87,7 +87,7 @@ class ProcedureBank:
                 seed=920000 + procedure.index * 10000 + stream_index * 4 + fold
             )
             probe.learning_kernel = copy.deepcopy(procedure.kernel)
-            _train(probe, (tuple(train_rows),))
+            probe.observe_batch(tuple(train_rows))
             fold_scores.extend(
                 float(probe.predict(obs, action).get("prediction") == nxt)
                 for obs, action, nxt in valid_rows
@@ -98,7 +98,7 @@ class ProcedureBank:
             seed=920000 + procedure.index * 10000 + stream_index * 4 + 2
         )
         core.learning_kernel = copy.deepcopy(procedure.kernel)
-        _train(core, (prefix,))
+        core.observe_batch(prefix)
         return EpisodeModel(procedure, core, rows[split:], local_score)
 
     def build_models(self, streams):
