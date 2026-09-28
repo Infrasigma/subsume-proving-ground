@@ -146,10 +146,10 @@ class ProcedureBank:
         return len(vals)/sum(1.0/v for v in vals)
 
     @classmethod
-    def _joint_score(cls, native_score, historical_score, history_available):
+    def _joint_score(cls, native_score, historical_score, local_score, history_available):
         if history_available:
-            return cls._harmonic((native_score, historical_score))
-        return float(native_score)
+            return cls._harmonic((native_score, historical_score, local_score))
+        return cls._harmonic((native_score, local_score))
 
     def _rank(self, items):
         ranked = []
@@ -177,7 +177,7 @@ class ProcedureBank:
 
             native = float(x.get("native_score", 0.0))
             local = float(x.get("local_score", 0.0))
-            joint = self._joint_score(native, historical, history_available)
+            joint = self._joint_score(native, historical, local, history_available)
             ranked.append({
                 **x,
                 "support": support,
