@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        seed: [2026092802]
+        seed: [2026092801, 2026092802, 2026092803, 2026092804, 2026092805]
     steps:
       - uses: actions/checkout@v4
       - name: Checkout exact ACSIE source
@@ -101,10 +101,10 @@ jobs:
           for p in sorted(pathlib.Path("evidence").glob("h30-*.json")):
               try: rows.append(json.loads(p.read_text()))
               except Exception as exc: bad.append(f"{p.name}: {exc}")
-          expected={2026092802}
+          expected={2026092801,2026092802,2026092803,2026092804,2026092805}
           seeds={r.get("seed") for r in rows}
-          strict=(not bad and len(rows)==1 and seeds==expected and all(r.get("scientific_status")=="PASSED" for r in rows))
-          status="CRASHED" if bad or len(rows)!=1 or seeds!=expected else ("PASSED" if strict else "FAILED")
+          strict=(not bad and len(rows)==5 and seeds==expected and all(r.get("scientific_status")=="PASSED" for r in rows))
+          status="CRASHED" if bad or len(rows)!=5 or seeds!=expected else ("PASSED" if strict else "FAILED")
           out={"schema":"ACSIE.layer1-independent-procedure-bank-h30-multiseed.v2","scientific_status":status,"strict":strict,"seed_count":len(rows),"rows":rows,"failures":bad,"source_commit":"aedf4e2fa4adfe174eebf5d63133a14d85c4f753","workflow_run":"${{ github.run_id }}"}
           pathlib.Path("h30-aggregate.json").write_text(json.dumps(out,indent=2,sort_keys=True))
           print(json.dumps(out,indent=2,sort_keys=True))

@@ -703,55 +703,6 @@ def run_seed(seed, kernel2):
     }
     unseen = unseen_bank.route_episode_models(final_unseen_models)
 
-    # Diagnostic-only row trace: generated after selection from the same untouched suffix.
-    # This does not alter selection, prediction, feedback, or any gate semantics.
-    selected_unseen_model = final_unseen_models[unseen["selected_procedure"]]
-    unseen_suffix_predictions = []
-    unseen_gen4_hypothesis_diagnostics = []
-    for obs, action, target in selected_unseen_model.holdout:
-        info = selected_unseen_model.core.predict(obs, action)
-        pred = info.get("prediction")
-        row = {
-            "observation": copy.deepcopy(obs),
-            "action": action,
-            "target": copy.deepcopy(target),
-            "prediction": copy.deepcopy(pred),
-            "correct": bool(pred == target),
-        }
-        if action == "step":
-            core = selected_unseen_model.core
-            current_ctx = core._context_signature(obs, action)
-            current_contexts = core._adaptive_union_context_signatures(obs, action)
-            current_context_set = {tuple(ctx) for ctx in current_contexts}
-            candidates = []
-            for source, hypotheses in (("learned", core.hypotheses), ("protected", getattr(core, "protected_hypotheses", {}))):
-                for h in hypotheses.values():
-                    if h.action != str(action) or h.delay != 1:
-                        continue
-                    matches = (h.context is None or tuple(h.context) == current_ctx or tuple(h.context) in current_context_set or core._stored_context_matches(obs, h.context))
-                    if not matches:
-                        continue
-                    try:
-                        hp = core._apply_hypothesis(h, obs)
-                        arb = core._hypothesis_arbitration_score(h, obs, action)
-                    except Exception:
-                        continue
-                    candidates.append({
-                        "source": source,
-                        "hypothesis_id": h.hypothesis_id,
-                        "kind": h.kind,
-                        "prediction": copy.deepcopy(hp),
-                        "context": copy.deepcopy(h.context),
-                        "support": float(h.support),
-                        "confidence": float(h.confidence),
-                        "complexity": int(h.complexity),
-                        "arbitration_score": float(arb),
-                    })
-            candidates.sort(key=lambda x: (x["arbitration_score"], x["confidence"], 1 if x["source"] == "protected" else 0, -x["complexity"], x["hypothesis_id"]), reverse=True)
-            row["matching_hypotheses"] = candidates[:32]
-            unseen_gen4_hypothesis_diagnostics.append(copy.deepcopy(row))
-        unseen_suffix_predictions.append(row)
-
     # Retention across all prior episodes with the procedure descriptors held immutable.
     before = {p.name: digest(asdict(p.kernel)) for p in procedures}
     retention_bank = copy.deepcopy(bank)
@@ -795,8 +746,6 @@ def run_seed(seed, kernel2):
         "phase_metrics": phase,
         "conflict": conflict,
         "unseen_gen4": unseen,
-        "unseen_gen4_suffix_predictions": unseen_suffix_predictions,
-        "unseen_gen4_hypothesis_diagnostics": unseen_gen4_hypothesis_diagnostics,
         "retention_after_sequence": retention,
         "procedure_library_retained": library_ok,
         "replay": {"deterministic_replay": replay_ok},
