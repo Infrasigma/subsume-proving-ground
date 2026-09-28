@@ -538,3 +538,5 @@ if __name__ == "__main__":
 # H35 symmetric applicability screen trigger.
 
 # H36 same-episode routing invariant trigger.
+
+# H36 API repair trigger.
