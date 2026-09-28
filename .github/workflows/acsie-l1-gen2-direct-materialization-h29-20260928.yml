@@ -37,7 +37,7 @@ jobs:
       - name: Execute H29 screen
         run: |
           set -euo pipefail
-          PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie"             python acsie/research/l1_gen2_direct_materialization_h29_v1.py --seed 771221 > h29.json
+          PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie"             python research/l1_gen2_direct_materialization_h29_v1.py --seed 771221 > h29.json
       - name: Upload screen
         uses: actions/upload-artifact@v4
         with:
