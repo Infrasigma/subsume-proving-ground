@@ -9,7 +9,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE commit SHA"
         required: true
-        default: "8bbe028825ed9f19d82f290de54114992edab1b6"
+        default: "b1c4052423bef9a0235ae3ffab3daa92da3196ab"
         type: string
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
       - name: Checkout exact private ACSIE source
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '8bbe028825ed9f19d82f290de54114992edab1b6' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'b1c4052423bef9a0235ae3ffab3daa92da3196ab' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-l1-hier-v2
@@ -175,7 +175,7 @@ jobs:
                   "H7": [r.get("decisions",{}).get("H16") for r in rows],
                   "H8": [r.get("decisions",{}).get("H17") for r in rows],
               },
-              "source_commit": "8bbe028825ed9f19d82f290de54114992edab1b6",
+              "source_commit": "b1c4052423bef9a0235ae3ffab3daa92da3196ab",
               "workflow_run": "${{ github.run_id }}",
               "workflow_sha": "${{ github.sha }}",
               "failures": bad,
@@ -210,3 +210,5 @@ jobs:
 # sequential shift exploration probe
 
 # sequential shift exploration retrigger
+
+# procedure shift map probe
