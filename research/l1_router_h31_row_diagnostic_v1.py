@@ -70,7 +70,6 @@ def main():
         items=[]
         for p in bank.procedures:
             pred=trained[p.name].predict(obs,"step").get("prediction")
-            from research.l1_independent_procedure_bank_h30_v1 import _evidence_key
             key=_evidence_key(trained[p.name],obs,"step",pred)
             items.append({"procedure":p.name,"index":p.index,"prediction":pred,"evidence_key":key,"target":target})
         conflicts.append({"i":i,"obs":obs,"target":target,"ranked":rank_for(bank,items),"picked":bank.choose(items,feedback=False)})
