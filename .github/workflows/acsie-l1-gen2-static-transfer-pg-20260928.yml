@@ -1,0 +1,88 @@
+name: ACSIE L1 Gen2 static transfer PG 20260928
+on:
+  push:
+    branches:
+      - acsie/l1-gen2-static-transfer-pg-20260928
+    paths:
+      - ".github/workflows/acsie-l1-gen2-static-transfer-pg-20260928.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+env:
+  ACSIE_SOURCE: "cc6c5d8e83e4b698550638bb440b2c51fb8b9f1a"
+  ACSIE_BRANCH: "acsie/l1-four-generation-native-bank-h28-20260928"
+  SOURCE_RUN: "36376031059"
+  VERIFIED_STATE_SHA256: "0b599e436c4578115cc0312dd6545f5d56c14777fcb55562592c5d8f4e8f80a9"
+jobs:
+  static:
+    name: seed ${{ matrix.seed }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026092801,2026092802,2026092803,2026092804,2026092805]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_BRANCH }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact ACSIE source
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
+      - name: Download exact frozen Gen2 input
+        uses: actions/download-artifact@v4
+        with:
+          name: acsie-gen4-verified-gen2-input-${{ env.SOURCE_RUN }}
+          path: input
+          run-id: ${{ env.SOURCE_RUN }}
+          repository: Infrasigma/subsume-proving-ground
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Execute static transfer diagnostic
+        env:
+          SEED: ${{ matrix.seed }}
+        run: |
+          set -euo pipefail
+          PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie"             python research/l1_gen2_static_transfer_pg_v1.py             input/verified-gen2-export.json --seed "$SEED" > "seed-$SEED.json"
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l1-gen2-static-transfer-pg-${{ matrix.seed }}-${{ github.run_id }}
+          path: seed-${{ matrix.seed }}.json
+          retention-days: 90
+  aggregate:
+    needs: static
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: acsie-l1-gen2-static-transfer-pg-*-${{ github.run_id }}
+          path: diagnostic
+          merge-multiple: true
+      - name: Aggregate
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import glob,json,pathlib
+          rows=[json.load(open(p)) for p in sorted(glob.glob("diagnostic/seed-*.json"))]
+          out={"schema":"ACSIE.l1-gen2-static-transfer.v1-multiseed","count":len(rows),"rows":rows}
+          pathlib.Path("static-transfer-aggregate.json").write_text(json.dumps(out,indent=2,sort_keys=True))
+          print(json.dumps(out,indent=2,sort_keys=True))
+          PY
+      - name: Upload aggregate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l1-gen2-static-transfer-pg-aggregate-${{ github.run_id }}
+          path: static-transfer-aggregate.json
+          retention-days: 90
