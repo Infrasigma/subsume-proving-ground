@@ -4,6 +4,8 @@ from cognitive_core.native_independent_core import NativeCognitiveCore
 
 spec=importlib.util.spec_from_file_location("h30", pathlib.Path(__file__).with_name("l1_independent_procedure_bank_h30_v1.py"))
 h30=importlib.util.module_from_spec(spec)
+import sys
+sys.modules["h30"]=h30
 spec.loader.exec_module(h30)
 Procedure=h30.Procedure
 ProcedureBank=h30.ProcedureBank
