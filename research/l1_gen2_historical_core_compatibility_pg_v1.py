@@ -3,6 +3,7 @@ import argparse, hashlib, json, statistics
 from pathlib import Path
 from cognitive_core.native_independent_core import NativeCognitiveCore, digest
 from research.native_self_learning_kernel_gen2_corrected_retention_v1 import run as historical_gen2_run
+from research.export_verified_gen2_state_from_b311_v1 import _reconstruct_verified_state
 try:
     from research.native_self_learning_kernel_v2 import _make_streams
 except Exception:
@@ -28,8 +29,15 @@ def run(export_path,seed,source_commit):
     if hashlib.sha256(state_path.read_bytes()).hexdigest()!=GEN2_STATE_SHA256: return {"scientific_status":"BLOCKED","reason":"wrong_state_sha256"}
     core=NativeCognitiveCore.from_state(state)
     roundtrip=core.export_state()
+    live=_reconstruct_verified_state(771221)
+    live_state=json.loads(json.dumps(live.export_state(),sort_keys=True))
+    replayed_live=NativeCognitiveCore.from_state(live_state)
+    historical_outer=_make_streams(771221+4000,6,rule="sign")
+    live_score=score(live,historical_outer)
+    replayed_live_score=score(replayed_live,historical_outer)
     return {
       "historical_reexecution": historical_gen2_run(seed=771221),
+      "exporter_reconstruction":{"frozen_state_digest":digest(state),"reconstructed_state_digest":digest(live_state),"state_digest_equal":digest(state)==digest(live_state),"live_score":live_score,"replayed_live_score":replayed_live_score,"behaviorally_equal":live_score==replayed_live_score},
       "schema":"ACSIE.l1-gen2-historical-core-compatibility.v1",
       "scientific_status":"COMPLETED",
       "seed":seed,
