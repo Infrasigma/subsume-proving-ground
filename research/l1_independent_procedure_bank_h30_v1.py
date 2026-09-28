@@ -703,6 +703,21 @@ def run_seed(seed, kernel2):
     }
     unseen = unseen_bank.route_episode_models(final_unseen_models)
 
+    # Diagnostic-only row trace: generated after selection from the same untouched suffix.
+    # This does not alter selection, prediction, feedback, or any gate semantics.
+    selected_unseen_model = final_unseen_models[unseen["selected_procedure"]]
+    unseen_suffix_predictions = []
+    for obs, action, target in selected_unseen_model.holdout:
+        info = selected_unseen_model.core.predict(obs, action)
+        pred = info.get("prediction")
+        unseen_suffix_predictions.append({
+            "observation": copy.deepcopy(obs),
+            "action": action,
+            "target": copy.deepcopy(target),
+            "prediction": copy.deepcopy(pred),
+            "correct": bool(pred == target),
+        })
+
     # Retention across all prior episodes with the procedure descriptors held immutable.
     before = {p.name: digest(asdict(p.kernel)) for p in procedures}
     retention_bank = copy.deepcopy(bank)
@@ -746,6 +761,7 @@ def run_seed(seed, kernel2):
         "phase_metrics": phase,
         "conflict": conflict,
         "unseen_gen4": unseen,
+        "unseen_gen4_suffix_predictions": unseen_suffix_predictions,
         "retention_after_sequence": retention,
         "procedure_library_retained": library_ok,
         "replay": {"deterministic_replay": replay_ok},
