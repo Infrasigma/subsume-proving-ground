@@ -17,6 +17,32 @@ from research.l1_four_generation_native_bank_h28_v1 import (
     _train,
 )
 
+def _stable_context_keys(core, observation, action):
+    """Prediction-independent observable context bases."""
+    keys = []
+    try:
+        atoms = core._observable_context_atoms(observation)
+    except Exception:
+        atoms = set()
+    for atom in sorted(atoms):
+        try:
+            decoded = json.loads(atom)
+        except Exception:
+            decoded = atom
+        if isinstance(decoded, list) and len(decoded) >= 3:
+            predicate = decoded[1]
+            if predicate in {"parity", "sign", "zero", "threshold", "bool", "str"}:
+                keys.append(repr(("action", str(action), "atom", decoded)))
+    try:
+        program = core.learning_kernel.context_program
+        if program is not None:
+            value = core._context_program_eval(program, observation)
+            keys.append(repr(("action", str(action), "composed", value)))
+    except Exception:
+        pass
+    return tuple(dict.fromkeys(keys))
+
+
 SEEDS = (2026092801, 2026092802, 2026092803, 2026092804, 2026092805)
 MIN_SUPPORT = 2
 ROUTER_MARGIN = 0.05
@@ -62,12 +88,12 @@ class ProcedureBank:
         out = []
         for obs, action, nxt in model.holdout:
             pred = model.core.predict(obs, action).get("prediction")
-            key = _evidence_key(model.core, obs, action, pred)
+            keys = _stable_context_keys(model.core, obs, action)
             out.append({
                 "procedure": model.procedure.name,
                 "index": model.procedure.index,
                 "prediction": copy.deepcopy(pred),
-                "evidence_key": key,
+                "evidence_keys": keys,
                 "target": nxt,
             })
         return out
@@ -76,24 +102,46 @@ class ProcedureBank:
         for p in self.procedures:
             for model in inner_models[p.name]:
                 for item in self.candidates(model):
-                    rec = self.stats[p.name].setdefault(item["evidence_key"], [0.0, 0.0])
-                    rec[0] += float(item["prediction"] == item["target"])
-                    rec[1] += 1.0
+                    for key in item["evidence_keys"]:
+                        rec = self.stats[p.name].setdefault(key, [0.0, 0.0])
+                        correct = float(item["prediction"] == item["target"])
+                        rec[0] += correct
+                        rec[1] += 1.0
                     self.global_stats[p.name][0] += float(item["prediction"] == item["target"])
                     self.global_stats[p.name][1] += 1.0
 
     def _rank(self, items):
         ranked = []
         for x in items:
-            rec = self.stats[x["procedure"]].get(
-                x["evidence_key"], self.global_stats[x["procedure"]]
-            )
-            support = float(rec[1])
-            score = (float(rec[0]) + 1.0) / (support + 2.0)
-            ranked.append({**x, "support": support, "score": score})
+            key_metrics = []
+            for key in x.get("evidence_keys", ()):
+                rec = self.stats[x["procedure"]].get(key)
+                if rec is None or rec[1] < MIN_SUPPORT:
+                    continue
+                reliability = (float(rec[0]) + 1.0) / (float(rec[1]) + 2.0)
+                key_metrics.append((reliability, float(rec[1])))
+            key_metrics.sort(reverse=True)
+
+            if key_metrics:
+                top = key_metrics[:3]
+                score = statistics.mean(v[0] for v in top)
+                support = min(v[1] for v in top) if len(top) >= 2 else top[0][1]
+                basis_count = len(key_metrics)
+            else:
+                rec = self.global_stats[x["procedure"]]
+                support = float(rec[1])
+                score = (float(rec[0]) + 1.0) / (support + 2.0) if support else 0.0
+                basis_count = 0
+
+            ranked.append({
+                **x,
+                "support": support,
+                "score": score,
+                "basis_count": basis_count,
+            })
         return sorted(
             [x for x in ranked if x["prediction"] is not None],
-            key=lambda x: (x["score"], x["support"], -x["index"]),
+            key=lambda x: (x["score"], x["basis_count"], x["support"], -x["index"]),
             reverse=True,
         )
 
@@ -102,52 +150,57 @@ class ProcedureBank:
         if not ranked:
             return None
 
-        # Outcome agreement is strong evidence. Under disagreement, emission
-        # requires a materially stronger learned reliability for the leading
-        # predicted outcome rather than mere procedure identity.
         groups = {}
         for item in ranked:
             groups.setdefault(repr(item["prediction"]), []).append(item)
 
-        if len(groups) == 1:
-            best = ranked[0]
-            emit = best["support"] >= MIN_SUPPORT or len(ranked) >= 2
-            selected = copy.deepcopy(best) if emit else None
-        else:
-            group_rows = []
-            for members in groups.values():
-                group_rows.append({
-                    "members": members,
-                    "mean_score": statistics.mean(x["score"] for x in members),
-                    "support": sum(x["support"] for x in members),
-                })
-            group_rows.sort(
-                key=lambda g: (g["mean_score"], g["support"], len(g["members"])),
-                reverse=True,
-            )
-            best_group = group_rows[0]
-            runner_group = group_rows[1]
-            best = max(
-                best_group["members"],
-                key=lambda x: (x["score"], x["support"], -x["index"]),
-            )
-            margin = best_group["mean_score"] - runner_group["mean_score"]
+        group_rows = []
+        for members in groups.values():
+            group_rows.append({
+                "members": members,
+                "mean_score": statistics.mean(x["score"] for x in members),
+                "min_basis": min(x["basis_count"] for x in members),
+                "min_support": min(x["support"] for x in members),
+            })
+        group_rows.sort(
+            key=lambda g: (len(g["members"]), g["mean_score"], g["min_basis"], g["min_support"]),
+            reverse=True,
+        )
+        best_group = group_rows[0]
+        best = max(
+            best_group["members"],
+            key=lambda x: (x["score"], x["basis_count"], x["support"], -x["index"]),
+        )
+
+        if len(group_rows) == 1:
             emit = (
-                best["support"] >= MIN_SUPPORT
+                best_group["min_basis"] >= 2
+                and best_group["min_support"] >= MIN_SUPPORT
                 and best_group["mean_score"] >= 0.70
-                and margin >= 0.10
             )
-            selected = copy.deepcopy(best) if emit else None
+        else:
+            runner = group_rows[1]
+            margin = best_group["mean_score"] - runner["mean_score"]
+            consensus = len(best_group["members"]) >= 2
+            strong_single = (
+                best_group["min_basis"] >= 2
+                and best_group["min_support"] >= MIN_SUPPORT
+                and best_group["mean_score"] >= 0.80
+                and margin >= 0.15
+            )
+            emit = consensus and best_group["mean_score"] >= 0.70 and best_group["min_support"] >= MIN_SUPPORT
+            emit = emit or strong_single
+
+        selected = copy.deepcopy(best) if emit else None
 
         if feedback:
             target = items[0]["target"] if items else None
             if target is not None:
                 for x in ranked:
-                    rec = self.stats[x["procedure"]].setdefault(
-                        x["evidence_key"], [0.0, 0.0]
-                    )
-                    rec[0] = rec[0] * 0.97 + float(x["prediction"] == target)
-                    rec[1] = rec[1] * 0.97 + 1.0
+                    for key in x.get("evidence_keys", ()):
+                        rec = self.stats[x["procedure"]].setdefault(key, [0.0, 0.0])
+                        rec[0] = rec[0] * 0.97 + float(x["prediction"] == target)
+                        rec[1] = rec[1] * 0.97 + 1.0
                     self.global_stats[x["procedure"]][0] = (
                         self.global_stats[x["procedure"]][0] * 0.97
                         + float(x["prediction"] == target)
