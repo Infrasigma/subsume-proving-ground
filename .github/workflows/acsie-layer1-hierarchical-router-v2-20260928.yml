@@ -9,7 +9,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE commit SHA"
         required: true
-        default: "44fa21f83afffce62f7827a24ee97db4ac17fc79"
+        default: "9e8e6eec931aefe31b99aab15b319b6cdcbb2c5a"
         type: string
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
       - name: Checkout exact private ACSIE source
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '44fa21f83afffce62f7827a24ee97db4ac17fc79' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '9e8e6eec931aefe31b99aab15b319b6cdcbb2c5a' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-l1-hier-v2
@@ -175,7 +175,7 @@ jobs:
                   "H7": [r.get("decisions",{}).get("H16") for r in rows],
                   "H8": [r.get("decisions",{}).get("H17") for r in rows],
               },
-              "source_commit": "44fa21f83afffce62f7827a24ee97db4ac17fc79",
+              "source_commit": "9e8e6eec931aefe31b99aab15b319b6cdcbb2c5a",
               "workflow_run": "${{ github.run_id }}",
               "workflow_sha": "${{ github.sha }}",
               "failures": bad,
@@ -198,3 +198,5 @@ jobs:
 # adaptive confirmation probe retrigger
 
 # adaptive confirmation corrected-state retrigger
+
+# global shift probe retrigger
