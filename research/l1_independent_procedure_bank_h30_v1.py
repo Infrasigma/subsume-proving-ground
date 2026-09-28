@@ -59,6 +59,7 @@ class Procedure:
         """Evaluate this procedure using only the observed episode prefix."""
         rows = tuple(prefix)
         fold_scores = []
+        native_scores = []
         for fold in range(4):
             valid_rows = tuple(rows[fold::4])
             train_rows = tuple(
