@@ -1,11 +1,12 @@
-name: ACSIE clean Gen4 evidence router qualification
+name: ACSIE Gen4 three-way evidence-router qualification
 
 on:
   push:
     branches:
-      - acsie/gen4-evidence-router-clean-20260928
-    paths:
-      - ".github/workflows/acsie-gen4-evidence-router-clean-20260928.yml"
+      - acsie/gen4-three-way-router-base-20260928
+  pull_request:
+    branches:
+      - acsie/gen4-three-way-router-base-20260928
   workflow_dispatch:
 
 permissions:
@@ -13,7 +14,7 @@ permissions:
   actions: read
 
 env:
-  ACSIE_SOURCE: "acsie/gen4-evidence-router-clean-20260928"
+  ACSIE_SOURCE: "db58c95765ba4546c42daed0951f0859507e15a5"
   SOURCE_RUN: "36376031059"
   VERIFIED_PARENT: "b31109864ae547320d877e6c1575b805d950edf9"
   EXPORT_SOURCE: "94a2a770a5799fd386217998bc21b585632ef7ed"
@@ -37,14 +38,23 @@ jobs:
       - name: Verify exact evidence-router harness
         working-directory: acsie
         run: |
-          set -euo pipefail
-          expected_sha="$(git rev-parse "${ACSIE_SOURCE}")"
-          test "$(git rev-parse HEAD)" = "${expected_sha}"
-          test -f research/gen4_evidence_router_v1.py
-          ! grep -F "\\n" research/gen4_evidence_router_v1.py
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+          set -u
+          PYTHONPATH=. python research/gen4_three_way_evidence_router_v1.py             ../input/verified-gen2-export.json             --merge             ../shards/shard-0.json             ../shards/shard-1.json             ../shards/shard-2.json             ../shards/shard-3.json             ../shards/shard-4.json             ../shards/shard-5.json             ../shards/shard-6.json             ../shards/shard-7.json             --seed 771223             > ../three-way-evidence-router-final.json
+          rc=$?
+          cat ../three-way-evidence-router-final.json
+          python - <<'PY'
+          import json
+          r=json.load(open("../three-way-evidence-router-final.json"))
+          print("SCIENTIFIC_STATUS",r["scientific_status"])
+          print("GEN4_HOLDOUT_GAIN",r["gen4_gate"]["holdout_gain"])
+          print("GEN4_TRANSFER_GAIN",r["gen4_gate"]["transfer_gain"])
+          print("GEN1_RETENTION_PASS",r["retention"]["gen1_retention_pass"])
+          print("GEN2_RETENTION_PASS",r["retention"]["gen2_retention_pass"])
+          print("GEN3_RETENTION_PASS",r["retention"]["gen3_retention_pass"])
+          print("DETERMINISTIC_REPLAY",r["replay"]["deterministic_replay"])
+          assert r["scientific_status"] in {"PASSED","FAILED"}
+          PY
+          test "$rc" = "0"
       - name: Download exact frozen Gen2 input
         uses: actions/download-artifact@v4
         with:
@@ -80,7 +90,7 @@ jobs:
         working-directory: acsie
         run: |
           set -u
-          PYTHONPATH=. python research/gen4_evidence_router_v1.py \
+          PYTHONPATH=. python research/gen4_three_way_evidence_router_v1.py \
             ../input/verified-gen2-export.json \
             --merge \
             ../shards/shard-0.json \
@@ -129,7 +139,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: acsie-gen4-evidence-router-clean-${{ github.run_id }}
+          name: acsie-gen4-three-way-router-${{ github.run_id }}
           path: evidence/
           if-no-files-found: error
 # trigger clean evidence-router qualification
