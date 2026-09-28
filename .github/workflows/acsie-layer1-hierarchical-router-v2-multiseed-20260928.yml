@@ -38,45 +38,45 @@ jobs:
           set -euo pipefail
           WORK=/tmp/acsie-l1-hier-v2
           ASKPASS=/tmp/acsie-askpass.sh
-          rm -rf "\$WORK" "\$ASKPASS"
-          cat > "\$ASKPASS" <<'EOF'
+          rm -rf "$WORK" "$ASKPASS"
+          cat > "$ASKPASS" <<'EOF'
           #!/bin/sh
-          case "\$1" in
+          case "$1" in
             *Username*) printf '%s\n' 'x-access-token' ;;
-            *) printf '%s\n' "\$ACSIE_READ_TOKEN" ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
           esac
           EOF
-          chmod 700 "\$ASKPASS"
-          export GIT_ASKPASS="\$ASKPASS"
+          chmod 700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS"
           export GIT_TERMINAL_PROMPT=0
-          mkdir -p "\$WORK"
-          git -C "\$WORK" init
-          git -C "\$WORK" remote add origin https://github.com/Infrasigma/ACSIE.git
-          git -C "\$WORK" fetch --no-tags --depth 1 origin "\$ACSIE_REF"
-          git -C "\$WORK" checkout --detach --force FETCH_HEAD
-          test "\$(git -C "\$WORK" rev-parse HEAD)" = "\$ACSIE_REF"
-          echo "\$WORK" > acsie.work
-          git -C "\$WORK" rev-parse HEAD > acsie.commit
-          git -C "\$WORK" rev-parse HEAD^{tree} > acsie.tree
+          mkdir -p "$WORK"
+          git -C "$WORK" init
+          git -C "$WORK" remote add origin https://github.com/Infrasigma/ACSIE.git
+          git -C "$WORK" fetch --no-tags --depth 1 origin "$ACSIE_REF"
+          git -C "$WORK" checkout --detach --force FETCH_HEAD
+          test "$(git -C "$WORK" rev-parse HEAD)" = "$ACSIE_REF"
+          echo "$WORK" > acsie.work
+          git -C "$WORK" rev-parse HEAD > acsie.commit
+          git -C "$WORK" rev-parse HEAD^{tree} > acsie.tree
 
       - name: Execute one independent seed
         env:
           SEED: ${{ matrix.seed }}
         run: |
           set -u
-          WORK="\$(cat acsie.work)"
-          EVIDENCE="\$GITHUB_WORKSPACE/evidence-layer1-v2-multiseed-\${SEED}-${{ github.run_id }}"
-          mkdir -p "\$EVIDENCE"
-          cp acsie.commit "\$EVIDENCE/acsie.commit"
-          cp acsie.tree "\$EVIDENCE/acsie.tree"
-          cp "\$WORK/research/l1_hierarchical_router_v1.py" "\$EVIDENCE/l1_hierarchical_router_v2.py"
-          sha256sum "\$EVIDENCE/l1_hierarchical_router_v2.py" > "\$EVIDENCE/source.sha256"
+          WORK="$(cat acsie.work)"
+          EVIDENCE="$GITHUB_WORKSPACE/evidence-layer1-v2-multiseed-${SEED}-${{ github.run_id }}"
+          mkdir -p "$EVIDENCE"
+          cp acsie.commit "$EVIDENCE/acsie.commit"
+          cp acsie.tree "$EVIDENCE/acsie.tree"
+          cp "$WORK/research/l1_hierarchical_router_v1.py" "$EVIDENCE/l1_hierarchical_router_v2.py"
+          sha256sum "$EVIDENCE/l1_hierarchical_router_v2.py" > "$EVIDENCE/source.sha256"
           set +e
-          PYTHONHASHSEED=0 PYTHONPATH="\$WORK" timeout 900s python "\$WORK/research/l1_hierarchical_router_v1.py" "\$SEED" > "\$EVIDENCE/\${SEED}.stdout.json" 2> "\$EVIDENCE/\${SEED}.stderr.log"
-          RC=\$?
+          PYTHONHASHSEED=0 PYTHONPATH="$WORK" timeout 900s python "$WORK/research/l1_hierarchical_router_v1.py" "$SEED" > "$EVIDENCE/${SEED}.stdout.json" 2> "$EVIDENCE/${SEED}.stderr.log"
+          RC=$?
           set -e
-          printf '%s\n' "\$RC" > "\$EVIDENCE/exit_code"
-          python - "\$EVIDENCE/\${SEED}.stdout.json" "\$EVIDENCE/scientific_status.txt" <<'PY'
+          printf '%s\n' "$RC" > "$EVIDENCE/exit_code"
+          python - "$EVIDENCE/${SEED}.stdout.json" "$EVIDENCE/scientific_status.txt" <<'PY'
           import json,sys
           try:
               x=json.load(open(sys.argv[1]))
@@ -88,19 +88,19 @@ jobs:
           {
             echo "workflow_run=${{ github.run_id }}"
             echo "workflow_sha=${{ github.sha }}"
-            echo "seed=\$SEED"
-            echo "acsie_ref=\$(cat acsie.commit)"
-            echo "acsie_tree=\$(cat acsie.tree)"
+            echo "seed=$SEED"
+            echo "acsie_ref=$(cat acsie.commit)"
+            echo "acsie_tree=$(cat acsie.tree)"
             echo "fresh_process_per_seed=true"
             echo "external_model=false"
             echo "network_dependency=false"
             echo "task_routing=false"
             echo "holdout_contamination=false"
             echo "manual_runtime_strategy=false"
-          } > "\$EVIDENCE/execution.provenance"
-          sha256sum "\$EVIDENCE"/* > "\$EVIDENCE/manifest.sha256"
-          cat "\$EVIDENCE/scientific_status.txt"
-          echo "EVIDENCE_DIR=\$EVIDENCE"
+          } > "$EVIDENCE/execution.provenance"
+          sha256sum "$EVIDENCE"/* > "$EVIDENCE/manifest.sha256"
+          cat "$EVIDENCE/scientific_status.txt"
+          echo "EVIDENCE_DIR=$EVIDENCE"
 
       - name: Upload seed evidence
         if: always()
