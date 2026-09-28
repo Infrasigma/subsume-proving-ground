@@ -13,7 +13,7 @@ permissions:
   actions: read
 
 env:
-  ACSIE_SOURCE: "8aa15db487b7a3a6ea5a2f9b5eecdcd60dd046ff"
+  ACSIE_SOURCE: "596f9655c7f2372149234c2ed6168ce123fbf45e"
   SOURCE_RUN: "36376031059"
   VERIFIED_PARENT: "b31109864ae547320d877e6c1575b805d950edf9"
   EXPORT_SOURCE: "94a2a770a5799fd386217998bc21b585632ef7ed"
@@ -42,7 +42,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
           echo "ACSIE_SOURCE=$(git rev-parse HEAD)"
-          test -f research/gen4_multi_transition_v1.py
+          test -f research/gen4_selected_retention_gate_v1.py
 
       - uses: actions/setup-python@v5
         with:
@@ -151,3 +151,5 @@ jobs:
 # exact-shard recovery trigger
 
 # move non-gating ablations off the scientific merge critical path
+
+# selected-only exact retention gate
