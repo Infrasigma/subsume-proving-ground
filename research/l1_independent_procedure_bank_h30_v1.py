@@ -222,24 +222,14 @@ def _own_metrics(procedure, models):
         statistics.mean(hold_scores) if hold_scores else 0.0,
     )
 
-def run_seed(seed):
+def run_seed(seed, kernel2):
     gen1_core, gen1_inner, gen1_outer, _, _ = _make_gen1_branch(seed)
     p0 = Procedure("p0", 0, copy.deepcopy(gen1_core.learning_kernel))
 
     gen2_inner = _make_gen12_streams(seed + 3000, 6, rule="sign")
     gen2_outer = _make_gen12_streams(seed + 4000, 6, rule="sign")
-    p1 = Procedure("p1", 1, LearningKernel(**{
-        "evidence_threshold": 0.5000000000000001,
-        "min_support_count": 2,
-        "context_mode": "adaptive_union",
-        "delayed_window": 6,
-        "prediction_mode": "ensemble",
-        "contradiction_margin": 0.2,
-        "replay_limit": 64,
-    }))
+    p1 = Procedure("p1", 1, copy.deepcopy(kernel2))
 
-    gen3_inner = _make_gen3_streams(seed + 8000, 6, rule="parity_relation")
-    gen3_outer = _make_gen3_streams(seed + 9200, 6, rule="parity_relation")
     p2 = Procedure("p2", 2, _make_gen3_kernel())
 
     gen4_inner = _make_gen4_streams(seed + 12000, 6)
@@ -295,16 +285,11 @@ def run_seed(seed):
 
     # Unseen Gen4 stream: calibrate without its final inner episode.
     unseen_bank = ProcedureBank(procedures)
-    unseen_groups = (
-        tuple(gen1_inner) + tuple(gen2_inner) + tuple(gen3_inner) + tuple(gen4_inner[:-1])
-    )
-    flat_unseen = unseen_groups
-    tmp_models = {}
-    for p in procedures:
-        tmp_models[p.name] = []
-        for idx, stream in enumerate(flat_unseen):
-            tmp_models[p.name].append(bank._train_episode(p, stream, 700 + idx))
-    unseen_bank.calibrate(tmp_models)
+    unseen_inner_models = {
+        p.name: (inner_models[p.name][:-1] if p.name == "p3" else inner_models[p.name])
+        for p in procedures
+    }
+    unseen_bank.calibrate(unseen_inner_models)
     final_unseen_models = {p.name: bank._train_episode(p, gen4_outer[-1], 999) for p in procedures}
     unseen = unseen_bank.route_stream_models(final_unseen_models)
 
@@ -369,7 +354,7 @@ def main():
     kernel2 = LearningKernel(**frozen["learning_kernel"])
     assert digest(asdict(kernel2))
 
-    row = run_seed(args.seed)
+    row = run_seed(args.seed, kernel2)
     result = {
         "schema": "ACSIE.layer1-independent-procedure-bank-h30.v4",
         "scientific_status": row["scientific_status"],
