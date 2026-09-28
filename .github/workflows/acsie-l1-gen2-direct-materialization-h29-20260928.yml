@@ -5,7 +5,7 @@ on:
     branches:
       - acsie/l1-gen2-materialization-h29b-20260928
     paths:
-      - ".github/workflows/acsie-l1-gen2-direct-materialization-h2928.yml"
+      - ".github/workflows/acsie-l1-gen2-direct-materialization-h29-20260928.yml"
       - "research/l1_gen2_materialization_h29b_v1.py"
   workflow_dispatch:
 
