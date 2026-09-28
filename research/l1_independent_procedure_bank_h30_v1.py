@@ -370,6 +370,7 @@ class ProcedureBank:
             selected_model.procedure,
             selected_model.core,
             selected_model.local_score,
+            selected_model.native_score,
         )
         predictions = selected_procedure.predict(selected_model.holdout)
 
