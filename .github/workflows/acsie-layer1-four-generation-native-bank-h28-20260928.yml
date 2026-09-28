@@ -39,35 +39,27 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Checkout exact ACSIE source
-        env:
-          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || env.ACSIE_SOURCE }}
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_BRANCH }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact ACSIE source
+        working-directory: acsie
         run: |
           set -euo pipefail
-          WORK=/tmp/acsie-l1-fourgen
-          ASKPASS=/tmp/acsie-askpass.sh
-          rm -rf "$WORK" "$ASKPASS"
-          cat > "$ASKPASS" <<'EOF'
-          #!/bin/sh
-          case "$1" in
-            *Username*) printf '%s\n' 'x-access-token' ;;
-            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
-          esac
-          EOF
-          chmod 700 "$ASKPASS"
-          export GIT_ASKPASS="$ASKPASS"
-          export GIT_TERMINAL_PROMPT=0
-          mkdir -p "$WORK"
-          git -C "$WORK" init
-          git -C "$WORK" remote add origin https://github.com/Infrasigma/ACSIE.git
-          git -C "$WORK" fetch --no-tags --depth 1 origin "$ACSIE_BRANCH"
-          git -C "$WORK" checkout --detach --force "origin/$ACSIE_BRANCH"
-          ACTUAL_SHA="$(git -C "$WORK" rev-parse HEAD)"
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          ACTUAL_TREE="$(git rev-parse HEAD^{tree})"
+          echo "ACTUAL_SHA=$ACTUAL_SHA"
+          echo "EXPECTED_SHA=$ACSIE_SOURCE"
           test "$ACTUAL_SHA" = "$ACSIE_SOURCE"
-          test "$(git -C "$WORK" rev-parse HEAD^{tree})" != ""
-          echo "$WORK" > acsie.work
-          git -C "$WORK" rev-parse HEAD > acsie.commit
-          git -C "$WORK" rev-parse HEAD^{tree} > acsie.tree
+          test -n "$ACTUAL_TREE"
+          printf '%s\n' "$ACTUAL_SHA" > ../acsie.commit
+          printf '%s\n' "$ACTUAL_TREE" > ../acsie.tree
 
       - name: Download exact frozen Gen2 input
         uses: actions/download-artifact@v4
