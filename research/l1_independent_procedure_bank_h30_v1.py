@@ -536,3 +536,5 @@ if __name__ == "__main__":
 # H34 current-episode applicability trigger.
 
 # H35 symmetric applicability screen trigger.
+
+# H36 same-episode routing invariant trigger.
