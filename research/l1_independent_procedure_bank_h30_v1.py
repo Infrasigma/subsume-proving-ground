@@ -334,16 +334,19 @@ class ProcedureBank:
                 "procedure": p.name,
                 "index": p.index,
                 "local_score": float(model.local_score),
+                "native_score": float(model.native_score),
                 "historical_score": historical_score,
             })
 
         # Primary criterion: current-episode applicability from the observed
-        # prefix. When applicability is tied, use calibrated prior reliability;
-        # the procedure index is only the final deterministic tie-break. No
-        # suffix observation participates here.
+        # prefix. When applicability is tied, use prefix-only native
+        # arbitration evidence, then calibrated prior reliability. The procedure
+        # index is only the final deterministic tie-break. No suffix observation
+        # participates here.
         candidates.sort(
             key=lambda x: (
                 x["local_score"],
+                x["native_score"],
                 x["historical_score"],
                 -x["index"],
             ),
