@@ -10,6 +10,7 @@ permissions:
   contents: read
 env:
   ACSIE_SOURCE: "cc6c5d8e83e4b698550638bb440b2c51fb8b9f1a"
+  DIAGNOSTIC_VERSION: "h31-1"
 jobs:
   screen:
     name: canonical Gen2 H31 screen
