@@ -13,7 +13,7 @@ permissions:
   actions: read
 
 env:
-  ACSIE_SOURCE: "d918771207a7fe198c0a6c1a43be3075692bc110"
+  ACSIE_SOURCE: "ea4a3dbb5c709b9914ab39063c9a352547798cf2"
   SOURCE_RUN: "36376031059"
   VERIFIED_PARENT: "b31109864ae547320d877e6c1575b805d950edf9"
   EXPORT_SOURCE: "94a2a770a5799fd386217998bc21b585632ef7ed"
@@ -39,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
-          test -f research/gen4_branch_purity_v1.py
+          test -f research/gen4_context_calibrated_bank_v1.py
           ! grep -F "\\n" research/gen4_branch_purity_v1.py
       - uses: actions/setup-python@v5
         with:
@@ -99,11 +99,9 @@ jobs:
           print("SCIENTIFIC_STATUS",r["scientific_status"])
           print("GEN4_HOLDOUT_GAIN",r["gen4_overlay"]["holdout_gain"])
           print("GEN4_TRANSFER_GAIN",r["gen4_overlay"]["transfer_gain"])
-          print("GEN4_BRANCH_HOLDOUT",r.get("diagnostics",{}).get("gen4_branch_holdout"))
-          print("GEN4_BRANCH_TRANSFER",r.get("diagnostics",{}).get("gen4_branch_transfer"))
-          print("GEN1_OVERLAY",r["retention"]["gen1_base"],r["retention"]["gen1_overlay"])
-          print("GEN2_OVERLAY",r["retention"]["gen2_base"],r["retention"]["gen2_overlay"])
-          print("GEN3_OVERLAY",r["retention"]["gen3_base"],r["retention"]["gen3_overlay"])
+          print("GEN1_OVERLAY",r["retention"]["gen1_before"],r["retention"]["gen1_after"])
+          print("GEN2_OVERLAY",r["retention"]["gen2_before"],r["retention"]["gen2_after"])
+          print("GEN3_OVERLAY",r["retention"]["gen3_before"],r["retention"]["gen3_after"])
           print("DETERMINISTIC_REPLAY",r["replay"]["deterministic_replay"])
           assert r["scientific_status"] in {"PASSED","FAILED"}
           PY
@@ -136,3 +134,5 @@ jobs:
 # trigger branch-purity qualification
 
 # rerun after harness normalization
+
+# context-calibrated bank hypothesis
