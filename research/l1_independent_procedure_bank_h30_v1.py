@@ -566,3 +566,5 @@ if __name__ == "__main__":
 # H36 API repair trigger.
 
 # H37 episode-level routing trigger.
+
+# H38 same-episode native-historical arbitration trigger.
