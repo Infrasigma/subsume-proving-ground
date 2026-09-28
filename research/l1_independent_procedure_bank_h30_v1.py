@@ -389,12 +389,17 @@ class ProcedureBank:
                 if historical[1]
                 else 0.0
             )
+            contextual_historical_score = self._prefix_historical_score(
+                p.name,
+                model,
+            )
             candidates.append({
                 "procedure": p.name,
                 "index": p.index,
                 "local_score": float(model.local_score),
                 "native_score": float(model.native_score),
                 "fit_native_score": float(model.fit_native_score),
+                "contextual_historical_score": contextual_historical_score,
                 "historical_score": historical_score,
             })
 
