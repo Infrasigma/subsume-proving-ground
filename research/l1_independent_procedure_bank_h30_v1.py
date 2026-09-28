@@ -102,55 +102,59 @@ class ProcedureBank:
         if not ranked:
             return None
 
-        # Group candidates by predicted outcome. A single surviving procedure is
-        # not enough by itself: it must have strong historical support and reliability.
+        # Outcome agreement is strong evidence. Under disagreement, emission
+        # requires a materially stronger learned reliability for the leading
+        # predicted outcome rather than mere procedure identity.
         groups = {}
         for item in ranked:
-            key = repr(item["prediction"])
-            groups.setdefault(key, []).append(item)
+            groups.setdefault(repr(item["prediction"]), []).append(item)
 
-        group_rows = []
-        for key, members in groups.items():
-            group_rows.append({
-                "key": key,
-                "members": members,
-                "count": len(members),
-                "mean_score": statistics.mean(x["score"] for x in members),
-                "support": sum(x["support"] for x in members),
-                "max_score": max(x["score"] for x in members),
-                "max_support": max(x["support"] for x in members),
-            })
-        group_rows.sort(
-            key=lambda g: (g["count"], g["mean_score"], g["support"], g["max_score"]),
-            reverse=True,
-        )
-        best_group = group_rows[0]
-        runner_score = group_rows[1]["mean_score"] if len(group_rows) > 1 else 0.0
-        margin = best_group["mean_score"] - runner_score
-        best = max(best_group["members"], key=lambda x: (x["score"], x["support"], -x["index"]))
-
-        consensus = best_group["count"] >= 2
-        singleton_strong = (
-            best_group["count"] == 1
-            and best_group["max_support"] >= 4
-            and best_group["max_score"] >= 0.85
-            and margin >= 0.10
-        )
-        emit = (
-            (consensus and best_group["max_support"] >= MIN_SUPPORT and margin >= ROUTER_MARGIN)
-            or singleton_strong
-        )
-        selected = copy.deepcopy(best) if emit else None
+        if len(groups) == 1:
+            best = ranked[0]
+            emit = best["support"] >= MIN_SUPPORT or len(ranked) >= 2
+            selected = copy.deepcopy(best) if emit else None
+        else:
+            group_rows = []
+            for members in groups.values():
+                group_rows.append({
+                    "members": members,
+                    "mean_score": statistics.mean(x["score"] for x in members),
+                    "support": sum(x["support"] for x in members),
+                })
+            group_rows.sort(
+                key=lambda g: (g["mean_score"], g["support"], len(g["members"])),
+                reverse=True,
+            )
+            best_group = group_rows[0]
+            runner_group = group_rows[1]
+            best = max(
+                best_group["members"],
+                key=lambda x: (x["score"], x["support"], -x["index"]),
+            )
+            margin = best_group["mean_score"] - runner_group["mean_score"]
+            emit = (
+                best["support"] >= MIN_SUPPORT
+                and best_group["mean_score"] >= 0.70
+                and margin >= 0.10
+            )
+            selected = copy.deepcopy(best) if emit else None
 
         if feedback:
             target = items[0]["target"] if items else None
             if target is not None:
                 for x in ranked:
-                    rec = self.stats[x["procedure"]].setdefault(x["evidence_key"], [0.0, 0.0])
+                    rec = self.stats[x["procedure"]].setdefault(
+                        x["evidence_key"], [0.0, 0.0]
+                    )
                     rec[0] = rec[0] * 0.97 + float(x["prediction"] == target)
                     rec[1] = rec[1] * 0.97 + 1.0
-                    self.global_stats[x["procedure"]][0] = self.global_stats[x["procedure"]][0] * 0.97 + float(x["prediction"] == target)
-                    self.global_stats[x["procedure"]][1] = self.global_stats[x["procedure"]][1] * 0.97 + 1.0
+                    self.global_stats[x["procedure"]][0] = (
+                        self.global_stats[x["procedure"]][0] * 0.97
+                        + float(x["prediction"] == target)
+                    )
+                    self.global_stats[x["procedure"]][1] = (
+                        self.global_stats[x["procedure"]][1] * 0.97 + 1.0
+                    )
         return selected
 
     def route_models(self, models, stream_index_offset=0):
