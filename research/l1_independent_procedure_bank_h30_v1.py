@@ -368,6 +368,19 @@ def _own_metrics(procedure, models):
         statistics.mean(hold_scores) if hold_scores else 0.0,
     )
 
+def _aggregate_episode_metrics(metrics):
+    total_rows = sum(int(m["rows"]) for m in metrics)
+    covered = sum(float(m["coverage"]) * int(m["rows"]) for m in metrics)
+    correct = sum(
+        float(m["coverage"]) * int(m["rows"]) * float(m["accuracy_on_covered"])
+        for m in metrics
+    )
+    return {
+        "rows": total_rows,
+        "coverage": covered / max(1, total_rows),
+        "accuracy_on_covered": correct / max(1e-12, covered) if covered else 0.0,
+    }
+
 def run_seed(seed, kernel2):
     gen1_core, gen1_inner, gen1_outer, _, _ = _make_gen1_branch(seed)
     p0 = Procedure("p0", 0, copy.deepcopy(gen1_core.learning_kernel))
@@ -388,42 +401,49 @@ def run_seed(seed, kernel2):
     inner_groups = (gen1_inner, gen2_inner, gen3_inner, gen4_inner)
     outer_groups = (gen1_outer, gen2_outer, gen3_outer, gen4_outer)
 
-    # Each procedure gets its own episode-local training prefix; the router never
-    # receives generation/task labels.
     bank = ProcedureBank(procedures)
     inner_models = {
-        p.name: [bank._train_episode(p, stream, idx) for idx, stream in enumerate(inner_groups[i])]
+        p.name: [
+            bank._train_episode(p, stream, idx)
+            for idx, stream in enumerate(inner_groups[i])
+        ]
         for i, p in enumerate(procedures)
     }
     bank.calibrate(inner_models)
 
-    # Routing invariant: every candidate procedure is evaluated on the SAME
-    # current episode prefix. Comparing models trained on different episodes
-    # confounds procedure identity with observed-stream identity.
-    phase_models = {}
-    for i, (label, stream) in enumerate(zip(("gen1","gen2","gen3","gen4"), outer_groups)):
-        phase_models[label] = {
-            p.name: bank._train_episode(p, stream, 1000 + i * 10 + p.index)
-            for p in procedures
-        }
-    phase = {
-        label: bank.route_stream_models(models_by_proc)
-        for label, models_by_proc in phase_models.items()
-    }
+    # Correct routing unit: one observed episode, seen by every candidate procedure.
+    # Generation labels are never passed to ProcedureBank or the router.
+    episode_model_sets = {label: [] for label in ("gen1", "gen2", "gen3", "gen4")}
+    phase = {}
+    for i, (label, streams) in enumerate(
+        zip(("gen1", "gen2", "gen3", "gen4"), outer_groups)
+    ):
+        episode_metrics = []
+        for j, stream in enumerate(streams):
+            models_by_proc = {
+                p.name: bank._train_episode(p, stream, 1000 + i * 100 + j * 10 + p.index)
+                for p in procedures
+            }
+            episode_model_sets[label].append(models_by_proc)
+            episode_metrics.append(bank.route_stream_models(models_by_proc))
+        phase[label] = _aggregate_episode_metrics(episode_metrics)
 
-    # Standalone competence of each procedure on the SAME current episode.
+    # Standalone procedure competence on the same current episode.
     own = {}
-    for i, label in enumerate(("gen1","gen2","gen3","gen4")):
-        model = phase_models[label][procedures[i].name]
-        vals = [float(x["prediction"] == x["target"]) for x in bank.candidates(model)]
+    for i, label in enumerate(("gen1", "gen2", "gen3", "gen4")):
+        vals = []
+        for models_by_proc in episode_model_sets[label]:
+            vals.extend(
+                float(x["prediction"] == x["target"])
+                for x in bank.candidates(models_by_proc[procedures[i].name])
+            )
         own[label] = statistics.mean(vals) if vals else 0.0
 
-
-    # Explicit conflict: each procedure was trained on its own episode, then queried
-    # on the same observable context where their learned mechanisms disagree.
-    trained_cores = {}
-    for i, p in enumerate(procedures):
-        trained_cores[p.name] = inner_models[p.name][0].core
+    # Explicit conflict safety test.
+    trained_cores = {
+        p.name: inner_models[p.name][0].core
+        for p in procedures
+    }
     rng = random.Random(seed)
     target_deltas = (1, 2, 3, 5)
     conflict_rows = []
@@ -434,7 +454,7 @@ def run_seed(seed, kernel2):
         conflict_rows.append((obs, "step", target))
     conflict = bank.conflict(trained_cores, conflict_rows)
 
-    # Unseen Gen4 stream: calibrate without its final inner episode.
+    # Unseen Gen4 episode: every procedure must observe the SAME episode prefix.
     unseen_bank = ProcedureBank(procedures)
     unseen_inner_models = {
         p.name: (inner_models[p.name][:-1] if p.name == "p3" else inner_models[p.name])
@@ -445,29 +465,38 @@ def run_seed(seed, kernel2):
         p.name: bank._train_episode(p, gen4_outer[-1], 2000 + p.index)
         for p in procedures
     }
-
     unseen = unseen_bank.route_stream_models(final_unseen_models)
 
-    # Retention: the immutable procedure descriptors do not change after the sequence.
+    # Retention across all prior episodes with the procedure descriptors held immutable.
     before = {p.name: digest(asdict(p.kernel)) for p in procedures}
     retention_bank = copy.deepcopy(bank)
     retention = {}
-    for label, models_by_proc in phase_models.items():
-        retention[label] = retention_bank.route_stream_models(models_by_proc)
-
-
+    for label, model_sets in episode_model_sets.items():
+        retention[label] = _aggregate_episode_metrics([
+            retention_bank.route_stream_models(models_by_proc)
+            for models_by_proc in model_sets
+        ])
     after = {p.name: digest(asdict(p.kernel)) for p in procedures}
 
+    # Deterministic replay of the same episode-level routing protocol.
     replay_bank = ProcedureBank(procedures)
     replay_bank.calibrate(inner_models)
     replay_phase = {}
-    for label, models_by_proc in phase_models.items():
-        replay_phase[label] = replay_bank.route_stream_models(models_by_proc)
-
+    for label, model_sets in episode_model_sets.items():
+        replay_phase[label] = _aggregate_episode_metrics([
+            replay_bank.route_stream_models(models_by_proc)
+            for models_by_proc in model_sets
+        ])
 
     own_ok = all(v >= 0.70 for v in own.values())
-    phase_ok = all(v["coverage"] >= 0.70 and v["accuracy_on_covered"] >= 0.75 for v in phase.values())
-    conflict_ok = conflict["coverage"] <= 0.25 and (conflict["coverage"] == 0.0 or conflict["accuracy_on_covered"] <= 0.50)
+    phase_ok = all(
+        v["coverage"] >= 0.70 and v["accuracy_on_covered"] >= 0.75
+        for v in phase.values()
+    )
+    conflict_ok = (
+        conflict["coverage"] <= 0.25
+        and (conflict["coverage"] == 0.0 or conflict["accuracy_on_covered"] <= 0.50)
+    )
     unseen_ok = unseen["coverage"] >= 0.70 and unseen["accuracy_on_covered"] >= 0.75
     retention_ok = all(v["accuracy_on_covered"] >= 0.60 for v in retention.values())
     library_ok = before == after
@@ -485,9 +514,13 @@ def run_seed(seed, kernel2):
         "procedure_library_retained": library_ok,
         "replay": {"deterministic_replay": replay_ok},
         "gates": {
-            "own": own_ok, "phase": phase_ok, "conflict": conflict_ok,
-            "unseen_gen4": unseen_ok, "retention": retention_ok,
-            "procedure_library_retained": library_ok, "deterministic_replay": replay_ok,
+            "own": own_ok,
+            "phase": phase_ok,
+            "conflict": conflict_ok,
+            "unseen_gen4": unseen_ok,
+            "retention": retention_ok,
+            "procedure_library_retained": library_ok,
+            "deterministic_replay": replay_ok,
         },
         "integrity": {
             "holdout_contamination": False,
