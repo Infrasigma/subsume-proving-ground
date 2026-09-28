@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - acsie/gen4-three-way-router-20260928
-    paths:
-      - "research/gen4_three_way_router_trigger_20260928.txt"
   workflow_dispatch:
 
 permissions:
