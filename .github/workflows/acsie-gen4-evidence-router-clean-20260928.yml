@@ -38,7 +38,8 @@ jobs:
         working-directory: acsie
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
+          expected_sha="$(git rev-parse "${ACSIE_SOURCE}")"
+          test "$(git rev-parse HEAD)" = "${expected_sha}"
           test -f research/gen4_evidence_router_v1.py
           ! grep -F "\\n" research/gen4_evidence_router_v1.py
       - uses: actions/setup-python@v5
@@ -136,3 +137,5 @@ jobs:
 # pin corrected ACSIE commit
 
 # resolve ACSIE clean branch by name
+
+# fix branch-vs-SHA provenance check
