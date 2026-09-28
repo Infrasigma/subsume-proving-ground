@@ -51,8 +51,8 @@ jobs:
 
           expected_seeds = [2026092801,2026092802,2026092803,2026092804,2026092805]
           observed_seeds = sorted(
-              int(data.get("seed", data.get("partition", {}).get("seed", 0)))
-              for _p, data in rows
+              int(_p.name.split(".")[0])
+              for _p, _data in rows
           )
 
           all_h15 = len(rows) == 5 and all(
