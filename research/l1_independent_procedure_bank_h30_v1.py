@@ -366,6 +366,7 @@ class ProcedureBank:
                 "index": p.index,
                 "local_score": float(model.local_score),
                 "native_score": float(model.native_score),
+                "fit_native_score": float(model.fit_native_score),
                 "historical_score": historical_score,
             })
 
@@ -378,6 +379,7 @@ class ProcedureBank:
             key=lambda x: (
                 x["local_score"],
                 x["native_score"],
+                x["fit_native_score"],
                 x["historical_score"],
                 -x["index"],
             ),
@@ -402,6 +404,7 @@ class ProcedureBank:
             selected_model.core,
             selected_model.local_score,
             selected_model.native_score,
+            selected_model.fit_native_score,
         )
         predictions = selected_procedure.predict(selected_model.holdout)
 
