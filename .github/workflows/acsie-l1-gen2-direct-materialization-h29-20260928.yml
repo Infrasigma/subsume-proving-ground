@@ -13,6 +13,7 @@ permissions:
 
 env:
   ACSIE_SOURCE: "cc6c5d8e83e4b698550638bb440b2c51fb8b9f1a"
+  DIAGNOSTIC_VERSION: "h29-1"
 
 jobs:
   screen:
