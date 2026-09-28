@@ -20,6 +20,7 @@ permissions:
 
 env:
   ACSIE_SOURCE: "cc6c5d8e83e4b698550638bb440b2c51fb8b9f1a1"
+  ACSIE_BRANCH: "acsie/l1-four-generation-native-bank-h28-20260928"
   SOURCE_RUN: "36376031059"
   VERIFIED_PARENT: "b31109864ae547320d877e6c1575b805d950edf9"
   EXPORT_SOURCE: "94a2a770a5799fd386217998bc21b585632ef7ed"
@@ -59,9 +60,9 @@ jobs:
           mkdir -p "$WORK"
           git -C "$WORK" init
           git -C "$WORK" remote add origin https://github.com/Infrasigma/ACSIE.git
-          git -C "$WORK" fetch --no-tags --depth 1 origin "$ACSIE_REF"
-          git -C "$WORK" checkout --detach --force FETCH_HEAD
-          test "$(git -C "$WORK" rev-parse HEAD)" = "$ACSIE_REF"
+          git -C "$WORK" fetch --no-tags --depth 1 origin "$ACSIE_BRANCH"
+          git -C "$WORK" checkout --detach --force "$ACSIE_SOURCE"
+          test "$(git -C "$WORK" rev-parse HEAD)" = "$ACSIE_SOURCE"
           echo "$WORK" > acsie.work
           git -C "$WORK" rev-parse HEAD > acsie.commit
           git -C "$WORK" rev-parse HEAD^{tree} > acsie.tree
@@ -131,6 +132,7 @@ jobs:
             echo "workflow_sha=${{ github.sha }}"
             echo "seed=$SEED"
             echo "acsie_ref=$(cat acsie.commit)"
+            echo "acsie_branch=${ACSIE_BRANCH}"
             echo "acsie_tree=$(cat acsie.tree)"
             echo "verified_state_sha256=${VERIFIED_STATE_SHA256}"
             echo "router_labels_exposed=false"
