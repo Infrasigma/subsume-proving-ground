@@ -397,24 +397,27 @@ def run_seed(seed, kernel2):
     }
     bank.calibrate(inner_models)
 
-    outer_models = {
-        p.name: [bank._train_episode(p, stream, 100 + i) for i, stream in enumerate(outer_groups[p.index])]
-        for p in procedures
+    # Routing invariant: every candidate procedure is evaluated on the SAME
+    # current episode prefix. Comparing models trained on different episodes
+    # confounds procedure identity with observed-stream identity.
+    phase_models = {}
+    for i, (label, stream) in enumerate(zip(("gen1","gen2","gen3","gen4"), outer_groups)):
+        phase_models[label] = {
+            p.name: bank._train_episode(p, stream, 1000 + i * 10 + p.index)
+            for p in procedures
+        }
+    phase = {
+        label: bank.route_stream_models(models_by_proc)
+        for label, models_by_proc in phase_models.items()
     }
-    phase = {}
-    for i, label in enumerate(("gen1", "gen2", "gen3", "gen4")):
-        models_by_proc = {p.name: outer_models[p.name][i] for p in procedures}
-        phase[label] = bank.route_stream_models(models_by_proc)
 
-    # Procedure own accuracy comes from the same fresh episode models but excludes routing.
+    # Standalone competence of each procedure on the SAME current episode.
     own = {}
-    for i, label in enumerate(("gen1", "gen2", "gen3", "gen4")):
-        vals = []
-        for p in procedures:
-            model = outer_models[p.name][i]
-            if p.index == i:
-                vals.extend(float(x["prediction"] == x["target"]) for x in bank.candidates(model))
+    for i, label in enumerate(("gen1","gen2","gen3","gen4")):
+        model = phase_models[label][procedures[i].name]
+        vals = [float(x["prediction"] == x["target"]) for x in bank.candidates(model)]
         own[label] = statistics.mean(vals) if vals else 0.0
+
 
     # Explicit conflict: each procedure was trained on its own episode, then queried
     # on the same observable context where their learned mechanisms disagree.
@@ -438,24 +441,29 @@ def run_seed(seed, kernel2):
         for p in procedures
     }
     unseen_bank.calibrate(unseen_inner_models)
-    final_unseen_models = {p.name: bank._train_episode(p, gen4_outer[-1], 999) for p in procedures}
+    final_unseen_models = {
+        p.name: bank._train_episode(p, gen4_outer[-1], 2000 + p.index)
+        for p in procedures
+    }
+
     unseen = unseen_bank.route_stream_models(final_unseen_models)
 
     # Retention: the immutable procedure descriptors do not change after the sequence.
     before = {p.name: digest(asdict(p.kernel)) for p in procedures}
     retention_bank = copy.deepcopy(bank)
     retention = {}
-    for i, label in enumerate(("gen1", "gen2", "gen3", "gen4")):
-        models_by_proc = {p.name: outer_models[p.name][i] for p in procedures}
+    for label, models_by_proc in phase_models.items():
         retention[label] = retention_bank.route_stream_models(models_by_proc)
+
+
     after = {p.name: digest(asdict(p.kernel)) for p in procedures}
 
     replay_bank = ProcedureBank(procedures)
     replay_bank.calibrate(inner_models)
     replay_phase = {}
-    for i, label in enumerate(("gen1", "gen2", "gen3", "gen4")):
-        models_by_proc = {p.name: outer_models[p.name][i] for p in procedures}
+    for label, models_by_proc in phase_models.items():
         replay_phase[label] = replay_bank.route_stream_models(models_by_proc)
+
 
     own_ok = all(v >= 0.70 for v in own.values())
     phase_ok = all(v["coverage"] >= 0.70 and v["accuracy_on_covered"] >= 0.75 for v in phase.values())
