@@ -28,8 +28,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: \${{ env.ACSIE_EXPORT_SOURCE }}
-          token: \${{ secrets.ACSIE_READ_TOKEN }}
+          ref: ${{ env.ACSIE_EXPORT_SOURCE }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie-old
           fetch-depth: 1
           persist-credentials: false
@@ -37,7 +37,7 @@ jobs:
         working-directory: acsie-old
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "\${ACSIE_EXPORT_SOURCE}"
+          test "$(git rev-parse HEAD)" = "${ACSIE_EXPORT_SOURCE}"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -65,15 +65,15 @@ jobs:
           mkdir -p input
           cp verified-gen2-export.json verified-gen2-state.json input/
           printf '%s\n' \
-            "historical_parent=\${VERIFIED_PARENT}" \
-            "export_source=\${ACSIE_EXPORT_SOURCE}" \
-            "acsie_source=\${ACSIE_SOURCE}" \
-            "verified_state_sha256=\${VERIFIED_STATE_SHA256}" \
-            "shard_count=\${SHARD_COUNT}" \
-            "workflow_run=\${{ github.run_id }}" > input/provenance.txt
+            "historical_parent=${VERIFIED_PARENT}" \
+            "export_source=${ACSIE_EXPORT_SOURCE}" \
+            "acsie_source=${ACSIE_SOURCE}" \
+            "verified_state_sha256=${VERIFIED_STATE_SHA256}" \
+            "shard_count=${SHARD_COUNT}" \
+            "workflow_run=${{ github.run_id }}" > input/provenance.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: acsie-gen4-verified-gen2-input-\${{ github.run_id }}
+          name: acsie-gen4-verified-gen2-input-${{ github.run_id }}
           path: input/
 
   shards:
@@ -90,8 +90,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: \${{ env.ACSIE_SOURCE }}
-          token: \${{ secrets.ACSIE_READ_TOKEN }}
+          ref: ${{ env.ACSIE_SOURCE }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie
           fetch-depth: 0
           persist-credentials: false
@@ -99,7 +99,7 @@ jobs:
         working-directory: acsie
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "\${ACSIE_SOURCE}"
+          test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
           git status --short
           echo "ACSIE_SOURCE=$(git rev-parse HEAD)"
       - uses: actions/setup-python@v5
@@ -107,20 +107,20 @@ jobs:
           python-version: "3.11"
       - uses: actions/download-artifact@v4
         with:
-          name: acsie-gen4-verified-gen2-input-\${{ github.run_id }}
+          name: acsie-gen4-verified-gen2-input-${{ github.run_id }}
           path: .
-      - name: Run exact Gen4 candidate shard \${{ matrix.shard }}
+      - name: Run exact Gen4 candidate shard ${{ matrix.shard }}
         working-directory: acsie
         run: |
           set -euo pipefail
           PYTHONPATH=. python research/gen4_multi_transition_v1.py \
             ../verified-gen2-export.json \
-            --shard-index \${{ matrix.shard }} \
-            --shard-count \${SHARD_COUNT} \
-            > ../shard-\${{ matrix.shard }}.json
+            --shard-index ${{ matrix.shard }} \
+            --shard-count ${SHARD_COUNT} \
+            > ../shard-${{ matrix.shard }}.json
           python - <<'PY'
           import json
-          p="../shard-\${{ matrix.shard }}.json"
+          p="../shard-${{ matrix.shard }}.json"
           r=json.load(open(p))
           assert r["scientific_status"]=="COMPUTATION_COMPLETE", r
           assert r["protocol"]["candidate_count"]==128, r
@@ -134,8 +134,8 @@ jobs:
       - name: Upload Gen4 shard evidence
         uses: actions/upload-artifact@v4
         with:
-          name: acsie-gen4-multi-shard-\${{ matrix.shard }}-\${{ github.run_id }}
-          path: shard-\${{ matrix.shard }}.json
+          name: acsie-gen4-multi-shard-${{ matrix.shard }}-${{ github.run_id }}
+          path: shard-${{ matrix.shard }}.json
 
   merge:
     needs: shards
@@ -147,8 +147,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: \${{ env.ACSIE_SOURCE }}
-          token: \${{ secrets.ACSIE_READ_TOKEN }}
+          ref: ${{ env.ACSIE_SOURCE }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie
           fetch-depth: 0
           persist-credentials: false
@@ -156,17 +156,17 @@ jobs:
         working-directory: acsie
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "\${ACSIE_SOURCE}"
+          test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - uses: actions/download-artifact@v4
         with:
-          name: acsie-gen4-verified-gen2-input-\${{ github.run_id }}
+          name: acsie-gen4-verified-gen2-input-${{ github.run_id }}
           path: input
       - uses: actions/download-artifact@v4
         with:
-          pattern: acsie-gen4-multi-shard-*-\${{ github.run_id }}
+          pattern: acsie-gen4-multi-shard-*-${{ github.run_id }}
           path: shards
           merge-multiple: true
       - name: Verify all eight shards are present
@@ -219,17 +219,17 @@ jobs:
           cp gen4-final.json evidence/
           cp shards/shard-*.json evidence/
           printf '%s\n' \
-            "historical_parent=\${VERIFIED_PARENT}" \
-            "export_source=\${ACSIE_EXPORT_SOURCE}" \
-            "acsie_source=\${ACSIE_SOURCE}" \
-            "verified_state_sha256=\${VERIFIED_STATE_SHA256}" \
+            "historical_parent=${VERIFIED_PARENT}" \
+            "export_source=${ACSIE_EXPORT_SOURCE}" \
+            "acsie_source=${ACSIE_SOURCE}" \
+            "verified_state_sha256=${VERIFIED_STATE_SHA256}" \
             "candidate_count=128" \
-            "shard_count=\${SHARD_COUNT}" \
-            "workflow_run=\${{ github.run_id }}" \
-            "workflow_sha=\${{ github.sha }}" > evidence/execution-provenance.txt
+            "shard_count=${SHARD_COUNT}" \
+            "workflow_run=${{ github.run_id }}" \
+            "workflow_sha=${{ github.sha }}" > evidence/execution-provenance.txt
           sha256sum evidence/verified-gen2-state.json > evidence/state.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: acsie-gen4-multi-transition-final-\${{ github.run_id }}
+          name: acsie-gen4-multi-transition-final-${{ github.run_id }}
           path: evidence/
           if-no-files-found: error
