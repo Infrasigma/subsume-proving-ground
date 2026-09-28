@@ -316,17 +316,27 @@ class ProcedureBank:
         candidates = []
         for p in self.procedures:
             model = episode_models[p.name]
+            historical = self.global_stats[p.name]
+            historical_score = (
+                (float(historical[0]) + 1.0) / (float(historical[1]) + 2.0)
+                if historical[1]
+                else 0.0
+            )
             candidates.append({
                 "procedure": p.name,
                 "index": p.index,
                 "local_score": float(model.local_score),
+                "historical_score": historical_score,
             })
 
-        # Primary criterion: current-episode applicability. Tie-breaking is
-        # immutable so replay cannot depend on feedback accumulated later.
+        # Primary criterion: current-episode applicability from the observed
+        # prefix. When applicability is tied, use calibrated prior reliability;
+        # the procedure index is only the final deterministic tie-break. No
+        # suffix observation participates here.
         candidates.sort(
             key=lambda x: (
                 x["local_score"],
+                x["historical_score"],
                 -x["index"],
             ),
             reverse=True,
