@@ -13,7 +13,7 @@ permissions:
   actions: read
 
 env:
-  ACSIE_SOURCE: "44cc9f07d922b4e50a5ce26f659ec949436ce23f"
+  ACSIE_SOURCE: "94a2a770a5799fd386217998bc21b585632ef7ed"
   ACSIE_BRANCH: "acsie/l1-gen2-transfer-diagnostic-20260928"
   SOURCE_RUN: "36376031059"
   VERIFIED_STATE_SHA256: "0b599e436c4578115cc0312dd6545f5d56c14777fcb55562592c5d8f4e8f80a9"
@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: ${{ env.ACSIE_BRANCH }}
+          ref: ${{ env.ACSIE_SOURCE }}
           token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie
           fetch-depth: 1
@@ -60,7 +60,7 @@ jobs:
           SEED: ${{ matrix.seed }}
         run: |
           set -euo pipefail
-          PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie"             python acsie/research/l1_gen2_transfer_diagnostic_v1.py             input/verified-gen2-export.json             --seed "$SEED"             > "seed-$SEED.json"
+          PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie"             python research/l1_gen2_historical_core_compatibility_pg_v1.py input/verified-gen2-export.json --seed "$SEED" --source-commit "$ACSIE_SOURCE"             > "seed-$SEED.json"
 
       - name: Upload seed diagnostic
         uses: actions/upload-artifact@v4
