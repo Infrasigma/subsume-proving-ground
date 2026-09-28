@@ -1,0 +1,93 @@
+name: ACSIE Gen2 freeze provenance repair 20260928
+
+on:
+  push:
+    branches:
+      - acsie/gen2-freeze-provenance-repair-20260928
+    paths:
+      - ".github/workflows/acsie-gen2-freeze-provenance-repair-20260928.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_SOURCE: "4ee969818df26c54dddccd8f3683e9e33778e3db"
+  ACSIE_BRANCH: "acsie/gen2-freeze-provenance-repair-20260928"
+  VERIFIED_PARENT: "b31109864ae547320d877e6c1575b805d950edf9"
+
+jobs:
+  freeze:
+    name: regenerate verified Gen2 frozen state
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact repaired ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_SOURCE }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact source
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
+      - name: Execute repaired exporter
+        run: |
+          set -euo pipefail
+          PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie"             python acsie/research/export_verified_gen2_state_from_b311_v1.py             > verified-gen2-export.json
+      - name: Verify behavioral freeze and provenance
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          r=json.load(open("verified-gen2-export.json"))
+          assert r["scientific_status"]=="PASSED", r
+          assert r["status_reason"]=="behavioral_replay_verified", r
+          assert r["scientific_parent_commit"]=="b31109864ae547320d877e6c1575b805d950edf9", r
+          assert r["state_invariants"]["behavioral_replay"] is True, r
+          print("behavioral_replay=true")
+          print("live_outer_accuracy=",r["state_invariants"]["live_outer_accuracy"])
+          print("replay_outer_accuracy=",r["state_invariants"]["replay_outer_accuracy"])
+          state=r["frozen_state"]
+          raw=json.dumps(state,sort_keys=True,separators=(",",":")).encode()
+          print("canonical_state_sha256=",hashlib.sha256(raw).hexdigest())
+          open("canonical-state.sha256","w").write(hashlib.sha256(raw).hexdigest()+"\n")
+          PY
+          python - <<'PY'
+          import json,hashlib
+          r=json.load(open("verified-gen2-export.json"))
+          state=json.dumps(r["frozen_state"],sort_keys=True,separators=(",",":")).encode()
+          open("verified-gen2-state.json","wb").write(state)
+          print(hashlib.sha256(state).hexdigest())
+          PY
+      - name: Provenance manifest
+        run: |
+          set -euo pipefail
+          git -C acsie rev-parse HEAD > acsie.commit
+          git -C acsie rev-parse HEAD^{tree} > acsie.tree
+          sha256sum acsie/research/export_verified_gen2_state_from_b311_v1.py > exporter.sha256
+          sha256sum verified-gen2-state.json > verified-gen2-state.sha256
+          sha256sum verified-gen2-export.json > verified-gen2-export.sha256
+          sha256sum acsie/cognitive_core/native_independent_core.py > core.sha256
+      - name: Upload repaired freeze
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-gen2-behavioral-frozen-state-20260928-${{ github.run_id }}
+          path: |
+            verified-gen2-export.json
+            verified-gen2-state.json
+            verified-gen2-state.sha256
+            verified-gen2-export.sha256
+            acsie.commit
+            acsie.tree
+            exporter.sha256
+            core.sha256
+            canonical-state.sha256
+          if-no-files-found: error
+          retention-days: 90
