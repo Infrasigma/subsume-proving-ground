@@ -278,6 +278,66 @@ class ProcedureBank:
             "accuracy_on_covered": statistics.mean(covered) if covered else 0.0,
         }
 
+    def route_episode_models(self, episode_models):
+        """Select one reusable procedure for the current episode, then execute it.
+
+        Applicability is learned only from the observed prefix via the procedure's
+        local cross-validation score. The untouched suffix is used solely for the
+        scientific evaluation after selection.
+        """
+        candidates = []
+        for p in self.procedures:
+            model = episode_models[p.name]
+            candidates.append({
+                "procedure": p.name,
+                "index": p.index,
+                "local_score": float(model.local_score),
+            })
+
+        # Primary criterion: current-episode applicability. Stable historical
+        # reliability is only a deterministic tie-break when applicability ties.
+        def historical_mean(procedure_name):
+            rec = self.global_stats[procedure_name]
+            return (float(rec[0]) + 1.0) / (float(rec[1]) + 2.0) if rec[1] else 0.0
+
+        candidates.sort(
+            key=lambda x: (
+                x["local_score"],
+                historical_mean(x["procedure"]),
+                -x["index"],
+            ),
+            reverse=True,
+        )
+        selected_name = candidates[0]["procedure"]
+        selected_model = episode_models[selected_name]
+        rows = self.candidates(selected_model)
+
+        # Outcome feedback is applied after prediction, never to the applicability
+        # selection that was made from the observed prefix.
+        covered = []
+        for item in rows:
+            if item["prediction"] is not None:
+                covered.append(float(item["prediction"] == item["target"]))
+                for key in item.get("evidence_keys", ()):
+                    rec = self.stats[selected_name].setdefault(key, [0.0, 0.0])
+                    rec[0] = rec[0] * 0.97 + float(item["prediction"] == item["target"])
+                    rec[1] = rec[1] * 0.97 + 1.0
+                self.global_stats[selected_name][0] = (
+                    self.global_stats[selected_name][0] * 0.97
+                    + float(item["prediction"] == item["target"])
+                )
+                self.global_stats[selected_name][1] = (
+                    self.global_stats[selected_name][1] * 0.97 + 1.0
+                )
+
+        return {
+            "selected_procedure": selected_name,
+            "procedure_local_scores": candidates,
+            "rows": len(rows),
+            "coverage": len(covered) / max(1, len(rows)),
+            "accuracy_on_covered": statistics.mean(covered) if covered else 0.0,
+        }
+
     def route_stream_models(self, episode_models):
         names = list(episode_models)
         count = len(episode_models[names[0]].holdout)
@@ -464,7 +524,7 @@ def run_seed(seed, kernel2):
     retention = {}
     for label, model_sets in episode_model_sets.items():
         retention[label] = _aggregate_episode_metrics([
-            retention_bank.route_stream_models(models_by_proc)
+            retention_bank.route_episode_models(models_by_proc)
             for models_by_proc in model_sets
         ])
     after = {p.name: digest(asdict(p.kernel)) for p in procedures}
@@ -475,7 +535,7 @@ def run_seed(seed, kernel2):
     replay_phase = {}
     for label, model_sets in episode_model_sets.items():
         replay_phase[label] = _aggregate_episode_metrics([
-            replay_bank.route_stream_models(models_by_proc)
+            replay_bank.route_episode_models(models_by_proc)
             for models_by_proc in model_sets
         ])
 
