@@ -137,7 +137,6 @@ jobs:
           strict_static = len(rows) == 5 and all(
               r.get("decisions",{}).get("H6") == "PASSED"
               and r.get("decisions",{}).get("H7") == "PASSED"
-              and r.get("decisions",{}).get("H7") == "PASSED"
               for r in rows
           )
           strict_online = len(rows) == 5 and all(
@@ -159,12 +158,12 @@ jobs:
               status = "FAILED"
 
           out = {
-              "schema": "ACSIE.layer1-hierarchical-router-v2-multiseed",
+              "schema": "ACSIE.layer1-compositional-ucb-router-v1-multiseed",
               "scientific_status": status,
               "seed_count": len(rows),
               "expected_seeds": [2026092801,2026092802,2026092803,2026092804,2026092805],
-              "strict_static_layer1": strict_static,
-              "strict_online_adaptation": strict_online,
+              "strict_compositional_static": strict_static,
+              "strict_discounted_ucb_online": strict_online,
               "strict_integrity": strict_integrity,
               "decision_matrix": {
                   "H6": [r.get("decisions",{}).get("H6") for r in rows],
