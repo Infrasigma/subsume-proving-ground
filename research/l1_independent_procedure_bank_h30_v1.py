@@ -570,3 +570,5 @@ if __name__ == "__main__":
 # H38 same-episode native-historical arbitration trigger.
 
 # H38 signature repair trigger.
+
+# H39 same-episode local-native-historical arbitration trigger.
