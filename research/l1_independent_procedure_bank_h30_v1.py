@@ -85,7 +85,14 @@ class Procedure:
         )
         core.learning_kernel = copy.deepcopy(self.kernel)
         core.observe_batch(rows)
-        return ApplicableProcedure(self, core, local_score, native_score)
+        fit_scores = []
+        for obs, action, _nxt in rows:
+            info = core.predict(obs, action)
+            fit_scores.append(float(info.get("arbitration_score", 0.0)))
+        fit_native_score = statistics.mean(fit_scores) if fit_scores else 0.0
+        return ApplicableProcedure(
+            self, core, local_score, native_score, fit_native_score
+        )
 
 
 class ApplicableProcedure:
