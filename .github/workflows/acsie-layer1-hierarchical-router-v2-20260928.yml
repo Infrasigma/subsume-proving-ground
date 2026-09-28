@@ -9,7 +9,7 @@ on:
       acsie_ref:
         description: "Exact ACSIE commit SHA"
         required: true
-        default: "90826103e70e5b12a14daa0dfdc2fd235e857acc"
+        default: "a70a4666896444f5dd0dc58628d4b5b11d4eae01"
         type: string
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
       - name: Checkout exact private ACSIE source
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '90826103e70e5b12a14daa0dfdc2fd235e857acc' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'a70a4666896444f5dd0dc58628d4b5b11d4eae01' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-l1-hier-v2
@@ -66,10 +66,10 @@ jobs:
           mkdir -p "$EVIDENCE"
           cp acsie.commit "$EVIDENCE/acsie.commit"
           cp acsie.tree "$EVIDENCE/acsie.tree"
-          cp "$WORK/research/l1_context_schema_ucb_router_v1.py" "$EVIDENCE/l1_context_schema_ucb_router_v1.py"
-          sha256sum "$EVIDENCE/l1_context_schema_ucb_router_v1.py" > "$EVIDENCE/source.sha256"
+          cp "$WORK/research/l1_context_schema_challenger_v1.py" "$EVIDENCE/l1_context_schema_challenger_v1.py"
+          sha256sum "$EVIDENCE/l1_context_schema_challenger_v1.py" > "$EVIDENCE/source.sha256"
           set +e
-          PYTHONHASHSEED=0 PYTHONPATH="$WORK" timeout 900s python "$WORK/research/l1_context_schema_ucb_router_v1.py" "$SEED" > "$EVIDENCE/$SEED.stdout.json" 2> "$EVIDENCE/$SEED.stderr.log"
+          PYTHONHASHSEED=0 PYTHONPATH="$WORK" timeout 900s python "$WORK/research/l1_context_schema_challenger_v1.py" "$SEED" > "$EVIDENCE/$SEED.stdout.json" 2> "$EVIDENCE/$SEED.stderr.log"
           RC=$?
           set -e
           printf '%s\n' "$RC" > "$EVIDENCE/exit_code"
@@ -135,12 +135,12 @@ jobs:
                   bad.append(f"{p.name}: {exc}")
 
           strict_static = len(rows) == 5 and all(
-              r.get("decisions",{}).get("H12") == "PASSED"
-              and r.get("decisions",{}).get("H13") == "PASSED"
+              r.get("decisions",{}).get("H15") == "PASSED"
+              and r.get("decisions",{}).get("H16") == "PASSED"
               for r in rows
           )
           strict_online = len(rows) == 5 and all(
-              r.get("decisions",{}).get("H14") == "PASSED"
+              r.get("decisions",{}).get("H17") == "PASSED"
               for r in rows
           )
           strict_integrity = len(rows) == 5 and all(
@@ -158,7 +158,7 @@ jobs:
               status = "FAILED"
 
           out = {
-              "schema": "ACSIE.layer1-context-schema-ucb-router-v1-multiseed",
+              "schema": "ACSIE.layer1-context-schema-challenger-router-v1-multiseed",
               "scientific_status": status,
               "seed_count": len(rows),
               "expected_seeds": [2026092801,2026092802,2026092803,2026092804,2026092805],
@@ -166,12 +166,12 @@ jobs:
               "strict_discounted_ucb_online": strict_online,
               "strict_integrity": strict_integrity,
               "decision_matrix": {
-                  "H6": [r.get("decisions",{}).get("H12") for r in rows],
-                  "H7": [r.get("decisions",{}).get("H13") for r in rows],
-                  "H7": [r.get("decisions",{}).get("H13") for r in rows],
-                  "H8": [r.get("decisions",{}).get("H14") for r in rows],
+                  "H6": [r.get("decisions",{}).get("H15") for r in rows],
+                  "H7": [r.get("decisions",{}).get("H16") for r in rows],
+                  "H7": [r.get("decisions",{}).get("H16") for r in rows],
+                  "H8": [r.get("decisions",{}).get("H17") for r in rows],
               },
-              "source_commit": "90826103e70e5b12a14daa0dfdc2fd235e857acc",
+              "source_commit": "a70a4666896444f5dd0dc58628d4b5b11d4eae01",
               "workflow_run": "${{ github.run_id }}",
               "workflow_sha": "${{ github.sha }}",
               "failures": bad,
