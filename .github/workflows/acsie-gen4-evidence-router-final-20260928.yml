@@ -14,7 +14,7 @@ permissions:
 
 env:
   ACSIE_SOURCE: "acsie/gen4-evidence-router-final-20260928"
-  ACSIE_EXPECTED_SHA: "a52cb06594316a9dc0b699194ca2e830eb994e48"
+  ACSIE_EXPECTED_SHA: "f2fc59bdffc65e3394d1250bcf3377c1f5001387"
   SOURCE_RUN: "36376031059"
   VERIFIED_PARENT: "b31109864ae547320d877e6c1575b805d950edf9"
   EXPORT_SOURCE: "94a2a770a5799fd386217998bc21b585632ef7ed"
@@ -138,3 +138,5 @@ jobs:
           path: evidence/
           if-no-files-found: error
 # trigger final evidence-router qualification
+
+# rerun after final router import fix
