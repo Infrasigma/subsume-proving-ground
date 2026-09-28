@@ -90,7 +90,7 @@ jobs:
           ref: ${{ env.ACSIE_SOURCE }}
           token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
       - name: Verify exact ACSIE source
         working-directory: acsie
@@ -143,7 +143,7 @@ jobs:
           ref: ${{ env.ACSIE_SOURCE }}
           token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
       - name: Verify exact ACSIE source
         working-directory: acsie
