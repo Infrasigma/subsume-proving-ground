@@ -1,0 +1,112 @@
+name: acsie-layer1-router-abstention-20260928
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-layer1-router-abstention-20260928.yml"
+  workflow_dispatch:
+    inputs:
+      acsie_ref:
+        description: "Exact ACSIE commit SHA"
+        required: true
+        default: "9d8e18136c17f2c6f3853612cf44fdf01f71cd24"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  layer1-router-abstention:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact private ACSIE source
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '9d8e18136c17f2c6f3853612cf44fdf01f71cd24' }}
+        run: |
+          set -euo pipefail
+          WORK=/tmp/acsie-l1
+          ASKPASS=/tmp/acsie-askpass.sh
+          VENV=/tmp/acsie-venv
+          rm -rf "$WORK" "$VENV" "$ASKPASS"
+          cat > "$ASKPASS" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS"
+          export GIT_TERMINAL_PROMPT=0
+          mkdir -p "$WORK"
+          git -C "$WORK" init
+          git -C "$WORK" remote add origin https://github.com/Infrasigma/ACSIE.git
+          git -C "$WORK" fetch --no-tags --depth 1 origin "$ACSIE_REF"
+          git -C "$WORK" checkout --detach --force FETCH_HEAD
+          ACTUAL_COMMIT="$(git -C "$WORK" rev-parse HEAD)"
+          ACTUAL_TREE="$(git -C "$WORK" rev-parse HEAD^{tree})"
+          echo "ACSIE_COMMIT=$ACTUAL_COMMIT"
+          echo "ACSIE_TREE=$ACTUAL_TREE"
+          test "$ACTUAL_COMMIT" = "$ACSIE_REF"
+          echo "$WORK" > /tmp/acsie-l1-work
+          echo "$ACTUAL_COMMIT" > /tmp/acsie-l1-commit
+          echo "$ACTUAL_TREE" > /tmp/acsie-l1-tree
+
+      - name: Execute Layer-1 diagnostic and package evidence
+        env:
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '9d8e18136c17f2c6f3853612cf44fdf01f71cd24' }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -u
+          WORK="$(cat /tmp/acsie-l1-work)"
+          EVIDENCE="$GITHUB_WORKSPACE/evidence-layer1-router-$RUN_ID"
+          mkdir -p "$EVIDENCE"
+          cp /tmp/acsie-l1-commit "$EVIDENCE/acsie.commit"
+          cp /tmp/acsie-l1-tree "$EVIDENCE/acsie.tree"
+          cp "$WORK/research/l1_router_abstention_diagnostic_v1.py" "$EVIDENCE/l1_router_abstention_diagnostic_v1.py"
+          sha256sum "$EVIDENCE/l1_router_abstention_diagnostic_v1.py" > "$EVIDENCE/source.sha256"
+
+          python3 -m venv /tmp/acsie-venv
+          . /tmp/acsie-venv/bin/activate
+          python -m pip install --upgrade pip pytest > "$EVIDENCE/pip-install.stdout" 2> "$EVIDENCE/pip-install.stderr"
+          set +e
+          PYTHONPATH="$WORK" python -m py_compile "$WORK/research/l1_router_abstention_diagnostic_v1.py" > "$EVIDENCE/compile.stdout" 2> "$EVIDENCE/compile.stderr"
+          COMPILE_RC=$?
+          if [ "$COMPILE_RC" -ne 0 ]; then
+            printf '%s\n' "$COMPILE_RC" > "$EVIDENCE/compile.exit"
+            echo "EXECUTION_STATUS=CRASHED" > "$EVIDENCE/status.env"
+            exit 0
+          fi
+          PYTHONPATH="$WORK" python "$WORK/research/l1_router_abstention_diagnostic_v1.py" 20260928 > "$EVIDENCE/results.json" 2> "$EVIDENCE/stderr.log"
+          SCI_RC=$?
+          set -e
+          printf '%s\n' "$SCI_RC" > "$EVIDENCE/scientific.exit"
+          python - "$EVIDENCE/results.json" "$EVIDENCE/scientific_status.txt" <<'PY'
+          import json, sys
+          src, dst = sys.argv[1], sys.argv[2]
+          try:
+              data = json.load(open(src))
+              status = data.get("scientific_status", "INVALID")
+          except Exception:
+              status = "INVALID"
+          open(dst, "w").write(str(status) + "\n")
+          PY
+          printf '%s\n' "workflow_run_id=$RUN_ID" "acsie_ref=$ACSIE_REF" > "$EVIDENCE/execution.provenance"
+          printf '%s\n' "inherited_gen4_workflow_run=36386355578" "inherited_gen4_job=108812447925" "inherited_gen4_artifact=10954382992" "inherited_gen4_artifact_sha256=9f1ffc606a143cf8f70101ec10dbb935c066fa8a742e592159bbeb964091fda3" "inherited_gen4_scope=Narrow native multi-kernel continual learning qualification only; no AGI/ASI claim." >> "$EVIDENCE/execution.provenance"
+          git -C "$WORK" rev-parse HEAD^{tree} > "$EVIDENCE/acsie.tree"
+          sha256sum "$EVIDENCE"/* > "$EVIDENCE/manifest.sha256"
+          echo "SCIENTIFIC_EXIT_CODE=$SCI_RC"
+          cat "$EVIDENCE/scientific_status.txt"
+          echo "EVIDENCE_DIR=$EVIDENCE"
+          echo "CI_SUCCESS_IS_NOT_SCIENTIFIC_SUCCESS"
+
+      - name: Upload Layer-1 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-layer1-router-abstention-${{ github.run_id }}
+          path: evidence-layer1-router-${{ github.run_id }}
+          if-no-files-found: error
+          retention-days: 90
