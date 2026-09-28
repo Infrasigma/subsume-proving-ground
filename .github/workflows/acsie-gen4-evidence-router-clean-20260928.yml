@@ -4,13 +4,9 @@ on:
   push:
     branches:
       - acsie/gen4-evidence-router-calibration-repair-20260928
-    paths:
-      - ".github/workflows/acsie-gen4-evidence-router-clean-20260928.yml"
   pull_request:
     branches:
       - acsie/gen4-evidence-router-clean-20260928
-    paths:
-      - ".github/workflows/acsie-gen4-evidence-router-clean-20260928.yml"
   workflow_dispatch:
 
 permissions:
