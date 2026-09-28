@@ -413,6 +413,7 @@ class ProcedureBank:
                 x["local_score"],
                 x["native_score"],
                 x["fit_native_score"],
+                x["contextual_historical_score"],
                 x["historical_score"],
                 -x["index"],
             ),
