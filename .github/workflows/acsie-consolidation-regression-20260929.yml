@@ -25,15 +25,15 @@ jobs:
   acsie-consolidation-regression:
     runs-on: ubuntu-latest
     env:
-      ACSIE_REF: ${ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'cf5787af5a812a46784b2678fc23d9c2ed918a11' }}
-      ACSIE_L2_SEED: ${ github.event_name == 'workflow_dispatch' && inputs.acsie_seed || '2026092901' }}
+      ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'cf5787af5a812a46784b2678fc23d9c2ed918a11' }}
+      ACSIE_L2_SEED: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_seed || '2026092901' }}
       PYTHONHASHSEED: "0"
     steps:
       - uses: actions/checkout@v4
 
       - name: Checkout exact private ACSIE source
         env:
-          ACSIE_READ_TOKEN: ${ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-regression
@@ -131,7 +131,7 @@ jobs:
       - name: Upload raw regression evidence
         uses: actions/upload-artifact@v4
         with:
-          name: acsie-consolidation-${ env.ACSIE_REF }}
+          name: acsie-consolidation-${{ env.ACSIE_REF }}
           path: |
             /tmp/acsie-regression/native_gate.stdout.txt
             /tmp/acsie-regression/native_gate.stderr.txt
