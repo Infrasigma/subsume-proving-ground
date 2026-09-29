@@ -1,5 +1,5 @@
-p3 protection complete screen final rerun
+p3 protection complete screen transport-fixed
 ACSIE_REF=4bc29fe6ce24602833dd220f6513e4a02f070189
-ACSIE_TREE=74442e4b3543a86a9d40fc7ece324a2655f1f9fb
+ACSIE_BRANCH=acsie/l2c-p3-protection-complete-20260929
+ACSIE_TREE=74442e4b3543a86a9d40fc7ece324a2655f1f9fb3
 SEEDS=2026092901 2026092904
-workflow_yaml_fixed=true
