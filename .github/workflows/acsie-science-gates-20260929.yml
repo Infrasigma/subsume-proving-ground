@@ -1,4 +1,4 @@
-name: ACSIE scope-lock retention screen 20260929
+ACSIE p3-protection-complete retention screen 20260929
 
 on:
   push:
@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 env:
-  ACSIE_REF: 5d4b0fe0d072f52e83b7769821643ad54f47825a
-  ACSIE_EXPECTED_TREE: 7faf6c76b550ea4d181f3d1213753159c1b06dea
+  ACSIE_REF: 4bc29fe6ce24602833dd220f6513e4a02f070189
+  ACSIE_EXPECTED_TREE: 74442e4b3543a86a9d40fc7ece324a2655f1f9fb3
   ACSIE_L2_SEEDS: "2026092901 2026092904"
   PYTHONHASHSEED: "0"
 
