@@ -1,4 +1,4 @@
-novelty-gated local activation screen
+novelty-gated local activation five-seed capstone
 ACSIE_REF=0229c5c823848f36a5c28cf5d7fae995b25634d8
 ACSIE_TREE=7654068c0af40ec5987892093ca7ecdc4d130e2c
-SEED=2026092902
+SEEDS=2026092901 2026092902 2026092903 2026092904 2026092905
