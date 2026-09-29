@@ -1,0 +1,85 @@
+name: ACSIE protected-first retention hypothesis screen 20260929
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-protected-first-screen-20260929.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: 8cad1e50369fec434f4060765e210c60f1434a1b
+  ACSIE_EXPECTED_TREE: 468e3138f2904b355e1c568a7dc6140c3b40735a
+  ACSIE_L2_SEEDS: "2026092902"
+  PYTHONHASHSEED: "0"
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact ACSIE protected-first source
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          W=/tmp/acsie-screen
+          ASK=/tmp/acsie-askpass.sh
+          rm -rf "$W" "$ASK"
+          cat > "$ASK" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASK"
+          export GIT_ASKPASS="$ASK"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --no-checkout https://github.com/Infrasigma/ACSIE.git "$W"
+          git -C "$W" fetch --no-tags origin "$ACSIE_REF"
+          git -C "$W" checkout --detach --force FETCH_HEAD
+          ACTUAL_COMMIT="$(git -C "$W" rev-parse HEAD)"
+          ACTUAL_TREE="$(git -C "$W" rev-parse HEAD^{tree})"
+          test "$ACTUAL_COMMIT" = "$ACSIE_REF"
+          test "$ACTUAL_TREE" = "$ACSIE_EXPECTED_TREE"
+          echo "$ACTUAL_COMMIT" > "$W/SOURCE_COMMIT"
+          echo "$ACTUAL_TREE" > "$W/SOURCE_TREE"
+
+      - name: Compile exact source
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-screen
+          python -m compileall -q cognitive_core research
+
+      - name: Run one-seed retention screen
+        run: |
+          set +e
+          cd /tmp/acsie-screen
+          export PYTHONPATH="$PWD"
+          export ACSIE_GITHUB_ACTIONS=1
+          export ACSIE_L2_SEEDS="$ACSIE_L2_SEEDS"
+          export PYTHONHASHSEED=0
+          bash research/run_l2_sequential_gate.sh > l2c-screen.stdout.txt 2> l2c-screen.stderr.txt
+          rc=$?
+          printf 'rc=%s\n' "$rc" > l2c-screen.rc
+          cat l2c-screen.stdout.txt
+          cat l2c-screen.stderr.txt >&2 || true
+          exit 0
+
+      - name: Upload screen evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-protected-first-screen-${{ github.run_id }}
+          path: |
+            /tmp/acsie-screen/SOURCE_COMMIT
+            /tmp/acsie-screen/SOURCE_TREE
+            /tmp/acsie-screen/l2c-screen.stdout.txt
+            /tmp/acsie-screen/l2c-screen.stderr.txt
+            /tmp/acsie-screen/l2c-screen.rc
+            /tmp/acsie-l2-sequential-run/l2a-2026092902.json
