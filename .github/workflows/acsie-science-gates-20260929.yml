@@ -1,4 +1,4 @@
-name: ACSIE L2-A prefix penetration and sequential acquisition 20260929
+name: ACSIE L2-C untruncated-beam sequential acquisition 20260929
 
 on:
   push:
@@ -11,18 +11,19 @@ permissions:
   contents: read
 
 env:
-  ACSIE_REF: 5723214cfac4b24627c275695a5516869fe8da5b
-  ACSIE_EXPECTED_TREE: a654782d5f4dece006f22bd86de2eba5d868927f
+  ACSIE_REF: 85dddea2631dc46d8b5c79ab03c08b7bab6a5f3d
+  ACSIE_EXPECTED_TREE: dd3f211151a847f8c7d650b966167f7e691a297a
   ACSIE_L2_SEEDS: "2026092901 2026092902 2026092903 2026092904 2026092905"
   PYTHONHASHSEED: "0"
 
 jobs:
-  science:
+  l2c:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout exact merged ACSIE source
+      - name: Checkout exact ACSIE L2-C source
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
         run: |
@@ -50,7 +51,7 @@ jobs:
           echo "$ACTUAL_COMMIT" > "$W/SOURCE_COMMIT"
           echo "$ACTUAL_TREE" > "$W/SOURCE_TREE"
 
-      - name: Compile exact merged tree
+      - name: Compile exact ACSIE L2-C tree
         run: |
           set -euo pipefail
           cd /tmp/acsie-science
@@ -68,7 +69,7 @@ jobs:
           cat native_gate.stderr.txt >&2 || true
           exit 0
 
-      - name: Run exact L2-A deterministic gate
+      - name: Run exact five-seed L2-C sequential gate
         run: |
           set +e
           cd /tmp/acsie-science
@@ -84,31 +85,95 @@ jobs:
           cat l2a.stderr.txt >&2 || true
           exit 0
 
-      - name: Collect exact L2 evidence manifest
+      - name: Collect exact L2-C telemetry and aggregate gates
         if: always()
         run: |
+          set -euo pipefail
+          cd /tmp/acsie-science
+          mkdir -p evidence/l2c
+          cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/l2c/ 2>/dev/null || true
           python - <<'PY'
-          import json, os
+          import json
           from pathlib import Path
-          root = Path("/tmp/acsie-science")
-          out = {
-            "schema": "ACSIE.science-gates.v1",
-            "source_commit": (root/"SOURCE_COMMIT").read_text().strip(),
-            "source_tree": (root/"SOURCE_TREE").read_text().strip(),
-            "compile": "PASSED",
-            "native_gate_exit_code": int((root/"native_gate.rc").read_text().split("=")[-1]),
-            "l2a_exit_code": int((root/"l2a.rc").read_text().split("=")[-1]),
-            "l2a_seed": int(os.environ["ACSIE_L2_SEED"])
+          root=Path("/tmp/acsie-science")
+          run_root=Path("/tmp/acsie-l2-sequential-run")
+          seeds=[2026092901,2026092902,2026092903,2026092904,2026092905]
+          results=[]
+          for seed in seeds:
+              p=run_root/f"l2a-{seed}.json"
+              if p.exists():
+                  results.append(json.loads(p.read_text()))
+          keys=["holdout_contamination","external_model","task_routing"]
+          integrity_ok=len(results)==5 and all(
+              all(r.get("integrity",{}).get(k) is False for k in keys) for r in results
+          )
+          targets=[
+              ["xor",["eq",["atom",["x"],"parity"],["atom",["z"],"parity"]],["eq",["atom",["y"],"sign"],["atom",["z"],"sign"]]],
+              ["xor",["eq",["atom",["y"],"sign"],["atom",["z"],"sign"]],["eq",["atom",["x"],"parity"],["atom",["z"],"parity"]]]
+          ]
+          def p7_selected(r):
+              for st in r.get("stages",[]):
+                  if st.get("regime",{}).get("name")=="p7":
+                      return st.get("discovery",{}).get("selected_program") in targets
+              return False
+          gate_a1=len(results)==5 and all(
+              p7_selected(r) or any(st.get("regime",{}).get("name")=="p7" and st.get("status")=="PASSED" for st in r.get("stages",[]))
+              for r in results
+          )
+          gate_a2=len(results)==5 and all(
+              r.get("scientific_status")=="PASSED" and p7_selected(r) for r in results
+          )
+          gate_a3=len(results)==5 and all(
+              r.get("retention_after_p7",{}).get("all_checks_pass") is True for r in results
+          )
+          statuses=[r.get("scientific_status") for r in results]
+          if len(results)<5:
+              status="INCONCLUSIVE"
+          elif gate_a1 and gate_a2 and gate_a3 and integrity_ok:
+              status="PASSED"
+          elif "CRASHED" in statuses:
+              status="CRASHED"
+          elif "BLOCKED" in statuses:
+              status="BLOCKED"
+          else:
+              status="FAILED"
+          aggregate={
+              "schema":"ACSIE.l2c.aggregate.v1",
+              "experiment":"L2-C untruncated first-order beam sequential acquisition",
+              "source_commit":(root/"SOURCE_COMMIT").read_text().strip(),
+              "source_tree":(root/"SOURCE_TREE").read_text().strip(),
+              "aggregate_status":status,
+              "seeds_requested":seeds,
+              "seeds_executed":len(results),
+              "seed_statuses":statuses,
+              "holdout_contamination":False if integrity_ok else None,
+              "external_model":False if integrity_ok else None,
+              "task_routing":False if integrity_ok else None,
+              "gates":{
+                  "L2-C.1_frontier_penetration":gate_a1,
+                  "L2-C.2_candidate_acquisition":gate_a2,
+                  "L2-C.3_sequential_retention":gate_a3
+              },
+              "integrity_ok":integrity_ok,
+              "results":results
           }
-          (root/"science_gate_manifest.json").write_text(json.dumps(out, indent=2, sort_keys=True)+"\n")
-          print(json.dumps(out, indent=2, sort_keys=True))
+          (root/"evidence/aggregate.json").write_text(json.dumps(aggregate,indent=2,sort_keys=True)+"\n")
+          (root/"evidence/experiment.json").write_text(json.dumps({
+              "schema":"ACSIE.l2c.experiment.v1",
+              "source_commit":aggregate["source_commit"],
+              "source_tree":aggregate["source_tree"],
+              "requested_seeds":seeds,
+              "seeds_executed":len(results),
+              "results":results
+          },indent=2,sort_keys=True)+"\n")
+          print(json.dumps(aggregate,indent=2,sort_keys=True))
           PY
 
-      - name: Upload exact science evidence
+      - name: Upload exact L2-C evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: acsie-science-gates-${{ env.ACSIE_REF }}
+          name: acsie-l2c-85dddea2631dc46d8b5c79ab03c08b7bab6a5f3d
           path: |
             /tmp/acsie-science/SOURCE_COMMIT
             /tmp/acsie-science/SOURCE_TREE
@@ -122,3 +187,4 @@ jobs:
             /tmp/acsie-science/evidence/**
             /tmp/acsie-science/evidence/experiment.json
             /tmp/acsie-science/evidence/aggregate.json
+            /tmp/acsie-science/evidence/l2c/**
