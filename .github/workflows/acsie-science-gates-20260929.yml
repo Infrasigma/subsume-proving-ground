@@ -1,4 +1,4 @@
-name: ACSIE L2-C retention-isolation sequential acquisition 20260929
+name: ACSIE L2-C protected-first routing sequential acquisition 20260929
 
 on:
   push:
@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 env:
-  ACSIE_REF: a88740a0223c2ffc3133b54644883451d7d26f11
-  ACSIE_EXPECTED_TREE: e505ac46fe941b480db3a3424033d12a20e1edc6
+  ACSIE_REF: 8cad1e50369fec434f4060765e210c60f1434a1b
+  ACSIE_EXPECTED_TREE: 468e3138f2904b355e1c568a7dc6140c3b40735a
   ACSIE_L2_SEEDS: "2026092901 2026092902 2026092903 2026092904 2026092905"
   PYTHONHASHSEED: "0"
 
