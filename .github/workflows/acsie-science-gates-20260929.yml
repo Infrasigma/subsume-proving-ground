@@ -1,4 +1,4 @@
-name: ACSIE science gates exact merged checkpoint 20260929
+name: ACSIE L2-A prefix penetration and sequential acquisition 20260929
 
 on:
   push:
@@ -11,9 +11,9 @@ permissions:
   contents: read
 
 env:
-  ACSIE_REF: cf5787af5a812a46784b2678fc23d9c2ed918a11
-  ACSIE_EXPECTED_TREE: c4d84d36db0a207e23d07cce29b50472e6992b4a
-  ACSIE_L2_SEED: "2026092901"
+  ACSIE_REF: 5723214cfac4b24627c275695a5516869fe8da5b
+  ACSIE_EXPECTED_TREE: a654782d5f4dece006f22bd86de2eba5d868927f
+  ACSIE_L2_SEEDS: "2026092901 2026092902 2026092903 2026092904 2026092905"
   PYTHONHASHSEED: "0"
 
 jobs:
@@ -75,7 +75,7 @@ jobs:
           export PYTHONPATH="$PWD"
           unset GITHUB_WORKSPACE
           export ACSIE_GITHUB_ACTIONS=1
-          export ACSIE_L2_SEEDS="$ACSIE_L2_SEED"
+          export ACSIE_L2_SEEDS="$ACSIE_L2_SEEDS"
           export PYTHONHASHSEED=0
           bash research/run_l2_sequential_gate.sh > l2a.stdout.txt 2> l2a.stderr.txt
           rc=$?
@@ -120,3 +120,5 @@ jobs:
             /tmp/acsie-science/l2a.rc
             /tmp/acsie-science/science_gate_manifest.json
             /tmp/acsie-science/evidence/**
+            /tmp/acsie-science/evidence/experiment.json
+            /tmp/acsie-science/evidence/aggregate.json
