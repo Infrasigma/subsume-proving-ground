@@ -17,6 +17,7 @@ jobs:
       ACSIE_REF: e3397d292939d08f004d58bcce31e382dfb51e76
       ACSIE_GITHUB_ACTIONS: "1"
       PYTHONHASHSEED: "0"
+      RUN_MARKER: "activation-2"
     steps:
       - name: Checkout public proving-ground harness
         uses: actions/checkout@v4
