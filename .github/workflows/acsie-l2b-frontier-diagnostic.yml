@@ -1,0 +1,59 @@
+name: ACSIE L2-B p7 frontier diagnostic
+
+on:
+  push:
+    paths:
+      - "lab/l2b_frontier_trigger.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact L2-B ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: b86a33d0a879bb8d7a4cf8969803870ae51f52c6
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run discovery-only frontier check
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          python - <<'PY'
+          import json, random
+          from cognitive_core.native_independent_core import NativeCognitiveCore, canon
+
+          seed=2026092901
+          rng=random.Random(seed)
+          rows=[]
+          for _ in range(40):
+              x=rng.choice(tuple(range(-8,0))+tuple(range(1,9)))
+              y=rng.choice(tuple(range(-8,0))+tuple(range(1,9)))
+              z=rng.choice(tuple(range(-8,0))+tuple(range(1,9)))
+              px=x%2; py=y%2; pz=z%2
+              sy=(y<0); sz=(z<0)
+              condition=(px==pz) ^ (sy==sz)
+              delta=3 if condition else 8
+              rows.append(({"x":x,"y":y,"z":z},"step",{"x":x,"y":y,"z":z+delta}))
+          discovery=tuple(rows[:12])
+          target=(
+            "xor",
+            ("eq",("atom",("x",),"parity"),("atom",("z",),"parity")),
+            ("eq",("atom",("y",),"sign"),("atom",("z",),"sign")),
+          )
+          programs=NativeCognitiveCore._context_programs_from_streams((discovery,),max_programs=128)
+          present=canon(target) in {canon(p) for p in programs}
+          print(json.dumps({"target_present":present,"program_count":len(programs),"target":target},sort_keys=True))
+          raise SystemExit(0 if present else 1)
+          PY
