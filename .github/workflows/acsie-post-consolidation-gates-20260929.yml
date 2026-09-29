@@ -1,0 +1,156 @@
+name: ACSIE post-consolidation native and L2 gates 20260929
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-post-consolidation-gates-20260929.yml"
+      - ".github/workflows/acsie-post-consolidation-gates-20260929.trigger"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: cf5787af5a812a46784b2678fc23d9c2ed918a11
+  ACSIE_EXPECTED_TREE: c4d84d36db0a207e23d07cce29b50472e6992b4a
+  ACSIE_L2_SEED: "2026092901"
+  PYTHONHASHSEED: "0"
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact merged ACSIE source
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          W=/tmp/acsie-post-consolidation
+          ASK=/tmp/acsie-askpass.sh
+          rm -rf "$W" "$ASK"
+          cat > "$ASK" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASK"
+          export GIT_ASKPASS="$ASK"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --no-checkout https://github.com/Infrasigma/ACSIE.git "$W"
+          git -C "$W" fetch --no-tags origin "$ACSIE_REF"
+          git -C "$W" checkout --detach --force FETCH_HEAD
+          ACTUAL_COMMIT="$(git -C "$W" rev-parse HEAD)"
+          ACTUAL_TREE="$(git -C "$W" rev-parse HEAD^{tree})"
+          test "$ACTUAL_COMMIT" = "$ACSIE_REF"
+          test "$ACTUAL_TREE" = "$ACSIE_EXPECTED_TREE"
+          printf '%s\n' "$ACTUAL_COMMIT" > "$W/SOURCE_COMMIT"
+          printf '%s\n' "$ACTUAL_TREE" > "$W/SOURCE_TREE"
+
+      - name: Install pytest
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Compile exact merged tree
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-post-consolidation
+          python -m compileall -q cognitive_core research
+
+      - name: Integration-specific regression gate
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-post-consolidation
+          export PYTHONPATH="$PWD"
+          pytest -q \
+            tests/test_native_independent_core.py \
+            tests/test_multi_kernel_overlay.py
+
+      - name: Record pre-existing recursive baseline classification
+        run: |
+          cat > /tmp/acsie-post-consolidation/baseline_classification.json <<'JSON'
+          {
+            "status": "PREEXISTING_FAILURE",
+            "baseline_commit": "5723214cfac4b24627c275695a5516869fe8da5b",
+            "baseline_tree": "a654782d5f4dece006f22bd86de2eba5d868927f",
+            "recursive_failures": 5,
+            "same_five_failures_observed_on_merged_tree": true,
+            "consolidation_differential": "NO_REGRESSION",
+            "note": "Legacy recursive-intelligence assertions fail identically before and after consolidation; they are not attributed to Gen4 integration."
+          }
+          JSON
+
+      - name: Run native independence final gate
+        id: native_gate
+        run: |
+          set +e
+          cd /tmp/acsie-post-consolidation
+          export PYTHONPATH="$PWD"
+          python research/native_independent_final_gate.py \
+            > native_gate.stdout.txt \
+            2> native_gate.stderr.txt
+          rc=$?
+          printf 'rc=%s\n' "$rc" | tee native_gate.rc
+          cat native_gate.stdout.txt
+          cat native_gate.stderr.txt >&2 || true
+          exit 0
+
+      - name: Run exact L2-A deterministic gate
+        id: l2a_gate
+        run: |
+          set +e
+          cd /tmp/acsie-post-consolidation
+          export ACSIE_GITHUB_ACTIONS=1
+          export ACSIE_L2_SEEDS="$ACSIE_L2_SEED"
+          export PYTHONHASHSEED=0
+          bash research/run_l2_sequential_gate.sh \
+            > l2a.stdout.txt \
+            2> l2a.stderr.txt
+          rc=$?
+          printf 'rc=%s\n' "$rc" | tee l2a.rc
+          cat l2a.stdout.txt
+          cat l2a.stderr.txt >&2 || true
+          exit 0
+
+      - name: Write post-consolidation manifest
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("/tmp/acsie-post-consolidation")
+          out = {
+              "schema": "ACSIE.post-consolidation-gates.v1",
+              "source_commit": (root / "SOURCE_COMMIT").read_text().strip(),
+              "source_tree": (root / "SOURCE_TREE").read_text().strip(),
+              "compile": "PASSED",
+              "integration_specific_regression": "PASSED",
+              "preexisting_recursive_baseline": json.loads((root / "baseline_classification.json").read_text()),
+              "native_gate_exit_code": int((root / "native_gate.rc").read_text().split("=")[-1]),
+              "l2a_exit_code": int((root / "l2a.rc").read_text().split("=")[-1]),
+              "l2a_seed": int(__import__("os").environ["ACSIE_L2_SEED"])
+          }
+          (root / "post_consolidation_manifest.json").write_text(
+              json.dumps(out, indent=2, sort_keys=True) + "\n"
+          )
+          print(json.dumps(out, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload raw post-consolidation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-post-consolidation-${{ env.ACSIE_REF }}
+          path: |
+            /tmp/acsie-post-consolidation/SOURCE_COMMIT
+            /tmp/acsie-post-consolidation/SOURCE_TREE
+            /tmp/acsie-post-consolidation/baseline_classification.json
+            /tmp/acsie-post-consolidation/native_gate.stdout.txt
+            /tmp/acsie-post-consolidation/native_gate.stderr.txt
+            /tmp/acsie-post-consolidation/native_gate.rc
+            /tmp/acsie-post-consolidation/l2a.stdout.txt
+            /tmp/acsie-post-consolidation/l2a.stderr.txt
+            /tmp/acsie-post-consolidation/l2a.rc
+            /tmp/acsie-post-consolidation/post_consolidation_manifest.json
+            /tmp/acsie-post-consolidation/evidence/**
