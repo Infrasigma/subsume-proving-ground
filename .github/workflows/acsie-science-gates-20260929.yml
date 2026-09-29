@@ -72,6 +72,7 @@ jobs:
         run: |
           set +e
           cd /tmp/acsie-science
+          export PYTHONPATH="$PWD"
           export ACSIE_GITHUB_ACTIONS=1
           export ACSIE_L2_SEEDS="$ACSIE_L2_SEED"
           export PYTHONHASHSEED=0
