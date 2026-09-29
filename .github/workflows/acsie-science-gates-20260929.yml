@@ -12,6 +12,7 @@ permissions:
 
 env:
   ACSIE_REF: 4bc29fe6ce24602833dd220f6513e4a02f070189
+  ACSIE_FETCH_BRANCH: acsie/l2c-p3-protection-complete-20260929
   ACSIE_EXPECTED_TREE: 74442e4b3543a86a9d40fc7ece324a2655f1f9fb3
   ACSIE_L2_SEEDS: "2026092901 2026092904"
   PYTHONHASHSEED: "0"
@@ -42,8 +43,8 @@ jobs:
           export GIT_ASKPASS="$ASK"
           export GIT_TERMINAL_PROMPT=0
           git clone --no-checkout https://github.com/Infrasigma/ACSIE.git "$W"
-          git -C "$W" fetch --no-tags origin "$ACSIE_REF"
-          git -C "$W" checkout --detach --force FETCH_HEAD
+          git -C "$W" fetch --no-tags origin "refs/heads/$ACSIE_FETCH_BRANCH:refs/remotes/origin/$ACSIE_FETCH_BRANCH"
+          git -C "$W" checkout --detach --force "$ACSIE_REF"
           ACTUAL_COMMIT="$(git -C "$W" rev-parse HEAD)"
           ACTUAL_TREE="$(git -C "$W" rev-parse HEAD^{tree})"
           test "$ACTUAL_COMMIT" = "$ACSIE_REF"
