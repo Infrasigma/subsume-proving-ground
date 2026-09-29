@@ -1,4 +1,4 @@
-name: ACSIE quarantine-new-branch retention screen 20260929
+name: ACSIE novelty-gated local activation five-seed capstone 20260929
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
 env:
   ACSIE_REF: 0229c5c823848f36a5c28cf5d7fae995b25634d8
   ACSIE_EXPECTED_TREE: 7654068c0af40ec5987892093ca7ecdc4d130e2c
-  ACSIE_L2_SEEDS: "2026092902"
+  ACSIE_L2_SEEDS: "2026092901 2026092902 2026092903 2026092904 2026092905"
   PYTHONHASHSEED: "0"
 
 jobs:
