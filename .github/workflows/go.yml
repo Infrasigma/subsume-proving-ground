@@ -105,7 +105,7 @@ jobs:
         working-directory: acsie
         run: |
           set -eu
-          test "$(git rev-parse HEAD)" = "b2349fc24803fa01cf2da27dccc1f17fe3df21f4"
+          test "$(git rev-parse HEAD)" = "b1c75ee5c8e091d12bd6cf76cd411e9028e0f212"
           echo "ACSIE_COMMIT=$(git rev-parse HEAD)"
           echo "ACSIE_TREE=$(git rev-parse HEAD^{tree})"
       - name: Execute exact two-seed Gen5 diagnostic
