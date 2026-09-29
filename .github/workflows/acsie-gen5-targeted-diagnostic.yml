@@ -15,10 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      ACSIE_REF: 1e7131694d9cec339ece1cd0fea6242a07efe0e6
+      ACSIE_REF: a0e147ca07a16bd5b2fb40c992575751df074eed
       ACSIE_GITHUB_ACTIONS: "1"
       PYTHONHASHSEED: "0"
-      RUN_MARKER: "activation-4"
+      RUN_MARKER: "activation-5"
     steps:
       - name: Checkout public proving-ground harness
         uses: actions/checkout@v4
