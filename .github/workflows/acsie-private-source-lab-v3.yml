@@ -106,6 +106,154 @@ PY
         working-directory: acsie
         run: python research/native_independent_final_gate.py
 
+  gen5-targeted-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONHASHSEED: "0"
+      ACSIE_GITHUB_ACTIONS: "1"
+    steps:
+      - name: Read ACSIE ref from public harness
+        uses: actions/checkout@v4
+        with:
+          path: harness
+          fetch-depth: 1
+
+      - name: Select ACSIE ref
+        id: ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref="$(cat harness/lab/current_acsie_ref.txt)"
+          test -n "$ref"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "acsie_ref=$ref"
+
+      - name: Checkout exact private ACSIE source at workspace root
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ steps.ref.outputs.ref }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: .
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact repaired source
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMMIT="$(git rev-parse HEAD)"
+          TREE="$(git rev-parse HEAD^{tree})"
+          test "$COMMIT" = "${{ steps.ref.outputs.ref }}"
+          test -z "$(git status --porcelain)"
+          printf '%s\n' "source_commit=$COMMIT" "source_tree=$TREE" | tee source.txt
+          grep -F 'ROUTER_MARGIN = 0.30' research/l1_four_generation_native_bank_h28_v1.py
+          grep -F 'post_scores[g] >= baseline_scores[g]' research/run_gen5_gate.sh
+          grep -F 'SEEDS=(2026092801 2026092804)' research/run_gen5_gate.sh
+
+      - name: Execute corrected Gen5 targeted diagnostic
+        shell: bash
+        run: |
+          set +e
+          bash research/run_gen5_gate.sh > gate.stdout 2> gate.stderr
+          RC=$?
+          set -e
+          printf '%s\n' "$RC" > gate.exit_code
+          echo "gate_exit_code=$RC"
+          test "$RC" -ne 0
+          grep -F "CAPSTONE_GATE_DIAGNOSTIC_SUMMARY_READY" gate.stdout
+          grep -F "CAPSTONE_GATE_FATAL_TELEMETRY_BOUNDARY" gate.stderr
+          grep -F "CAPSTONE_SEED_START=2026092801" gate.stdout
+          grep -F "CAPSTONE_SEED_START=2026092804" gate.stdout
+
+      - name: Validate Seeds 1 and 4
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("/tmp/acsie-gen5-run")
+          expected = [2026092801, 2026092804]
+          commit = Path("source.txt").read_text().split("source_commit=",1)[1].splitlines()[0].strip()
+
+          rows = {}
+          for seed in expected:
+              p = root / f"experiment-{seed}.json"
+              e = root / f"experiment-{seed}.exit_code"
+              assert p.exists(), p
+              assert e.exists(), e
+              row = json.loads(p.read_text())
+              rows[seed] = row
+              assert row.get("seed") == seed
+              assert row.get("source_commit") == commit
+              assert e.read_text().strip() == "0"
+
+          s1 = rows[2026092801]
+          r1 = s1.get("gen1_to_gen4_retention") or {}
+          c1 = r1.get("checks") or {}
+          assert c1.get("no_coverage_loss") is True, c1
+          assert c1.get("expected_branch_preserved") is True, c1
+          assert c1.get("no_accuracy_loss") is True, c1
+          assert c1.get("no_p4_historical_takeover") is True, c1
+
+          b2 = (r1.get("baseline") or {}).get("gen2") or {}
+          p2 = (r1.get("post_acquisition") or {}).get("gen2") or {}
+          assert p2.get("coverage", -1) >= b2.get("coverage", 0), (b2, p2)
+          assert p2.get("expected_branch_selection_rate", -1) >= b2.get("expected_branch_selection_rate", 0), (b2, p2)
+          assert p2.get("p4_selected_rows") == 0, p2
+
+          s4 = rows[2026092804]
+          d4 = s4.get("discovery") or {}
+          g4 = s4.get("gates") or {}
+          assert d4.get("known_bank_insufficient") is True, d4
+          assert g4.get("known_bank_insufficient") is True, g4
+          assert s4.get("scientific_status") in {"PASSED", "FAILED"}
+
+          summary = {
+              "schema": "ACSIE.layer1-gen5-targeted-diagnostic.v1",
+              "source_commit": commit,
+              "source_tree": Path("source.txt").read_text().split("source_tree=",1)[1].strip(),
+              "seeds": expected,
+              "seed1": {
+                  "scientific_status": s1.get("scientific_status"),
+                  "gen2_baseline": b2,
+                  "gen2_post": p2,
+                  "retention_checks": c1,
+              },
+              "seed4": {
+                  "scientific_status": s4.get("scientific_status"),
+                  "known_bank_insufficient": d4.get("known_bank_insufficient"),
+                  "gate": g4.get("known_bank_insufficient"),
+              },
+              "gate_exit_code": int(Path("gate.exit_code").read_text().strip()),
+          }
+          Path("diagnostic-summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload Gen5 diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-gen5-targeted-diagnostic-${{ github.run_id }}
+          path: |
+            source.txt
+            gate.stdout
+            gate.stderr
+            gate.exit_code
+            diagnostic-summary.json
+            /tmp/acsie-gen5-run/experiment-2026092801.json
+            /tmp/acsie-gen5-run/experiment-2026092801.stderr
+            /tmp/acsie-gen5-run/experiment-2026092801.exit_code
+            /tmp/acsie-gen5-run/experiment-2026092804.json
+            /tmp/acsie-gen5-run/experiment-2026092804.stderr
+            /tmp/acsie-gen5-run/experiment-2026092804.exit_code
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Remove private source
         if: always()
         run: rm -rf acsie
