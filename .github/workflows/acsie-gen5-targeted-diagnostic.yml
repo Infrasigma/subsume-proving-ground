@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - ".github/workflows/acsie-gen5-targeted-diagnostic.yml"
+      - "lab/current_acsie_ref.txt"
   workflow_dispatch:
 
 permissions:
