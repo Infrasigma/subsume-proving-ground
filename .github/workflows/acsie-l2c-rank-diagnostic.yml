@@ -1,0 +1,47 @@
+name: ACSIE L2-C full discovery ranking diagnostic
+
+on:
+  push:
+    paths:
+      - "lab/l2c_rank_trigger.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rank:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact L2-C ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: 85dddea2631dc46d8b5c79ab03c08b7bab6a5f3d
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Rank full discovery frontier
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          python - <<'PY'
+          import json, random
+          from cognitive_core.native_independent_core import NativeCognitiveCore, canon
+          seed=2026092901; rng=random.Random(seed); rows=[]
+          nonzero=tuple(range(-8,0))+tuple(range(1,9))
+          for _ in range(40):
+              x=rng.choice(nonzero); y=rng.choice(nonzero); z=rng.choice(nonzero)
+              condition=((x%2)==(z%2)) ^ ((y<0)==(z<0)); delta=3 if condition else 8
+              rows.append(({"x":x,"y":y,"z":z},"step",{"x":x,"y":y,"z":z+delta}))
+          discovery=tuple(rows[:12])
+          target=("xor",("eq",("atom",("x",),"parity"),("atom",("z",),"parity")),("eq",("atom",("y",),"sign"),("atom",("z",),"sign")))
+          programs=NativeCognitiveCore._context_programs_from_streams((discovery,),max_programs=100000)
+          keys=[canon(p) for p in programs]; t=canon(target)
+          print(json.dumps({"returned":len(programs),"target_present":t in keys,"target_rank":(keys.index(t)+1 if t in keys else None),"target":target},sort_keys=True))
+          PY
