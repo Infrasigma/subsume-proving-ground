@@ -1,0 +1,85 @@
+name: ACSIE anchored-router retention hypothesis screen 20260929
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-anchored-router-screen-20260929.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: 08477fd61d94a583d129d225786ac2c41a72a8ca
+  ACSIE_EXPECTED_TREE: 4fdabb3f0e9f691f5f38ef74a000e6fa191dc9b7
+  ACSIE_L2_SEEDS: "2026092902"
+  PYTHONHASHSEED: "0"
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact ACSIE anchored-router source
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          W=/tmp/acsie-anchored
+          ASK=/tmp/acsie-askpass.sh
+          rm -rf "$W" "$ASK"
+          cat > "$ASK" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s
+' 'x-access-token' ;;
+            *) printf '%s
+' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASK"
+          export GIT_ASKPASS="$ASK"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --no-checkout https://github.com/Infrasigma/ACSIE.git "$W"
+          git -C "$W" fetch --no-tags origin "$ACSIE_REF"
+          git -C "$W" checkout --detach --force FETCH_HEAD
+          ACTUAL_COMMIT="$(git -C "$W" rev-parse HEAD)"
+          ACTUAL_TREE="$(git -C "$W" rev-parse HEAD^{tree})"
+          test "$ACTUAL_COMMIT" = "$ACSIE_REF"
+          test "$ACTUAL_TREE" = "$ACSIE_EXPECTED_TREE"
+          echo "$ACTUAL_COMMIT" > "$W/SOURCE_COMMIT"
+          echo "$ACTUAL_TREE" > "$W/SOURCE_TREE"
+      - name: Compile exact source
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-anchored
+          python -m compileall -q cognitive_core research
+      - name: Run one-seed anchored-router screen
+        run: |
+          set +e
+          cd /tmp/acsie-anchored
+          export PYTHONPATH="$PWD"
+          unset GITHUB_WORKSPACE
+          export ACSIE_GITHUB_ACTIONS=1
+          export ACSIE_L2_SEEDS="$ACSIE_L2_SEEDS"
+          export PYTHONHASHSEED=0
+          bash research/run_l2_sequential_gate.sh > anchored.stdout.txt 2> anchored.stderr.txt
+          rc=$?
+          printf 'rc=%s
+' "$rc" > anchored.rc
+          cat anchored.stdout.txt
+          cat anchored.stderr.txt >&2 || true
+          exit 0
+      - name: Upload anchored-router evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-anchored-router-screen-${{ github.run_id }}
+          path: |
+            /tmp/acsie-anchored/SOURCE_COMMIT
+            /tmp/acsie-anchored/SOURCE_TREE
+            /tmp/acsie-anchored/anchored.stdout.txt
+            /tmp/acsie-anchored/anchored.stderr.txt
+            /tmp/acsie-anchored/anchored.rc
+            /tmp/acsie-l2-sequential-run/l2a-2026092902.json
