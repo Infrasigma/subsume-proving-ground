@@ -46,6 +46,7 @@ jobs:
         run: |
           set +e
           cd /tmp/acsie-core-diagnostic
+          export PYTHONPATH="$PWD"
           timeout 600s pytest -vv --durations=20 tests/test_native_independent_core.py > /tmp/core.txt 2>&1
           rc=$?
           echo "rc=$rc" | tee -a /tmp/core.txt
@@ -89,6 +90,7 @@ jobs:
         run: |
           set +e
           cd /tmp/acsie-recursive-diagnostic
+          export PYTHONPATH="$PWD"
           timeout 600s pytest -vv --durations=20 tests/test_native_recursive_intelligence.py > /tmp/recursive.txt 2>&1
           rc=$?
           echo "rc=$rc" | tee -a /tmp/recursive.txt
