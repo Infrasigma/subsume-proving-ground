@@ -1,5 +1,4 @@
-L2-C protected-first routing hypothesis trigger
-ACSIE_REF=8cad1e50369fec434f4060765e210c60f1434a1b
-ACSIE_TREE=468e3138f2904b355e1c568a7dc6140c3b40735a
-five-seed-sequential-acquisition-2026-09-29
-hypothesis=protected-first-routing-outside-active-composed-context
+protected-margin-v2 router retention screen
+ACSIE_REF=0d4d86d187af237d169f2dbec9092f48ac311be4
+ACSIE_TREE=71179ac570ce1a59bc793cec7667c819f3998e64
+SEED=2026092902
