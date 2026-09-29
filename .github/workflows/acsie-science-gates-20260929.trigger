@@ -1,5 +1,5 @@
-L2-C untruncated discovery-only beam trigger
-ACSIE_REF=85dddea2631dc46d8b5c79ab03c08b7bab6a5f3d
-ACSIE_TREE=dd3f211151a847f8c7d650b966167f7e691a297a
+L2-C retention-isolation hypothesis trigger
+ACSIE_REF=a88740a0223c2ffc3133b54644883451d7d26f11
+ACSIE_TREE=e505ac46fe941b480db3a3424033d12a20e1edc6
 five-seed-sequential-acquisition-2026-09-29
-explicit-l2c-trigger-2026-09-29T11:12Z
+hypothesis=filter_active_composed_context_before_arbitration
