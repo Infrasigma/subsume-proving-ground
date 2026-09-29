@@ -1,5 +1,5 @@
-L2-C retention-isolation hypothesis trigger
-ACSIE_REF=a88740a0223c2ffc3133b54644883451d7d26f11
-ACSIE_TREE=e505ac46fe941b480db3a3424033d12a20e1edc6
+L2-C protected-first routing hypothesis trigger
+ACSIE_REF=8cad1e50369fec434f4060765e210c60f1434a1b
+ACSIE_TREE=468e3138f2904b355e1c568a7dc6140c3b40735a
 five-seed-sequential-acquisition-2026-09-29
-hypothesis=filter_active_composed_context_before_arbitration
+hypothesis=protected-first-routing-outside-active-composed-context
