@@ -52,8 +52,8 @@ jobs:
             ("eq",("atom",("x",),"parity"),("atom",("z",),"parity")),
             ("eq",("atom",("y",),"sign"),("atom",("z",),"sign")),
           )
-          programs=NativeCognitiveCore._context_programs_from_streams((discovery,),max_programs=128)
+          programs=NativeCognitiveCore._context_programs_from_streams((discovery,),max_programs=100000)
           present=canon(target) in {canon(p) for p in programs}
-          print(json.dumps({"target_present":present,"program_count":len(programs),"target":target},sort_keys=True))
+          keys=[canon(p) for p in programs]\n          print(json.dumps({"target_present":present,"program_count":len(programs),"target_rank":(keys.index(canon(target))+1 if canon(target) in keys else None)},sort_keys=True))
           raise SystemExit(0 if present else 1)
           PY
