@@ -32,10 +32,8 @@ jobs:
           cat > "$ASK" <<'EOF'
           #!/bin/sh
           case "$1" in
-            *Username*) printf '%s
-' 'x-access-token' ;;
-            *) printf '%s
-' "$ACSIE_READ_TOKEN" ;;
+            *Username*) printf '%s\\n' 'x-access-token' ;;
+            *) printf '%s\\n' "$ACSIE_READ_TOKEN" ;;
           esac
           EOF
           chmod 700 "$ASK"
@@ -66,8 +64,7 @@ jobs:
           export PYTHONHASHSEED=0
           bash research/run_l2_sequential_gate.sh > anchored.stdout.txt 2> anchored.stderr.txt
           rc=$?
-          printf 'rc=%s
-' "$rc" > anchored.rc
+          printf 'rc=%s\\n' "$rc" > anchored.rc
           cat anchored.stdout.txt
           cat anchored.stderr.txt >&2 || true
           exit 0
