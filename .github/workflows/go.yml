@@ -96,7 +96,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: b1c75ee5c8e091d12bd6cf76cd411e9028e0f212
+          ref: 6c61e4d54eb9eac93bbca8098475af849764a7a1
           token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie
           fetch-depth: 1
@@ -105,7 +105,7 @@ jobs:
         working-directory: acsie
         run: |
           set -eu
-          test "$(git rev-parse HEAD)" = "b1c75ee5c8e091d12bd6cf76cd411e9028e0f212"
+          test "$(git rev-parse HEAD)" = "6c61e4d54eb9eac93bbca8098475af849764a7a1"
           echo "ACSIE_COMMIT=$(git rev-parse HEAD)"
           echo "ACSIE_TREE=$(git rev-parse HEAD^{tree})"
       - name: Execute exact two-seed Gen5 diagnostic
