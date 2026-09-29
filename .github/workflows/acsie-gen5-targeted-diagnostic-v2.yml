@@ -1,4 +1,5 @@
 name: ACSIE Gen5 targeted diagnostic v2
+# trigger after workflow installation
 
 on:
   push:
