@@ -106,6 +106,32 @@ PY
         working-directory: acsie
         run: python research/native_independent_final_gate.py
 
+      - name: ACSIE Gen5 targeted two-seed diagnostic
+        working-directory: acsie
+        env:
+          ACSIE_GITHUB_ACTIONS: "1"
+        run: |
+          set +e
+          bash research/run_gen5_gate.sh > /tmp/gen5-gate.stdout 2> /tmp/gen5-gate.stderr
+          rc=$?
+          echo "${rc}" > /tmp/gen5-gate.exit_code
+          cat /tmp/gen5-gate.stdout
+          cat /tmp/gen5-gate.stderr >&2
+          echo "GEN5_GATE_EXIT=${rc}"
+          exit 0
+
+      - name: Upload ACSIE Gen5 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-gen5-targeted-two-seed-${{ github.run_id }}
+          path: |
+            /tmp/gen5-gate.stdout
+            /tmp/gen5-gate.stderr
+            /tmp/gen5-gate.exit_code
+            /tmp/acsie-gen5-run
+          if-no-files-found: warn
+
       - name: Remove private source
         if: always()
         run: rm -rf acsie
