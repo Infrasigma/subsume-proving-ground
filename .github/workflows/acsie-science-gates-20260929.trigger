@@ -1,4 +1,4 @@
-quarantine-new-branch retention screen
-ACSIE_REF=cf2670452fde0693ab18046fe4abe929774bc52d
-ACSIE_TREE=9adf2833c9e96a16a07362d314e516c7721c2f86
+novelty-gated local activation screen
+ACSIE_REF=0229c5c823848f36a5c28cf5d7fae995b25634d8
+ACSIE_TREE=7654068c0af40ec5987892093ca7ecdc4d130e2c
 SEED=2026092902
