@@ -1,4 +1,4 @@
-name: ACSIE L2-C untruncated-beam sequential acquisition 20260929
+name: ACSIE L2-C retention-isolation sequential acquisition 20260929
 
 on:
   push:
@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 env:
-  ACSIE_REF: 85dddea2631dc46d8b5c79ab03c08b7bab6a5f3d
-  ACSIE_EXPECTED_TREE: dd3f211151a847f8c7d650b966167f7e691a297a
+  ACSIE_REF: a88740a0223c2ffc3133b54644883451d7d26f11
+  ACSIE_EXPECTED_TREE: e505ac46fe941b480db3a3424033d12a20e1edc6
   ACSIE_L2_SEEDS: "2026092901 2026092902 2026092903 2026092904 2026092905"
   PYTHONHASHSEED: "0"
 
