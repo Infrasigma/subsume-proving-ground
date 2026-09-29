@@ -1,4 +1,4 @@
-name: ACSIE protected-margin-v2 retention screen 20260929
+name: ACSIE quarantine-new-branch retention screen 20260929
 
 on:
   push:
@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 env:
-  ACSIE_REF: 0d4d86d187af237d169f2dbec9092f48ac311be4
-  ACSIE_EXPECTED_TREE: 71179ac570ce1a59bc793cec7667c819f3998e64
+  ACSIE_REF: cf2670452fde0693ab18046fe4abe929774bc52d
+  ACSIE_EXPECTED_TREE: 9adf2833c9e96a16a07362d314e516c7721c2f86
   ACSIE_L2_SEEDS: "2026092902"
   PYTHONHASHSEED: "0"
 
