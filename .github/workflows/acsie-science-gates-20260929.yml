@@ -51,10 +51,22 @@ jobs:
           echo "ACSIE_ACTUAL_TREE=$ACTUAL_TREE"
           echo "ACSIE_EXPECTED_COMMIT=$ACSIE_REF"
           echo "ACSIE_EXPECTED_TREE=$ACSIE_EXPECTED_TREE"
-          test "$ACTUAL_COMMIT" = "$ACSIE_REF"
-          test "$ACTUAL_TREE" = "$ACSIE_EXPECTED_TREE"
-          echo "$ACTUAL_COMMIT" > "$W/SOURCE_COMMIT"
-          echo "$ACTUAL_TREE" > "$W/SOURCE_TREE"
+          python - <<'PY'
+          import os, subprocess, sys
+          actual_commit=subprocess.check_output(["git","-C","/tmp/acsie-science","rev-parse","HEAD"],text=True).strip()
+          actual_tree=subprocess.check_output(["git","-C","/tmp/acsie-science","rev-parse","HEAD^{tree}"],text=True).strip()
+          expected_commit=os.environ["ACSIE_REF"].strip()
+          expected_tree=os.environ["ACSIE_EXPECTED_TREE"].strip()
+          print(f"PY_EXPECTED_COMMIT=<{expected_commit}>")
+          print(f"PY_ACTUAL_COMMIT=<{actual_commit}>")
+          print(f"PY_EXPECTED_TREE=<{expected_tree}>")
+          print(f"PY_ACTUAL_TREE=<{actual_tree}>")
+          if actual_commit != expected_commit or actual_tree != expected_tree:
+              raise SystemExit("exact ACSIE source identity mismatch")
+          Path=None
+          open("/tmp/acsie-science/SOURCE_COMMIT","w").write(actual_commit+"\n")
+          open("/tmp/acsie-science/SOURCE_TREE","w").write(actual_tree+"\n")
+          PY
 
       - name: Compile exact ACSIE L2-C tree
         run: |
