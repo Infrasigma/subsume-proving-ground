@@ -1,0 +1,60 @@
+name: ACSIE native independence gate on L2-B source
+
+on:
+  push:
+    paths:
+      - "lab/l2b_native_trigger.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact L2-B ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: b86a33d0a879bb8d7a4cf8969803870ae51f52c6
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify source identity and capture tree
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "b86a33d0a879bb8d7a4cf8969803870ae51f52c6"
+          git rev-parse HEAD^{tree} | tee SOURCE_TREE
+          test -z "$(git status --porcelain)"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile
+        working-directory: acsie
+        run: python -m compileall -q cognitive_core research
+      - name: Run native independence final gate
+        working-directory: acsie
+        run: |
+          set +e
+          export PYTHONPATH="$PWD"
+          python research/native_independent_final_gate.py > native_gate.stdout.txt 2> native_gate.stderr.txt
+          rc=$?
+          echo "$rc" > native_gate.rc
+          cat native_gate.stdout.txt
+          cat native_gate.stderr.txt >&2 || true
+          exit 0
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-native-gate-l2b-${{ github.run_id }}
+          path: |
+            acsie/SOURCE_TREE
+            acsie/native_gate.stdout.txt
+            acsie/native_gate.stderr.txt
+            acsie/native_gate.rc
+          if-no-files-found: error
