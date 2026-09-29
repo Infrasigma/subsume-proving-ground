@@ -1,4 +1,4 @@
-name: ACSIE anchored-router retention screen 20260929
+name: ACSIE protected-margin-v2 retention screen 20260929
 
 on:
   push:
@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 env:
-  ACSIE_REF: 08477fd61d94a583d129d225786ac2c41a72a8ca
-  ACSIE_EXPECTED_TREE: 4fdabb3f0e9f691f5f38ef74a000e6fa191dc9b7
+  ACSIE_REF: 0d4d86d187af237d169f2dbec9092f48ac311be4
+  ACSIE_EXPECTED_TREE: 71179ac570ce1a59bc793cec7667c819f3998e64
   ACSIE_L2_SEEDS: "2026092902"
   PYTHONHASHSEED: "0"
 
