@@ -1,0 +1,72 @@
+name: ACSIE L2-B canonical sequential acquisition
+
+on:
+  push:
+    paths:
+      - "lab/l2b_canonical_trigger.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  l2b:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact private canonical-plus-L2B ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: b86a33d0a879bb8d7a4cf8969803870ae51f52c6
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact source identity
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "b86a33d0a879bb8d7a4cf8969803870ae51f52c6"
+          test "$(git rev-parse HEAD^{tree})" = "$(git rev-parse HEAD^{tree})"
+          test -z "$(git status --porcelain)"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compile
+        working-directory: acsie
+        run: python -m compileall -q cognitive_core research
+
+      - name: Run exact L2-A protocol against canonical-plus-L2B source
+        working-directory: acsie
+        env:
+          ACSIE_GITHUB_ACTIONS: "1"
+          ACSIE_L2_SEEDS: "2026092901"
+          PYTHONHASHSEED: "0"
+        run: |
+          set +e
+          unset GITHUB_WORKSPACE
+          export PYTHONPATH="$PWD"
+          bash research/run_l2_sequential_gate.sh > /tmp/l2b-canonical.stdout 2> /tmp/l2b-canonical.stderr
+          rc=$?
+          echo "$rc" > /tmp/l2b-canonical.exit_code
+          cat /tmp/l2b-canonical.stdout
+          cat /tmp/l2b-canonical.stderr >&2
+          echo "L2B_CANONICAL_EXIT=$rc"
+          exit 0
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2b-canonical-${{ github.run_id }}
+          path: |
+            /tmp/l2b-canonical.stdout
+            /tmp/l2b-canonical.stderr
+            /tmp/l2b-canonical.exit_code
+            /tmp/acsie-l2-sequential-run
+          if-no-files-found: warn
