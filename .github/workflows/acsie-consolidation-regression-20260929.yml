@@ -60,6 +60,11 @@ jobs:
           echo "$ACTUAL_COMMIT" > "$WORK/SOURCE_COMMIT"
           echo "$ACTUAL_TREE" > "$WORK/SOURCE_TREE"
 
+      - name: Install ACSIE regression dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip pytest
+
       - name: Compile ACSIE
         run: |
           set -euo pipefail
