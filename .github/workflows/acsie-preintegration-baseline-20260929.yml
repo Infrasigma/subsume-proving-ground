@@ -1,0 +1,67 @@
+name: ACSIE preintegration baseline regression 20260929
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-preintegration-baseline-20260929.yml"
+      - ".github/workflows/acsie-preintegration-baseline-20260929.trigger"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: 5723214cfac4b24627c275695a5516869fe8da5b
+  PYTHONHASHSEED: "0"
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact preintegration ACSIE
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          W=/tmp/acsie-baseline
+          ASK=/tmp/acsie-askpass.sh
+          cat > "$ASK" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASK"
+          export GIT_ASKPASS="$ASK"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --no-checkout https://github.com/Infrasigma/ACSIE.git "$W"
+          git -C "$W" fetch --no-tags origin "$ACSIE_REF"
+          git -C "$W" checkout --detach --force FETCH_HEAD
+          test "$(git -C "$W" rev-parse HEAD)" = "$ACSIE_REF"
+          test "$(git -C "$W" rev-parse HEAD^{tree})" = "a654782d5f4dece006f22bd86de2eba5d868927f"
+          echo "ACSIE_BASELINE_COMMIT=$ACSIE_REF"
+          echo "ACSIE_BASELINE_TREE=a654782d5f4dece006f22bd86de2eba5d868927f"
+      - name: Install pytest
+        run: python -m pip install --upgrade pip pytest
+      - name: Compile
+        run: |
+          cd /tmp/acsie-baseline
+          python -m compileall -q cognitive_core research
+      - name: Run exact preintegration regression
+        run: |
+          set +e
+          cd /tmp/acsie-baseline
+          export PYTHONPATH="$PWD"
+          pytest -q             tests/test_native_independent_core.py             tests/test_native_recursive_intelligence.py             tests/test_multi_kernel_overlay.py             > /tmp/baseline.txt 2>&1
+          rc=$?
+          cat /tmp/baseline.txt
+          echo "rc=$rc" | tee -a /tmp/baseline.txt
+          exit "$rc"
+      - name: Upload baseline evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-preintegration-baseline-regression
+          path: /tmp/baseline.txt
