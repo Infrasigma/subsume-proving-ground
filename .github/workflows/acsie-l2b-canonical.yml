@@ -29,7 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "b86a33d0a879bb8d7a4cf8969803870ae51f52c6"
-          test "$(git rev-parse HEAD^{tree})" = "$(git rev-parse HEAD^{tree})"
+          test "$(git rev-parse HEAD^{tree})" = "cafac1eae0400a6d3467a309b5f896d5aa6fdfcf"
           test -z "$(git status --porcelain)"
 
       - name: Setup Python
@@ -40,6 +40,33 @@ jobs:
       - name: Compile
         working-directory: acsie
         run: python -m compileall -q cognitive_core research
+
+      - name: Check p7 target is reachable in discovery frontier
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          python - <<'PY'
+          import json, random
+          from cognitive_core.native_independent_core import NativeCognitiveCore, canon
+          seed=2026092901
+          rng=random.Random(seed)
+          rows=[]
+          for _ in range(40):
+              x=rng.choice(tuple(range(-8,0))+tuple(range(1,9)))
+              y=rng.choice(tuple(range(-8,0))+tuple(range(1,9)))
+              z=rng.choice(tuple(range(-8,0))+tuple(range(1,9)))
+              px=x%2; pz=z%2
+              condition=(px==pz) ^ ((y<0)==(z<0))
+              delta=3 if condition else 8
+              rows.append(({"x":x,"y":y,"z":z},"step",{"x":x,"y":y,"z":z+delta}))
+          discovery=tuple(rows[:12])
+          target=("xor",("eq",("atom",("x",),"parity"),("atom",("z",),"parity")),("eq",("atom",("y",),"sign"),("atom",("z",),"sign")))
+          programs=NativeCognitiveCore._context_programs_from_streams((discovery,),max_programs=128)
+          present=canon(target) in {canon(p) for p in programs}
+          print(json.dumps({"target_present":present,"program_count":len(programs)},sort_keys=True))
+          assert present
+          PY
 
       - name: Run exact L2-A protocol against canonical-plus-L2B source
         working-directory: acsie
