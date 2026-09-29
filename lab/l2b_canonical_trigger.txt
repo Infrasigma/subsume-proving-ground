@@ -1,1 +1,1 @@
-Canonical L2-B proving trigger 2026-09-29; ACSIE b86a33d0a879bb8d7a4cf8969803870ae51f52c6
+Canonical L2-B proving trigger 2026-09-29 rerun with pinned tree and frontier diagnostic; ACSIE b86a33d0a879bb8d7a4cf8969803870ae51f52c6
