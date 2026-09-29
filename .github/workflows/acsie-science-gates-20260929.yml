@@ -1,4 +1,4 @@
-name: ACSIE novelty-gated local activation five-seed capstone 20260929
+name: ACSIE scope-lock retention screen 20260929
 
 on:
   push:
@@ -11,9 +11,9 @@ permissions:
   contents: read
 
 env:
-  ACSIE_REF: 0229c5c823848f36a5c28cf5d7fae995b25634d8
-  ACSIE_EXPECTED_TREE: 7654068c0af40ec5987892093ca7ecdc4d130e2c
-  ACSIE_L2_SEEDS: "2026092901 2026092902 2026092903 2026092904 2026092905"
+  ACSIE_REF: 5d4b0fe0d072f52e83b7769821643ad54f47825a
+  ACSIE_EXPECTED_TREE: 7faf6c76b550ea4d181f3d1213753159c1b06dea
+  ACSIE_L2_SEEDS: "2026092901 2026092904"
   PYTHONHASHSEED: "0"
 
 jobs:
