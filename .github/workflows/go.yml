@@ -82,4 +82,55 @@ jobs:
           name: acex-forensic-result
           path: acex-result.txt
 
+  acsie-gen5:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout public harness
+        uses: actions/checkout@v4
+        with:
+          path: lab-harness
+          fetch-depth: 1
+      - name: Checkout exact private ACSIE
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: b2349fc24803fa01cf2da27dccc1f17fe3df21f4
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify source identity
+        working-directory: acsie
+        run: |
+          set -eu
+          test "$(git rev-parse HEAD)" = "b2349fc24803fa01cf2da27dccc1f17fe3df21f4"
+          echo "ACSIE_COMMIT=$(git rev-parse HEAD)"
+          echo "ACSIE_TREE=$(git rev-parse HEAD^{tree})"
+      - name: Execute exact two-seed Gen5 diagnostic
+        working-directory: acsie
+        env:
+          ACSIE_GITHUB_ACTIONS: "1"
+        run: |
+          set +e
+          bash research/run_gen5_gate.sh > /tmp/gen5-gate.stdout 2> /tmp/gen5-gate.stderr
+          rc=$?
+          echo "${rc}" > /tmp/gen5-gate.exit_code
+          cat /tmp/gen5-gate.stdout
+          cat /tmp/gen5-gate.stderr >&2
+          echo "GEN5_GATE_EXIT=${rc}"
+          exit 0
+      - name: Upload ACSIE Gen5 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-gen5-targeted-two-seed-${{ github.run_id }}
+          path: |
+            /tmp/gen5-gate.stdout
+            /tmp/gen5-gate.stderr
+            /tmp/gen5-gate.exit_code
+            /tmp/acsie-gen5-run
+          if-no-files-found: warn
+
 # ACE-X forensic trigger revision.
