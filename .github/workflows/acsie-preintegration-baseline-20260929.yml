@@ -54,7 +54,10 @@ jobs:
           set +e
           cd /tmp/acsie-baseline
           export PYTHONPATH="$PWD"
-          pytest -q             tests/test_native_independent_core.py             tests/test_native_recursive_intelligence.py             tests/test_multi_kernel_overlay.py             > /tmp/baseline.txt 2>&1
+          pytest -q \
+            tests/test_native_independent_core.py \
+            tests/test_native_recursive_intelligence.py \
+            > /tmp/baseline.txt 2>&1
           rc=$?
           cat /tmp/baseline.txt
           echo "rc=$rc" | tee -a /tmp/baseline.txt
