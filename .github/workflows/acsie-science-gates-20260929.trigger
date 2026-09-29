@@ -1,4 +1,5 @@
-incumbent-veto retention screen
+incumbent-veto corrected source pin
 ACSIE_REF=fe20763d01f286f6f84f83cfa9b037e27ce7ac7d
+ACSIE_BRANCH=acsie/l2c-incumbent-veto-20260929
 ACSIE_TREE=44855531ce43929777318d3d6848ae90d1192d2d
 SEEDS=2026092901 2026092904
