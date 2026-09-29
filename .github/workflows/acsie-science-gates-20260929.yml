@@ -1,0 +1,120 @@
+name: ACSIE science gates exact merged checkpoint 20260929
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-science-gates-20260929.yml"
+      - ".github/workflows/acsie-science-gates-20260929.trigger"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: cf5787af5a812a46784b2678fc23d9c2ed918a11
+  ACSIE_EXPECTED_TREE: c4d84d36db0a207e23d07cce29b50472e6992b4a
+  ACSIE_L2_SEED: "2026092901"
+  PYTHONHASHSEED: "0"
+
+jobs:
+  science:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact merged ACSIE source
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          W=/tmp/acsie-science
+          ASK=/tmp/acsie-askpass.sh
+          rm -rf "$W" "$ASK"
+          cat > "$ASK" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASK"
+          export GIT_ASKPASS="$ASK"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --no-checkout https://github.com/Infrasigma/ACSIE.git "$W"
+          git -C "$W" fetch --no-tags origin "$ACSIE_REF"
+          git -C "$W" checkout --detach --force FETCH_HEAD
+          ACTUAL_COMMIT="$(git -C "$W" rev-parse HEAD)"
+          ACTUAL_TREE="$(git -C "$W" rev-parse HEAD^{tree})"
+          test "$ACTUAL_COMMIT" = "$ACSIE_REF"
+          test "$ACTUAL_TREE" = "$ACSIE_EXPECTED_TREE"
+          echo "$ACTUAL_COMMIT" > "$W/SOURCE_COMMIT"
+          echo "$ACTUAL_TREE" > "$W/SOURCE_TREE"
+
+      - name: Compile exact merged tree
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-science
+          python -m compileall -q cognitive_core research
+
+      - name: Run native independence final gate
+        run: |
+          set +e
+          cd /tmp/acsie-science
+          export PYTHONPATH="$PWD"
+          python research/native_independent_final_gate.py > native_gate.stdout.txt 2> native_gate.stderr.txt
+          rc=$?
+          echo "rc=$rc" | tee native_gate.rc
+          cat native_gate.stdout.txt
+          cat native_gate.stderr.txt >&2 || true
+          exit 0
+
+      - name: Run exact L2-A deterministic gate
+        run: |
+          set +e
+          cd /tmp/acsie-science
+          export ACSIE_GITHUB_ACTIONS=1
+          export ACSIE_L2_SEEDS="$ACSIE_L2_SEED"
+          export PYTHONHASHSEED=0
+          bash research/run_l2_sequential_gate.sh > l2a.stdout.txt 2> l2a.stderr.txt
+          rc=$?
+          echo "rc=$rc" | tee l2a.rc
+          cat l2a.stdout.txt
+          cat l2a.stderr.txt >&2 || true
+          exit 0
+
+      - name: Collect exact L2 evidence manifest
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path("/tmp/acsie-science")
+          out = {
+            "schema": "ACSIE.science-gates.v1",
+            "source_commit": (root/"SOURCE_COMMIT").read_text().strip(),
+            "source_tree": (root/"SOURCE_TREE").read_text().strip(),
+            "compile": "PASSED",
+            "native_gate_exit_code": int((root/"native_gate.rc").read_text().split("=")[-1]),
+            "l2a_exit_code": int((root/"l2a.rc").read_text().split("=")[-1]),
+            "l2a_seed": int(os.environ["ACSIE_L2_SEED"])
+          }
+          (root/"science_gate_manifest.json").write_text(json.dumps(out, indent=2, sort_keys=True)+"\n")
+          print(json.dumps(out, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload exact science evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-science-gates-${{ env.ACSIE_REF }}
+          path: |
+            /tmp/acsie-science/SOURCE_COMMIT
+            /tmp/acsie-science/SOURCE_TREE
+            /tmp/acsie-science/native_gate.stdout.txt
+            /tmp/acsie-science/native_gate.stderr.txt
+            /tmp/acsie-science/native_gate.rc
+            /tmp/acsie-science/l2a.stdout.txt
+            /tmp/acsie-science/l2a.stderr.txt
+            /tmp/acsie-science/l2a.rc
+            /tmp/acsie-science/science_gate_manifest.json
+            /tmp/acsie-science/evidence/**
