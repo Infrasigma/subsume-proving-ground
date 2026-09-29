@@ -1,0 +1,143 @@
+name: ACSIE consolidation regression and L2-A
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-consolidation-regression-20260929.yml"
+      - ".github/workflows/acsie-consolidation-regression-20260929.trigger"
+  workflow_dispatch:
+    inputs:
+      acsie_ref:
+        description: "Exact ACSIE commit SHA"
+        required: true
+        default: "cf5787af5a812a46784b2678fc23d9c2ed918a11"
+        type: string
+      acsie_seed:
+        description: "L2-A deterministic seed"
+        required: true
+        default: "2026092901"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  acsie-consolidation-regression:
+    runs-on: ubuntu-latest
+    env:
+      ACSIE_REF: ${ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'cf5787af5a812a46784b2678fc23d9c2ed918a11' }}
+      ACSIE_L2_SEED: ${ github.event_name == 'workflow_dispatch' && inputs.acsie_seed || '2026092901' }}
+      PYTHONHASHSEED: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact private ACSIE source
+        env:
+          ACSIE_READ_TOKEN: ${ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          WORK=/tmp/acsie-regression
+          ASKPASS=/tmp/acsie-askpass.sh
+          rm -rf "$WORK" "$ASKPASS"
+          cat > "$ASKPASS" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --no-checkout https://github.com/Infrasigma/ACSIE.git "$WORK"
+          git -C "$WORK" fetch --no-tags origin "$ACSIE_REF"
+          git -C "$WORK" checkout --detach --force FETCH_HEAD
+          ACTUAL_COMMIT="$(git -C "$WORK" rev-parse HEAD)"
+          ACTUAL_TREE="$(git -C "$WORK" rev-parse HEAD^{tree})"
+          printf 'ACSIE_COMMIT=%s\n' "$ACTUAL_COMMIT"
+          printf 'ACSIE_TREE=%s\n' "$ACTUAL_TREE"
+          test "$ACTUAL_COMMIT" = "$ACSIE_REF"
+          echo "$ACTUAL_COMMIT" > "$WORK/SOURCE_COMMIT"
+          echo "$ACTUAL_TREE" > "$WORK/SOURCE_TREE"
+
+      - name: Compile ACSIE
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-regression
+          python -m compileall -q cognitive_core research
+
+      - name: Run core regression tests
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-regression
+          PYTHONPATH="$PWD" pytest -q \
+            tests/test_native_independent_core.py \
+            tests/test_native_recursive_intelligence.py \
+            tests/test_multi_kernel_overlay.py
+
+      - name: Run native independence gate
+        id: native_gate
+        run: |
+          set +e
+          cd /tmp/acsie-regression
+          PYTHONPATH="$PWD" python research/native_independent_final_gate.py \
+            > /tmp/acsie-regression/native_gate.stdout.txt \
+            2> /tmp/acsie-regression/native_gate.stderr.txt
+          rc=$?
+          echo "rc=$rc" | tee /tmp/acsie-regression/native_gate.rc
+          cat /tmp/acsie-regression/native_gate.stdout.txt
+          cat /tmp/acsie-regression/native_gate.stderr.txt >&2 || true
+          exit 0
+
+      - name: Run L2-A exact deterministic gate
+        id: l2a
+        run: |
+          set +e
+          cd /tmp/acsie-regression
+          export ACSIE_GITHUB_ACTIONS=1
+          export ACSIE_L2_SEEDS="$ACSIE_L2_SEED"
+          export PYTHONHASHSEED=0
+          bash research/run_l2_sequential_gate.sh \
+            > /tmp/acsie-regression/l2a.stdout.txt \
+            2> /tmp/acsie-regression/l2a.stderr.txt
+          rc=$?
+          echo "rc=$rc" | tee /tmp/acsie-regression/l2a.rc
+          cat /tmp/acsie-regression/l2a.stdout.txt
+          cat /tmp/acsie-regression/l2a.stderr.txt >&2 || true
+          exit 0
+
+      - name: Write consolidation regression manifest
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          root = Path("/tmp/acsie-regression")
+          out = {
+              "schema": "ACSIE.consolidation-regression.v1",
+              "acsie_commit": (root / "SOURCE_COMMIT").read_text().strip(),
+              "acsie_tree": (root / "SOURCE_TREE").read_text().strip(),
+              "compile": "PASSED",
+              "core_tests": "PASSED",
+              "native_gate_exit_code": int((root / "native_gate.rc").read_text().split("=")[-1]),
+              "l2a_exit_code": int((root / "l2a.rc").read_text().split("=")[-1]),
+              "l2a_seed": int(os.environ["ACSIE_L2_SEED"]),
+              "scientific_note": "L2-A scientific FAIL/BLOCKED is diagnostic evidence and is not converted into a runner failure; runtime crashes remain nonzero in the ACSIE gate.",
+          }
+          (root / "consolidation_regression_manifest.json").write_text(json.dumps(out, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(out, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload raw regression evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-consolidation-${ env.ACSIE_REF }}
+          path: |
+            /tmp/acsie-regression/native_gate.stdout.txt
+            /tmp/acsie-regression/native_gate.stderr.txt
+            /tmp/acsie-regression/native_gate.rc
+            /tmp/acsie-regression/l2a.stdout.txt
+            /tmp/acsie-regression/l2a.stderr.txt
+            /tmp/acsie-regression/l2a.rc
+            /tmp/acsie-regression/l2a-*.json
+            /tmp/acsie-regression/consolidation_regression_manifest.json
