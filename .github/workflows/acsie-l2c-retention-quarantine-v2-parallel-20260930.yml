@@ -1,0 +1,152 @@
+name: ACSIE L2-C retention quarantine v2 parallel 20260930
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-l2c-retention-quarantine-v2-parallel-20260930.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: 821bb43602c016a3b6c4d6dcfe20d986e152ee90
+  ACSIE_FETCH_BRANCH: research/l2c-retention-evidence-quarantine-v2-20260930
+  PYTHONHASHSEED: "0"
+  ACSIE_L2_SELECTION_MODE: "cv_partition"
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026092901, 2026092902, 2026092903, 2026092904, 2026092905]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact ACSIE v2 source
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          W=/tmp/acsie-l2c-v2
+          ASK=/tmp/acsie-askpass.sh
+          rm -rf "$W" "$ASK"
+          cat > "$ASK" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\\n' 'x-access-token' ;;
+            *) printf '%s\\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASK"
+          export GIT_ASKPASS="$ASK"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --no-checkout https://github.com/Infrasigma/ACSIE.git "$W"
+          git -C "$W" fetch --no-tags origin "refs/heads/$ACSIE_FETCH_BRANCH:refs/remotes/origin/$ACSIE_FETCH_BRANCH"
+          git -C "$W" checkout --detach --force "$ACSIE_REF"
+          test "$(git -C "$W" rev-parse HEAD)" = "$ACSIE_REF"
+          echo "SOURCE_COMMIT=$(git -C "$W" rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git -C "$W" rev-parse HEAD^{tree})"
+
+      - name: Run exact one-seed L2-C gate
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-l2c-v2
+          export PYTHONPATH="$PWD"
+          export ACSIE_GITHUB_ACTIONS=1
+          export ACSIE_L2_SEEDS="${{ matrix.seed }}"
+          set +e
+          bash research/run_l2_sequential_gate.sh > gate.stdout.txt 2> gate.stderr.txt
+          rc=$?
+          set -e
+          echo "$rc" > gate.rc
+          mkdir -p evidence/seed
+          cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/seed/
+          cp gate.stdout.txt gate.stderr.txt gate.rc evidence/seed/
+          python - <<'PY'
+          import json,subprocess
+          from pathlib import Path
+          rows=[json.loads(p.read_text()) for p in Path("evidence/seed").glob("l2a-*.json")]
+          d=rows[0]
+          p7=next((s for s in d.get("stages",[]) if s.get("regime",{}).get("name")=="p7"),{})
+          print(json.dumps({
+              "seed":d.get("seed"),
+              "scientific_status":d.get("scientific_status"),
+              "failure_boundary":d.get("failure_boundary"),
+              "p7_status":p7.get("status"),
+              "retention_all_checks_pass":(d.get("retention_after_p7") or {}).get("all_checks_pass"),
+              "source_commit":subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()
+          },sort_keys=True))
+          PY
+
+      - name: Upload seed evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-retention-v2-seed-${{ matrix.seed }}
+          path: /tmp/acsie-l2c-v2/evidence/seed/**
+          if-no-files-found: warn
+
+  aggregate:
+    needs: seed
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: acsie-l2c-retention-v2-seed-*
+          path: evidence
+          merge-multiple: false
+
+      - name: Strict five-seed aggregate
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          rows=[]
+          for p in sorted(Path("evidence").glob("**/l2a-*.json")):
+              d=json.loads(p.read_text())
+              rows.append({
+                  "seed":d.get("seed"),
+                  "scientific_status":d.get("scientific_status"),
+                  "failure_boundary":d.get("failure_boundary"),
+                  "p7_status":next((s.get("status") for s in d.get("stages",[]) if s.get("regime",{}).get("name")=="p7"),None),
+                  "retention_all_checks_pass":(d.get("retention_after_p7") or {}).get("all_checks_pass"),
+                  "integrity":d.get("integrity")
+              })
+          rows.sort(key=lambda x:x["seed"])
+          summary={
+              "schema":"ACSIE.l2c.retention-quarantine-v2.parallel.v1",
+              "source_commit":"821bb43602c016a3b6c4d6dcfe20d986e152ee90",
+              "requested_seed_count":5,
+              "observed_seed_count":len(rows),
+              "rows":rows,
+              "scientific_pass_count":sum(r["scientific_status"]=="PASSED" for r in rows),
+              "retention_pass_count":sum(bool(r["retention_all_checks_pass"]) for r in rows),
+              "crash_count":sum(r["scientific_status"]=="CRASHED" for r in rows),
+              "strict_five_seed_pass":len(rows)==5 and all(r["scientific_status"]=="PASSED" for r in rows)
+          }
+          Path("aggregate.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\\n")
+          manifest={}
+          for p in sorted(Path("evidence").rglob("*.json")):
+              manifest[str(p)] = hashlib.sha256(p.read_bytes()).hexdigest()
+          Path("manifest.sha256.json").write_text(json.dumps(manifest,indent=2,sort_keys=True)+"\\n")
+          print(json.dumps(summary,indent=2,sort_keys=True))
+          if not summary["strict_five_seed_pass"]:
+              raise SystemExit(1)
+          PY
+
+      - name: Upload aggregate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-retention-v2-parallel-aggregate
+          path: |
+            aggregate.json
+            manifest.sha256.json
+            evidence/**
