@@ -1,0 +1,68 @@
+name: ACSIE H-G1 recursive compositional frontier 20260930
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-hg1-recursive-compositional-frontier-20260930.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: 627eace96af3bfa2cb7452f5aeca880d9530af76
+  PYTHONHASHSEED: "0"
+
+jobs:
+  diagnostic:
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026093001, 2026093002, 2026093003, 2026093004, 2026093005]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact ACSIE H-G1 source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_REF }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact source identity
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ACSIE_REF"
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse HEAD^{tree})"
+
+      - name: Run H-G1 paired baseline-vs-recursive gate
+        working-directory: acsie
+        env:
+          H_G1_SEED: "${{ matrix.seed }}"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          python3 -u research/run_recursive_context_frontier_gate.py \
+            "$H_G1_SEED" \
+            "$(git rev-parse HEAD)" \
+            "$(git rev-parse HEAD^{tree})" \
+            > gate.stdout.txt 2> gate.stderr.txt
+          cp "/tmp/acsie-hg1-${H_G1_SEED}.json" "hg1-${H_G1_SEED}.json"
+          mkdir -p evidence/hg1
+          cp "/tmp/acsie-hg1-${H_G1_SEED}.json" evidence/hg1/
+          cp gate.stdout.txt gate.stderr.txt evidence/hg1/
+
+      - name: Upload H-G1 scientific evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-hg1-recursive-frontier-${{ matrix.seed }}
+          path: acsie/evidence/hg1/**
+          if-no-files-found: error
