@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  ACSIE_REF: 95040df1bbb4a67ddf668ed22672ce129ec96e81
+  ACSIE_REF: 0f8c2ab95acecd8c59f928c44df37e8399c26fc1
   PYTHONHASHSEED: "0"
 jobs:
   debug:
