@@ -1,1 +1,1 @@
-all-incumbent shadow retention repair test
+fully wired incumbent-shadow retention test
