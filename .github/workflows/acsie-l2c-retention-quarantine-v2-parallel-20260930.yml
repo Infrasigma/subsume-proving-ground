@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 env:
-  ACSIE_REF: 9ea8cc127f16bee2e0bad7f16fca79ac16d7e835
-  ACSIE_FETCH_BRANCH: main
+  ACSIE_REF: e381a0cb76ee2fd63ac0d0c6b1ebac65f4634736
+  ACSIE_FETCH_BRANCH: research/l2c-incumbent-shadow-all-preexisting-20260930
   PYTHONHASHSEED: "0"
   ACSIE_L2_SELECTION_MODE: "cv_partition"
 
