@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 env:
-  ACSIE_REF: 9f40511e1bac63d618b6564438c3eb39f1686691
-  ACSIE_FETCH_BRANCH: research/l2c-retention-quarantine-v3-20260930
+  ACSIE_REF: 8ac74b3623cc9c040bd4ae1dc9443ba209b3f75d
+  ACSIE_FETCH_BRANCH: research/l2c-retention-quarantine-v4-20260930
   PYTHONHASHSEED: "0"
   ACSIE_L2_SELECTION_MODE: "cv_partition"
 
