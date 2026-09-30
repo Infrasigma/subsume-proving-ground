@@ -1,0 +1,64 @@
+name: ACSIE H-G1c bounded semantic frontier 20260930
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-hg1c-bounded-semantic-frontier-20260930.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: 1a85ebea0370808991131b36c7c0a543c33496c4
+  PYTHONHASHSEED: "0"
+jobs:
+  diagnostic:
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026093001, 2026093002, 2026093003, 2026093004, 2026093005]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact ACSIE H-G1c source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_REF }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source identity
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ACSIE_REF"
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse HEAD^{tree})"
+      - name: Run H-G1c gate
+        working-directory: acsie
+        env:
+          H_G1_SEED: "${{ matrix.seed }}"
+        run: |
+          set +e
+          export PYTHONPATH="$PWD"
+          python3 -u research/run_recursive_context_frontier_gate_v4.py "$H_G1_SEED" "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" > gate.stdout.txt 2> gate.stderr.txt
+          rc=$?
+          set -e
+          mkdir -p evidence/hg1c
+          cp gate.stdout.txt gate.stderr.txt evidence/hg1c/
+          printf "%s\n" "$rc" > evidence/hg1c/gate.rc
+          if [ -f "/tmp/acsie-hg1-${H_G1_SEED}.json" ]; then cp "/tmp/acsie-hg1-${H_G1_SEED}.json" evidence/hg1c/; fi
+          tail -n 180 gate.stdout.txt || true
+          cat gate.stderr.txt || true
+          test "$rc" -eq 0
+      - name: Upload H-G1c evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-hg1c-bounded-${{ matrix.seed }}
+          path: acsie/evidence/hg1c/**
+          if-no-files-found: error
