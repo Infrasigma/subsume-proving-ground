@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 env:
-  ACSIE_REF: 1e58f19808362c4b3dadcfbfec5f3484b4344d4b
-  ACSIE_FETCH_BRANCH: research/l2c-retention-quarantine-repair-frontier-20260930
+  ACSIE_REF: 821bb43602c016a3b6c4d6dcfe20d986e152ee90
+  ACSIE_FETCH_BRANCH: research/l2c-retention-evidence-quarantine-v2-20260930
   ACSIE_L2_SEEDS: "2026092901 2026092902 2026092903 2026092904 2026092905"
   PYTHONHASHSEED: "0"
 
