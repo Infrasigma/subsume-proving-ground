@@ -1,0 +1,38 @@
+name: ACSIE H-G1 v2 one-seed debug 20260930
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-hg1-v2-debug-20260930.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: 95040df1bbb4a67ddf668ed22672ce129ec96e81
+  PYTHONHASHSEED: "0"
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_REF }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify source
+        working-directory: acsie
+        run: test "$(git rev-parse HEAD)" = "$ACSIE_REF"
+      - name: Execute one seed with visible stderr
+        working-directory: acsie
+        run: |
+          set -o pipefail
+          export PYTHONPATH="$PWD"
+          python3 -u research/run_recursive_context_frontier_gate.py 2026093001 "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})"
