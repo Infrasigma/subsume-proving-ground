@@ -34,8 +34,8 @@ jobs:
           cat > "$ASK" <<'EOF'
           #!/bin/sh
           case "$1" in
-            *Username*) printf '%s\\n' 'x-access-token' ;;
-            *) printf '%s\\n' "$ACSIE_READ_TOKEN" ;;
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
           esac
           EOF
           chmod 700 "$ASK"
