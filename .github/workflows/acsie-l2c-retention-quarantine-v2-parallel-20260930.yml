@@ -4,15 +4,14 @@ on:
   push:
     paths:
       - ".github/workflows/acsie-l2c-retention-quarantine-v2-parallel-20260930.yml"
-      - ".github/workflows/acsie-l2c-retention-quarantine-v2-parallel-20260930.trigger"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  ACSIE_REF: 8ac74b3623cc9c040bd4ae1dc9443ba209b3f75d
-  ACSIE_FETCH_BRANCH: research/l2c-retention-quarantine-v4-20260930
+  ACSIE_REF: 2d93c76d545cb60769c2e7d6b7f65b72a989888a
+  ACSIE_FETCH_BRANCH: research/l2c-retention-quarantine-v5-incumbent-arbitration-20260930
   PYTHONHASHSEED: "0"
   ACSIE_L2_SELECTION_MODE: "cv_partition"
 
@@ -23,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        seed: [2026092901, 2026092902, 2026092903, 2026092904, 2026092905]
+        seed: [2026092902]
     steps:
       - uses: actions/checkout@v4
 
@@ -116,9 +115,9 @@ jobs:
               })
           rows.sort(key=lambda x:x["seed"])
           summary={
-              "schema":"ACSIE.l2c.retention-quarantine-v2.parallel.v1",
+              "schema":"ACSIE.l2c.retention-quarantine-v5.route-invariance.single-seed.v1",
               "source_commit":"821bb43602c016a3b6c4d6dcfe20d986e152ee90",
-              "requested_seed_count":5,
+              "requested_seed_count":1,
               "observed_seed_count":len(rows),
               "rows":rows,
               "scientific_pass_count":sum(r["scientific_status"]=="PASSED" for r in rows),
