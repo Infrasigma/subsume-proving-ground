@@ -213,3 +213,116 @@ jobs:
         with:
           name: acsie-l2c-candidate-selection-diagnostic-20260930
           path: /tmp/acsie-candidate-diag/evidence/l2c-candidate-selection/**
+
+
+  candidate-ablation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [partition, cv, cv_partition]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact candidate-selection hypothesis source
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          W=/tmp/acsie-ablation
+          ASK=/tmp/acsie-askpass.sh
+          rm -rf "$W" "$ASK"
+          cat > "$ASK" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASK"
+          export GIT_ASKPASS="$ASK"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --no-checkout https://github.com/Infrasigma/ACSIE.git "$W"
+          git -C "$W" fetch --no-tags origin "refs/heads/research/l2c-candidate-selection-semantic-cv-v2-20260930:refs/remotes/origin/research/l2c-candidate-selection-semantic-cv-v2-20260930"
+          git -C "$W" checkout --detach --force dbc00f2272faa965f9184f4bcefc05e5aa1548da
+          test "$(git -C "$W" rev-parse HEAD)" = dbc00f2272faa965f9184f4bcefc05e5aa1548da
+
+      - name: Run five-seed selection ablation
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-ablation
+          export PYTHONPATH="$PWD"
+          export ACSIE_GITHUB_ACTIONS=1
+          unset GITHUB_WORKSPACE
+          export ACSIE_L2_SEEDS="2026092901 2026092902 2026092903 2026092904 2026092905"
+          export ACSIE_L2_SELECTION_MODE="${{ matrix.mode }}"
+          export PYTHONHASHSEED=0
+          set +e
+          bash research/run_l2_sequential_gate.sh > ablation.stdout.txt 2> ablation.stderr.txt
+          rc=$?
+          set -e
+          echo "$rc" > ablation.rc
+          mkdir -p evidence/l2c-candidate-ablation
+          cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/l2c-candidate-ablation/ 2>/dev/null || true
+          cp ablation.stdout.txt ablation.stderr.txt ablation.rc evidence/l2c-candidate-ablation/
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root=Path("evidence/l2c-candidate-ablation")
+          rows=[]
+          for p in sorted(root.glob("l2a-*.json")):
+              d=json.loads(p.read_text())
+              p7=[s for s in d.get("stages",[]) if s.get("regime",{}).get("name")=="p7"]
+              rows.append({
+                  "seed":d.get("seed"),
+                  "scientific_status":d.get("scientific_status"),
+                  "p7_status":p7[0].get("status") if p7 else None,
+                  "selected_program":p7[0].get("discovery",{}).get("selected_program") if p7 else None,
+                  "selected_index":p7[0].get("discovery",{}).get("selected_index") if p7 else None,
+                  "selection_mode":p7[0].get("discovery",{}).get("selection_mode") if p7 else None,
+                  "selection_score":p7[0].get("discovery",{}).get("selected_selection_score") if p7 else None,
+                  "selection_rank":p7[0].get("discovery",{}).get("selected_selection_rank") if p7 else None,
+                  "cv_mean":p7[0].get("discovery",{}).get("selected_cv_mean") if p7 else None,
+                  "holdout_pass":p7[0].get("fresh_holdout",{}).get("passed") if p7 else None,
+                  "transfer_pass":p7[0].get("fresh_transfer",{}).get("passed") if p7 else None,
+                  "integrity":p7[0].get("integrity",{}) if p7 else None,
+                  "exact_target_gate":False,
+              })
+          target=[
+              ["xor",["eq",["atom",["x"],"parity"],["atom",["z"],"parity"]],["eq",["atom",["y"],"sign"],["atom",["z"],"sign"]]],
+              ["xor",["eq",["atom",["y"],"sign"],["atom",["z"],"sign"]],["eq",["atom",["x"],"parity"],["atom",["z"],"parity"]]]
+          ]
+          for r in rows:
+              r["exact_target_gate"]=r["selected_program"] in target
+          summary={
+              "schema":"ACSIE.l2c.candidate-selection-ablation.v1",
+              "selection_mode":os.environ["ACSIE_L2_SELECTION_MODE"],
+              "source_commit":"dbc00f2272faa965f9184f4bcefc05e5aa1548da",
+              "source_tree":__import__("subprocess").check_output(["git","rev-parse","HEAD^{tree}"],text=True).strip(),
+              "rows":rows,
+              "seed_count":len(rows),
+              "p7_pass_count":sum(r["p7_status"]=="PASSED" for r in rows),
+              "exact_target_count":sum(bool(r["exact_target_gate"]) for r in rows),
+              "holdout_pass_count":sum(bool(r["holdout_pass"]) for r in rows),
+              "transfer_pass_count":sum(bool(r["transfer_pass"]) for r in rows),
+              "integrity_clean_count":sum(all(v is False for v in (r["integrity"] or {}).values()) for r in rows),
+          }
+          (root/"aggregate.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n")
+          m={}
+          for p in sorted(root.rglob("*")):
+              if p.is_file():
+                  m[str(p.relative_to(root))]=hashlib.sha256(p.read_bytes()).hexdigest()
+          (root/"manifest.sha256.json").write_text(json.dumps(m,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(summary,indent=2,sort_keys=True))
+          PY
+          cat ablation.stdout.txt
+          cat ablation.stderr.txt >&2 || true
+          exit 0
+
+      - name: Upload candidate-selection ablation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-candidate-selection-ablation-${{ matrix.mode }}-20260930
+          path: /tmp/acsie-ablation/evidence/l2c-candidate-ablation/**
