@@ -1,0 +1,64 @@
+name: ACSIE H-G1d partition-primary selection 20260930
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-hg1d-partition-primary-20260930.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: 16f4676a3958bac6c3bf52f7d1f00a4f35ddd106
+  PYTHONHASHSEED: "0"
+jobs:
+  diagnostic:
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026093001, 2026093002, 2026093003, 2026093004, 2026093005]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact ACSIE H-G1d source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_REF }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source identity
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ACSIE_REF"
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse HEAD^{tree})"
+      - name: Run H-G1d gate
+        working-directory: acsie
+        env:
+          H_G1_SEED: "${{ matrix.seed }}"
+        run: |
+          set +e
+          export PYTHONPATH="$PWD"
+          python3 -u research/run_recursive_context_frontier_gate_v5.py "$H_G1_SEED" "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" > gate.stdout.txt 2> gate.stderr.txt
+          rc=$?
+          set -e
+          mkdir -p evidence/hg1d
+          cp gate.stdout.txt gate.stderr.txt evidence/hg1d/
+          printf "%s\n" "$rc" > evidence/hg1d/gate.rc
+          if [ -f "/tmp/acsie-hg1-${H_G1_SEED}.json" ]; then cp "/tmp/acsie-hg1-${H_G1_SEED}.json" evidence/hg1d/; fi
+          tail -n 160 gate.stdout.txt || true
+          cat gate.stderr.txt || true
+          test "$rc" -eq 0
+      - name: Upload H-G1d evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-hg1d-partition-primary-${{ matrix.seed }}
+          path: acsie/evidence/hg1d/**
+          if-no-files-found: error
