@@ -1,0 +1,273 @@
+{
+  "schema": "ACSIE.l2c.p7-semantic-partition-diagnostic.v1",
+  "source_commit": "fe20763d01f286f6f84f83cfa9b037e27ce7ac7d",
+  "source_tree": "44855531ce43929777318d3d6848ae90d1192d2d",
+  "capstone_workflow": 36603541682,
+  "artifact_id": 11052198496,
+  "artifact_sha256": "378a215375ebc61b436c722e3d08d7db7de1a85fa00f0406eeb4a0296a64416b",
+  "domain": "p7 generation domain: x,y,z in {-8..-1,1..8}",
+  "seeds": [
+    {
+      "seed": 2026092901,
+      "selected": [
+        "xor",
+        [
+          "eq",
+          [
+            "atom",
+            [
+              "y"
+            ],
+            "threshold"
+          ],
+          [
+            "atom",
+            [
+              "z"
+            ],
+            "parity"
+          ]
+        ],
+        [
+          "neq",
+          [
+            "atom",
+            [
+              "x"
+            ],
+            "parity"
+          ],
+          [
+            "atom",
+            [
+              "z"
+            ],
+            "threshold"
+          ]
+        ]
+      ],
+      "exact_target": false,
+      "holdout_pass": true,
+      "transfer_pass": true,
+      "holdout": 1,
+      "transfer": 1
+    },
+    {
+      "seed": 2026092902,
+      "selected": [
+        "xor",
+        [
+          "eq",
+          [
+            "atom",
+            [
+              "y"
+            ],
+            "sign"
+          ],
+          [
+            "atom",
+            [
+              "z"
+            ],
+            "sign"
+          ]
+        ],
+        [
+          "eq",
+          [
+            "atom",
+            [
+              "x"
+            ],
+            "parity"
+          ],
+          [
+            "atom",
+            [
+              "z"
+            ],
+            "parity"
+          ]
+        ]
+      ],
+      "exact_target": true,
+      "holdout_pass": true,
+      "transfer_pass": true,
+      "holdout": 1,
+      "transfer": 1
+    },
+    {
+      "seed": 2026092903,
+      "selected": [
+        "xor",
+        [
+          "eq",
+          [
+            "atom",
+            [
+              "y"
+            ],
+            "sign"
+          ],
+          [
+            "atom",
+            [
+              "z"
+            ],
+            "sign"
+          ]
+        ],
+        [
+          "eq",
+          [
+            "atom",
+            [
+              "x"
+            ],
+            "parity"
+          ],
+          [
+            "atom",
+            [
+              "z"
+            ],
+            "parity"
+          ]
+        ]
+      ],
+      "exact_target": true,
+      "holdout_pass": true,
+      "transfer_pass": true,
+      "holdout": 1,
+      "transfer": 1
+    },
+    {
+      "seed": 2026092904,
+      "selected": [
+        "xor",
+        [
+          "eq",
+          [
+            "atom",
+            [
+              "y"
+            ],
+            "sign"
+          ],
+          [
+            "atom",
+            [
+              "z"
+            ],
+            "sign"
+          ]
+        ],
+        [
+          "eq",
+          [
+            "atom",
+            [
+              "x"
+            ],
+            "parity"
+          ],
+          [
+            "atom",
+            [
+              "z"
+            ],
+            "parity"
+          ]
+        ]
+      ],
+      "exact_target": true,
+      "holdout_pass": true,
+      "transfer_pass": true,
+      "holdout": 1,
+      "transfer": 1
+    },
+    {
+      "seed": 2026092905,
+      "selected": [
+        "xor",
+        [
+          "neq",
+          [
+            "atom",
+            [
+              "y"
+            ],
+            "sign"
+          ],
+          [
+            "atom",
+            [
+              "z"
+            ],
+            "sign"
+          ]
+        ],
+        [
+          "eq",
+          [
+            "atom",
+            [
+              "x"
+            ],
+            "parity"
+          ],
+          [
+            "atom",
+            [
+              "z"
+            ],
+            "parity"
+          ]
+        ]
+      ],
+      "exact_target": false,
+      "holdout_pass": true,
+      "transfer_pass": true,
+      "holdout": 1,
+      "transfer": 1
+    }
+  ],
+  "target": [
+    "xor",
+    [
+      "eq",
+      [
+        "atom",
+        [
+          "x"
+        ],
+        "parity"
+      ],
+      [
+        "atom",
+        [
+          "z"
+        ],
+        "parity"
+      ]
+    ],
+    [
+      "eq",
+      [
+        "atom",
+        [
+          "y"
+        ],
+        "sign"
+      ],
+      [
+        "atom",
+        [
+          "z"
+        ],
+        "sign"
+      ]
+    ]
+  ]
+}
