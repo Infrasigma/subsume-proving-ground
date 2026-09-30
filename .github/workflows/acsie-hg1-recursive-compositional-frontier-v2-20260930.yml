@@ -49,14 +49,26 @@ jobs:
         run: |
           set -euo pipefail
           export PYTHONPATH="$PWD"
+          set +e
           python3 -u research/run_recursive_context_frontier_gate.py \
             "$H_G1_SEED" \
             "$(git rev-parse HEAD)" \
             "$(git rev-parse HEAD^{tree})" \
             > gate.stdout.txt 2> gate.stderr.txt
+          rc=$?
+          set -e
           mkdir -p evidence/hg1v2
-          cp "/tmp/acsie-hg1-${H_G1_SEED}.json" evidence/hg1v2/
           cp gate.stdout.txt gate.stderr.txt evidence/hg1v2/
+          printf "%s\n" "$rc" > evidence/hg1v2/gate.rc
+          if [ -f "/tmp/acsie-hg1-${H_G1_SEED}.json" ]; then
+            cp "/tmp/acsie-hg1-${H_G1_SEED}.json" evidence/hg1v2/
+          fi
+          echo "H_G1_EXIT_CODE=$rc"
+          echo "---- STDERR ----"
+          cat gate.stderr.txt || true
+          echo "---- STDOUT (tail) ----"
+          tail -n 120 gate.stdout.txt || true
+          test "$rc" -eq 0
 
       - name: Upload H-G1 v2 evidence
         if: always()
