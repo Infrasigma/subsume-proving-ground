@@ -27,34 +27,27 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Checkout exact ACSIE v2 source
-        env:
-          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_REF }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact ACSIE source identity
+        working-directory: acsie
         run: |
           set -euo pipefail
-          W=/tmp/acsie-l2c-v2
-          ASK=/tmp/acsie-askpass.sh
-          rm -rf "$W" "$ASK"
-          cat > "$ASK" <<'EOF'
-          #!/bin/sh
-          case "$1" in
-            *Username*) printf '%s\\n' 'x-access-token' ;;
-            *) printf '%s\\n' "$ACSIE_READ_TOKEN" ;;
-          esac
-          EOF
-          chmod 700 "$ASK"
-          export GIT_ASKPASS="$ASK"
-          export GIT_TERMINAL_PROMPT=0
-          git clone --no-checkout https://github.com/Infrasigma/ACSIE.git "$W"
-          git -C "$W" fetch --no-tags origin "refs/heads/$ACSIE_FETCH_BRANCH:refs/remotes/origin/$ACSIE_FETCH_BRANCH"
-          git -C "$W" checkout --detach --force "$ACSIE_REF"
-          test "$(git -C "$W" rev-parse HEAD)" = "$ACSIE_REF"
-          echo "SOURCE_COMMIT=$(git -C "$W" rev-parse HEAD)"
-          echo "SOURCE_TREE=$(git -C "$W" rev-parse HEAD^{tree})"
+          test "$(git rev-parse HEAD)" = "$ACSIE_REF"
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse HEAD^{tree})"
 
       - name: Run exact one-seed L2-C gate
         run: |
           set -euo pipefail
-          cd /tmp/acsie-l2c-v2
+          cd acsie
           export PYTHONPATH="$PWD"
           export ACSIE_GITHUB_ACTIONS=1
           export ACSIE_L2_SEEDS="${{ matrix.seed }}"
@@ -87,7 +80,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: acsie-l2c-retention-v2-seed-${{ matrix.seed }}
-          path: /tmp/acsie-l2c-v2/evidence/seed/**
+          path: acsie/evidence/seed/**
           if-no-files-found: warn
 
   aggregate:
