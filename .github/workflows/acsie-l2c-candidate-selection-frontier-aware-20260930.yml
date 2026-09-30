@@ -12,7 +12,7 @@ permissions:
 
 env:
   ACSIE_REF: 1e58f19808362c4b3dadcfbfec5f3484b4344d4b
-  ACSIE_FETCH_BRANCH: research/l2c-candidate-selection-frontier-aware-20260930
+  ACSIE_FETCH_BRANCH: research/l2c-retention-quarantine-repair-frontier-20260930
   ACSIE_L2_SEEDS: "2026092901 2026092902 2026092903 2026092904 2026092905"
   PYTHONHASHSEED: "0"
 
@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [baseline, partition, cv, cv_partition]
+        mode: [cv_partition]
     steps:
       - uses: actions/checkout@v4
 
