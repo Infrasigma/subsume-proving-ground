@@ -1,0 +1,82 @@
+name: ACSIE L2-C retention v5 routing invariance 20260930
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-l2c-retention-quarantine-v5-validation-20260930.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: 2d93c76d545cb60769c2e7d6b7f65b72a989888a
+  ACSIE_FETCH_BRANCH: research/l2c-retention-quarantine-v5-incumbent-arbitration-20260930
+  PYTHONHASHSEED: "0"
+  ACSIE_L2_SELECTION_MODE: "cv_partition"
+  ACSIE_L2_SEEDS: "2026092902"
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact ACSIE v5 source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: 2d93c76d545cb60769c2e7d6b7f65b72a989888a
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact source identity
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ACSIE_REF"
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse HEAD^{tree})"
+
+      - name: Run deterministic v5 retention diagnostic
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          export ACSIE_SOURCE_COMMIT="$(git rev-parse HEAD)"
+          export ACSIE_SOURCE_TREE="$(git rev-parse HEAD^{tree})"
+          export ACSIE_GITHUB_ACTIONS=1
+          set +e
+          bash research/run_l2_sequential_gate.sh > gate.stdout.txt 2> gate.stderr.txt
+          rc=$?
+          set -e
+          echo "$rc" > gate.rc
+          mkdir -p evidence/v5
+          cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/v5/
+          cp gate.stdout.txt gate.stderr.txt gate.rc evidence/v5/
+          python - <<'PY'
+          import json, pathlib, subprocess
+          rows=[json.loads(p.read_text()) for p in pathlib.Path("evidence/v5").glob("l2a-*.json")]
+          d=rows[0]
+          print(json.dumps({
+              "schema":"ACSIE.l2c.retention-quarantine-v5.routing-invariance.single-seed.v1",
+              "seed":d.get("seed"),
+              "scientific_status":d.get("scientific_status"),
+              "failure_boundary":d.get("failure_boundary"),
+              "source_commit":subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(),
+              "source_tree":subprocess.check_output(["git","rev-parse","HEAD^{tree}"],text=True).strip(),
+              "retention_checks":(d.get("retention_after_p7") or {}).get("checks"),
+              "route_invariance":(d.get("retention_after_p7") or {}).get("route_invariance"),
+          }, sort_keys=True, indent=2))
+          PY
+
+      - name: Upload v5 diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-retention-v5-routing-invariance-2026092902
+          path: acsie/evidence/v5/**
+          if-no-files-found: warn
