@@ -1,0 +1,60 @@
+name: ACSIE H-G1b recursive frontier coverage probe 20260930
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-hg1b-coverage-probe-20260930.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: 36e9de68efb24f989413b55960178be89ac222b3
+  PYTHONHASHSEED: "0"
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026093001, 2026093002, 2026093003, 2026093004, 2026093005]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_REF }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify source identity
+        working-directory: acsie
+        run: test "$(git rev-parse HEAD)" = "$ACSIE_REF"
+      - name: Run coverage probe
+        working-directory: acsie
+        env:
+          SEED: "${{ matrix.seed }}"
+        run: |
+          set +e
+          export PYTHONPATH="$PWD"
+          python3 -u research/run_recursive_frontier_coverage_probe.py "$SEED" "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" > probe.stdout.txt 2> probe.stderr.txt
+          rc=$?
+          set -e
+          mkdir -p evidence/hg1b_coverage
+          cp probe.stdout.txt probe.stderr.txt evidence/hg1b_coverage/
+          if [ -f "/tmp/hg1b-coverage-${SEED}.json" ]; then cp "/tmp/hg1b-coverage-${SEED}.json" evidence/hg1b_coverage/; fi
+          printf "%s\n" "$rc" > evidence/hg1b_coverage/exit_code.txt
+          cat probe.stdout.txt
+          cat probe.stderr.txt || true
+          test "$rc" -eq 0
+      - name: Upload coverage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-hg1b-coverage-${{ matrix.seed }}
+          path: acsie/evidence/hg1b_coverage/**
+          if-no-files-found: error
