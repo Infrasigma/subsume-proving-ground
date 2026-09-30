@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   ACSIE_REF: 6dba886b8e08dc0693e022261b9e549f7605271a
@@ -117,6 +117,25 @@ jobs:
           (root/"manifest.sha256.json").write_text(json.dumps(files,indent=2,sort_keys=True)+"\n")
           print(json.dumps(files,indent=2,sort_keys=True))
           PY
+
+      - name: Persist semantic qualification evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          dest="evidence/l2c-semantic-qualification-20260930/\${GITHUB_RUN_ID}"
+          rm -rf "$dest"
+          mkdir -p "$dest"
+          cp /tmp/acsie-science/evidence/l2c-semantic/* "$dest/" 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$dest"
+          if git diff --cached --quiet; then
+            echo "No evidence files to commit"
+          else
+            git commit -m "evidence: L2-C semantic qualification run \${GITHUB_RUN_ID}"
+            git push origin HEAD:main
+          fi
 
       - name: Upload semantic qualification artifact
         if: always()
