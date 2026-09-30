@@ -1,0 +1,120 @@
+name: ACSIE L2-C MDL candidate selection 20260930
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-l2c-mdl-candidate-selection-20260930.yml"
+      - ".github/workflows/acsie-l2c-mdl-candidate-selection-20260930.trigger"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: 88c72f5542649b62dce229a6895cc59f6a7c5364
+  ACSIE_FETCH_BRANCH: research/l2c-mdl-selection-20260930
+  ACSIE_L2_SEEDS: "2026092901 2026092902 2026092903 2026092904 2026092905"
+  PYTHONHASHSEED: "0"
+
+jobs:
+  mdl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact MDL selector source
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          W=/tmp/acsie-mdl
+          ASK=/tmp/acsie-askpass.sh
+          rm -rf "$W" "$ASK"
+          cat > "$ASK" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASK"
+          export GIT_ASKPASS="$ASK"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --no-checkout https://github.com/Infrasigma/ACSIE.git "$W"
+          git -C "$W" fetch --no-tags origin "refs/heads/$ACSIE_FETCH_BRANCH:refs/remotes/origin/$ACSIE_FETCH_BRANCH"
+          git -C "$W" checkout --detach --force "$ACSIE_REF"
+          test "$(git -C "$W" rev-parse HEAD)" = "$ACSIE_REF"
+
+      - name: Run five-seed MDL selector arm
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-mdl
+          export PYTHONPATH="$PWD"
+          export ACSIE_GITHUB_ACTIONS=1
+          unset GITHUB_WORKSPACE
+          export ACSIE_L2_SEEDS="$ACSIE_L2_SEEDS"
+          export ACSIE_L2_SELECTION_MODE="mdl"
+          export PYTHONHASHSEED=0
+          set +e
+          bash research/run_l2_sequential_gate.sh > mdl.stdout.txt 2> mdl.stderr.txt
+          rc=$?
+          set -e
+          echo "$rc" > mdl.rc
+          mkdir -p evidence/l2c-mdl-selection
+          cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/l2c-mdl-selection/ 2>/dev/null || true
+          cp mdl.stdout.txt mdl.stderr.txt mdl.rc evidence/l2c-mdl-selection/
+          python - <<'PY'
+          import hashlib,json,subprocess
+          from pathlib import Path
+          root=Path("evidence/l2c-mdl-selection")
+          target_norms={
+              json.dumps(["xor",["eq",["atom",["x"],"parity"],["atom",["z"],"parity"]],["eq",["atom",["y"],"sign"],["atom",["z"],"sign"]]],sort_keys=True,separators=(",",":")),
+              json.dumps(["xor",["eq",["atom",["y"],"sign"],["atom",["z"],"sign"]],["eq",["atom",["x"],"parity"],["atom",["z"],"parity"]]],sort_keys=True,separators=(",",":"))
+          }
+          rows=[]
+          for p in sorted(root.glob("l2a-*.json")):
+              d=json.loads(p.read_text())
+              st=next((s for s in d.get("stages",[]) if s.get("regime",{}).get("name")=="p7"),{})
+              prog=st.get("discovery",{}).get("selected_program")
+              rows.append({
+                  "seed":d.get("seed"),
+                  "scientific_status":d.get("scientific_status"),
+                  "p7_status":st.get("status"),
+                  "selected_program":prog,
+                  "exact_protocol_target":json.dumps(prog,sort_keys=True,separators=(",",":")) in target_norms if prog is not None else False,
+                  "mdl_rank":st.get("discovery",{}).get("selected_mdl_rank"),
+                  "selection_score":st.get("discovery",{}).get("selected_selection_score"),
+                  "holdout_pass":st.get("fresh_holdout",{}).get("passed"),
+                  "transfer_pass":st.get("fresh_transfer",{}).get("passed"),
+                  "integrity":st.get("integrity"),
+              })
+          summary={
+              "schema":"ACSIE.l2c.mdl-selection.v1",
+              "source_commit":"88c72f5542649b62dce229a6895cc59f6a7c5364",
+              "rows":rows,
+              "seed_count":len(rows),
+              "scientific_pass_count":sum(r["scientific_status"]=="PASSED" for r in rows),
+              "exact_protocol_target_count":sum(bool(r["exact_protocol_target"]) for r in rows),
+              "holdout_pass_count":sum(bool(r["holdout_pass"]) for r in rows),
+              "transfer_pass_count":sum(bool(r["transfer_pass"]) for r in rows),
+              "crash_count":sum(r["scientific_status"]=="CRASHED" for r in rows),
+              "source_tree":subprocess.check_output(["git","rev-parse","HEAD^{tree}"],text=True).strip()
+          }
+          (root/"aggregate.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n")
+          m={}
+          for p in sorted(root.rglob("*")):
+              if p.is_file():
+                  m[str(p.relative_to(root))]=hashlib.sha256(p.read_bytes()).hexdigest()
+          (root/"manifest.sha256.json").write_text(json.dumps(m,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(summary,indent=2,sort_keys=True))
+          PY
+          cat mdl.stdout.txt
+          cat mdl.stderr.txt >&2 || true
+          exit 0
+
+      - name: Upload MDL evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-mdl-selection-20260930
+          path: /tmp/acsie-mdl/evidence/l2c-mdl-selection/**
