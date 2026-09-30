@@ -1,1 +1,1 @@
-fully wired incumbent-shadow retention test
+v3 retention validation
