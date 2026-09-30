@@ -143,3 +143,73 @@ jobs:
         with:
           name: acsie-l2c-semantic-qualification-20260930
           path: /tmp/acsie-science/evidence/l2c-semantic/**
+
+  candidate-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact candidate-diagnostic ACSIE source
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          W=/tmp/acsie-candidate-diag
+          ASK=/tmp/acsie-askpass.sh
+          rm -rf "$W" "$ASK"
+          cat > "$ASK" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASK"
+          export GIT_ASKPASS="$ASK"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --no-checkout https://github.com/Infrasigma/ACSIE.git "$W"
+          git -C "$W" fetch --no-tags origin "refs/heads/research/l2c-candidate-selection-diagnostic-20260930:refs/remotes/origin/research/l2c-candidate-selection-diagnostic-20260930"
+          git -C "$W" checkout --detach --force fd8fdd861e9e6c2cef4d031659b210c642dc055b
+          test "$(git -C "$W" rev-parse HEAD)" = fd8fdd861e9e6c2cef4d031659b210c642dc055b
+
+      - name: Run unchanged-selection candidate diagnostics
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-candidate-diag
+          export PYTHONPATH="$PWD"
+          export ACSIE_GITHUB_ACTIONS=1
+          unset GITHUB_WORKSPACE
+          export ACSIE_L2_SEEDS="2026092901 2026092902 2026092903 2026092904 2026092905"
+          export ACSIE_L2_DIAGNOSTIC=1
+          export PYTHONHASHSEED=0
+          set +e
+          bash research/run_l2_sequential_gate.sh > diagnostic.stdout.txt 2> diagnostic.stderr.txt
+          rc=$?
+          set -e
+          echo "$rc" > diagnostic.rc
+          mkdir -p evidence/l2c-candidate-selection
+          cp /tmp/acsie-l2-sequential-run/candidate-records-*.json evidence/l2c-candidate-selection/ 2>/dev/null || true
+          cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/l2c-candidate-selection/ 2>/dev/null || true
+          cp diagnostic.stdout.txt diagnostic.stderr.txt diagnostic.rc evidence/l2c-candidate-selection/
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path("evidence/l2c-candidate-selection")
+          m={}
+          for p in sorted(root.rglob("*")):
+              if p.is_file():
+                  m[str(p.relative_to(root))]=hashlib.sha256(p.read_bytes()).hexdigest()
+          (root/"manifest.sha256.json").write_text(json.dumps(m,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(m,indent=2,sort_keys=True))
+          PY
+          cat diagnostic.stdout.txt
+          cat diagnostic.stderr.txt >&2 || true
+          exit 0
+
+      - name: Upload candidate diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-candidate-selection-diagnostic-20260930
+          path: /tmp/acsie-candidate-diag/evidence/l2c-candidate-selection/**
