@@ -1,0 +1,110 @@
+name: ACSIE L2-C frontier candidate coverage diagnostic 20260930
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-l2c-frontier-candidate-coverage-diagnostic-20260930.yml"
+      - ".github/workflows/acsie-l2c-frontier-candidate-coverage-diagnostic-20260930.trigger"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: ab6fc505e507eca24157da12f5ec9bd99ad397dc
+  ACSIE_FETCH_BRANCH: research/l2c-frontier-candidate-coverage-diagnostic-20260930
+  ACSIE_L2_SEEDS: "2026092901 2026092902 2026092903 2026092904 2026092905"
+  PYTHONHASHSEED: "0"
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact frontier-aware ACSIE source
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          W=/tmp/acsie-coverage
+          ASK=/tmp/acsie-askpass.sh
+          rm -rf "$W" "$ASK"
+          cat > "$ASK" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASK"
+          export GIT_ASKPASS="$ASK"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --no-checkout https://github.com/Infrasigma/ACSIE.git "$W"
+          git -C "$W" fetch --no-tags origin "refs/heads/$ACSIE_FETCH_BRANCH:refs/remotes/origin/$ACSIE_FETCH_BRANCH"
+          git -C "$W" checkout --detach --force "$ACSIE_REF"
+          test "$(git -C "$W" rev-parse HEAD)" = "$ACSIE_REF"
+      - name: Run candidate coverage diagnostic
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-coverage
+          export PYTHONPATH="$PWD"
+          export ACSIE_GITHUB_ACTIONS=1
+          unset GITHUB_WORKSPACE
+          export ACSIE_L2_SEEDS="$ACSIE_L2_SEEDS"
+          export ACSIE_L2_DIAGNOSTIC=1
+          export PYTHONHASHSEED=0
+          set +e
+          bash research/run_l2_sequential_gate.sh > diagnostic.stdout.txt 2> diagnostic.stderr.txt
+          rc=$?
+          set -e
+          echo "$rc" > diagnostic.rc
+          mkdir -p evidence/l2c-frontier-candidate-coverage
+          cp /tmp/acsie-l2-sequential-run/candidate-records-*.json evidence/l2c-frontier-candidate-coverage/ 2>/dev/null || true
+          cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/l2c-frontier-candidate-coverage/ 2>/dev/null || true
+          cp diagnostic.stdout.txt diagnostic.stderr.txt diagnostic.rc evidence/l2c-frontier-candidate-coverage/
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path("evidence/l2c-frontier-candidate-coverage")
+          rows=[]
+          for p in sorted(root.glob("candidate-records-*.json")):
+              d=json.loads(p.read_text())
+              records=d.get("records",[])
+              rows.append({
+                  "seed":d.get("seed"),
+                  "candidate_count":len(records),
+                  "candidate_programs":[r.get("program") for r in records],
+                  "candidate_indices":[r.get("index") for r in records],
+              })
+          target=[
+              ["xor",["eq",["atom",["x"],"parity"],["atom",["z"],"parity"]],["eq",["atom",["y"],"sign"],["atom",["z"],"sign"]]],
+              ["xor",["eq",["atom",["y"],"sign"],["atom",["z"],"sign"]],["eq",["atom",["x"],"parity"],["atom",["z"],"parity"]]]
+          ]
+          norm=lambda x: json.dumps(x,sort_keys=True,separators=(",",":"))
+          summary={
+              "schema":"ACSIE.l2c.frontier-candidate-coverage.v1",
+              "source_commit":"ab6fc505e507eca24157da12f5ec9bd99ad397dc",
+              "seed_count":len(rows),
+              "rows":[
+                  {**r,"exact_target_present":any(norm(t) in {norm(p) for p in r["candidate_programs"]} for t in target)}
+                  for r in rows
+              ]
+          }
+          (root/"aggregate.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n")
+          m={}
+          for p in sorted(root.rglob("*")):
+              if p.is_file():
+                  m[str(p.relative_to(root))]=hashlib.sha256(p.read_bytes()).hexdigest()
+          (root/"manifest.sha256.json").write_text(json.dumps(m,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(summary,indent=2,sort_keys=True))
+          PY
+          cat diagnostic.stdout.txt
+          cat diagnostic.stderr.txt >&2 || true
+          exit 0
+      - name: Upload candidate coverage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-frontier-candidate-coverage-20260930
+          path: /tmp/acsie-coverage/evidence/l2c-frontier-candidate-coverage/**
