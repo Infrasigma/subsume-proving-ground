@@ -3,7 +3,7 @@ name: ACSIE L2-C H-R12 structural coverage reservoir 20260930
 on:
   push:
     paths:
-      - ".github/workflows/acsie-l2c-retention-quarantine-v7-immutable-admission-20260930.yml"
+      - ".github/workflows/acsie-l2c-retention-hr12-structural-reservoir-20260930.yml"
   workflow_dispatch:
 
 permissions:
@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout exact ACSIE v6 source
+      - name: Checkout exact ACSIE H-R12 source
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
@@ -43,7 +43,7 @@ jobs:
           echo "SOURCE_COMMIT=$(git rev-parse HEAD)"
           echo "SOURCE_TREE=$(git rev-parse HEAD^{tree})"
 
-      - name: Run deterministic v6 retention diagnostic
+      - name: Run deterministic H-R12 retention diagnostic
         working-directory: acsie
         env:
           ACSIE_L2_SEEDS: "${{ matrix.seed }}"
@@ -57,8 +57,8 @@ jobs:
           rc=$?
           set -e
           echo "$rc" > gate.rc
-          mkdir -p evidence/v7
-          cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/v7/
+          mkdir -p evidence/hr12
+          cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/hr12/
           cp gate.stdout.txt gate.stderr.txt gate.rc evidence/v7/
           python - <<'PY'
           import json, pathlib, subprocess
@@ -67,7 +67,7 @@ jobs:
               raise SystemExit(f"expected exactly one seed artifact, found {len(rows)}")
           d=rows[0]
           print(json.dumps({
-              "schema":"ACSIE.l2c.retention-quarantine-v6.immutable-admission.five-seed-v1",
+              "schema":"ACSIE.l2c.HR12.structural-coverage-reservoir.v1",
               "seed":d.get("seed"),
               "scientific_status":d.get("scientific_status"),
               "failure_boundary":d.get("failure_boundary"),
