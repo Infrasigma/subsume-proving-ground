@@ -1,1 +1,1 @@
-v3 retention validation force trigger 20260930-1450
+v4 retention arbitration retest 20260930
