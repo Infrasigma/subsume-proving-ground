@@ -1,0 +1,84 @@
+name: ACSIE L2-C incumbent shadow v3 single-seed diagnostic 20260930
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-l2c-incumbent-shadow-v3-single-20260930.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: 9ea8cc127f16bee2e0bad7f16fca79ac16d7e835
+  ACSIE_L2_SELECTION_MODE: "cv_partition"
+  ACSIE_L2_SEEDS: "2026092903"
+  PYTHONHASHSEED: "0"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact v3 ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_REF }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact source
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ACSIE_REF"
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse HEAD^{tree})"
+
+      - name: Run exact seed
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          export ACSIE_SOURCE_COMMIT="$(git rev-parse HEAD)"
+          export ACSIE_SOURCE_TREE="$(git rev-parse HEAD^{tree})"
+          export ACSIE_L2_SEEDS="$ACSIE_L2_SEEDS"
+          export ACSIE_L2_SELECTION_MODE="$ACSIE_L2_SELECTION_MODE"
+          export PYTHONHASHSEED=0
+          set +e
+          bash research/run_l2_sequential_gate.sh > gate.stdout.txt 2> gate.stderr.txt
+          rc=$?
+          set -e
+          echo "$rc" > gate.rc
+          mkdir -p evidence
+          cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/
+          cp gate.stdout.txt gate.stderr.txt gate.rc evidence/
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(next(Path("evidence").glob("l2a-*.json")).read_text())
+          p7=next((s for s in d.get("stages",[]) if s.get("regime",{}).get("name")=="p7"),{})
+          print(json.dumps({
+            "seed":d.get("seed"),
+            "scientific_status":d.get("scientific_status"),
+            "failure_boundary":d.get("failure_boundary"),
+            "p7_status":p7.get("status"),
+            "retention":(d.get("retention_after_p7") or {}).get("all_checks_pass"),
+            "checks":(d.get("retention_after_p7") or {}).get("checks"),
+            "source_commit":d.get("source_commit"),
+            "source_tree":d.get("source_tree")
+          },indent=2,sort_keys=True))
+          PY
+
+      - name: Upload v3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-incumbent-shadow-v3-seed-2026092903
+          path: acsie/evidence/**
+          if-no-files-found: warn
