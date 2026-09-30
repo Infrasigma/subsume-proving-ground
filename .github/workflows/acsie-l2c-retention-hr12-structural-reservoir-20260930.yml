@@ -59,7 +59,7 @@ jobs:
           echo "$rc" > gate.rc
           mkdir -p evidence/hr12
           cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/hr12/
-          cp gate.stdout.txt gate.stderr.txt gate.rc evidence/v7/
+          cp gate.stdout.txt gate.stderr.txt gate.rc evidence/hr12/
           python - <<'PY'
           import json, pathlib, subprocess
           rows=[json.loads(p.read_text()) for p in pathlib.Path("evidence/v7").glob("l2a-*.json")]
@@ -78,10 +78,10 @@ jobs:
           }, sort_keys=True, indent=2))
           PY
 
-      - name: Upload v6 scientific evidence
+      - name: Upload H-R12 scientific evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: acsie-l2c-retention-hr12-structural-reservoir-${{ matrix.seed }}
-          path: acsie/evidence/v7/**
+          path: acsie/evidence/hr12/**
           if-no-files-found: warn
