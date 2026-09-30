@@ -1,0 +1,87 @@
+name: ACSIE L2-C retention v6 immutable admission 20260930
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-l2c-retention-quarantine-v6-immutable-admission-20260930.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: 0d820534de6af49e64745372c99eda9818cfda34
+  PYTHONHASHSEED: "0"
+  ACSIE_L2_SELECTION_MODE: "cv_partition"
+
+jobs:
+  diagnostic:
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026092901, 2026092902, 2026092903, 2026092904, 2026092905]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact ACSIE v6 source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_REF }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact source identity
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ACSIE_REF"
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse HEAD^{tree})"
+
+      - name: Run deterministic v6 retention diagnostic
+        working-directory: acsie
+        env:
+          ACSIE_L2_SEEDS: "${{ matrix.seed }}"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          export ACSIE_SOURCE_COMMIT="$(git rev-parse HEAD)"
+          export ACSIE_SOURCE_TREE="$(git rev-parse HEAD^{tree})"
+          set +e
+          bash research/run_l2_sequential_gate.sh > gate.stdout.txt 2> gate.stderr.txt
+          rc=$?
+          set -e
+          echo "$rc" > gate.rc
+          mkdir -p evidence/v6
+          cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/v6/
+          cp gate.stdout.txt gate.stderr.txt gate.rc evidence/v6/
+          python - <<'PY'
+          import json, pathlib, subprocess
+          rows=[json.loads(p.read_text()) for p in pathlib.Path("evidence/v6").glob("l2a-*.json")]
+          if len(rows) != 1:
+              raise SystemExit(f"expected exactly one seed artifact, found {len(rows)}")
+          d=rows[0]
+          print(json.dumps({
+              "schema":"ACSIE.l2c.retention-quarantine-v6.immutable-admission.five-seed-v1",
+              "seed":d.get("seed"),
+              "scientific_status":d.get("scientific_status"),
+              "failure_boundary":d.get("failure_boundary"),
+              "source_commit":subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(),
+              "source_tree":subprocess.check_output(["git","rev-parse","HEAD^{tree}"],text=True).strip(),
+              "retention_checks":(d.get("retention_after_p7") or {}).get("checks"),
+              "route_invariance":(d.get("retention_after_p7") or {}).get("route_invariance"),
+          }, sort_keys=True, indent=2))
+          PY
+
+      - name: Upload v6 scientific evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-retention-v6-immutable-admission-${{ matrix.seed }}
+          path: acsie/evidence/v6/**
+          if-no-files-found: warn
