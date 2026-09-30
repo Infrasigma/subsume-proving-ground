@@ -48,7 +48,6 @@ jobs:
           export PYTHONPATH="$PWD"
           export ACSIE_SOURCE_COMMIT="$(git rev-parse HEAD)"
           export ACSIE_SOURCE_TREE="$(git rev-parse HEAD^{tree})"
-          export ACSIE_GITHUB_ACTIONS=1
           set +e
           bash research/run_l2_sequential_gate.sh > gate.stdout.txt 2> gate.stderr.txt
           rc=$?
