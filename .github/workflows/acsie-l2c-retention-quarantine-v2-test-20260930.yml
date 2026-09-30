@@ -1,0 +1,115 @@
+name: ACSIE L2-C retention quarantine v2 test 20260930
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-l2c-retention-quarantine-v2-test-20260930.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acsie-l2c-retention-v2
+  cancel-in-progress: true
+
+env:
+  ACSIE_REF: 821bb43602c016a3b6c4d6dcfe20d986e152ee90
+  ACSIE_FETCH_BRANCH: research/l2c-retention-evidence-quarantine-v2-20260930
+  ACSIE_L2_SEEDS: "2026092901 2026092902 2026092903 2026092904 2026092905"
+  PYTHONHASHSEED: "0"
+  ACSIE_L2_SELECTION_MODE: "cv_partition"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact ACSIE test source
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          W=/tmp/acsie-l2c-v2
+          ASK=/tmp/acsie-askpass.sh
+          rm -rf "$W" "$ASK"
+          cat > "$ASK" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\\n' 'x-access-token' ;;
+            *) printf '%s\\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASK"
+          export GIT_ASKPASS="$ASK"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --no-checkout https://github.com/Infrasigma/ACSIE.git "$W"
+          git -C "$W" fetch --no-tags origin "refs/heads/$ACSIE_FETCH_BRANCH:refs/remotes/origin/$ACSIE_FETCH_BRANCH"
+          git -C "$W" checkout --detach --force "$ACSIE_REF"
+          test "$(git -C "$W" rev-parse HEAD)" = "$ACSIE_REF"
+          echo "SOURCE_COMMIT=$(git -C "$W" rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git -C "$W" rev-parse HEAD^{tree})"
+
+      - name: Run strict five-seed L2-C gate
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-l2c-v2
+          export PYTHONPATH="$PWD"
+          export ACSIE_GITHUB_ACTIONS=1
+          set +e
+          bash research/run_l2_sequential_gate.sh > gate.stdout.txt 2> gate.stderr.txt
+          rc=$?
+          set -e
+          echo "$rc" > gate.rc
+          mkdir -p evidence/l2c-retention-v2
+          cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/l2c-retention-v2/
+          cp gate.stdout.txt gate.stderr.txt gate.rc evidence/l2c-retention-v2/
+
+      - name: Aggregate evidence
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-l2c-v2
+          python - <<'PY'
+          import hashlib,json,subprocess
+          from pathlib import Path
+          root=Path("evidence/l2c-retention-v2")
+          rows=[]
+          for p in sorted(root.glob("l2a-*.json")):
+              d=json.loads(p.read_text())
+              rows.append({
+                  "seed":d.get("seed"),
+                  "scientific_status":d.get("scientific_status"),
+                  "failure_boundary":d.get("failure_boundary"),
+                  "p7_status":next((s.get("status") for s in d.get("stages",[]) if s.get("regime",{}).get("name")=="p7"),None),
+                  "retention_all_checks_pass":(d.get("retention_after_p7") or {}).get("all_checks_pass"),
+                  "retention_checks":(d.get("retention_after_p7") or {}).get("checks"),
+                  "p7_reuse":next((s.get("reuse") for s in d.get("stages",[]) if s.get("regime",{}).get("name")=="p7"),None),
+                  "integrity":d.get("integrity")
+              })
+          summary={
+              "schema":"ACSIE.l2c.retention-quarantine-v2-test.v1",
+              "source_commit":subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(),
+              "source_tree":subprocess.check_output(["git","rev-parse","HEAD^{tree}"],text=True).strip(),
+              "selection_mode":"cv_partition",
+              "requested_seed_count":5,
+              "rows":rows,
+              "scientific_pass_count":sum(r["scientific_status"]=="PASSED" for r in rows),
+              "retention_pass_count":sum(bool(r["retention_all_checks_pass"]) for r in rows),
+              "crash_count":sum(r["scientific_status"]=="CRASHED" for r in rows)
+          }
+          (root/"aggregate.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n")
+          manifest={}
+          for p in sorted(root.rglob("*")):
+              if p.is_file(): manifest[str(p.relative_to(root))]=hashlib.sha256(p.read_bytes()).hexdigest()
+          (root/"manifest.sha256.json").write_text(json.dumps(manifest,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(summary,indent=2,sort_keys=True))
+
+      - name: Upload strict evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-retention-v2-test
+          path: /tmp/acsie-l2c-v2/evidence/l2c-retention-v2/**
+          if-no-files-found: warn
