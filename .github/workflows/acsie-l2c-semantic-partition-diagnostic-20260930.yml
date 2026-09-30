@@ -1,0 +1,39 @@
+name: ACSIE L2-C semantic partition diagnostic 20260930
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "research/l2c_p7_semantic_partition_fixture.json"
+      - "research/l2c_p7_semantic_partition_diagnostic.py"
+      - ".github/workflows/acsie-l2c-semantic-partition-diagnostic-20260930.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run semantic partition diagnostic
+        run: |
+          set +e
+          python research/l2c_p7_semantic_partition_diagnostic.py > diagnostic.stdout.txt 2> diagnostic.stderr.txt
+          rc=$?
+          echo "rc=$rc" > diagnostic.rc
+          cat diagnostic.stdout.txt
+          cat diagnostic.stderr.txt >&2 || true
+          exit $rc
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-semantic-partition-diagnostic-20260930
+          path: |
+            research/l2c_p7_semantic_partition_fixture.json
+            l2c_p7_semantic_partition_diagnostic.json
+            diagnostic.stdout.txt
+            diagnostic.stderr.txt
+            diagnostic.rc
