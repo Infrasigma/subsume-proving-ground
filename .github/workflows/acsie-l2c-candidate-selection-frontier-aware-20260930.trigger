@@ -1,1 +1,1 @@
-retention quarantine repair trigger 20260930
+L2-C retention quarantine v2 validation trigger 20260930-2
