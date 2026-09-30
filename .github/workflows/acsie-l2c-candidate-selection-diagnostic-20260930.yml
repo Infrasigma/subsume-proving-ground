@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Checkout exact diagnostic ACSIE source
         env:
-          ACSIE_READ_TOKEN: \${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
         run: |
           set -euo pipefail
           W=/tmp/acsie-science
