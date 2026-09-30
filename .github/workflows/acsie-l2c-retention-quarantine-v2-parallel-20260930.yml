@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - ".github/workflows/acsie-l2c-retention-quarantine-v2-parallel-20260930.yml"
+      - ".github/workflows/acsie-l2c-retention-quarantine-v2-parallel-20260930.trigger"
   workflow_dispatch:
 
 permissions:
