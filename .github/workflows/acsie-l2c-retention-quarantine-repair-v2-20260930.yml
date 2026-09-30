@@ -1,0 +1,109 @@
+name: ACSIE L2-C retention quarantine repair v2 20260930
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-l2c-retention-quarantine-repair-v2-20260930.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: 2a2747175a9300538a7b94288109b6ac9ab9ad2d
+  ACSIE_FETCH_BRANCH: research/l2c-retention-quarantine-repair-frontier-20260930
+  ACSIE_L2_SEEDS: "2026092901 2026092902 2026092903 2026092904 2026092905"
+  ACSIE_L2_SELECTION_MODE: "cv_partition"
+  PYTHONHASHSEED: "0"
+
+jobs:
+  retention-repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact patched ACSIE source
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          W=/tmp/acsie-retention-repair
+          ASK=/tmp/acsie-askpass.sh
+          rm -rf "$W" "$ASK"
+          cat > "$ASK" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASK"
+          export GIT_ASKPASS="$ASK"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --no-checkout https://github.com/Infrasigma/ACSIE.git "$W"
+          git -C "$W" fetch --no-tags origin "refs/heads/$ACSIE_FETCH_BRANCH:refs/remotes/origin/$ACSIE_FETCH_BRANCH"
+          git -C "$W" checkout --detach --force "$ACSIE_REF"
+          test "$(git -C "$W" rev-parse HEAD)" = "$ACSIE_REF"
+          test -n "$(git -C "$W" rev-parse HEAD^{tree})"
+
+      - name: Run five-seed patched L2-C gate
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-retention-repair
+          export PYTHONPATH="$PWD"
+          export ACSIE_GITHUB_ACTIONS=1
+          unset GITHUB_WORKSPACE
+          set +e
+          bash research/run_l2_sequential_gate.sh > l2c.stdout.txt 2> l2c.stderr.txt
+          rc=$?
+          set -e
+          echo "$rc" > l2c.rc
+          mkdir -p evidence/l2c-retention-quarantine-repair
+          cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/l2c-retention-quarantine-repair/
+          cp l2c.stdout.txt l2c.stderr.txt l2c.rc evidence/l2c-retention-quarantine-repair/
+          python - <<'PY'
+          import hashlib,json,subprocess
+          from pathlib import Path
+          root=Path("evidence/l2c-retention-quarantine-repair")
+          rows=[]
+          for p in sorted(root.glob("l2a-*.json")):
+              d=json.loads(p.read_text())
+              rows.append({
+                  "seed":d.get("seed"),
+                  "scientific_status":d.get("scientific_status"),
+                  "failure_boundary":d.get("failure_boundary"),
+                  "retention_all_checks_pass":(d.get("retention_after_p7") or {}).get("all_checks_pass"),
+                  "p7_status":all(s.get("status")=="PASSED" for s in d.get("stages",[]) if s.get("regime",{}).get("name")=="p7"),
+                  "integrity":d.get("integrity"),
+                  "source_commit":d.get("source_commit")
+              })
+          summary={
+              "schema":"ACSIE.l2c.retention-quarantine-repair.v2",
+              "source_commit":subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(),
+              "source_tree":subprocess.check_output(["git","rev-parse","HEAD^{tree}"],text=True).strip(),
+              "requested_seed_count":5,
+              "rows":rows,
+              "scientific_pass_count":sum(r["scientific_status"]=="PASSED" for r in rows),
+              "retention_pass_count":sum(bool(r["retention_all_checks_pass"]) for r in rows),
+              "p7_pass_count":sum(bool(r["p7_status"]) for r in rows),
+              "crash_count":sum(r["scientific_status"]=="CRASHED" for r in rows)
+          }
+          (root/"aggregate.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n")
+          manifest={}
+          for p in sorted(root.rglob("*")):
+              if p.is_file():
+                  manifest[str(p.relative_to(root))]=hashlib.sha256(p.read_bytes()).hexdigest()
+          (root/"manifest.sha256.json").write_text(json.dumps(manifest,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(summary,indent=2,sort_keys=True))
+          PY
+          cat l2c.stdout.txt
+          cat l2c.stderr.txt >&2 || true
+          exit 0
+
+      - name: Upload patched L2-C evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-retention-quarantine-repair-v2-20260930
+          path: /tmp/acsie-retention-repair/evidence/l2c-retention-quarantine-repair/**
