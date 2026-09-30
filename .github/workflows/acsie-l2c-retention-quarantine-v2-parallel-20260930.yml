@@ -116,7 +116,8 @@ jobs:
           rows.sort(key=lambda x:x["seed"])
           summary={
               "schema":"ACSIE.l2c.retention-quarantine-v5.route-invariance.single-seed.v1",
-              "source_commit":"821bb43602c016a3b6c4d6dcfe20d986e152ee90",
+              "source_commit":rows[0].get("source_commit"),
+              "source_tree":rows[0].get("source_tree"),
               "requested_seed_count":1,
               "observed_seed_count":len(rows),
               "rows":rows,
