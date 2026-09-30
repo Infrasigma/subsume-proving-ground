@@ -1,0 +1,143 @@
+name: ACSIE L2-C incumbent-veto retention subset 20260930
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-l2c-incumbent-veto-retention-20260930.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  ACSIE_REF: d9a33c1c2be62c05bfaa7eaab6094a77317d548a
+  ACSIE_FETCH_BRANCH: integration/l2c-incumbent-veto-subset-20260930
+  ACSIE_L2_SEEDS: "2026092901 2026092902 2026092903 2026092904 2026092905"
+  PYTHONHASHSEED: "0"
+
+jobs:
+  retention-subset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact ACSIE source
+        env:
+          ACSIE_READ_TOKEN: \${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          W=/tmp/acsie-science
+          ASK=/tmp/acsie-askpass.sh
+          rm -rf "$W" "$ASK"
+          cat > "$ASK" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASK"
+          export GIT_ASKPASS="$ASK"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --no-checkout https://github.com/Infrasigma/ACSIE.git "$W"
+          git -C "$W" fetch --no-tags origin "refs/heads/$ACSIE_FETCH_BRANCH:refs/remotes/origin/$ACSIE_FETCH_BRANCH"
+          git -C "$W" checkout --detach --force "$ACSIE_REF"
+          ACTUAL_COMMIT="$(git -C "$W" rev-parse HEAD)"
+          ACTUAL_TREE="$(git -C "$W" rev-parse HEAD^{tree})"
+          test "$ACTUAL_COMMIT" = "$ACSIE_REF"
+          printf '%s\n' "$ACTUAL_COMMIT" > "$W/SOURCE_COMMIT"
+          printf '%s\n' "$ACTUAL_TREE" > "$W/SOURCE_TREE"
+          python - <<'PY'
+          import json, pathlib, subprocess
+          root=pathlib.Path("/tmp/acsie-science")
+          commit=subprocess.check_output(["git","-C",str(root),"rev-parse","HEAD"],text=True).strip()
+          tree=subprocess.check_output(["git","-C",str(root),"rev-parse","HEAD^{tree}"],text=True).strip()
+          expected="d9a33c1c2be62c05bfaa7eaab6094a77317d548a"
+          assert commit==expected, (commit, expected)
+          (root/"SOURCE_IDENTITY.json").write_text(json.dumps({
+              "expected_commit":expected,"actual_commit":commit,"actual_tree":tree
+          },indent=2,sort_keys=True)+"\n")
+          print(json.dumps({"source_commit":commit,"source_tree":tree},sort_keys=True))
+          PY
+
+      - name: Compile exact ACSIE tree
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-science
+          python -m compileall -q cognitive_core research
+
+      - name: Native independence precondition
+        run: |
+          set +e
+          cd /tmp/acsie-science
+          export PYTHONPATH="$PWD"
+          python research/native_independent_final_gate.py > native_gate.stdout.txt 2> native_gate.stderr.txt
+          rc=$?
+          echo "$rc" > native_gate.rc
+          cat native_gate.stdout.txt
+          cat native_gate.stderr.txt >&2 || true
+          exit 0
+
+      - name: Run five-seed incumbent-veto retention subset gate
+        run: |
+          set +e
+          cd /tmp/acsie-science
+          export PYTHONPATH="$PWD"
+          export ACSIE_GITHUB_ACTIONS=1
+          unset GITHUB_WORKSPACE
+          export ACSIE_L2_SEEDS="$ACSIE_L2_SEEDS"
+          export PYTHONHASHSEED=0
+          python research/run_l2_incumbent_veto_retention_gate.py > retention.stdout.txt 2> retention.stderr.txt
+          rc=$?
+          echo "$rc" > retention.rc
+          cat retention.stdout.txt
+          cat retention.stderr.txt >&2 || true
+          exit $rc
+
+      - name: Preserve retention evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          cd /tmp/acsie-science
+          mkdir -p evidence/l2c-incumbent-veto-retention
+          cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/l2c-incumbent-veto-retention/ 2>/dev/null || true
+          cp /tmp/acsie-l2-sequential-run/incumbent-veto-retention-aggregate.json evidence/l2c-incumbent-veto-retention/ 2>/dev/null || true
+          cp SOURCE_COMMIT SOURCE_TREE SOURCE_IDENTITY.json retention.stdout.txt retention.stderr.txt retention.rc native_gate.stdout.txt native_gate.stderr.txt native_gate.rc evidence/l2c-incumbent-veto-retention/
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path("/tmp/acsie-science/evidence/l2c-incumbent-veto-retention")
+          files={}
+          for p in sorted(root.rglob("*")):
+              if p.is_file():
+                  files[str(p.relative_to(root))]=hashlib.sha256(p.read_bytes()).hexdigest()
+          (root/"manifest.sha256.json").write_text(json.dumps(files,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(files,indent=2,sort_keys=True))
+          PY
+
+      - name: Persist retention evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          dest="evidence/l2c-incumbent-veto-retention-20260930/\${GITHUB_RUN_ID}"
+          rm -rf "$dest"
+          mkdir -p "$dest"
+          cp /tmp/acsie-science/evidence/l2c-incumbent-veto-retention/* "$dest/" 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$dest"
+          if git diff --cached --quiet; then
+            echo "No evidence files to commit"
+          else
+            git commit -m "evidence: incumbent-veto retention subset run \${GITHUB_RUN_ID}"
+            git push origin HEAD:main
+          fi
+
+      - name: Upload retention evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-incumbent-veto-retention-20260930
+          path: /tmp/acsie-science/evidence/l2c-incumbent-veto-retention/**
