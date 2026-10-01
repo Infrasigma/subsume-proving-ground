@@ -1,0 +1,100 @@
+name: ACSIE L2-C PR50 fresh five-seed qualification
+
+on:
+  push:
+    branches:
+      - research/l2c-pr50-fresh5-20261001
+
+permissions:
+  contents: read
+
+jobs:
+  l2c-pr50:
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100111, 2026100112, 2026100113, 2026100114, 2026100115]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+
+      - name: Checkout exact ACSIE PR50 head
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: 484e83950ac14550ad2cfd558ea3f1988d5f3cf2
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify PR50 source identity
+        working-directory: acsie
+        env:
+          EXPECTED_HARNESS_BLOB: "9bd93ca1ee5e0ac0e49005cd7f84c893a58598c4"
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "484e83950ac14550ad2cfd558ea3f1988d5f3cf2"
+          test "$(git hash-object research/run_l2_sequential_gate.sh)" = "$EXPECTED_HARNESS_BLOB"
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse HEAD^{tree})"
+          echo "HARNESS_BLOB=$(git hash-object research/run_l2_sequential_gate.sh)"
+
+      - name: Run exact integrated scientific qualification
+        working-directory: acsie
+        env:
+          ACSIE_L2_SEEDS: "${{ matrix.seed }}"
+          ACSIE_L2_SELECTION_MODE: "cv_partition"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          export ACSIE_SOURCE_COMMIT="$(git rev-parse HEAD)"
+          export ACSIE_SOURCE_TREE="$(git rev-parse HEAD^{tree})"
+          set +e
+          bash research/run_l2_sequential_gate.sh > gate.stdout.txt 2> gate.stderr.txt
+          rc=$?
+          set -e
+          mkdir -p evidence/l2c-pr50-fresh5
+          cp /tmp/acsie-l2-sequential-run/l2a-${{ matrix.seed }}.json evidence/l2c-pr50-fresh5/
+          cp gate.stdout.txt gate.stderr.txt evidence/l2c-pr50-fresh5/
+          printf '%s\n' "$rc" > evidence/l2c-pr50-fresh5/gate.rc
+          python3 - <<'PY'
+          import json, pathlib
+          p = pathlib.Path("evidence/l2c-pr50-fresh5") / "l2a-${{ matrix.seed }}.json"
+          d = json.loads(p.read_text())
+          r = d.get("retention_after_p7", {})
+          checks = r.get("checks", {})
+          print(json.dumps({
+              "schema": "ACSIE.l2c.pr50.fresh5.v1",
+              "seed": d.get("seed"),
+              "scientific_status": d.get("scientific_status"),
+              "failure_boundary": d.get("failure_boundary"),
+              "selection_mode": "cv_partition",
+              "source_commit": d.get("source_commit"),
+              "source_tree": d.get("source_tree"),
+              "retention_checks": checks,
+              "integrity": d.get("integrity"),
+              "selected_programs": [
+                  s.get("discovery", {}).get("selected_program")
+                  for s in (d.get("stages") or [])
+              ],
+          }, sort_keys=True, indent=2))
+          if d.get("scientific_status") != "PASSED":
+              raise SystemExit(1)
+          if not all(all(v.values()) for v in checks.values()):
+              raise SystemExit(2)
+          integrity = d.get("integrity") or {}
+          if any(bool(v) for v in integrity.values()):
+              raise SystemExit(3)
+          PY
+          exit "$rc"
+
+      - name: Upload exact PR50 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-pr50-fresh5-${{ matrix.seed }}
+          path: acsie/evidence/l2c-pr50-fresh5/**
+          if-no-files-found: error
