@@ -1,3 +1,3 @@
-Audit ACSIE branch tip: a70a6dc5a0a6df064e9bc61fdea4ba87ae5dc31d6
-Workflow immutable-tree verification: 8b3679b5dddb9acadd11d2b647277d3c069646f1
-Trigger revision: 20261002-r8
+Audit ACSIE runtime-source commit: 04339f3cf02eae68957fd56e2c5c77f5a5950e14
+Workflow provenance: b23268c7aade2cd6f1720a291f425bcbda5d7cba
+Trigger revision: 20261002-r9
