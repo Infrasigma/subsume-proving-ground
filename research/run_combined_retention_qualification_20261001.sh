@@ -419,3 +419,5 @@ if [[ "$RC" -eq 2 ]]; then
   exit 2
 fi
 exit 0
+
+# Selection-ablation trigger synchronized after workflow activation correction.
