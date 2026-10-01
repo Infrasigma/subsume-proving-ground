@@ -165,3 +165,35 @@ jobs:
           name: acsie-l2c-second-order-reservoir-${{ matrix.seed }}
           path: evidence/l2c-second-order-reservoir/${{ matrix.seed }}/**
           if-no-files-found: warn
+
+  combined-retention-balanced-second-order-reservoir:
+    if: github.event.pull_request.head.ref == 'research/l2c-balanced-second-order-reservoir-20261001' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100111,2026100112,2026100113,2026100114,2026100115]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout balanced second-order hypothesis branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Run pinned H-R14 qualification
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "007c90d2e83ed5e0796b1e94c5f974b3bcc446cb"
+          EXPECTED_HARNESS_BLOB: "462e4fc483471a2228252f7f87fbf8ab551a8d84"
+          SEED: "${{ matrix.seed }}"
+        run: |
+          bash research/run_l2c_balanced_second_order_reservoir_20261001.sh
+
+      - name: Upload H-R14 scientific evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-balanced-second-order-reservoir-${{ matrix.seed }}
+          path: evidence/l2c-balanced-second-order-reservoir/${{ matrix.seed }}/**
+          if-no-files-found: warn
+
