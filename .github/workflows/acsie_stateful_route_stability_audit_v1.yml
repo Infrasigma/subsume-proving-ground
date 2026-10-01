@@ -35,7 +35,7 @@ jobs:
           set -euo pipefail
           export ACSIE_SOURCE_COMMIT="$(git rev-parse HEAD)"
           export ACSIE_SOURCE_TREE="$(git rev-parse HEAD^{tree})"
-          test "$(git rev-parse HEAD:research/run_l2_sequential_gate.sh)" = "e62de1f9d8a3c59356ca01b6e288c386df1f9a87"
+          test "$(git rev-parse HEAD:research/run_l2_sequential_gate.sh)" = "0cdc4e39f3471e457e07d18b7375f4a4952276d9"
           git merge-base --is-ancestor "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d" HEAD
           printf 'ACSIE_SOURCE_COMMIT=%s\n' "$ACSIE_SOURCE_COMMIT"
           printf 'ACSIE_SOURCE_TREE=%s\n' "$ACSIE_SOURCE_TREE"
