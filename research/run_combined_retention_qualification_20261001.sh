@@ -1,0 +1,262 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${ACSIE_READ_TOKEN:?ACSIE_READ_TOKEN is required}"
+: "${ACSIE_REF:?ACSIE_REF is required}"
+: "${EXPECTED_HARNESS_BLOB:?EXPECTED_HARNESS_BLOB is required}"
+: "${SEED:?SEED is required}"
+
+WORK="/tmp/acsie-combined-retention-${SEED}"
+ASKPASS="/tmp/acsie-askpass-${SEED}.sh"
+VENV="/tmp/acsie-venv-${SEED}"
+OUT="${GITHUB_WORKSPACE}/evidence/combined-retention/${SEED}"
+
+rm -rf "$WORK" "$VENV" "$ASKPASS" "$OUT"
+mkdir -p "$OUT"
+
+trap 'rm -rf "$WORK" "$VENV" "$ASKPASS"' EXIT
+
+cat >"$ASKPASS" <<'EOF'
+#!/bin/sh
+case "$1" in
+  *Username*) printf '%s\n' 'x-access-token' ;;
+  *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+esac
+EOF
+chmod 700 "$ASKPASS"
+
+export GIT_ASKPASS="$ASKPASS"
+export GIT_TERMINAL_PROMPT=0
+
+git clone -q --no-checkout https://github.com/Infrasigma/ACSIE.git "$WORK"
+git -C "$WORK" checkout --detach --force "$ACSIE_REF"
+test "$(git -C "$WORK" rev-parse HEAD)" = "$ACSIE_REF"
+SOURCE_TREE="$(git -C "$WORK" rev-parse HEAD^{tree})"
+test "$(git -C "$WORK" hash-object research/run_l2_sequential_gate.sh)" = "$EXPECTED_HARNESS_BLOB"
+
+python3 - "$WORK" "$EXPECTED_HARNESS_BLOB" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+work = pathlib.Path(sys.argv[1])
+expected = sys.argv[2]
+p = work / "research" / "run_l2_sequential_gate.sh"
+s = p.read_text()
+
+def blob_sha(text):
+    data = text.encode()
+    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+
+actual = blob_sha(s)
+if actual != expected:
+    raise SystemExit(f"unexpected current-main harness blob: {actual} != {expected}")
+
+old = '''    def route_metrics(branches, retention_rows):
+        local = {item["name"] for item in branches if item["local_only"]}
+        router = bank.NativeFourGenH28Router(
+            [(item["name"], item["core"]) for item in branches],
+            local_only_branches=local,
+        )
+        groups = [flat_rows(item["calibration"]) for item in branches]
+        router.calibrate(groups)
+        local_rows = {
+            item["name"]: tuple(item["calibration"])
+            for item in branches
+            if item["local_only"]
+        }
+        if local_rows:
+            router.calibrate_local(local_rows)
+'''
+
+new = '''    def route_metrics(branches, retention_rows, quarantine_branch=None):
+        local = {item["name"] for item in branches if item["local_only"]}
+        router = bank.NativeFourGenH28Router(
+            [(item["name"], item["core"]) for item in branches],
+            local_only_branches=local,
+            quarantine_branch=quarantine_branch,
+        )
+        groups = [flat_rows(item["calibration"]) for item in branches]
+        if quarantine_branch is None:
+            calibration_groups = groups
+        else:
+            calibration_groups = [
+                group
+                for (name, _item), group in zip(
+                    ((item["name"], item) for item in branches),
+                    groups,
+                )
+                if name != quarantine_branch
+            ]
+        router.calibrate(calibration_groups)
+        local_rows = {
+            item["name"]: tuple(item["calibration"])
+            for item in branches
+            if item["local_only"]
+        }
+        if local_rows:
+            router.calibrate_local(local_rows)
+'''
+
+if old not in s:
+    raise SystemExit("route_metrics patch anchor not found")
+s = s.replace(old, new, 1)
+
+start = s.index("    def retention_gate(before, after, retention_rows):")
+end = s.index("    # 1) Reconstruct the frozen L1 state as a precondition only.", start)
+
+replacement = '''    def route_trace(branches, retention_rows, quarantine_branch=None):
+        local = {item["name"] for item in branches if item["local_only"]}
+        router = bank.NativeFourGenH28Router(
+            [(item["name"], item["core"]) for item in branches],
+            local_only_branches=local,
+            quarantine_branch=quarantine_branch,
+        )
+        groups = [flat_rows(item["calibration"]) for item in branches]
+        if quarantine_branch is None:
+            calibration_groups = groups
+        else:
+            calibration_groups = [
+                group
+                for (name, _item), group in zip(
+                    ((item["name"], item) for item in branches),
+                    groups,
+                )
+                if name != quarantine_branch
+            ]
+        router.calibrate(calibration_groups)
+        local_rows = {
+            item["name"]: tuple(item["calibration"])
+            for item in branches
+            if item["local_only"]
+        }
+        if local_rows:
+            router.calibrate_local(local_rows)
+        trace = {}
+        for target_name, rows in retention_rows:
+            entries = []
+            for index, (obs, action, target) in enumerate(rows):
+                choice = router.choose(obs, action)
+                entries.append({
+                    "row_index": index,
+                    "target_branch": target_name,
+                    "selected_branch": choice["branch"] if choice else None,
+                    "emit": bool(choice["emit"]) if choice else False,
+                    "prediction": choice["prediction"] if choice else None,
+                    "state_key": choice["key"] if choice else None,
+                })
+            trace[target_name] = entries
+        return trace
+
+    def retention_gate(before, after, retention_rows):
+        baseline = route_metrics(before, retention_rows, quarantine_branch=None)
+        post = route_metrics(after, retention_rows, quarantine_branch=after[-1]["name"])
+        baseline_trace = route_trace(before, retention_rows, quarantine_branch=None)
+        post_trace = route_trace(after, retention_rows, quarantine_branch=after[-1]["name"])
+        route_deltas = {}
+        for name in baseline_trace:
+            b_rows = baseline_trace[name]
+            p_rows = post_trace[name]
+            if len(b_rows) != len(p_rows):
+                route_deltas[name] = [{
+                    "error": "trace_length_mismatch",
+                    "baseline_length": len(b_rows),
+                    "post_length": len(p_rows),
+                }]
+                continue
+            deltas = []
+            for b, p in zip(b_rows, p_rows):
+                changed = (
+                    b["selected_branch"] != p["selected_branch"]
+                    or b["emit"] != p["emit"]
+                    or b["prediction"] != p["prediction"]
+                    or b["state_key"] != p["state_key"]
+                )
+                if changed:
+                    deltas.append({
+                        "row_index": b["row_index"],
+                        "target_branch": name,
+                        "baseline": b,
+                        "post": p,
+                    })
+            route_deltas[name] = deltas
+
+        checks = {}
+        for name in baseline:
+            b = baseline[name]
+            p = post[name]
+            route_invariance_pass = len(route_deltas.get(name, ())) == 0
+            checks[name] = {
+                "accuracy_non_decrease": p["accuracy_on_covered"] + 1e-12 >= b["accuracy_on_covered"],
+                "coverage_non_decrease": p["coverage"] + 1e-12 >= b["coverage"],
+                "expected_branch_non_decrease": p["selected_expected_branch_rate"] + 1e-12 >= b["selected_expected_branch_rate"],
+                "newest_branch_intrusion_zero": p["newest_branch_intrusion"] == 0,
+                "route_invariance_pass": route_invariance_pass,
+            }
+        return {
+            "baseline": baseline,
+            "post": post,
+            "route_invariance": {
+                "all_rows_unchanged": all(not route_deltas.get(name) for name in route_deltas),
+                "changed_row_count": sum(len(v) for v in route_deltas.values()),
+                "route_deltas": route_deltas,
+            },
+            "checks": checks,
+            "all_checks_pass": all(all(v.values()) for v in checks.values()),
+        }
+
+'''
+s = s[:start] + replacement + s[end:]
+p.write_text(s)
+print("PATCHED_HARNESS_SHA256=" + hashlib.sha256(s.encode()).hexdigest())
+PY
+
+export PYTHONPATH="$WORK"
+export ACSIE_L2_SEEDS="$SEED"
+export ACSIE_SOURCE_COMMIT="$(git -C "$WORK" rev-parse HEAD)"
+export ACSIE_SOURCE_TREE="$SOURCE_TREE"
+
+set +e
+(
+  cd "$WORK"
+  bash research/run_l2_sequential_gate.sh >"$OUT/gate.stdout.txt" 2>"$OUT/gate.stderr.txt"
+)
+RC=$?
+set -e
+
+printf '%s\n' "$RC" >"$OUT/gate.rc"
+
+if compgen -G "$WORK"/tmp/acsie-l2-sequential-run/l2a-*.json >/dev/null; then
+  cp "$WORK"/tmp/acsie-l2-sequential-run/l2a-*.json "$OUT/"
+else
+  cp -f "$WORK"/l2a-*.json "$OUT/" 2>/dev/null || true
+fi
+
+python3 - "$OUT" "$ACSIE_REF" "$SOURCE_TREE" "$SEED" <<'PY'
+import json
+import pathlib
+import sys
+
+out = pathlib.Path(sys.argv[1])
+rows = list(out.glob("l2a-*.json"))
+if len(rows) != 1:
+    raise SystemExit(f"expected exactly one scientific artifact, found {len(rows)}")
+d = json.loads(rows[0].read_text())
+print(json.dumps({
+    "schema": "ACSIE.l2c.combined-qualified-substrate.v1",
+    "seed": d.get("seed"),
+    "scientific_status": d.get("scientific_status"),
+    "failure_boundary": d.get("failure_boundary"),
+    "source_commit": sys.argv[2],
+    "source_tree": sys.argv[3],
+    "retention_checks": (d.get("retention_after_p7") or {}).get("checks"),
+    "route_invariance": (d.get("retention_after_p7") or {}).get("route_invariance"),
+    "integrity": d.get("integrity"),
+}, sort_keys=True, indent=2))
+PY
+
+# Scientific FAIL is valid evidence; only an execution crash blocks artifact generation.
+if [[ "$RC" -eq 2 ]]; then
+  exit 2
+fi
+exit 0
