@@ -113,3 +113,32 @@ jobs:
           path: evidence/l2c-hr13-cv-partition/${{ matrix.seed }}/**
           if-no-files-found: warn
 
+
+  hr13-cv-partition-corrected:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/research/l2c-hr13-cv-partition-corrected-20261001'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100106,2026100107,2026100108,2026100109,2026100110]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact experiment commit
+        uses: actions/checkout@v4
+
+      - name: Run H-R13 with correctly activated discovery-selection CV partition
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "6435c270af085380aed7e06135d98471429b2ac9"
+          EXPECTED_HARNESS_BLOB: "462e4fc483471a2228252f7f87fbf8ab551a8d84"
+          SEED: "${{ matrix.seed }}"
+        run: |
+          bash research/run_l2c_second_order_reservoir_20261001.sh
+
+      - name: Upload corrected CV scientific evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-hr13-cv-partition-corrected-${{ matrix.seed }}
+          path: evidence/l2c-hr13-cv-partition/${{ matrix.seed }}/**
+          if-no-files-found: warn
