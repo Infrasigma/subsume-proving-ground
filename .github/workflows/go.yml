@@ -83,3 +83,32 @@ jobs:
           path: acex-result.txt
 
 # ACE-X forensic trigger revision.
+
+  v12-fresh-surface:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/research/v12-e1-fresh-surface-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: false
+      - name: Run fresh hermetic transfer probe
+        run: |
+          set -euo pipefail
+          go mod download
+          go test -mod=mod -run '^TestV12FreshSurfaceHermeticDirectedTransfer$' ./internal/acex -count=1 -timeout=15m -v | tee fresh-v12-result.txt
+      - name: Run V12 integrity regression
+        run: |
+          set -euo pipefail
+          go test -mod=mod -run '^TestV12CompiledWasmDecisionIsSelfContained$|^TestV12CompiledWasmHasDecisionABI$|^TestV12WasmCapabilityRoundTripAndTamperDetection$' ./internal/acex -count=1 -timeout=10m -v | tee fresh-v12-regression.txt
+      - name: Upload fresh V12 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acex-v12-fresh-surface-evidence
+          path: |
+            fresh-v12-result.txt
+            fresh-v12-regression.txt
+          if-no-files-found: error
