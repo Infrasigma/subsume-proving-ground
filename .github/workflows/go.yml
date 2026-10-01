@@ -160,7 +160,7 @@ jobs:
           overall=0
           for seed in 771221 771222 771223 771224 771225; do
             set +e
-            SEED="$seed" python - <<'PY' > "evidence/q4-current-main/result-__SEED__.json"
+            SEED="$seed" python - <<'PY' > "evidence/q4-current-main/result-${seed}.json"
           import json, os
           from research.native_self_learning_kernel_v2 import run
           result = run(seed=int(os.environ["SEED"]))
@@ -171,7 +171,7 @@ jobs:
           PY
             rc=$?
             set -e
-            printf '%s\n' "$rc" > "evidence/q4-current-main/result-__SEED__.rc"
+            printf '%s\n' "$rc" > "evidence/q4-current-main/result-${seed}.rc"
             if [ "$rc" -ne 0 ]; then overall=1; fi
           done
           cat evidence/q4-current-main/result-*.json
