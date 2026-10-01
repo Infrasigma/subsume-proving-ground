@@ -5,6 +5,9 @@ on:
     paths:
       - ".github/workflows/acsie-p7-acquisition-diagnostic-20261001.yml"
   workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/acsie-p7-acquisition-diagnostic-20261001.yml"
 
 permissions:
   contents: read
