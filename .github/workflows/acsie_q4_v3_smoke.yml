@@ -1,0 +1,17 @@
+name: ACSIE Q4 v3 Smoke
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -euo pipefail
+          echo "HEAD=$(git rev-parse HEAD)"
+          echo "BRANCH=$"+"{GITHUB_REF}"
