@@ -113,3 +113,32 @@ jobs:
           path: evidence/l2c-hr13-cv-partition/${{ matrix.seed }}/**
           if-no-files-found: warn
 
+
+  hr13-bounded-frontier:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/research/l2c-hr13-bounded-frontier-20261001'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100106,2026100107,2026100108,2026100109,2026100110]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact experiment commit
+        uses: actions/checkout@v4
+
+      - name: Run H-R13 bounded second-order frontier qualification
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "aa5e4b353d184f16527683e63d3b5bb7af659614"
+          EXPECTED_HARNESS_BLOB: "462e4fc483471a2228252f7f87fbf8ab551a8d84"
+          SEED: "${{ matrix.seed }}"
+        run: |
+          bash research/run_l2c_hr13_bounded_frontier_20261001.sh
+
+      - name: Upload bounded-frontier scientific evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-hr13-bounded-frontier-${{ matrix.seed }}
+          path: evidence/l2c-hr13-bounded-frontier/${{ matrix.seed }}/**
+          if-no-files-found: warn
