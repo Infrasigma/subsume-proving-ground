@@ -1,0 +1,167 @@
+name: ACSIE Gen2 corrected retention protocol
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  corrected-gen2:
+    if: github.event.pull_request.head.ref == 'acsie-gen2-corrected-retention-20260927'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Run corrected ACSIE Gen2 protocol
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "c17120b77cddaffbd5abbb57899bddc6fedea61b"
+        run: |
+          set -euo pipefail
+          WORK=/tmp/acsie-corrected-gen2
+          ASKPASS=/tmp/acsie-askpass.sh
+          VENV=/tmp/acsie-venv
+          trap 'rm -rf "$WORK" "$VENV" "$ASKPASS"' EXIT
+          : "${ACSIE_READ_TOKEN:?ACSIE_READ_TOKEN is required}"
+          cat > "$ASKPASS" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS"
+          export GIT_TERMINAL_PROMPT=0
+          git clone -q --no-checkout https://github.com/Infrasigma/ACSIE.git "$WORK"
+          git -C "$WORK" checkout --detach --force "$ACSIE_REF"
+          [[ "$(git -C "$WORK" rev-parse HEAD)" == "$ACSIE_REF" ]]
+          cd "$WORK"
+          python3 -m venv "$VENV"
+          . "$VENV/bin/activate"
+          PYTHONPATH="$WORK" pytest -q tests/test_native_independent_core.py
+          PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_corrected_retention_v1.py | tee corrected-gen2-result.json
+
+  combined-retention:
+    if: github.event.pull_request.head.ref == 'research/combined-retention-qualified-substrate-20261001' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100101, 2026100102, 2026100103, 2026100104, 2026100105]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout trusted proving-ground base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Run pinned combined retention qualification
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "34ce504f4f51f963ce1443cfe974f57adca4f223"
+          EXPECTED_HARNESS_BLOB: "462e4fc483471a2228252f7f87fbf8ab551a8d84"
+          SEED: "${{ matrix.seed }}"
+        run: |
+          bash research/run_combined_retention_qualification_20261001.sh
+
+      - name: Upload combined scientific evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-combined-retention-${{ matrix.seed }}
+          path: evidence/combined-retention/${{ matrix.seed }}/**
+          if-no-files-found: warn
+
+  p7-frontier-diagnostic:
+    if: github.event.pull_request.head.ref == 'research/l2c-p7-frontier-diagnostic-20261001' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout diagnostic branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Run pinned p7 frontier diagnostic
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "34ce504f4f51f963ce1443cfe974f57adca4f223"
+          EXPECTED_HARNESS_BLOB: "462e4fc483471a2228252f7f87fbf8ab551a8d84"
+          SEED: "2026100103"
+        run: |
+          bash research/run_p7_frontier_diagnostic_20261001.sh
+
+      - name: Upload p7 frontier diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-p7-frontier-diagnostic-2026100103
+          path: evidence/p7-frontier-diagnostic/2026100103/**
+          if-no-files-found: warn
+
+    
+  combined-retention-p7-selection:
+    if: github.event.pull_request.head.ref == 'research/l2c-combined-p7-selection-ablation-20261001' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100101,2026100102,2026100103,2026100104,2026100105]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout selection-ablation branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Run pinned combined substrate with CV partition selector
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "34ce504f4f51f963ce1443cfe974f57adca4f223"
+          EXPECTED_HARNESS_BLOB: "462e4fc483471a2228252f7f87fbf8ab551a8d84"
+          SEED: "${{ matrix.seed }}"
+        run: |
+          bash research/run_combined_retention_qualification_20261001.sh
+
+      - name: Upload selection-ablation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-combined-selection-ablation-${{ matrix.seed }}
+          path: evidence/combined-retention-selection-ablation/${{ matrix.seed }}/**
+          if-no-files-found: warn
+
+
+  combined-retention-balanced-second-order-reservoir:
+    if: github.event.pull_request.head.ref == 'research/l2c-balanced-second-order-reservoir-20261001' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100111,2026100112,2026100113,2026100114,2026100115]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout second-order hypothesis branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Run pinned H-R13 qualification
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "6435c270af085380aed7e06135d98471429b2ac9"
+          EXPECTED_HARNESS_BLOB: "462e4fc483471a2228252f7f87fbf8ab551a8d84"
+          SEED: "${{ matrix.seed }}"
+        run: |
+          bash research/run_l2c_balanced_second_order_reservoir_20261001.sh
+
+      - name: Upload H-R13 scientific evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-balanced-second-order-reservoir-${{ matrix.seed }}
+          path: evidence/l2c-balanced-second-order-reservoir/${{ matrix.seed }}/**
+          if-no-files-found: warn
