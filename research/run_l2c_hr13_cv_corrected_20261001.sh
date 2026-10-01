@@ -374,6 +374,50 @@ rows = list(out.glob("l2a-*.json"))
 if len(rows) != 1:
     raise SystemExit(f"expected exactly one scientific artifact, found {len(rows)}")
 d = json.loads(rows[0].read_text())
+
+protocol_violations = []
+payloads = []
+if isinstance(d.get("l1_precondition"), dict):
+    payloads.append(("L1-PRECONDITION", d["l1_precondition"]))
+for stage in d.get("stages", []):
+    if isinstance(stage, dict):
+        payloads.append((stage.get("stage", "unknown"), stage))
+
+for label, payload in payloads:
+    disc = payload.get("discovery")
+    if not isinstance(disc, dict):
+        protocol_violations.append(f"{label}: missing discovery evidence")
+        continue
+    if disc.get("selection_mode") != "cv_partition":
+        protocol_violations.append(
+            f"{label}: selection_mode={disc.get('selection_mode')!r}"
+        )
+    if "cv_candidate_count" not in disc:
+        protocol_violations.append(f"{label}: missing cv_candidate_count")
+    if "cv_statistics_complete" not in disc:
+        protocol_violations.append(f"{label}: missing cv_statistics_complete")
+    if disc.get("candidate_count", 0) > 0 and disc.get("cv_statistics_complete") is not True:
+        protocol_violations.append(f"{label}: incomplete four-fold CV statistics")
+    partition = disc.get("semantic_partition")
+    if not isinstance(partition, dict):
+        protocol_violations.append(f"{label}: missing semantic_partition evidence")
+    elif partition.get("enabled") is not True:
+        protocol_violations.append(f"{label}: semantic partition not enabled")
+
+if protocol_violations:
+    validation = {
+        "schema": "ACSIE.l2c.hr13-cv-partition-corrected.protocol.v1",
+        "protocol_status": "INVALID",
+        "scientific_status": "NOT_INTERPRETABLE",
+        "seed": d.get("seed"),
+        "violations": protocol_violations,
+    }
+    (out / "protocol_validation.json").write_text(
+        json.dumps(validation, indent=2, sort_keys=True) + "\n"
+    )
+    print(json.dumps(validation, indent=2, sort_keys=True))
+    raise SystemExit(2)
+
 print(json.dumps({
     "schema": "ACSIE.l2c.hr13-cv-partition-corrected.v1",
     "seed": d.get("seed"),
