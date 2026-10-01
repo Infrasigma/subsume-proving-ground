@@ -115,14 +115,14 @@ jobs:
       - name: Checkout selection-ablation branch
         uses: actions/checkout@v4
         with:
-          ref: \${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Run pinned combined substrate with CV partition selector
         env:
-          ACSIE_READ_TOKEN: \${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
           ACSIE_REF: "34ce504f4f51f963ce1443cfe974f57adca4f223"
           EXPECTED_HARNESS_BLOB: "462e4fc483471a2228252f7f87fbf8ab551a8d84"
-          SEED: "\${{ matrix.seed }}"
+          SEED: "${{ matrix.seed }}"
         run: |
           bash research/run_combined_retention_qualification_20261001.sh
 
@@ -130,6 +130,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: acsie-l2c-combined-selection-ablation-\${{ matrix.seed }}
-          path: evidence/combined-retention-selection-ablation/\${{ matrix.seed }}/**
+          name: acsie-l2c-combined-selection-ablation-${{ matrix.seed }}
+          path: evidence/combined-retention-selection-ablation/${{ matrix.seed }}/**
           if-no-files-found: warn
