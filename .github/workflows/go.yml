@@ -83,3 +83,52 @@ jobs:
           path: acex-result.txt
 
 # ACE-X forensic trigger revision.
+
+
+  acsie-gen2-exploration-quarantine-core-v1:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'research/gen2-exploration-quarantine-core-v1-20261002'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [771221, 771222, 771223, 771224, 771225]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+      - name: Checkout exact ACSIE core-quarantine source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: research/gen2-exploration-quarantine-core-v1-20261002
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-gen2-quarantine-core
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source
+        working-directory: acsie-gen2-quarantine-core
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "93cf048bd831fab5a000dd9144d05bd3f1eb4327"
+          git merge-base --is-ancestor "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d" HEAD
+      - name: Run exact production-method A/B
+        working-directory: acsie-gen2-quarantine-core
+        env:
+          SEED: "${{ matrix.seed }}"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          mkdir -p evidence/gen2-exploration-quarantine-core-v1
+          set +e
+          python research/gen2_exploration_quarantine_core_v1.py "$SEED" > "evidence/gen2-exploration-quarantine-core-v1/result-${SEED}.json"
+          rc=$?
+          set -e
+          printf '%s\\n' "$rc" > "evidence/gen2-exploration-quarantine-core-v1/result-${SEED}.rc"
+          exit "$rc"
+      - name: Upload exact production-method A/B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen2-exploration-quarantine-core-v1-${{ matrix.seed }}
+          path: acsie-gen2-quarantine-core/evidence/gen2-exploration-quarantine-core-v1/**
+          if-no-files-found: error
