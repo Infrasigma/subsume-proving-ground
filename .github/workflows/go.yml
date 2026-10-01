@@ -123,8 +123,7 @@ jobs:
           python research/gen2_exploration_quarantine_core_v1.py "$SEED" > "evidence/gen2-exploration-quarantine-core-v1/result-${SEED}.json"
           rc=$?
           set -e
-          printf '%s
-' "$rc" > "evidence/gen2-exploration-quarantine-core-v1/result-${SEED}.rc"
+          printf '%s\\n' "$rc" > "evidence/gen2-exploration-quarantine-core-v1/result-${SEED}.rc"
           exit "$rc"
       - name: Upload exact production-method A/B evidence
         if: always()
