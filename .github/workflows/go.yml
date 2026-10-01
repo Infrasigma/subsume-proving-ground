@@ -86,7 +86,7 @@ jobs:
 
 
   acsie-q4-library-reuse-reserve-v2:
-    if: github.ref == 'refs/heads/research/q4-library-reuse-reserve-v2-20261002' && github.event_name == 'push'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/research/q4-library-reuse-reserve-v2-20261002') || (github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'research/q4-library-reuse-reserve-v2-20261002')
     strategy:
       fail-fast: false
       matrix:
