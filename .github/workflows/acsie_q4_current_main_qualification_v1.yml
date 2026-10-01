@@ -24,7 +24,7 @@ jobs:
         with:
           repository: Infrasigma/ACSIE
           ref: main
-          token: {}{{ secrets.ACSIE_READ_TOKEN }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie
           fetch-depth: 0
           persist-credentials: false
@@ -42,10 +42,10 @@ jobs:
           set -euo pipefail
           export PYTHONPATH="$PWD"
           mkdir -p evidence/q4-current-main
-          python - <<'PY' > "evidence/q4-current-main/result-$${{ matrix.seed }}.json"
+          python - <<'PY' > "evidence/q4-current-main/result-${{ matrix.seed }}.json"
           import json
           from research.native_self_learning_kernel_v2 import run
-          result = run(seed=int("$${{ matrix.seed }}"))
+          result = run(seed=int("${{ matrix.seed }}"))
           result["source_commit"] = "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d"
           result["experiment_identity"] = "q4-current-main-qualification-v1"
           print(json.dumps(result, indent=2, sort_keys=True))
@@ -56,6 +56,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: q4-current-main-$${{ matrix.seed }}
-          path: acsie/evidence/q4-current-main/result-$${{ matrix.seed }}.json
+          name: q4-current-main-${{ matrix.seed }}
+          path: acsie/evidence/q4-current-main/result-${{ matrix.seed }}.json
           if-no-files-found: error
