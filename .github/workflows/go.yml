@@ -83,3 +83,47 @@ jobs:
           path: acex-result.txt
 
 # ACE-X forensic trigger revision.
+
+
+  acsie-gen2-unmasked-discovery-v1:
+    if: github.ref == 'refs/heads/research/gen2-unmasked-discovery-v1-20261002' && github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [771221, 771222, 771223, 771224, 771225]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+      - name: Checkout exact ACSIE unmasked-discovery source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: research/gen2-unmasked-discovery-v1-20261002
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-gen2-unmasked
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source
+        working-directory: acsie-gen2-unmasked
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "269b3b948738a5185329b75dc926227f7319781b"
+          git merge-base --is-ancestor "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d" HEAD
+      - name: Run unmasked Gen2 discovery diagnostic
+        working-directory: acsie-gen2-unmasked
+        env:
+          SEED: "${{ matrix.seed }}"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          mkdir -p evidence/gen2-unmasked-discovery-v1
+          python research/gen2_unmasked_discovery_v1.py "$SEED" > "evidence/gen2-unmasked-discovery-v1/result-${SEED}.json"
+      - name: Upload unmasked-discovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen2-unmasked-discovery-v1-${{ matrix.seed }}
+          path: acsie-gen2-unmasked/evidence/gen2-unmasked-discovery-v1/**
+          if-no-files-found: error
