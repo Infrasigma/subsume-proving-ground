@@ -1,2 +1,3 @@
-ACSIE diagnostic source: 707be341b39875981e530513d8835b723393c652
-Trigger revision: 20261002-r3-final-provenance
+ACSIE diagnostic source commit: 707be341b39875981e530513d8835b723393c652
+run_l2_sequential_gate blob: 0cdc4e39f3471e457e07d18b7375f4a4952276d9
+Trigger revision: r4-exact-blob
