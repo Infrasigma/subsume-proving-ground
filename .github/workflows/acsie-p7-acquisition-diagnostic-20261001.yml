@@ -1,0 +1,130 @@
+name: ACSIE p7 acquisition diagnostic 2026100103
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-p7-acquisition-diagnostic-20261001.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ACSIE_REF: 34ce504f4f51f963ce1443cfe974f57adca4f223
+  EXPECTED_HARNESS_BLOB: 462e4fc483471a2228252f7f87fbf8ab551a8d84
+  PYTHONHASHSEED: "0"
+  ACSIE_L2_SEEDS: "2026100103"
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact ACSIE main
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_REF }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact ACSIE identity
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ACSIE_REF"
+          test "$(git hash-object research/run_l2_sequential_gate.sh)" = "$EXPECTED_HARNESS_BLOB"
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse HEAD^{tree})"
+
+      - name: Add acquisition-only diagnostic instrumentation
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib
+          p = pathlib.Path("research/run_l2_sequential_gate.sh")
+          s = p.read_text()
+          old = '''        eligible = [
+            r for r in records
+            if r["train_score"] >= 0.70 and r["selection_score"] >= 0.70
+        ]
+'''
+          new = '''        eligible = [
+            r for r in records
+            if r["train_score"] >= 0.70 and r["selection_score"] >= 0.70
+        ]
+        diagnostic_rows = sorted(
+            (
+                {
+                    "index": int(r["index"]),
+                    "train_score": float(r["train_score"]),
+                    "selection_score": float(r["selection_score"]),
+                    "complexity": int(r["complexity"]),
+                    "program": r["program"],
+                    "program_digest": r["program_digest"],
+                    "eligible": bool(
+                        r["train_score"] >= 0.70
+                        and r["selection_score"] >= 0.70
+                    ),
+                }
+                for r in records
+            ),
+            key=lambda r: (r["selection_score"], r["train_score"], -r["complexity"], -r["index"]),
+            reverse=True,
+        )
+        print(json.dumps({
+            "candidate_frontier_diagnostic": {
+                "stage": stage_name,
+                "candidate_count": len(records),
+                "eligible_count": len(eligible),
+                "top_candidates": diagnostic_rows[:32],
+            }
+        }, sort_keys=True, indent=2))
+'''
+          if old not in s:
+              raise SystemExit("candidate-selection diagnostic anchor not found")
+          p.write_text(s.replace(old, new, 1))
+          compile(p.read_text(), str(p), 'exec')
+          print('DIAGNOSTIC_PATCH_APPLIED=true')
+          PY
+
+      - name: Run diagnostic qualification harness
+        working-directory: acsie
+        env:
+          ACSIE_GITHUB_ACTIONS: "1"
+          ACSIE_SOURCE_COMMIT: ${{ env.ACSIE_REF }}
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          set +e
+          bash research/run_l2_sequential_gate.sh > gate.stdout.txt 2> gate.stderr.txt
+          rc=$?
+          set -e
+          echo "$rc" > gate.rc
+          mkdir -p evidence/p7-acquisition-diagnostic
+          cp gate.stdout.txt gate.stderr.txt gate.rc evidence/p7-acquisition-diagnostic/
+          cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/p7-acquisition-diagnostic/
+          python - <<'PY'
+          import json, pathlib
+          rows=[json.loads(p.read_text()) for p in pathlib.Path("evidence/p7-acquisition-diagnostic").glob("l2a-*.json")]
+          print(json.dumps({
+              "artifact_count": len(rows),
+              "scientific_status": rows[0].get("scientific_status") if rows else None,
+              "failure_boundary": rows[0].get("failure_boundary") if rows else None,
+              "seed": rows[0].get("seed") if rows else None,
+              "note": "diagnostic-only; no runtime mechanism change; no target information supplied to selection"
+          }, sort_keys=True, indent=2))
+          PY
+
+      - name: Upload acquisition diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-p7-acquisition-diagnostic-2026100103
+          path: acsie/evidence/p7-acquisition-diagnostic/**
+          if-no-files-found: warn
