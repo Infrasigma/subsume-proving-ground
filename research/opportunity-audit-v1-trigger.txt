@@ -1,3 +1,3 @@
 Audit ACSIE branch tip: a70a6dc5a0a6df064e9bc61fdea4ba87ae5dc31d6
 Workflow immutable-tree verification: 8b3679b5dddb9acadd11d2b647277d3c069646f1
-Trigger revision: 20261002-r7
+Trigger revision: 20261002-r8
