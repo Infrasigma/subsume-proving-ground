@@ -1,0 +1,1 @@
+Trigger-only marker. No scientific logic changed.
