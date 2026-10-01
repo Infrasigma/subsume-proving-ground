@@ -226,8 +226,8 @@ set -e
 
 printf '%s\n' "$RC" >"$OUT/gate.rc"
 
-if compgen -G "$WORK"/tmp/acsie-l2-sequential-run/l2a-*.json >/dev/null; then
-  cp "$WORK"/tmp/acsie-l2-sequential-run/l2a-*.json "$OUT/"
+if compgen -G /tmp/acsie-l2-sequential-run/l2a-*.json >/dev/null; then
+  cp /tmp/acsie-l2-sequential-run/l2a-*.json "$OUT/"
 else
   cp -f "$WORK"/l2a-*.json "$OUT/" 2>/dev/null || true
 fi
