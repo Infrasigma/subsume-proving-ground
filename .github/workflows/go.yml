@@ -103,7 +103,7 @@ jobs:
           EXPECTED_HARNESS_BLOB: "462e4fc483471a2228252f7f87fbf8ab551a8d84"
           SEED: "${{ matrix.seed }}"
         run: |
-          bash research/run_l2c_second_order_reservoir_20261001.sh
+          bash research/run_l2c_hr13_cv_corrected_20261001.sh
 
       - name: Upload scientific evidence
         if: always()
