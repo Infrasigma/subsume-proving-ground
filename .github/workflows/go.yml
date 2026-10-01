@@ -115,7 +115,7 @@ jobs:
 
 
   hr13-cv-partition-corrected:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/research/l2c-hr13-cv-partition-corrected-20261001'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/research/l2c-hr13-cv-partition-corrected-20261001' || github.ref == 'refs/heads/research/l2c-hr13-cv-partition-corrected-v2-20261001')
     strategy:
       fail-fast: false
       matrix:
