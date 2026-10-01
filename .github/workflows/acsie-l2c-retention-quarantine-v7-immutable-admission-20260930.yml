@@ -9,6 +9,7 @@ on:
   pull_request_target:
     paths:
       - ".github/workflows/acsie-l2c-retention-quarantine-v7-immutable-admission-20260930.yml"
+      - "research/combined-retention-execution-trigger-20261001.md"
 
 permissions:
   contents: read
