@@ -1,5 +1,7 @@
 name: ACSIE combined retention qualification v2 20261001
 
+# Dedicated scientific execution trigger; ACSIE source is pinned below.
+
 on:
   push:
     paths:
