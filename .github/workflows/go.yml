@@ -109,7 +109,7 @@ jobs:
         working-directory: acsie-kernel-foundry-v2
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "ec86de6a700a31c9ac10356671c92a33e9e94524"
+          test "$(git rev-parse HEAD)" = "97fc12f9a1b0a78ea19b2237c6718d8143058d75"
           git merge-base --is-ancestor "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d" HEAD
       - name: Run Foundry v2 matched-budget ablation
         working-directory: acsie-kernel-foundry-v2
