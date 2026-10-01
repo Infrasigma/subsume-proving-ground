@@ -1,0 +1,1 @@
+Research-only evaluator refresh marker. No evaluator logic, candidate logic, scientific ledger, or test thresholds changed.
