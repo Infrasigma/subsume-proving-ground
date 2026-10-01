@@ -45,7 +45,6 @@ jobs:
         env:
           ACSIE_L2_SEEDS: "${{ matrix.seed }}"
           ACSIE_L2_SELECTION_MODE: cv_partition
-          ACSIE_GITHUB_ACTIONS: "1"
         run: |
           set -euo pipefail
           export PYTHONPATH="$PWD"
