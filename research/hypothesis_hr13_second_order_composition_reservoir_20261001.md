@@ -31,3 +31,5 @@ The mechanism is rejected if it fails the fresh five-seed qualification under th
 This is an L2-C composition-frontier mechanism only. It does not establish AGI, ASI, or general capability.
 
 Execution trigger synchronized 2026-10-01.
+
+Workflow activation base verified at 6e800edeb456d66e182ff6d5a2ba2c7ac9a4d218.
