@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: a70a6dc5a0a6df064e9bc61fdea4ba87ae5dc31d6
+          ref: research/opportunity-audit-v1-20261002
           token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie
           fetch-depth: 0
