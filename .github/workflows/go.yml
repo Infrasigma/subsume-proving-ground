@@ -83,3 +83,81 @@ jobs:
           path: acex-result.txt
 
 # ACE-X forensic trigger revision.
+
+  acsie-stateful-route-stability:
+    if: github.ref == 'refs/heads/research/stateful-route-stability-audit-v1-20261002' && github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100201, 2026100202, 2026100203, 2026100204, 2026100205]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+
+      - name: Checkout exact ACSIE research branch
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: research/stateful-route-stability-audit-v1-20261002
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact ACSIE diagnostic source
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:research/run_l2_sequential_gate.sh)" = "e62de1f9d8a3c59356ca01b6e288c386df1f9a87"
+          git merge-base --is-ancestor "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d" HEAD
+
+      - name: Run stateful route stability audit
+        working-directory: acsie
+        env:
+          ACSIE_L2_SEEDS: "${{ matrix.seed }}"
+          ACSIE_L2_SELECTION_MODE: cv_partition
+          ACSIE_GITHUB_ACTIONS: "1"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          export ACSIE_SOURCE_COMMIT="$(git rev-parse HEAD)"
+          export ACSIE_SOURCE_TREE="$(git rev-parse HEAD^{tree})"
+          set +e
+          bash research/run_l2_sequential_gate.sh > gate.stdout.txt 2> gate.stderr.txt
+          rc=$?
+          set -e
+          mkdir -p evidence/stateful-route-stability-audit-v1
+          cp /tmp/acsie-l2-sequential-run/l2a-${{ matrix.seed }}.json evidence/stateful-route-stability-audit-v1/
+          cp gate.stdout.txt gate.stderr.txt evidence/stateful-route-stability-audit-v1/
+          printf '%s\n' "$rc" > evidence/stateful-route-stability-audit-v1/gate.rc
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('evidence/stateful-route-stability-audit-v1/l2a-${{ matrix.seed }}.json')
+          d=json.loads(p.read_text())
+          assert d.get('source_commit')
+          assert d.get('source_tree')
+          assert 'state_route_stability' in d
+          audit=d['state_route_stability']
+          assert set(audit) == {'choose_only','with_feedback'}
+          assert audit['choose_only']['integrity']['target_used_for_router_choice'] is False
+          assert audit['with_feedback']['integrity']['target_used_for_router_choice'] is False
+          print(json.dumps({
+              'seed': d.get('seed'),
+              'scientific_status': d.get('scientific_status'),
+              'source_commit': d.get('source_commit'),
+              'source_tree': d.get('source_tree'),
+              'state_route_stability': audit
+          }, sort_keys=True, indent=2))
+          PY
+          exit "$rc"
+
+      - name: Upload stateful route stability evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stateful-route-stability-audit-v1-${{ matrix.seed }}
+          path: acsie/evidence/stateful-route-stability-audit-v1/**
+          if-no-files-found: error
