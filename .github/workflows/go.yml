@@ -108,7 +108,7 @@ jobs:
         working-directory: acsie-kernel-foundry
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "58532c442e88a989e0223f12a6153bb413b7e533"
+          test "$(git rev-parse HEAD)" = "b6e968326708c15f28a7f946f6b34458bb4ee887"
           git merge-base --is-ancestor "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d" HEAD
       - name: Run kernel foundry
         working-directory: acsie-kernel-foundry
