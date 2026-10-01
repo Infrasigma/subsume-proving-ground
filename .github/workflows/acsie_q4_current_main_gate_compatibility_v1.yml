@@ -1,0 +1,60 @@
+name: ACSIE Q4 Current-Main Gate Compatibility
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  q4:
+    if: github.ref == 'refs/heads/research/q4-current-main-gate-compatibility-20261002'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [771221, 771222, 771223, 771224, 771225]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+      - name: Checkout exact ACSIE compatibility source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: research/q4-current-main-gate-compatibility-20261002
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-q4
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source
+        working-directory: acsie-q4
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "6328d1ac0d2008716c85b1d12bd5a21a8d3f047e"
+          git merge-base --is-ancestor "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d" HEAD
+      - name: Run exact Q4 experiment
+        working-directory: acsie-q4
+        env:
+          SEED: "${{ matrix.seed }}"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          mkdir -p evidence/q4-current-main-gate-compatibility
+          python - <<'PY' > "evidence/q4-current-main-gate-compatibility/result-${{ matrix.seed }}.json"
+          import json, os
+          from research.native_self_learning_kernel_v2 import run
+          result = run(seed=int(os.environ["SEED"]))
+          result["source_commit"] = "6328d1ac0d2008716c85b1d12bd5a21a8d3f047e"
+          result["baseline_qualified_main"] = "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d"
+          result["experiment_identity"] = "q4-current-main-gate-compatibility-v1"
+          print(json.dumps(result, indent=2, sort_keys=True))
+          raise SystemExit(0 if result["passed"] else 2)
+          PY
+      - name: Upload Q4 compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4-current-main-gate-compatibility-${{ matrix.seed }}
+          path: acsie-q4/evidence/q4-current-main-gate-compatibility/**
+          if-no-files-found: error
