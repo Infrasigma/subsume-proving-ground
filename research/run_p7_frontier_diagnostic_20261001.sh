@@ -130,7 +130,7 @@ inject = '''        records = candidate_records(
                 "target_identity_used_to_change_runtime_behavior": False,
             }
             (root / f"p7-frontier-diagnostic-{seed}.json").write_text(
-                json.dumps(diagnostic, indent=2, sort_keys=True) + "\n"
+                json.dumps(diagnostic, indent=2, sort_keys=True) + chr(10)
             )
 '''
 
