@@ -83,3 +83,52 @@ jobs:
           path: acex-result.txt
 
 # ACE-X forensic trigger revision.
+
+
+  acsie-native-learning-kernel-foundry-v2-ablation:
+    if: github.ref == 'refs/heads/research/native-learning-kernel-foundry-v2-ablation-20261002' && github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [771221, 771222, 771223, 771224, 771225]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+      - name: Checkout exact ACSIE Foundry v2 source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: research/native-learning-kernel-foundry-v2-ablation-20261002
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-kernel-foundry-v2
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source
+        working-directory: acsie-kernel-foundry-v2
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "ec86de6a700a31c9ac10356671c92a33e9e94524"
+          git merge-base --is-ancestor "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d" HEAD
+      - name: Run Foundry v2 matched-budget ablation
+        working-directory: acsie-kernel-foundry-v2
+        env:
+          SEED: "${{ matrix.seed }}"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          mkdir -p evidence/native-learning-kernel-foundry-v2-ablation
+          set +e
+          python research/native_learning_kernel_foundry_v2_ablation.py "$SEED" > "evidence/native-learning-kernel-foundry-v2-ablation/result-${SEED}.json"
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" > "evidence/native-learning-kernel-foundry-v2-ablation/result-${SEED}.rc"
+          exit "$rc"
+      - name: Upload Foundry v2 ablation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-learning-kernel-foundry-v2-ablation-${{ matrix.seed }}
+          path: acsie-kernel-foundry-v2/evidence/native-learning-kernel-foundry-v2-ablation/**
+          if-no-files-found: error
