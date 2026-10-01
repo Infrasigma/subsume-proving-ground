@@ -1,0 +1,56 @@
+name: ACSIE Opportunity Exposure Audit
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  opportunity-audit:
+    if: github.ref == 'refs/heads/research/opportunity-audit-v1-20261002'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100201, 2026100202, 2026100203, 2026100204, 2026100205]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+
+      - name: Checkout exact ACSIE research commit
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: 9b822e29d661af8769fc7cb986f175a603cc9b08
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact ACSIE source
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "9b822e29d661af8769fc7cb986f175a603cc9b08"
+          test "$(git hash-object research/opportunity_audit_v1.py)" = "579d7fbd31c4ceabd2cca10589a4e78ab7f88f56"
+          test "$(git rev-parse 5d9e1229d62d8218398b81ca9f89fa1da2ebf70d^0)" = "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d"
+
+      - name: Run opportunity exposure audit
+        working-directory: acsie
+        env:
+          PYTHONHASHSEED: "0"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          mkdir -p evidence/opportunity-audit-v1
+          python3 research/opportunity_audit_v1.py "${{ matrix.seed }}" | tee "evidence/opportunity-audit-v1/result-${{ matrix.seed }}.json"
+
+      - name: Upload opportunity audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opportunity-audit-v1-${{ matrix.seed }}
+          path: acsie/evidence/opportunity-audit-v1/result-${{ matrix.seed }}.json
+          if-no-files-found: error
