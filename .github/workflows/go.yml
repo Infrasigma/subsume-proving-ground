@@ -83,3 +83,94 @@ jobs:
           path: acex-result.txt
 
 # ACE-X forensic trigger revision.
+
+  l2c-cv-quarantine-route-invariance:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/research/l2c-cv-quarantine-route-invariance-20261001-v2'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100106, 2026100107, 2026100108, 2026100109, 2026100110]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+
+      - name: Checkout exact ACSIE main
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: 34ce504f4f51f963ce1443cfe974f57adca4f223
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify ACSIE source identity
+        working-directory: acsie
+        env:
+          EXPECTED_HARNESS_BLOB: "462e4fc483471a2228252f7f87fbf8ab551a8d84"
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "34ce504f4f51f963ce1443cfe974f57adca4f223"
+          test "$(git hash-object research/run_l2_sequential_gate.sh)" = "$EXPECTED_HARNESS_BLOB"
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git rev-parse HEAD^{tree})"
+
+      - name: Patch combined CV + newcomer quarantine + route invariance harness
+        run: |
+          set -euo pipefail
+          python3 research/patch_l2c_cv_quarantine_20261001.py \
+            acsie/research/run_l2_sequential_gate.sh \
+            462e4fc483471a2228252f7f87fbf8ab551a8d84
+
+      - name: Run scientific qualification
+        working-directory: acsie
+        env:
+          ACSIE_L2_SEEDS: "${{ matrix.seed }}"
+          ACSIE_L2_SELECTION_MODE: "cv_partition"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          export ACSIE_SOURCE_COMMIT="$(git rev-parse HEAD)"
+          export ACSIE_SOURCE_TREE="$(git rev-parse HEAD^{tree})"
+          set +e
+          bash research/run_l2_sequential_gate.sh > gate.stdout.txt 2> gate.stderr.txt
+          rc=$?
+          set -e
+          mkdir -p evidence/l2c-cv-quarantine-route-invariance
+          cp /tmp/acsie-l2-sequential-run/l2a-*.json evidence/l2c-cv-quarantine-route-invariance/
+          cp gate.stdout.txt gate.stderr.txt evidence/l2c-cv-quarantine-route-invariance/
+          printf '%s\n' "$rc" > evidence/l2c-cv-quarantine-route-invariance/gate.rc
+          python3 - <<'PY'
+          import json, pathlib, subprocess
+          rows=list(pathlib.Path("evidence/l2c-cv-quarantine-route-invariance").glob("l2a-*.json"))
+          if len(rows)!=1:
+              raise SystemExit(f"expected one scientific artifact, found {len(rows)}")
+          d=json.loads(rows[0].read_text())
+          retention=d.get("retention_after_p7") or {}
+          checks=retention.get("checks") or {}
+          print(json.dumps({
+              "schema":"ACSIE.l2c.cv-quarantine-route-invariance.v1",
+              "seed":d.get("seed"),
+              "scientific_status":d.get("scientific_status"),
+              "failure_boundary":d.get("failure_boundary"),
+              "source_commit":subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(),
+              "source_tree":subprocess.check_output(["git","rev-parse","HEAD^{tree}"],text=True).strip(),
+              "selection_mode":"cv_partition",
+              "retention_checks":checks,
+              "route_invariance":retention.get("route_invariance"),
+              "integrity":d.get("integrity"),
+          },sort_keys=True,indent=2))
+          if any(v.get("route_invariance_pass") is not True for v in checks.values()):
+              raise SystemExit(2)
+          PY
+          exit "$rc"
+
+      - name: Upload scientific evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-cv-quarantine-route-invariance-${{ matrix.seed }}
+          path: acsie/evidence/l2c-cv-quarantine-route-invariance/**
+          if-no-files-found: warn
