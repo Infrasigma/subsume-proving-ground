@@ -1,3 +1,3 @@
 # Combined retention execution trigger
 
-Final trigger after dedicated workflow PR/trigger infrastructure. No runtime or scientific logic is changed here.
+Trigger after active-workflow qualification infrastructure PR #103. No runtime or scientific logic is changed here.
