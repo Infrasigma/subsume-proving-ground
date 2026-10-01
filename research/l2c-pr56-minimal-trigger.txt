@@ -1,0 +1,1 @@
+Trigger-only marker for exact PR56 qualification. No scientific logic changed.
