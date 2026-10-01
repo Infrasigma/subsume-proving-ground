@@ -1,0 +1,74 @@
+name: Q4 current-main recursive library fresh five-seed
+
+on:
+  push:
+    branches:
+      - research/q4-current-main-fresh5-20261001
+
+permissions:
+  contents: read
+
+jobs:
+  q4:
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [271828, 271829, 271830, 271831, 271832]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact current ACSIE main
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: 34ce504f4f51f963ce1443cfe974f57adca4f223
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "34ce504f4f51f963ce1443cfe974f57adca4f223"
+      - name: Q4 library and sequential prerequisites
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/acsie-q4-${{ matrix.seed }}
+          . /tmp/acsie-q4-${{ matrix.seed }}/bin/activate
+          python -m pip install --upgrade pip pytest
+          python -m compileall -q cognitive_core
+          PYTHONPATH="$PWD" pytest -q tests/test_native_independent_core.py
+          PYTHONPATH="$PWD" python research/native_q4_library_abstraction_probe_v1.py 913771
+          PYTHONPATH="$PWD" python research/native_q4_sequential_library_probe_v1.py 913771
+      - name: Q4 recursive procedure
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          . /tmp/acsie-q4-${{ matrix.seed }}/bin/activate
+          set +e
+          PYTHONPATH="$PWD" python research/native_q4_recursive_library_procedure_v1.py ${{ matrix.seed }} 6 6 > q4-result.json
+          rc=$?
+          set -e
+          cat q4-result.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("q4-result.json"))
+          if d.get("passed") is not True: raise SystemExit("Q4_SCIENTIFIC_FAILURE")
+          if d.get("retention_ok") is not True: raise SystemExit("Q4_RETENTION_FAILURE")
+          if d.get("restart_exact") is not True: raise SystemExit("Q4_RESTART_FAILURE")
+          if d.get("outer_holdout_gain",0.0) < 0.05: raise SystemExit("Q4_HOLDOUT_GAIN_FAILURE")
+          if d.get("outer_transfer_gain",0.0) < 0.05: raise SystemExit("Q4_TRANSFER_GAIN_FAILURE")
+          if d.get("outer_selected",{}).get("recursive_use_rate",0.0) <= 0.0: raise SystemExit("Q4_RECURSIVE_USE_FAILURE")
+          print("Q4_SCIENTIFIC_STATUS=PASSED")
+          PY
+          exit "$rc"
+      - name: Upload Q4 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4-current-main-${{ matrix.seed }}
+          path: acsie/q4-result.json
+          if-no-files-found: warn
