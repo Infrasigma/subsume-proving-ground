@@ -140,3 +140,51 @@ jobs:
           name: q4-current-main-gate-compatibility-${SEED}
           path: acsie-q4/evidence/q4-current-main-gate-compatibility/**
           if-no-files-found: error
+
+  acsie-q4-procedure-selection-v3:
+    if: github.ref == 'refs/heads/research/q4-current-main-gate-compatibility-20261002' && github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [271828, 271829, 271830, 271831, 271832]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+      - name: Checkout exact ACSIE Q4 v3 source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: research/q4-procedure-selection-v3-20261002
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-q4-v3
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact Q4 v3 source
+        working-directory: acsie-q4-v3
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "c83db1425dc1c50c4121edad0d3b0d8d626fd40f"
+          git merge-base --is-ancestor "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d" HEAD
+      - name: Run Q4 v3
+        working-directory: acsie-q4-v3
+        env:
+          SEED: "${{ matrix.seed }}"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          mkdir -p evidence/q4-procedure-selection-v3
+          set +e
+          python research/native_q4_recursive_library_procedure_v3.py "$SEED" > "evidence/q4-procedure-selection-v3/result-${SEED}.json"
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" > "evidence/q4-procedure-selection-v3/result-${SEED}.rc"
+          exit "$rc"
+      - name: Upload Q4 v3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4-procedure-selection-v3-${SEED}
+          path: acsie-q4-v3/evidence/q4-procedure-selection-v3/**
+          if-no-files-found: error
