@@ -108,7 +108,7 @@ jobs:
         working-directory: acsie-q4
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "6328d1ac0d2008716c85b1d12bd5a21a8d3f047e"
+          test "$(git rev-parse HEAD)" = "734efceb575ca80c75851cbdfd88414ccf0fec04"
           git merge-base --is-ancestor "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d" HEAD
       - name: Run Q4 gate-compatible experiment
         working-directory: acsie-q4
@@ -123,7 +123,7 @@ jobs:
           import json, os
           from research.native_self_learning_kernel_v2 import run
           result = run(seed=int(os.environ["SEED"]))
-          result["source_commit"] = "6328d1ac0d2008716c85b1d12bd5a21a8d3f047e"
+          result["source_commit"] = "734efceb575ca80c75851cbdfd88414ccf0fec04"
           result["baseline_qualified_main"] = "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d"
           result["experiment_identity"] = "q4-current-main-gate-compatibility-v1"
           print(json.dumps(result, indent=2, sort_keys=True))
