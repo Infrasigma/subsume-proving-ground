@@ -147,14 +147,14 @@ jobs:
       - name: Checkout second-order hypothesis branch
         uses: actions/checkout@v4
         with:
-          ref: \${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Run pinned H-R13 qualification
         env:
-          ACSIE_READ_TOKEN: \${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
           ACSIE_REF: "6435c270af085380aed7e06135d98471429b2ac9"
           EXPECTED_HARNESS_BLOB: "462e4fc483471a2228252f7f87fbf8ab551a8d84"
-          SEED: "\${{ matrix.seed }}"
+          SEED: "${{ matrix.seed }}"
         run: |
           bash research/run_l2c_second_order_reservoir_20261001.sh
 
@@ -162,6 +162,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: acsie-l2c-second-order-reservoir-\${{ matrix.seed }}
-          path: evidence/l2c-second-order-reservoir/\${{ matrix.seed }}/**
+          name: acsie-l2c-second-order-reservoir-${{ matrix.seed }}
+          path: evidence/l2c-second-order-reservoir/${{ matrix.seed }}/**
           if-no-files-found: warn
