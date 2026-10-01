@@ -149,16 +149,16 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Run pinned H-R13 qualification
+      - name: Run pinned H-R14 qualification
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "6435c270af085380aed7e06135d98471429b2ac9"
+          ACSIE_REF: "007c90d2e83ed5e0796b1e94c5f974b3bcc446cb"
           EXPECTED_HARNESS_BLOB: "462e4fc483471a2228252f7f87fbf8ab551a8d84"
           SEED: "${{ matrix.seed }}"
         run: |
           bash research/run_l2c_balanced_second_order_reservoir_20261001.sh
 
-      - name: Upload H-R13 scientific evidence
+      - name: Upload H-R14 scientific evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
