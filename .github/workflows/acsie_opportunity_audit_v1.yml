@@ -33,8 +33,8 @@ jobs:
         working-directory: acsie
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "a70a6dc5a0a6df064e9bc61fdea4ba87ae5dc31d6"
-          test "$(git rev-parse HEAD:research/opportunity_audit_v1.py)" = "c1c956b0950ab0fa12654d46ec777018b43d1bf6"
+          test "$(git rev-parse HEAD:research/opportunity_audit_v1.py)" = "c7e3fb24a4465f57d45a53f25035d085eb93c088"
+          git merge-base --is-ancestor "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d" HEAD
           test "$(git rev-parse 5d9e1229d62d8218398b81ca9f89fa1da2ebf70d^0)" = "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d"
 
       - name: Run opportunity exposure audit
