@@ -110,7 +110,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: acsie-l2c-hr13-cv-partition-${{ matrix.seed }}
-          path: evidence/l2c-hr13-cv-partition/${{ matrix.seed }}/**
+          path: evidence/l2c-hr13-cv-partition-corrected/${{ matrix.seed }}/**
           if-no-files-found: warn
 
 
@@ -133,12 +133,12 @@ jobs:
           EXPECTED_HARNESS_BLOB: "462e4fc483471a2228252f7f87fbf8ab551a8d84"
           SEED: "${{ matrix.seed }}"
         run: |
-          bash research/run_l2c_second_order_reservoir_20261001.sh
+          bash research/run_l2c_hr13_cv_corrected_20261001.sh
 
       - name: Upload corrected CV scientific evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: acsie-l2c-hr13-cv-partition-corrected-${{ matrix.seed }}
-          path: evidence/l2c-hr13-cv-partition/${{ matrix.seed }}/**
+          path: evidence/l2c-hr13-cv-partition-corrected/${{ matrix.seed }}/**
           if-no-files-found: warn
