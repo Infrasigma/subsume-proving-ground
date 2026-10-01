@@ -86,7 +86,7 @@ jobs:
 
 
   acsie-gen2-unmasked-discovery-v1:
-    if: github.ref == 'refs/heads/research/gen2-unmasked-discovery-v1-20261002' && github.event_name == 'push'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/research/gen2-unmasked-discovery-v1-20261002') || (github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'research/gen2-unmasked-discovery-v1-20261002')
     strategy:
       fail-fast: false
       matrix:
