@@ -74,3 +74,30 @@ jobs:
           name: acsie-l2c-combined-retention-${{ matrix.seed }}
           path: evidence/combined-retention/${{ matrix.seed }}/**
           if-no-files-found: warn
+
+  p7-frontier-diagnostic:
+    if: github.event.pull_request.head.ref == 'research/l2c-p7-frontier-diagnostic-20261001' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout trusted proving-ground base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Run pinned p7 frontier diagnostic
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "34ce504f4f51f963ce1443cfe974f57adca4f223"
+          EXPECTED_HARNESS_BLOB: "462e4fc483471a2228252f7f87fbf8ab551a8d84"
+          SEED: "2026100103"
+        run: |
+          bash research/run_p7_frontier_diagnostic_20261001.sh
+
+      - name: Upload p7 frontier diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-p7-frontier-diagnostic-2026100103
+          path: evidence/p7-frontier-diagnostic/2026100103/**
+          if-no-files-found: warn
