@@ -83,3 +83,81 @@ jobs:
           path: acex-result.txt
 
 # ACE-X forensic trigger revision.
+
+  l2c-pr56-exact-fresh5:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/research/l2c-pr56-exact-fresh5-20261001'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100141, 2026100142, 2026100143, 2026100144, 2026100145]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+      - name: Checkout exact ACSIE PR56 head
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: 5ba7d83befabf8c931fd2c0ec5343f54d777decd
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact PR56 source
+        working-directory: acsie
+        env:
+          EXPECTED_HARNESS_BLOB: "720549fd7323c7dd8900f8c56a36ecd9a246b5c5"
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "5ba7d83befabf8c931fd2c0ec5343f54d777decd"
+          test "$(git hash-object research/run_l2_sequential_gate.sh)" = "$EXPECTED_HARNESS_BLOB"
+      - name: Run exact PR56 qualification
+        working-directory: acsie
+        env:
+          ACSIE_L2_SEEDS: "${{ matrix.seed }}"
+          ACSIE_L2_SELECTION_MODE: "cv_partition"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          export ACSIE_SOURCE_COMMIT="$(git rev-parse HEAD)"
+          export ACSIE_SOURCE_TREE="$(git rev-parse HEAD^{tree})"
+          set +e
+          bash research/run_l2_sequential_gate.sh > gate.stdout.txt 2> gate.stderr.txt
+          rc=$?
+          set -e
+          mkdir -p evidence/l2c-pr56-exact-fresh5
+          cp /tmp/acsie-l2-sequential-run/l2a-${{ matrix.seed }}.json evidence/l2c-pr56-exact-fresh5/
+          cp gate.stdout.txt gate.stderr.txt evidence/l2c-pr56-exact-fresh5/
+          printf '%s
+' "$rc" > evidence/l2c-pr56-exact-fresh5/gate.rc
+          python3 - <<'PY'
+          import json, pathlib
+          p = pathlib.Path("evidence/l2c-pr56-exact-fresh5") / "l2a-${{ matrix.seed }}.json"
+          d = json.loads(p.read_text())
+          r = d.get("retention_after_p7") or {}
+          checks = r.get("checks") or {}
+          print(json.dumps({
+              "schema":"ACSIE.l2c.pr56.exact.fresh5.v1",
+              "seed":d.get("seed"),
+              "scientific_status":d.get("scientific_status"),
+              "failure_boundary":d.get("failure_boundary"),
+              "source_commit":d.get("source_commit"),
+              "source_tree":d.get("source_tree"),
+              "selection_mode":"cv_partition",
+              "checks":checks,
+              "integrity":d.get("integrity"),
+              "retention":r,
+          }, sort_keys=True, indent=2))
+          if d.get("scientific_status") != "PASSED": raise SystemExit(1)
+          if not all(all(v.values()) for v in checks.values()): raise SystemExit(2)
+          if any(bool(v) for v in (d.get("integrity") or {}).values()): raise SystemExit(3)
+          PY
+          exit "$rc"
+      - name: Upload exact PR56 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-pr56-exact-fresh5-${{ matrix.seed }}
+          path: acsie/evidence/l2c-pr56-exact-fresh5/**
+          if-no-files-found: error
