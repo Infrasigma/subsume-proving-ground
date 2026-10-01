@@ -43,3 +43,34 @@ jobs:
           . "$VENV/bin/activate"
           PYTHONPATH="$WORK" pytest -q tests/test_native_independent_core.py
           PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_corrected_retention_v1.py | tee corrected-gen2-result.json
+
+  combined-retention:
+    if: github.event.pull_request.head.ref == 'research/combined-retention-qualified-substrate-20261001' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100101, 2026100102, 2026100103, 2026100104, 2026100105]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout trusted proving-ground base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Run pinned combined retention qualification
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "34ce504f4f51f963ce1443cfe974f57adca4f223"
+          EXPECTED_HARNESS_BLOB: "462e4fc483471a2228252f7f87fbf8ab551a8d84"
+          SEED: "${{ matrix.seed }}"
+        run: |
+          bash research/run_combined_retention_qualification_20261001.sh
+
+      - name: Upload combined scientific evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-l2c-combined-retention-${{ matrix.seed }}
+          path: evidence/combined-retention/${{ matrix.seed }}/**
+          if-no-files-found: warn
