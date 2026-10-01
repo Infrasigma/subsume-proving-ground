@@ -136,3 +136,51 @@ jobs:
           name: q4-current-main-${{ matrix.seed }}
           path: acsie/evidence/q4-current-main/result-${{ matrix.seed }}.json
           if-no-files-found: error
+
+      - name: Checkout authoritative ACSIE main for Q4 qualification
+        if: github.ref == 'refs/heads/research/q4-current-main-qualification-20261002' && github.event_name == 'push'
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: main
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-q4
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify and run five-seed Q4 qualification
+        if: github.ref == 'refs/heads/research/q4-current-main-qualification-20261002' && github.event_name == 'push'
+        working-directory: acsie-q4
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d"
+          git merge-base --is-ancestor "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d" HEAD
+          export PYTHONPATH="$PWD"
+          mkdir -p evidence/q4-current-main
+          overall=0
+          for seed in 771221 771222 771223 771224 771225; do
+            set +e
+            SEED="$seed" python - <<'PY' > "evidence/q4-current-main/result-__SEED__.json"
+          import json, os
+          from research.native_self_learning_kernel_v2 import run
+          result = run(seed=int(os.environ["SEED"]))
+          result["source_commit"] = "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d"
+          result["experiment_identity"] = "q4-current-main-qualification-v1"
+          print(json.dumps(result, indent=2, sort_keys=True))
+          raise SystemExit(0 if result["passed"] else 2)
+          PY
+            rc=$?
+            set -e
+            printf '%s\n' "$rc" > "evidence/q4-current-main/result-__SEED__.rc"
+            if [ "$rc" -ne 0 ]; then overall=1; fi
+          done
+          cat evidence/q4-current-main/result-*.json
+          exit "$overall"
+
+      - name: Upload five-seed Q4 qualification evidence
+        if: always() && github.ref == 'refs/heads/research/q4-current-main-qualification-20261002' && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4-current-main-five-seed
+          path: acsie-q4/evidence/q4-current-main/**
+          if-no-files-found: error
