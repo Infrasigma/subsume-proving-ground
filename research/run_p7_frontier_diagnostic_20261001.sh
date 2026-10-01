@@ -183,3 +183,5 @@ print(json.dumps({
 PY
 
 [[ "$RC" -ne 2 ]]
+
+# Diagnostic execution trigger synchronized after workflow checkout plumbing activation.
