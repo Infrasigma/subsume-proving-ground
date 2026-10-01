@@ -83,3 +83,51 @@ jobs:
           path: acex-result.txt
 
 # ACE-X forensic trigger revision.
+
+  acsie-native-learning-kernel-foundry-v1:
+    if: github.ref == 'refs/heads/research/native-learning-kernel-foundry-v1-20261002' && github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [771221, 771222, 771223, 771224, 771225]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+      - name: Checkout exact ACSIE kernel-foundry source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: research/native-learning-kernel-foundry-v1-20261002
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-kernel-foundry
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source
+        working-directory: acsie-kernel-foundry
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "58532c442e88a989e0223f12a6153bb413b7e533"
+          git merge-base --is-ancestor "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d" HEAD
+      - name: Run kernel foundry
+        working-directory: acsie-kernel-foundry
+        env:
+          SEED: "${{ matrix.seed }}"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          mkdir -p evidence/native-learning-kernel-foundry-v1
+          set +e
+          python research/native_learning_kernel_foundry_v1.py "$SEED" > "evidence/native-learning-kernel-foundry-v1/result-${SEED}.json"
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" > "evidence/native-learning-kernel-foundry-v1/result-${SEED}.rc"
+          exit "$rc"
+      - name: Upload kernel foundry evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-learning-kernel-foundry-v1-${SEED}
+          path: acsie-kernel-foundry/evidence/native-learning-kernel-foundry-v1/**
+          if-no-files-found: error
