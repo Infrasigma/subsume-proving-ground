@@ -371,7 +371,7 @@ if "quarantine_branch" not in s:
     raise SystemExit("static validation: quarantine hook missing")
 if "route_invariance" not in s:
     raise SystemExit("static validation: route invariance missing")
-match = re.search(r"python3 -u - .*?<<['"]PY['"]\n(.*?)\nPY\n", s, flags=re.S)
+match = re.search(r"""python3 -u - .*?<<['"]PY['"]\n(.*?)\nPY\n""", s, flags=re.S)
 if match is None:
     raise SystemExit("static validation: embedded Python block missing")
 ast.parse(match.group(1), filename=str(path))
