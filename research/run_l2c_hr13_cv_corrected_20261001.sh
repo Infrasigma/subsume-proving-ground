@@ -31,8 +31,10 @@ SOURCE_TREE="$(git -C "$WORK" rev-parse HEAD^{tree})"
 test "$(git -C "$WORK" hash-object research/run_l2_sequential_gate.sh)" = "$EXPECTED_HARNESS_BLOB"
 
 python3 - "$WORK" "$EXPECTED_HARNESS_BLOB" <<'PY'
+import ast
 import hashlib
 import pathlib
+import re
 import sys
 
 work = pathlib.Path(sys.argv[1])
@@ -213,7 +215,118 @@ payload_new = '''                "candidate_count":len(records),
 '''
 replace_once(payload_anchor, payload_new, "selection evidence payload")
 
+# Inject and validate the actual ACSIE harness.
+replace_once(
+    '''import copy
+import hashlib
+import json
+import random
+''',
+    '''import copy
+import hashlib
+import json
+import os
+import random
+''',
+    "runtime os import",
+)
+
+selection_anchor = '''        selected = eligible[0] if eligible else None
+
+        if selected is None:
+            return {
+                "status":"FAILED",
+                "failure_boundary":"no_candidate_passed_internal_selection_gate",
+                "regime":regime,
+                "discovery":{"prior_scores":prior_scores,"known_bank_insufficient":known_bank_insufficient,"lower_bound":lower},
+                "candidate_count":len(records),
+            }, None
+'''
+selection_new = '''        partition_class_count = 0
+        partition_class_sizes = []
+        if selection_mode in {"partition", "cv_partition"}:
+            pre_holdout_rows = tuple(discovery) + tuple(selection)
+            equivalence_classes = {}
+            for record in eligible:
+                key = _selection_program_partition(
+                    base_library[-1]["core"],
+                    record["program"],
+                    pre_holdout_rows,
+                )
+                equivalence_classes.setdefault(key, []).append(record)
+            partition_class_count = len(equivalence_classes)
+            partition_class_sizes = sorted(
+                (len(group) for group in equivalence_classes.values()),
+                reverse=True,
+            )
+        selected = eligible[0] if eligible else None
+
+        if selected is None:
+            return {
+                "status":"FAILED",
+                "failure_boundary":"no_candidate_passed_internal_selection_gate",
+                "regime":regime,
+                "discovery":{
+                    "prior_scores":prior_scores,
+                    "known_bank_insufficient":known_bank_insufficient,
+                    "lower_bound":lower,
+                    "selection_mode":selection_mode,
+                    "cv_candidate_count":sum(
+                        1 for r in records if r["cv_mean"] is not None
+                    ),
+                    "cv_statistics_complete":all(
+                        r["cv_mean"] is not None
+                        and r["cv_stdev"] is not None
+                        and len(r["cv_scores"]) == 4
+                        for r in records
+                    ),
+                    "semantic_partition":{
+                        "enabled":selection_mode in {"partition","cv_partition"},
+                        "class_count":partition_class_count,
+                        "class_sizes":partition_class_sizes,
+                    },
+                },
+                "candidate_count":len(records),
+            }, None
+'''
+payload_anchor = '''                "selected_cv_stdev":selected["cv_stdev"],
+                "selected_index":selected["index"],
+'''
+payload_new = '''                "selected_cv_stdev":selected["cv_stdev"],
+                "cv_candidate_count":sum(
+                    1 for r in records if r["cv_mean"] is not None
+                ),
+                "cv_statistics_complete":all(
+                    r["cv_mean"] is not None
+                    and r["cv_stdev"] is not None
+                    and len(r["cv_scores"]) == 4
+                    for r in records
+                ),
+                "semantic_partition":{
+                    "enabled":selection_mode in {"partition","cv_partition"},
+                    "class_count":partition_class_count,
+                    "class_sizes":partition_class_sizes,
+                },
+                "selected_index":selected["index"],
+'''
+replace_once(selection_anchor, selection_new, "CV partition protocol evidence")
+replace_once(payload_anchor, payload_new, "CV selection protocol evidence")
+
+# Static validation of the generated Python payload.
+if "\nimport os\n" not in s:
+    raise SystemExit("static validation: missing import os")
+if "ACSIE_L2_SELECTION_MODE" not in s:
+    raise SystemExit("static validation: missing selection mode")
+if "cv_scores" not in s or "cv_mean" not in s or "cv_stdev" not in s:
+    raise SystemExit("static validation: missing CV statistics")
+if "semantic_partition" not in s:
+    raise SystemExit("static validation: missing semantic partition evidence")
+match = re.search(r"python3 -u - .*?<<['\"]PY['\"]\n(.*?)\nPY\n", s, flags=re.S)
+if match is None:
+    raise SystemExit("static validation: embedded Python heredoc not found")
+ast.parse(match.group(1), filename="run_l2_sequential_gate.sh:embedded-python")
 path.write_text(s)
+print("STATIC_VALIDATION=PASSED")
 print("PATCHED_HARNESS_SHA256=" + hashlib.sha256(s.encode()).hexdigest())
 PY
 
@@ -223,6 +336,23 @@ export ACSIE_L2_SELECTION_MODE="cv_partition"
 export ACSIE_SOURCE_COMMIT="$(git -C "$WORK" rev-parse HEAD)"
 export ACSIE_SOURCE_TREE="$SOURCE_TREE"
 
+bash -n "$WORK/research/run_l2_sequential_gate.sh"
+python3 - "$WORK/research/run_l2_sequential_gate.sh" <<'PY'
+import ast
+import re
+import sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text()
+m = re.search(r"python3 -u - .*?<<['\"]PY['\"]\n(.*?)\nPY\n", text, flags=re.S)
+if m is None:
+    raise SystemExit("runtime preflight: embedded Python missing")
+ast.parse(m.group(1), filename="run_l2_sequential_gate.sh:embedded-python")
+py = m.group(1)
+for required in ("import os", "ACSIE_L2_SELECTION_MODE", "cv_scores", "_selection_program_partition"):
+    if required not in py:
+        raise SystemExit(f"runtime preflight: missing {required}")
+print("RUNTIME_PREFLIGHT=PASSED")
+PY
 set +e
 ( cd "$WORK" && bash research/run_l2_sequential_gate.sh >"$OUT/gate.stdout.txt" 2>"$OUT/gate.stderr.txt" )
 RC=$?
