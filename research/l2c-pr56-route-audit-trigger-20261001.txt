@@ -1,0 +1,1 @@
+Trigger-only marker for route-audited PR56 qualification. No scientific logic changed.
