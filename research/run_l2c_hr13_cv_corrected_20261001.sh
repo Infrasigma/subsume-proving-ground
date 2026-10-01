@@ -182,7 +182,7 @@ eligible_new = '''        selection_mode = os.environ.get("ACSIE_L2_SELECTION_MO
                 )
                 equivalence_classes.setdefault(key, []).append(record)
             eligible = [
-                min(group, key=lambda r: _canonical_partition_preference(r["program"])),
+                min(group, key=lambda r: _canonical_partition_preference(r["program"]))
                 for group in equivalence_classes.values()
             ]
         eligible.sort(
