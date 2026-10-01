@@ -83,3 +83,47 @@ jobs:
           path: acex-result.txt
 
 # ACE-X forensic trigger revision.
+
+
+  acsie-q4-library-reuse-reserve-v2:
+    if: github.ref == 'refs/heads/research/q4-library-reuse-reserve-v2-20261002' && github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [271828, 271829, 271830, 271831, 271832]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+      - name: Checkout exact ACSIE Q4 reuse-reserve source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: research/q4-library-reuse-reserve-v2-20261002
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-q4-reuse
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source
+        working-directory: acsie-q4-reuse
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "bfd621cbac20670933d0fddcae46ce25add38a89"
+          test "$(git merge-base --is-ancestor 'dc99642ec3fefa13239342cf4ce5ab1929874f32' HEAD; echo $?)" = "0"
+      - name: Run Q4 reuse-reserve experiment
+        working-directory: acsie-q4-reuse
+        env:
+          SEED: "${{ matrix.seed }}"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          mkdir -p evidence/q4-library-reuse-reserve-v2
+          python research/q4_library_reuse_reserve_v2.py "$SEED" > "evidence/q4-library-reuse-reserve-v2/result-${SEED}.json"
+      - name: Upload Q4 reuse-reserve evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4-library-reuse-reserve-v2-${{ matrix.seed }}
+          path: acsie-q4-reuse/evidence/q4-library-reuse-reserve-v2/**
+          if-no-files-found: error
