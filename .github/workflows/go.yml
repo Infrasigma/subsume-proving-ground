@@ -116,7 +116,7 @@ jobs:
       - name: Run Q4 v3
         working-directory: acsie-q4
         env:
-          SEED: "${{ matrix.seed }}__"
+          SEED: "${{ matrix.seed }}"
         run: |
           set -euo pipefail
           export PYTHONPATH="$PWD"
