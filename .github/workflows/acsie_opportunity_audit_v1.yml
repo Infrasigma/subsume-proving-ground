@@ -33,7 +33,7 @@ jobs:
         working-directory: acsie
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "9b822e29d661af8769fc7cb986f175a603cc9b08"
+          test "$(git rev-parse HEAD)" = "2f4b634bc6632703ca77debe19c0b1d3c88ef4c5"
           test "$(git hash-object research/opportunity_audit_v1.py)" = "53b480c6ed0d8e48a2a4992ee729cb3f6d2fadaa"
           test "$(git rev-parse 5d9e1229d62d8218398b81ca9f89fa1da2ebf70d^0)" = "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d"
 
