@@ -83,3 +83,51 @@ jobs:
           path: acex-result.txt
 
 # ACE-X forensic trigger revision.
+
+  acsie-q4-procedure-selection-v4-matched-budget:
+    if: github.ref == 'refs/heads/research/q4-procedure-selection-v4-matched-budget-20261002' && github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [271828, 271829, 271830, 271831, 271832]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+      - name: Checkout exact ACSIE Q4 v4 source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: research/q4-procedure-selection-v4-matched-budget-20261002
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-q4-v4
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source
+        working-directory: acsie-q4-v4
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "dc99642ec3fefa13239342cf4ce5ab1929874f32"
+          git merge-base --is-ancestor "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d" HEAD
+      - name: Run Q4 v4 matched-budget
+        working-directory: acsie-q4-v4
+        env:
+          SEED: "${{ matrix.seed }}"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          mkdir -p evidence/q4-procedure-selection-v4
+          set +e
+          python research/native_q4_recursive_library_procedure_v4.py "$SEED" > "evidence/q4-procedure-selection-v4/result-${SEED}.json"
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" > "evidence/q4-procedure-selection-v4/result-${SEED}.rc"
+          exit "$rc"
+      - name: Upload Q4 v4 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q4-procedure-selection-v4-${SEED}
+          path: acsie-q4-v4/evidence/q4-procedure-selection-v4/**
+          if-no-files-found: error
