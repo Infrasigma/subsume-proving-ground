@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: 5ba7d83befabf8c931fd2c0ec5343f54d777decd
+          ref: cdcc5068e963c27cd8e750ff5f93f5bc260870b0
           token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie
           fetch-depth: 0
@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "5ba7d83befabf8c931fd2c0ec5343f54d777decd"
-          test "$(git hash-object research/run_l2_sequential_gate.sh)" = "720549fd7323c7dd8900f8c56a36ecd9a246b5c5"
+          test "$(git hash-object research/run_l2_sequential_gate.sh)" = "0df31dab4676b6248c3e33d4e317e5790c567352"
 
       - name: Run exact five-seed protocol
         working-directory: acsie
@@ -71,9 +71,11 @@ jobs:
               "source_tree":d.get("source_tree"),
               "checks":checks,
               "integrity":d.get("integrity"),
+              "route_invariance":r.get("route_invariance"),
           }, sort_keys=True, indent=2))
           if d.get("scientific_status") != "PASSED": raise SystemExit(1)
           if not all(all(v.values()) for v in checks.values()): raise SystemExit(2)
+          if (r.get("route_invariance") or {}).get("all_rows_unchanged") is not True: raise SystemExit(4)
           if any(bool(v) for v in (d.get("integrity") or {}).values()): raise SystemExit(3)
           PY
           exit "$rc"
