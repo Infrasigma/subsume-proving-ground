@@ -43,7 +43,7 @@ jobs:
       - name: Clone exact ACSIE H9-E research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "2c305db9fab8d6fbedd47262cb3da950479f705b"
+          ACSIE_REF: "9b80411c1df70badb14bfeda38a151b640f76531"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
