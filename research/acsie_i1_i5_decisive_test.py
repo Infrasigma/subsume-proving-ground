@@ -72,13 +72,13 @@ def make_rows(seed, rule, n):
     return tuple(row(rng, rule) for _ in range(n))
 
 
-def dataset(seed, rule, transfer_rule=None):
+def dataset(seed, rule, transfer_rule=None, future_rule=None):
     return {
         "train": make_rows(seed + 1, rule, 48),
         "fresh": make_rows(seed + 101, rule, 32),
         "holdout": make_rows(seed + 201, rule, 32),
         "transfer": make_rows(seed + 301, transfer_rule or rule, 32),
-        "future": make_rows(seed + 401, "parity_yz", 32),
+        "future": make_rows(seed + 401, future_rule or transfer_rule or rule, 32),
     }
 
 
@@ -129,11 +129,17 @@ def main():
         "xor_sign_parity",
         "xor_parity_sign",
         "and_sign_parity",
+        "unknown_sum_parity",
     ]
 
     stage_records = []
     for i, rule_name in enumerate(stage_rules[: args.stages]):
-        ds = dataset(seed + i * 10000, rule_name, transfer_rule=stage_rules[(i + 1) % len(stage_rules)])
+        ds = dataset(
+            seed + i * 10000,
+            rule_name,
+            transfer_rule=stage_rules[(i + 1) % len(stage_rules)],
+            future_rule=stage_rules[(i + 2) % len(stage_rules)],
+        )
         before = loop.snapshot()
         record = loop.run_stage(ds)
         after = loop.snapshot()
@@ -157,7 +163,13 @@ def main():
     # passed to the ACSIE loop or used by any candidate-selection decision.
     accepted = [r for r in stage_records if r["record"]["accepted"]]
     positive_future = []
-    for r in accepted:
+    ranking_regrets = []
+    unknown_stage_detected = False
+    for r in stage_records:
+        ranking_regrets.append(float(r["record"].get("ranking_regret", 0.0)))
+        diagnosis = r["record"].get("diagnosis", [])
+        if diagnosis and diagnosis[0].get("name") == "unknown":
+            unknown_stage_detected = True
         for _, obs in r["record"]["observations"].items():
             if obs.get("future_learning_auc") is not None:
                 positive_future.append(float(obs["future_learning_auc"]))
@@ -170,7 +182,7 @@ def main():
     artifact = {
         "schema": "ACSIE.i1-i5.decisive-test.v1",
         "seed": seed,
-        "scientific_status": "PASSED" if len(accepted) >= max(2, args.stages // 2) else "FAILED",
+        "scientific_status": "PASSED" if len(accepted) >= max(3, args.stages // 2) and unknown_stage_detected else "FAILED",
         "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "source_tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip(),
         "acsie_ref": "research/i1-i5-decisive-loop-20261002",
@@ -178,6 +190,8 @@ def main():
         "stage_count": len(stage_records),
         "accepted_stage_count": len(accepted),
         "diagnosis_head_count": len(diagnoses),
+        "ranking_regret_sequence": ranking_regrets,
+        "unknown_stage_detected": unknown_stage_detected,
         "diagnosis_sequence": diagnoses,
         "future_learning_values": positive_future,
         "ontology": sorted(loop.ontology),
@@ -187,8 +201,8 @@ def main():
             "causal_self_model": "PROVISIONAL" if loop.self_model.records else "FAILED",
             "open_hypothesis_engine": "PROVISIONAL",
             "quarantined_admission": "PROVISIONAL",
-            "recursive_improvement": "PASSED" if len(accepted) >= 2 else "FAILED",
-            "ontology_expansion": "NOT_DEMONSTRATED" if "unknown-residual" not in loop.ontology else "PROVISIONAL",
+            "recursive_improvement": "PROVISIONAL" if len(accepted) >= 3 and len(ranking_regrets) >= 4 else "FAILED",
+            "ontology_expansion": "PROVISIONAL" if unknown_stage_detected else "NOT_DEMONSTRATED",
         },
     }
     (out / "i1_i5_result.json").write_text(json.dumps(artifact, sort_keys=True, indent=2))
