@@ -180,9 +180,17 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "probe_ood", 5, 0.41
             )
             proc = learner.synthesize_process(ptrain, ptransfer, pood)
-            probe_rates.append(float(proc is not None))
+            if proc is not None:
+                peval = learner.evaluate(proc, ptrain, ptransfer, ptransfer, pood, ())
+                probe_rates.append(float(peval.accepted and peval.ood_error <= 1e-9))
+            else:
+                probe_rates.append(0.0)
             bproc = baseline.synthesize_process(ptrain, ptransfer, pood)
-            baseline_probe_rates.append(float(bproc is not None))
+            if bproc is not None:
+                beval = baseline.evaluate(bproc, ptrain, ptransfer, ptransfer, pood, ())
+                baseline_probe_rates.append(float(beval.accepted and beval.ood_error <= 1e-9))
+            else:
+                baseline_probe_rates.append(0.0)
 
         generations_out.append(
             {
