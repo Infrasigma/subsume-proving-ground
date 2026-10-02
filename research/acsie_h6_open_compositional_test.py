@@ -9,11 +9,11 @@ from dataclasses import asdict
 from pathlib import Path
 
 from cognitive_core.h6_compositional import (
-    H6Controller,
     Program,
     compose,
     primitive_library,
 )
+from cognitive_core.h6_r2_active_acquisition import H6R2Controller
 
 
 def row(rng: random.Random, rule: str):
@@ -126,6 +126,11 @@ def rank_regret(controller: H6Controller, candidates, datasets):
         reverse=True,
     )
     model_top = float(model_ranked[0][3]) if model_ranked else float("-inf")
+    top_k = min(5, len(model_ranked))
+    model_top_k_mean = (
+        statistics.mean(float(row[3]) for row in model_ranked[:top_k])
+        if top_k else float("-inf")
+    )
     chance_mean = statistics.mean(gains) if gains else 0.0
     chance_sd = statistics.pstdev(gains) if len(gains) > 1 else 0.0
     # Exact random-selector one-sided p-value: with a uniform random choice among
@@ -137,6 +142,7 @@ def rank_regret(controller: H6Controller, candidates, datasets):
         else 1.0
     )
     model_excess = model_top - chance_mean if gains else float("-inf")
+    top_k_excess = model_top_k_mean - chance_mean if gains else float("-inf")
     return {
         "model_top_future_gain": model_top,
         "chance_mean_future_gain": chance_mean,
@@ -144,6 +150,8 @@ def rank_regret(controller: H6Controller, candidates, datasets):
         "model_excess_over_chance": model_excess,
         "random_selector_p_value": random_p,
         "candidate_count": len(gains),
+        "model_top_k_mean": model_top_k_mean,
+        "top_k_excess_over_chance": top_k_excess,
         "model_better": bool(
             gains
             and model_top > chance_mean
@@ -168,7 +176,7 @@ def main():
         evidence_threshold=0.78, min_support_count=2, delayed_window=4,
         prediction_mode="ensemble", context_mode="shape", context_program=None,
     )
-    controller = H6Controller(seed, initial)
+    controller = H6R2Controller(seed, initial)
 
     # First three families are used for learning the discovery process.
     # The fourth target is an unseen composition and an unseen task family.
@@ -271,7 +279,7 @@ def main():
     ) else "FAILED"
 
     artifact = {
-        "schema": "ACSIE.h6.open-compositional.decisive.v2",
+        "schema": "ACSIE.h6-r2.active-acquisition.decisive.v1",
         "seed": seed,
         "scientific_status": scientific_status,
         "stages": stages,
@@ -295,6 +303,7 @@ def main():
             "withheld_composition_transfer": "PASSED" if target_recovery or withheld_novel_configs else "NOT_DEMONSTRATED",
             "longitudinal_recursive_improvement": "PASSED" if repeated_q_improvement else "NOT_DEMONSTRATED",
             "selection_above_chance": "PASSED" if meta_rank["model_better"] else "NOT_DEMONSTRATED",
+            "top_k_selection_uplift": "PASSED" if meta_rank["top_k_excess_over_chance"] > 0.0 else "NOT_DEMONSTRATED",
             "open_ended_rsi": "NOT_DEMONSTRATED",
             "agi": "NOT_DEMONSTRATED",
             "asi": "NOT_DEMONSTRATED",
