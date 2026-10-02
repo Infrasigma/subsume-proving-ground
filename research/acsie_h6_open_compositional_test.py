@@ -117,7 +117,7 @@ def rank_regret(controller: H6Controller, candidates, datasets):
         if model_ranked else 0.0
     )
     blind_top = (
-        blind_ranked[0][2].future_learning_auc - blind_ranked[0].baseline_future_learning_auc
+        blind_ranked[0][2].future_learning_auc - blind_ranked[0][2].baseline_future_learning_auc
         if blind_ranked else 0.0
     )
     return {
