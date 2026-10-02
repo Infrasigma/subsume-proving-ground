@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: 00c0f0f7141fb315de9799076bfb49bf7c321ddc
+          ref: 292c40912667dff085a7edd7a2199625ed1463f7
           token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie-foundry
           fetch-depth: 0
