@@ -194,9 +194,10 @@ def main():
 
         # Feed the same observed sequence to H6-R2's selector for a matched
         # evidence-budget comparison at the fresh meta-test.
+        h6r2.config = h8.config
         h6r2.model.update(
             selected,
-            h6r2.config,
+            h8.config,
             {"future_delta": future_delta, "regression": retention, "accepted": float(accepted)},
         )
 
@@ -215,7 +216,7 @@ def main():
 
     r2_ranked = sorted(
         (
-            h6r2.model.predict(p, h6r2.config, ())
+            h6r2.model.predict(p, h8.config, ())
             .predicted_future,
             p,
         )
