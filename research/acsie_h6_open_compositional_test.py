@@ -80,50 +80,75 @@ def config_signature(cfg):
 
 def rank_regret(controller: H6Controller, candidates, datasets):
     from cognitive_core.recursive_research import clone_with_config, fit_core, score_core, learning_curve_auc
-    baseline = clone_with_config(controller._fresh_core(), controller.config, seed=controller.seed + 70000)
+    baseline = clone_with_config(
+        controller._fresh_core(),
+        controller.config,
+        seed=controller.seed + 70000,
+    )
     fit_core(baseline, datasets["train"])
     bm = {
         "fresh": score_core(baseline, datasets["fresh"]),
         "holdout": score_core(baseline, datasets["holdout"]),
         "transfer": score_core(baseline, datasets["transfer"]),
         "future_learning_auc": learning_curve_auc(
-            clone_with_config(baseline, controller.config, seed=controller.seed + 70001),
-            datasets["future"], (4, 8, 16, 32)
+            clone_with_config(
+                baseline,
+                controller.config,
+                seed=controller.seed + 70001,
+            ),
+            datasets["future"],
+            (4, 8, 16, 32),
         ),
     }
+
     rows = []
     for i, program in enumerate(candidates):
         from cognitive_core.h6_compositional import _candidate_ir, compile_program
         cfg = compile_program(controller.config, program)
         ir = _candidate_ir(program, cfg)
         result = controller.experimenter.evaluate(
-            controller._fresh_core(), baseline, controller.config, ir, datasets,
-            seed_offset=80000 + i, baseline_metrics=bm
+            controller._fresh_core(),
+            baseline,
+            controller.config,
+            ir,
+            datasets,
+            seed_offset=80000 + i,
+            baseline_metrics=bm,
         )
         prediction = controller.model.predict(program, controller.config, ())
-        rows.append((program, prediction, result))
-    best = max(
-        (r[2].future_learning_auc - r[2].baseline_future_learning_auc for r in rows),
-        default=0.0
-    )
+        gain = result.future_learning_auc - result.baseline_future_learning_auc
+        rows.append((program, prediction, result, gain))
+
+    gains = [float(r[3]) for r in rows]
     model_ranked = sorted(
         rows,
         key=lambda r: (r[1].predicted_future, r[0].signature()),
         reverse=True,
     )
-    blind_ranked = sorted(rows, key=lambda r: r[0].signature())
-    model_top = (
-        model_ranked[0][2].future_learning_auc - model_ranked[0][2].baseline_future_learning_auc
-        if model_ranked else 0.0
+    model_top = float(model_ranked[0][3]) if model_ranked else float("-inf")
+    chance_mean = statistics.mean(gains) if gains else 0.0
+    chance_sd = statistics.pstdev(gains) if len(gains) > 1 else 0.0
+    # Exact random-selector one-sided p-value: with a uniform random choice among
+    # the evaluated candidates, each candidate is equally likely to be selected.
+    ge_count = sum(1 for gain in gains if gain >= model_top - 1e-12)
+    random_p = (
+        (ge_count + 1) / (len(gains) + 1)
+        if gains and model_top != float("-inf")
+        else 1.0
     )
-    blind_top = (
-        blind_ranked[0][2].future_learning_auc - blind_ranked[0][2].baseline_future_learning_auc
-        if blind_ranked else 0.0
-    )
+    model_excess = model_top - chance_mean if gains else float("-inf")
     return {
-        "model_regret": max(0.0, best - model_top),
-        "blind_regret": max(0.0, best - blind_top),
-        "model_better": model_top > blind_top,
+        "model_top_future_gain": model_top,
+        "chance_mean_future_gain": chance_mean,
+        "chance_sd_future_gain": chance_sd,
+        "model_excess_over_chance": model_excess,
+        "random_selector_p_value": random_p,
+        "candidate_count": len(gains),
+        "model_better": bool(
+            gains
+            and model_top > chance_mean
+            and random_p <= 0.05
+        ),
     }
 
 
@@ -242,10 +267,11 @@ def main():
         and novel_count >= 3
         and repeated_q_improvement
         and meta_rank["model_better"]
+        and meta_rank["model_excess_over_chance"] > 0.0
     ) else "FAILED"
 
     artifact = {
-        "schema": "ACSIE.h6.open-compositional.decisive.v1",
+        "schema": "ACSIE.h6.open-compositional.decisive.v2",
         "seed": seed,
         "scientific_status": scientific_status,
         "stages": stages,
@@ -268,6 +294,7 @@ def main():
             "compositional_mechanism_invention": "PASSED" if novel_accepted else "NOT_DEMONSTRATED",
             "withheld_composition_transfer": "PASSED" if target_recovery or withheld_novel_configs else "NOT_DEMONSTRATED",
             "longitudinal_recursive_improvement": "PASSED" if repeated_q_improvement else "NOT_DEMONSTRATED",
+            "selection_above_chance": "PASSED" if meta_rank["model_better"] else "NOT_DEMONSTRATED",
             "open_ended_rsi": "NOT_DEMONSTRATED",
             "agi": "NOT_DEMONSTRATED",
             "asi": "NOT_DEMONSTRATED",
