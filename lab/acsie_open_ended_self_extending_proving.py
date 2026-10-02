@@ -71,8 +71,33 @@ def combine_parents(
     }
 
 
-def eval_hidden(expr: dict[str, Any], row: dict[str, float]) -> float:
-    return float(eval_expr(expr, row, {}))
+def eval_hidden(
+    expr: dict[str, Any],
+    row: dict[str, float],
+    macros: dict[str, dict[str, Any]],
+) -> float:
+    return float(eval_expr(expr, row, macros))
+
+
+def expanded_depth(
+    expr: dict[str, Any],
+    macros: dict[str, dict[str, Any]],
+    stack: tuple[str, ...] = (),
+) -> int:
+    op = expr["op"]
+    if op == "macro":
+        mid = str(expr["id"])
+        if mid in stack or mid not in macros:
+            return 1
+        return expanded_depth(macros[mid], macros, stack + (mid,))
+    if op in {"get", "const"}:
+        return 1
+    if op in {"abs", "neg", "threshold"}:
+        return 1 + expanded_depth(expr["arg"], macros, stack)
+    return 1 + max(
+        expanded_depth(expr["left"], macros, stack),
+        expanded_depth(expr["right"], macros, stack),
+    )
 
 
 def make_traces(expr, seed, generation, split, count, shift):
@@ -85,7 +110,7 @@ def make_traces(expr, seed, generation, split, count, shift):
         rows.append(
             Trace(
                 inputs=inputs,
-                target=eval_hidden(expr, inputs),
+                target=eval_hidden(expr, inputs, macros),
                 family="opaque",
                 context={"risk": 0.0, "ambiguity": 0.0},
                 task_id=f"opaque-{seed}-{generation}-{split}-{i}",
@@ -109,32 +134,57 @@ def mae(expr, rows, macros):
 def run_seed(seed: int, generations: int) -> dict[str, Any]:
     rng = random.Random(seed)
     learner = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed)
-    baseline = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed + 10091)
+    # Fixed baseline: no recursive depth growth and no retained-capability
+    # archive. This is the actual non-self-extending control.
+    baseline = RecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed + 10091)
 
     retained: list[HiddenCapability] = []
     generations_out = []
-
     initial_depth = learner.meta_policy["max_depth"]
+
+    def hidden_library() -> dict[str, dict[str, Any]]:
+        return {cap.hidden_id: cap.expression for cap in retained}
+
+    def capability_macro(cap: HiddenCapability) -> dict[str, Any]:
+        return {"op": "macro", "id": cap.hidden_id}
 
     for generation in range(generations):
         learner.generation = generation
+        hidden_macros = hidden_library()
+
         target_parents: tuple[HiddenCapability, ...]
         if not retained:
             target_parents = ()
             target = random_base_expr(rng, 3)
         elif len(retained) == 1:
             target_parents = (retained[0],)
-            target = combine_parents(rng, target_parents)
+            target = {
+                "op": rng.choice(("add", "sub", "mul", "max", "min")),
+                "left": capability_macro(retained[0]),
+                "right": {"op": "get", "key": rng.choice(KEYS)},
+            }
         else:
             target_parents = tuple(rng.sample(retained, 2))
-            target = combine_parents(rng, target_parents)
+            target = {
+                "op": rng.choice(("add", "sub", "mul", "max", "min")),
+                "left": capability_macro(target_parents[0]),
+                "right": capability_macro(target_parents[1]),
+            }
 
-        target_depth = ast_depth(target)
+        target_depth = expanded_depth(target, hidden_macros)
 
-        train = make_traces(target, seed, generation, "train", 12, 0.0)
-        hold = make_traces(target, seed, generation, "holdout", 6, 0.31)
-        transfer = make_traces(target, seed, generation, "transfer", 8, -0.57)
-        ood = make_traces(target, seed, generation, "ood", 8, 0.93)
+        train = make_traces(
+            target, seed, generation, "train", 12, 0.0, hidden_macros
+        )
+        hold = make_traces(
+            target, seed, generation, "holdout", 6, 0.31, hidden_macros
+        )
+        transfer = make_traces(
+            target, seed, generation, "transfer", 8, -0.57, hidden_macros
+        )
+        ood = make_traces(
+            target, seed, generation, "ood", 8, 0.93, hidden_macros
+        )
 
         primitive = learner.invent_primitive(train, hold, transfer)
         accepted = False
@@ -177,82 +227,104 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         closure_rates = []
         baseline_closure_rates = []
         if len(retained) >= 2:
-            for pair_idx, (left_parent, right_parent) in enumerate(
-                [(retained[i], retained[j])
-                 for i in range(len(retained))
-                 for j in range(i + 1, len(retained))]
-            ):
+            pairs = [
+                (retained[i], retained[j])
+                for i in range(len(retained))
+                for j in range(i + 1, len(retained))
+            ]
+            for pair_idx, (left_parent, right_parent) in enumerate(pairs):
                 closure_expr = {
                     "op": "add",
-                    "left": left_parent.expression,
-                    "right": right_parent.expression,
+                    "left": capability_macro(left_parent),
+                    "right": capability_macro(right_parent),
                 }
+                closure_macros = hidden_library()
                 ctr = make_traces(
                     closure_expr, seed + 1700 + pair_idx, generation,
-                    "closure_train", 8, 0.13
+                    "closure_train", 8, 0.13, closure_macros
                 )
                 cv = make_traces(
                     closure_expr, seed + 1700 + pair_idx, generation,
-                    "closure_transfer", 5, -0.19
+                    "closure_transfer", 5, -0.19, closure_macros
                 )
                 co = make_traces(
                     closure_expr, seed + 1700 + pair_idx, generation,
-                    "closure_ood", 5, 0.29
+                    "closure_ood", 5, 0.29, closure_macros
                 )
                 cproc = learner.synthesize_process(ctr, cv, co)
                 if cproc is not None:
                     ceval = learner.evaluate(cproc, ctr, cv, cv, co, ())
-                    closure_rates.append(float(
-                        ceval.accepted and ceval.ood_error <= 1e-9
-                    ))
+                    closure_rates.append(
+                        float(ceval.accepted and ceval.ood_error <= 1e-9)
+                    )
                 else:
                     closure_rates.append(0.0)
                 bproc = baseline.synthesize_process(ctr, cv, co)
                 if bproc is not None:
                     beval = baseline.evaluate(bproc, ctr, cv, cv, co, ())
-                    baseline_closure_rates.append(float(
-                        beval.accepted and beval.ood_error <= 1e-9
-                    ))
+                    baseline_closure_rates.append(
+                        float(beval.accepted and beval.ood_error <= 1e-9)
+                    )
                 else:
                     baseline_closure_rates.append(0.0)
 
         probe_rates = []
         baseline_probe_rates = []
         for probe_idx in range(4):
-            probe_parent = retained[-1] if retained else None
-            probe = (
-                wrap_parent(
-                    random.Random(seed * 193 + generation * 17 + probe_idx),
-                    probe_parent.expression,
-                )
-                if probe_parent is not None
-                else random_base_expr(
+            probe_parents = tuple(
+                rng.sample(retained, 2)
+            ) if len(retained) >= 2 else tuple(retained[:1])
+            probe_macros = hidden_library()
+            if probe_parents:
+                if len(probe_parents) == 1:
+                    probe = {
+                        "op": "add",
+                        "left": capability_macro(probe_parents[0]),
+                        "right": {"op": "get", "key": KEYS[probe_idx % len(KEYS)]},
+                    }
+                else:
+                    probe = {
+                        "op": "add",
+                        "left": capability_macro(probe_parents[0]),
+                        "right": capability_macro(probe_parents[1]),
+                    }
+            else:
+                probe = random_base_expr(
                     random.Random(seed * 193 + generation * 17 + probe_idx),
                     3,
                 )
-            )
+
             ptrain = make_traces(
                 probe, seed + 700 + probe_idx, generation,
-                "probe_train", 8, 0.17
+                "probe_train", 8, 0.17, probe_macros
             )
             ptransfer = make_traces(
                 probe, seed + 700 + probe_idx, generation,
-                "probe_transfer", 5, -0.22
+                "probe_transfer", 5, -0.22, probe_macros
             )
             pood = make_traces(
                 probe, seed + 700 + probe_idx, generation,
-                "probe_ood", 5, 0.41
+                "probe_ood", 5, 0.41, probe_macros
             )
             proc = learner.synthesize_process(ptrain, ptransfer, pood)
             if proc is not None:
-                peval = learner.evaluate(proc, ptrain, ptransfer, ptransfer, pood, ())
-                probe_rates.append(float(peval.accepted and peval.ood_error <= 1e-9))
+                peval = learner.evaluate(
+                    proc, ptrain, ptransfer, ptransfer, pood, ()
+                )
+                probe_rates.append(
+                    float(peval.accepted and peval.ood_error <= 1e-9)
+                )
             else:
                 probe_rates.append(0.0)
+
             bproc = baseline.synthesize_process(ptrain, ptransfer, pood)
             if bproc is not None:
-                beval = baseline.evaluate(bproc, ptrain, ptransfer, ptransfer, pood, ())
-                baseline_probe_rates.append(float(beval.accepted and beval.ood_error <= 1e-9))
+                beval = baseline.evaluate(
+                    bproc, ptrain, ptransfer, ptransfer, pood, ()
+                )
+                baseline_probe_rates.append(
+                    float(beval.accepted and beval.ood_error <= 1e-9)
+                )
             else:
                 baseline_probe_rates.append(0.0)
 
@@ -282,13 +354,9 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         for row in generations_out
     )
     final = generations_out[-1]
-
-    accepted_after_bootstrap = sum(
-        row["accepted"] for row in generations_out[1:]
-    )
+    accepted_after_bootstrap = sum(row["accepted"] for row in generations_out[1:])
     recursive_generations = sum(
-        row["accepted"] and row["parent_used"]
-        for row in generations_out[1:]
+        row["accepted"] and row["parent_used"] for row in generations_out[1:]
     )
     last_three = generations_out[-3:]
     multi_parent_generations = sum(
@@ -300,7 +368,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
     )
     closure_growth = (
         final["closure_success_rate"]
-        - generations_out[min(2, len(generations_out)-1)]["closure_success_rate"]
+        - generations_out[min(2, len(generations_out) - 1)]["closure_success_rate"]
     )
 
     finite_gate = (
@@ -311,7 +379,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         and final["retained_count"] >= generations - 1
         and final["runtime_max_depth"] > initial_depth
         and final["target_depth"] > generations_out[0]["target_depth"]
-        and probe_gain >= 0.25
+        and final["probe_success_rate"] > 0.75
         and final["probe_success_rate"] > final["baseline_probe_success_rate"]
         and final["closure_pair_count"] >= 6
         and final_closure_gain >= 0.20
@@ -342,7 +410,6 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         "task_family_route": False,
         "generations_detail": generations_out,
     }
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -383,3 +450,5 @@ if __name__ == "__main__":
 # execution marker: complete lazy ACSIE stream pinned
 
 # execution marker: fresh exact-SHA PR sync
+
+# execution marker: fixed-baseline scientific run
