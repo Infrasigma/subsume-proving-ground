@@ -19,7 +19,7 @@ jobs:
       - name: Checkout exact ACSIE candidate
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "5129d648e75743a111513af7279cbfedcbce791a"
+          ACSIE_REF: "b8e16058b2d02e6e3545d11a5148d72637bda74e"
         run: |
           set -euo pipefail
           ASKPASS="$RUNNER_TEMP/askpass.sh"
@@ -64,7 +64,7 @@ jobs:
           SEED: "${{ matrix.seed }}"
         run: |
           set +e
-          python3 research/acsie_i1_i5_decisive_test.py --seed "$SEED" --out "evidence/i1-i5/$SEED" | tee "evidence/i1-i5/$SEED/stdout.json"
+          python3 research/acsie_i1_i5_decisive_test.py --seed "$SEED" --stages 7 --out "evidence/i1-i5/$SEED" | tee "evidence/i1-i5/$SEED/stdout.json"
           rc=${PIPESTATUS[0]}
           echo "$rc" > "evidence/i1-i5/$SEED/exit_code"
           exit 0
