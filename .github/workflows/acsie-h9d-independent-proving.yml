@@ -1,0 +1,45 @@
+name: ACSIE H9-D independent proving
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-h9d-independent-proving.yml"
+      - "lab/acsie_h9d_independent_proving.py"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/acsie-h9d-independent-proving.yml"
+      - "lab/acsie_h9d_independent_proving.py"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  h9d:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone exact ACSIE research commit
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "d0ffc9989e3cb1f94e361d03a599d04fc8090135"
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          rm -rf /tmp/acsie-h9d
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-h9d
+          git -C /tmp/acsie-h9d fetch --depth 1 origin "$ACSIE_REF"
+          git -C /tmp/acsie-h9d checkout --detach "$ACSIE_REF"
+          test "$(git -C /tmp/acsie-h9d rev-parse HEAD)" = "$ACSIE_REF"
+      - name: Run H9-D unit tests
+        run: |
+          python3 -m venv /tmp/acsie-h9d-venv
+          . /tmp/acsie-h9d-venv/bin/activate
+          python -m pip install --upgrade pip pytest
+          PYTHONPATH=/tmp/acsie-h9d pytest -q /tmp/acsie-h9d/tests/test_h9_decision_relevant_active_demand.py
+      - name: Run independent five-seed evaluator
+        env:
+          PYTHONPATH: /tmp/acsie-h9d
+          ACSIE_REF: "d0ffc9989e3cb1f94e361d03a599d04fc8090135"
+        run: |
+          . /tmp/acsie-h9d-venv/bin/activate
+          python3 lab/acsie_h9d_independent_proving.py --strict
