@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: acsie-i1-i5-pg-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   corrected-gen2:
     if: github.event.pull_request.head.ref == 'acsie-gen2-corrected-retention-20260927'
@@ -165,3 +169,158 @@ jobs:
           name: acsie-l2c-second-order-reservoir-${{ matrix.seed }}
           path: evidence/l2c-second-order-reservoir/${{ matrix.seed }}/**
           if-no-files-found: warn
+
+
+  i1-i5-decisive:
+    if: github.event.pull_request.head.ref == 'research/i1-i5-decisive-test-20261002' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100201,2026100202,2026100203,2026100204,2026100205,2026100206,2026100207,2026100208,2026100209,2026100210]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout decisive test branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Checkout exact ACSIE candidate
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "19038a5402ba534839e58c19d92a4ded75491ffc"
+        run: |
+          set -euo pipefail
+          ASKPASS="$RUNNER_TEMP/acsie-askpass.sh"
+          cat >"$ASKPASS" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\\n' 'x-access-token' ;;
+            *) printf '%s\\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS"
+          export GIT_TERMINAL_PROMPT=0
+          test -n "$ACSIE_READ_TOKEN"
+          git clone -q --no-checkout https://github.com/Infrasigma/ACSIE.git "$RUNNER_TEMP/acsie"
+          git -C "$RUNNER_TEMP/acsie" checkout --detach --force "$ACSIE_REF"
+          test -f "$RUNNER_TEMP/acsie/cognitive_core/recursive_research.py"
+          echo "ACSIE_COMMIT=$(git -C "$RUNNER_TEMP/acsie" rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "ACSIE_TREE=$(git -C "$RUNNER_TEMP/acsie" rev-parse HEAD^{tree})" >> "$GITHUB_ENV"
+
+      - name: Syntax and integrity gate
+        run: |
+          set -euo pipefail
+          python3 -m py_compile "$RUNNER_TEMP/acsie/cognitive_core/recursive_research.py"
+          export PYTHONPATH="$RUNNER_TEMP/acsie"
+          python3 - <<'PY'
+          from cognitive_core.recursive_research import CapabilityDemandModel, MechanismConfig, HypothesisEngine
+          assert "unknown" in CapabilityDemandModel.HYPOTHESES
+          assert HypothesisEngine().generate(MechanismConfig(), rows=(), width=2)
+          print("I1-I3 substrate smoke: PASS")
+          PY
+
+      - name: Run decisive seed
+        env:
+          PYTHONPATH: ${{ runner.temp }}/acsie
+          SEED: ${{ matrix.seed }}
+        run: |
+          mkdir -p "evidence/i1-i5/$SEED"
+          set +e
+          mkdir -p "evidence/i1-i5/$SEED"
+          if [ "${{ steps.net.outputs.mode }}" != "unshare-net" ]; then
+            mkdir -p "evidence/i1-i5/$SEED"
+            printf '%s\n' '{"scientific_status":"BLOCKED","reason":"network_namespace_unavailable"}' > "evidence/i1-i5/$SEED/i1_i5_result.json"
+            printf '%s\n' '2' > "evidence/i1-i5/$SEED/exit_code"
+            exit 0
+          fi
+          unshare -Urn python3 research/acsie_i1_i5_decisive_test.py --seed "$SEED" --stages 7 --out "evidence/i1-i5/$SEED" | tee "evidence/i1-i5/$SEED/stdout.json"
+          rc=${PIPESTATUS[0]}
+          echo "$rc" > "evidence/i1-i5/$SEED/exit_code"
+          test -f "evidence/i1-i5/$SEED/i1_i5_result.json"
+          exit 0
+
+      - name: Add exact source/network identity
+        if: always()
+        env:
+          SEED: "${{ matrix.seed }}"
+          NET_MODE: "${{ steps.net.outputs.mode }}"
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path("evidence/i1-i5") / os.environ["SEED"] / "i1_i5_result.json"
+          d = json.loads(p.read_text())
+          d["source_identity"] = {
+              "acsie_commit": os.environ["ACSIE_COMMIT"],
+              "network_guard": os.environ["NET_MODE"],
+              "external_model": False,
+              "target_identity_accessible": False,
+              "manual_runtime_strategy": False,
+          }
+          p.write_text(json.dumps(d, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload scientific artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-i1-i5-${{ matrix.seed }}
+          path: evidence/i1-i5/${{ matrix.seed }}/**
+          if-no-files-found: error
+
+
+  i1-i5-scientific-gate:
+    if: always()
+    needs: [i1-i5-decisive]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all I1-I5 scientific artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: acsie-i1-i5-*
+          path: evidence/i1-i5-gate
+          merge-multiple: true
+
+      - name: Enforce hard scientific promotion gate
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import glob
+          import json
+          import pathlib
+          import sys
+
+          paths = sorted(glob.glob("evidence/i1-i5-gate/**/i1_i5_result.json", recursive=True))
+          print("artifact_count=", len(paths))
+          if len(paths) != 10:
+              print("BLOCKED: expected exactly 10 seed artifacts", file=sys.stderr)
+              sys.exit(2)
+
+          rows = [json.loads(pathlib.Path(p).read_text()) for p in paths]
+          failures = []
+          for row in rows:
+              seed = row.get("seed")
+              status = row.get("scientific_status")
+              integrity = (row.get("integrity") or {}).get("integrity_ok")
+              ident = row.get("source_identity") or {}
+              if (
+                  status != "PASSED"
+                  or integrity is not True
+                  or ident.get("acsie_commit") != "19038a5402ba534839e58c19d92a4ded75491ffc"
+                  or ident.get("network_guard") != "unshare-net"
+                  or ident.get("external_model") is not False
+                  or ident.get("target_identity_accessible") is not False
+              ):
+                  failures.append({
+                      "seed": seed,
+                      "scientific_status": status,
+                      "integrity_ok": integrity,
+                      "source_identity": ident,
+                  })
+          print(json.dumps({"seed_results": rows, "failures": failures}, indent=2, sort_keys=True))
+          if failures:
+              sys.exit(1)
+          print("HARD_SCIENTIFIC_GATE=PASSED")
+          PY
