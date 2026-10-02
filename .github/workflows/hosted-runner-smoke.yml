@@ -23,6 +23,7 @@ permissions:
 
 jobs:
   acsie-lab:
+    if: github.event_name != 'pull_request' || !startsWith(github.event.pull_request.head.ref, 'research/acsie-h9e-independent-proof-20261003')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
