@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: a087c7ca14b3d2a2e16989b1500d1c5094490d15
+          ref: 3fe72e9633ec8e762ca674df5c0e664b7bafd222
           token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie-foundry
           fetch-depth: 0
@@ -31,7 +31,7 @@ jobs:
         working-directory: acsie-foundry
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "a087c7ca14b3d2a2e16989b1500d1c5094490d15"
+          test "$(git rev-parse HEAD)" = "3fe72e9633ec8e762ca674df5c0e664b7bafd222"
           git merge-base --is-ancestor "b4beeeb792abe45a62d583287356fb80c87c2fb7" HEAD
       - name: Syntax-check Foundry
         working-directory: acsie-foundry
