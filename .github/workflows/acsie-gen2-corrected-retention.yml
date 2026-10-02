@@ -184,7 +184,7 @@ jobs:
       - name: Checkout exact ACSIE candidate
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "research/i1-i5-decisive-loop-20261002"
+          ACSIE_REF: "5129d648e75743a111513af7279cbfedcbce791a"
         run: |
           set -euo pipefail
           ASKPASS="$RUNNER_TEMP/acsie-askpass.sh"
