@@ -73,7 +73,7 @@ def make_router(
     return HiddenRouter(table)
 
 
-def sample_sequence(seed: int, generation: int, split: str, idx: int, length: int = 96) -> tuple[str, ...]:
+def sample_sequence(seed: int, generation: int, split: str, idx: int, length: int = 512) -> tuple[str, ...]:
     rng = random.Random(stable_seed(seed, generation, split, idx))
     return tuple(rng.choice(OBS) for _ in range(length))
 
