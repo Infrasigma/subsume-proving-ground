@@ -97,3 +97,5 @@ def main():
 if __name__=="__main__": raise SystemExit(main())
 
 # execution marker: runner router installed on proving-ground main
+
+# execution marker: exact-SHA branch-fetch repair installed
