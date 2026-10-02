@@ -6,6 +6,7 @@ import json
 import math
 import random
 import statistics
+from hashlib import sha256
 from dataclasses import dataclass
 from typing import Any
 
@@ -73,7 +74,8 @@ def traces_for(
     *,
     key_shift: float = 0.0,
 ) -> tuple[Trace, ...]:
-    rng = random.Random(seed * 1000003 + generation * 9176 + hash(split) % 997)
+    stable_split = int.from_bytes(sha256(split.encode()).digest()[:4], "big")
+    rng = random.Random(seed * 1000003 + generation * 9176 + stable_split)
     rows = []
     for i in range(count):
         span = 2.0 if split == "train" else 3.5 if split == "holdout" else 4.5
