@@ -192,8 +192,8 @@ def main():
     ]
     post_ranked.sort(
         key=lambda item: (
-            item[1].predicted_success_probability,
             item[1].predicted_future_learning_gain,
+            item[1].predicted_success_probability,
             -item[1].predicted_regression,
             -item[0].resource_cost,
         ),
@@ -201,8 +201,8 @@ def main():
     )
     pre_ranked.sort(
         key=lambda item: (
-            item[1].predicted_success_probability,
             item[1].predicted_future_learning_gain,
+            item[1].predicted_success_probability,
             -item[1].predicted_regression,
             -item[0].resource_cost,
         ),
