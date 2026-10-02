@@ -175,13 +175,19 @@ def main():
         historical_configs=tuple(loop.known_good_configs[-12:]),
     )
     blank_model = CausalSelfModel()
+    meta_hypotheses = loop.diagnostics.diagnose(
+        meta_ds["train"],
+        {"seed": seed, "meta_evaluation": True},
+        loop.core,
+        loop.config,
+    )
 
     post_ranked = [
-        (candidate, loop.self_model.predict(loop.config, candidate, meta_ds["train"]))
+        (candidate, loop.self_model.predict(loop.config, candidate, meta_ds["train"], meta_hypotheses))
         for candidate in meta_candidates
     ]
     pre_ranked = [
-        (candidate, blank_model.predict(loop.config, candidate, meta_ds["train"]))
+        (candidate, blank_model.predict(loop.config, candidate, meta_ds["train"], meta_hypotheses))
         for candidate in meta_candidates
     ]
     post_ranked.sort(
