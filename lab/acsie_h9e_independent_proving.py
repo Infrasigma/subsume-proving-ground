@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# H9-E execution marker: posterior-sampling acquisition proof
 from __future__ import annotations
 import argparse, math, os, random, statistics
 from dataclasses import dataclass
