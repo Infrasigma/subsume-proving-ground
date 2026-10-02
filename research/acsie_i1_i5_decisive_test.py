@@ -171,7 +171,8 @@ def main():
     meta_candidates = loop.hypotheses.generate(
         loop.config,
         rows=meta_ds["train"],
-        width=16,
+        width=24,
+        historical_configs=tuple(loop.known_good_configs[-12:]),
     )
     blank_model = CausalSelfModel()
 
