@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse, math, os, random, statistics
 from dataclasses import dataclass
 from typing import Sequence
-EXPECTED_ACSIE_REF="2c305db9fab8d6fbedd47262cb3da950479f705b2"
+EXPECTED_ACSIE_REF="2c305db9fab8d6fbedd47262cb3da950479f705b"
 
 def exact_sign_test(diffs:Sequence[float])->tuple[float,int]:
     nz=[d for d in diffs if abs(d)>1e-12]; n=len(nz)
