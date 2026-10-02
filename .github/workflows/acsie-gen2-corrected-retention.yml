@@ -165,3 +165,75 @@ jobs:
           name: acsie-l2c-second-order-reservoir-${{ matrix.seed }}
           path: evidence/l2c-second-order-reservoir/${{ matrix.seed }}/**
           if-no-files-found: warn
+
+
+  i1-i5-decisive:
+    if: github.event.pull_request.head.ref == 'research/i1-i5-decisive-test-20261002' && github.event.pull_request.head.repo.full_name == 'Infrasigma/subsume-proving-ground'
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100201,2026100202,2026100203,2026100204,2026100205,2026100206,2026100207,2026100208,2026100209,2026100210]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout decisive test branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Checkout exact ACSIE candidate
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "research/i1-i5-decisive-loop-20261002"
+        run: |
+          set -euo pipefail
+          ASKPASS="$RUNNER_TEMP/acsie-askpass.sh"
+          cat >"$ASKPASS" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\\n' 'x-access-token' ;;
+            *) printf '%s\\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS"
+          export GIT_TERMINAL_PROMPT=0
+          test -n "$ACSIE_READ_TOKEN"
+          git clone -q --no-checkout https://github.com/Infrasigma/ACSIE.git "$RUNNER_TEMP/acsie"
+          git -C "$RUNNER_TEMP/acsie" checkout --detach --force "$ACSIE_REF"
+          test -f "$RUNNER_TEMP/acsie/cognitive_core/recursive_research.py"
+          echo "ACSIE_COMMIT=$(git -C "$RUNNER_TEMP/acsie" rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "ACSIE_TREE=$(git -C "$RUNNER_TEMP/acsie" rev-parse HEAD^{tree})" >> "$GITHUB_ENV"
+
+      - name: Syntax and integrity gate
+        run: |
+          set -euo pipefail
+          python3 -m py_compile "$RUNNER_TEMP/acsie/cognitive_core/recursive_research.py"
+          export PYTHONPATH="$RUNNER_TEMP/acsie"
+          python3 - <<'PY'
+          from cognitive_core.recursive_research import CapabilityDemandModel, MechanismConfig, HypothesisEngine
+          assert "unknown" in CapabilityDemandModel.HYPOTHESES
+          assert HypothesisEngine().generate(MechanismConfig(), rows=(), width=2)
+          print("I1-I3 substrate smoke: PASS")
+          PY
+
+      - name: Run decisive seed
+        env:
+          PYTHONPATH: ${{ runner.temp }}/acsie
+          SEED: ${{ matrix.seed }}
+        run: |
+          mkdir -p "evidence/i1-i5/$SEED"
+          set +e
+          python3 research/acsie_i1_i5_decisive_test.py --seed "$SEED" --out "evidence/i1-i5/$SEED" | tee "evidence/i1-i5/$SEED/stdout.json"
+          rc=${PIPESTATUS[0]}
+          echo "$rc" > "evidence/i1-i5/$SEED/exit_code"
+          test -f "evidence/i1-i5/$SEED/i1_i5_result.json"
+          exit 0
+
+      - name: Upload scientific artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-i1-i5-${{ matrix.seed }}
+          path: evidence/i1-i5/${{ matrix.seed }}/**
+          if-no-files-found: error
