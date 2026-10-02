@@ -10,6 +10,7 @@ on:
     paths:
       - ".github/workflows/hosted-runner-smoke.yml"
       - "lab/acsie_h9e_independent_proving.py"
+      - "lab/acsie_open_ended_growth_proving.py"
   workflow_dispatch:
     inputs:
       acsie_ref:
