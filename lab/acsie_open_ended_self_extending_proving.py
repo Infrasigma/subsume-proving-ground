@@ -209,9 +209,10 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 resource_cost=max(1, primitive.complexity),
             )
             if accepted:
+                hidden_id = f"hidden:{generation}:{len(retained)}"
                 retained.append(
                     HiddenCapability(
-                        hidden_id=primitive.primitive_id,
+                        hidden_id=hidden_id,
                         expression=target,
                         depth=target_depth,
                         generation=generation,
