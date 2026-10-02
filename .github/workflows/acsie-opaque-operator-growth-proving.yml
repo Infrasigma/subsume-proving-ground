@@ -1,0 +1,56 @@
+name: ACSIE opaque executable operator growth proving
+on:
+  pull_request:
+    branches: [main]
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  operator-growth:
+    if: github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'research/open-ended-operator-algebra-proving-20261003') || github.event_name == 'push' && startsWith(github.ref_name, 'research/open-ended-operator-algebra-proving-20261003')
+    runs-on: ubuntu-slim
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize evidence
+        run: |
+          : > opaque-operator-growth-result.txt
+          echo "WORKFLOW_SHA=${{ github.sha }}" >> opaque-operator-growth-result.txt
+          echo "ACSIE_REF=8481d278b066eb04b23ac82291bceffd009ba38b" >> opaque-operator-growth-result.txt
+      - name: Clone exact ACSIE operator-algebra research commit
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "8481d278b066eb04b23ac82291bceffd009ba38b"
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          rm -rf /tmp/acsie-open-ended-operator-growth
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-open-ended-operator-growth
+          git -C /tmp/acsie-open-ended-operator-growth fetch --depth 1 origin "research/open-ended-operator-algebra-20261003"
+          git -C /tmp/acsie-open-ended-operator-growth checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie-open-ended-operator-growth rev-parse HEAD)" = "$ACSIE_REF"
+      - name: Run exact operator-algebra unit tests
+        run: |
+          python3 -m venv /tmp/operator-growth-venv
+          . /tmp/operator-growth-venv/bin/activate
+          python -m pip install --upgrade pip pytest
+          PYTHONPATH=/tmp/acsie-open-ended-operator-growth pytest -q /tmp/acsie-open-ended-operator-growth/tests/test_open_ended_operator_algebra.py
+      - name: Run five-seed opaque operator growth gate
+        env:
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: /tmp/acsie-open-ended-operator-growth
+        run: |
+          set +e
+          . /tmp/operator-growth-venv/bin/activate
+          python3 -u lab/acsie_open_ended_operator_algebra_proving.py --strict > opaque-operator-growth-result.txt 2>&1
+          rc=$?
+          echo "SCIENTIFIC_GATE_RC=$rc" >> opaque-operator-growth-result.txt
+          cat opaque-operator-growth-result.txt
+          exit "$rc"
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-opaque-operator-growth-evidence-${{ github.sha }}
+          path: opaque-operator-growth-result.txt
