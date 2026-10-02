@@ -1,5 +1,9 @@
 name: ACSIE H9-E independent proving
 on:
+  push:
+    paths:
+      - ".github/workflows/acsie-h9e-independent-proving.yml"
+      - "lab/acsie_h9e_independent_proving.py"
   pull_request:
     branches: [main]
     paths:
