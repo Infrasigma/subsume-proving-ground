@@ -1,0 +1,47 @@
+name: ACSIE H9-E direct execution
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-h9e-direct-execution.yml"
+      - "lab/acsie_h9e_independent_proving.py"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  h9e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone exact ACSIE H9-E branch and verify SHA
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "9b80411c1df70badb14bfeda38a151b640f76531"
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          rm -rf /tmp/acsie-h9e
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-h9e
+          git -C /tmp/acsie-h9e fetch --depth 1 origin "research/h9-posterior-sampling-demand-20261003"
+          git -C /tmp/acsie-h9e checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie-h9e rev-parse HEAD)" = "$ACSIE_REF"
+          echo "ACSIE_HEAD=$(git -C /tmp/acsie-h9e rev-parse HEAD)"
+      - name: Run H9-E unit tests
+        run: |
+          python3 -m venv /tmp/acsie-h9e-venv
+          . /tmp/acsie-h9e-venv/bin/activate
+          python -m pip install --upgrade pip pytest
+          PYTHONPATH=/tmp/acsie-h9e pytest -q /tmp/acsie-h9e/tests/test_h9_posterior_sampling_demand.py
+      - name: Run independent five-seed H9-E gate
+        env:
+          PYTHONPATH: /tmp/acsie-h9e
+          ACSIE_REF: "9b80411c1df70badb14bfeda38a151b640f76531"
+        run: |
+          . /tmp/acsie-h9e-venv/bin/activate
+          python3 lab/acsie_h9e_independent_proving.py --strict | tee h9e-five-seed-result.txt
+      - name: Upload H9-E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-h9e-direct-evidence-${{ github.sha }}
+          path: h9e-five-seed-result.txt
