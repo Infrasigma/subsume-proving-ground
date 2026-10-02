@@ -77,7 +77,8 @@ def eval_hidden(expr: dict[str, Any], row: dict[str, float]) -> float:
 
 def make_traces(expr, seed, generation, split, count, shift):
     rng = random.Random(seed * 1000003 + generation * 9176 + stable_int(split))
-    span = {"train": 2.0, "holdout": 3.0, "transfer": 4.0, "ood": 5.0}[split]
+    base_split = split.rsplit("_", 1)[-1]
+    span = {"train": 2.0, "holdout": 3.0, "transfer": 4.0, "ood": 5.0}[base_split]
     rows = []
     for i in range(count):
         inputs = {k: rng.uniform(-span, span) + shift for k in KEYS}
