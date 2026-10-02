@@ -4,6 +4,11 @@ on:
     paths:
       - ".github/workflows/acsie-h9e-direct-execution.yml"
       - "lab/acsie_h9e_independent_proving.py"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/acsie-h9e-direct-execution.yml"
+      - "lab/acsie_h9e_independent_proving.py"
   workflow_dispatch:
 permissions:
   contents: read
