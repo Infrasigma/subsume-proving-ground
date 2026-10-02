@@ -1,0 +1,2 @@
+two-generation self-learning kernel batch trigger
+20260927
