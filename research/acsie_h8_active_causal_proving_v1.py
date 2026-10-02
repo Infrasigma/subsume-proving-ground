@@ -174,6 +174,7 @@ def run_method(
     outcomes: list[float] = []
     information_trace: list[float] = []
     prediction_regret_trace: list[float] = []
+    q_quality_trace: list[float] = []
 
     remaining = list(candidates)
 
@@ -208,11 +209,24 @@ def run_method(
             (true_reward(world, c) for c in remaining),
             default=true_reward(world, candidate),
         )
-        current_best_predicted = max(
-            (planner._predicted_future(c.feature), c)
-            for c in remaining
-        )[0] if remaining else predicted
-        prediction_regret_trace.append(float(max(0.0, predicted - current_best_predicted)))
+        if remaining:
+            predicted_candidate = max(
+                remaining,
+                key=lambda c: (
+                    planner._predicted_future(c.feature),
+                    c.signature,
+                ),
+            )
+            predicted_truth = true_reward(world, predicted_candidate.feature)
+        else:
+            predicted_truth = true_reward(world, candidate.feature)
+        prediction_regret_trace.append(
+            float(max(0.0, oracle if (oracle := max(true_reward(world, c.feature) for c in candidates)) else 0.0) - predicted_truth)
+        )
+        oracle_now = max(true_reward(world, c.feature) for c in candidates)
+        q_quality_trace.append(
+            float(predicted_truth / max(oracle_now, 1e-9))
+        )
 
     final_candidate = exploit_choice(planner, remaining)
     immediate_truth = true_reward(world, final_candidate.feature)
@@ -225,6 +239,7 @@ def run_method(
         "observed_outcomes": outcomes,
         "information_gain_trace": information_trace,
         "prediction_regret_trace": prediction_regret_trace,
+        "q_quality_trace": q_quality_trace,
         "final_candidate": final_candidate.signature,
         "final_true_reward": immediate_truth,
         "delayed_observation": delayed_observation,
@@ -279,14 +294,22 @@ def run_seed(seed: int) -> dict:
         for row in episode_rows
     )
 
+    within_episode_h8_improvement = [
+        sum(
+            later > earlier
+            for earlier, later in zip(
+                row["h8"]["q_quality_trace"],
+                row["h8"]["q_quality_trace"][1:],
+            )
+        )
+        for row in episode_rows
+    ]
+    repeated_improvement = statistics.mean(within_episode_h8_improvement) >= 1.0
+
     q_quality = [
         row["h8"]["final_true_reward"] / max(row["h8"]["oracle_best_reward"], 1e-9)
         for row in episode_rows
     ]
-    repeated_improvement = sum(
-        later > earlier
-        for earlier, later in zip(q_quality, q_quality[1:])
-    ) >= max(2, len(q_quality) // 4)
 
     scientific_status = "PASSED" if (
         h8_improvement_over_random > 0.0
