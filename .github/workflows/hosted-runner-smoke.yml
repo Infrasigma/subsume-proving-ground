@@ -42,7 +42,7 @@ jobs:
       - name: Clone exact ACSIE H9-E research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "2c305db9fab8d6fbedd47262cb3da950479f705b2"
+          ACSIE_REF: "2c305db9fab8d6fbedd47262cb3da950479f705b"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
@@ -60,7 +60,7 @@ jobs:
       - name: Run independent five-seed H9-E gate
         env:
           PYTHONPATH: /tmp/acsie-h9e
-          ACSIE_REF: "2c305db9fab8d6fbedd47262cb3da950479f705b2"
+          ACSIE_REF: "2c305db9fab8d6fbedd47262cb3da950479f705b"
         run: |
           . /tmp/acsie-h9e-venv/bin/activate
           python3 lab/acsie_h9e_independent_proving.py --strict
