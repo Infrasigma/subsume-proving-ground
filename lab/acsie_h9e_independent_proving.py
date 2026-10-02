@@ -95,3 +95,5 @@ def main():
     return 0 if (gate or not a.strict) else 2
 
 if __name__=="__main__": raise SystemExit(main())
+
+# execution marker: runner router installed on proving-ground main
