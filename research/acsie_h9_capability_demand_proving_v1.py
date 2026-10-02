@@ -34,7 +34,8 @@ from cognitive_core.h9_capability_demand import (
 
 PROBLEM_DIMENSIONS = 6
 INTERVENTION_COUNT = 8
-EPISODES_PER_SEED = 32
+TRAIN_EPISODES = 64
+HOLDOUT_EPISODES = 32
 TRAIN_ROUNDS = 4
 NOISE_STD = 0.05
 
@@ -116,29 +117,26 @@ def best_historical_choice(
     return sorted(scored, key=lambda x: (x[0], x[1]), reverse=True)[0][2]
 
 
-def run_episode(
+def run_training_episode(
     *,
     seed: int,
     episode: int,
     surface: tuple[tuple[float, ...], ...],
     interventions: tuple[CapabilityIntervention, ...],
+    learner: AnonymousCapabilityDemandInferencer,
+    history: dict[str, list[float]],
 ) -> dict:
     rng = random.Random(seed * 100003 + episode * 9176 + 31)
-    learner = AnonymousCapabilityDemandInferencer(
-        observation_variance=NOISE_STD ** 2,
-    )
-    history: dict[str, list[float]] = {}
-
-    training_problem = make_problem(rng)
-    training_sig = f"train-{seed}-{episode}"
-    training = ProblemObservation(training_sig, training_problem)
-
+    problem_vector = make_problem(rng)
+    problem = ProblemObservation(f"train-{seed}-{episode}", problem_vector)
     remaining = list(range(INTERVENTION_COUNT))
-    observed_training = []
+    rows = []
 
     for round_index in range(TRAIN_ROUNDS):
-        # H9 chooses based only on currently learned consequences.
-        selected, trace = learner.select(training, tuple(interventions[i] for i in remaining))
+        selected, trace = learner.select(
+            problem,
+            tuple(interventions[i] for i in remaining),
+        )
         if selected is None:
             raise RuntimeError("H9 produced no training intervention")
         idx = next(
@@ -146,73 +144,82 @@ def run_episode(
             if interventions[i].signature == selected.signature
         )
         improvement, regression = observe_problem(
-            rng, surface, training_problem, idx
+            rng, surface, problem_vector, idx
         )
         learner.observe(
-            training,
+            problem,
             selected,
             improvement=improvement,
             regression=regression,
             accepted=(improvement - regression) > 0.0,
         )
-        history.setdefault(selected.signature, []).append(improvement - regression)
-        observed_training.append({
+        history.setdefault(selected.signature, []).append(
+            improvement - regression
+        )
+        rows.append({
             "round": round_index,
             "selected": selected.signature,
             "predicted_demand": trace.selected_demand,
             "information_gain": trace.selected_information_gain,
             "net_observed": improvement - regression,
-            "true_gain_evaluator_only": net_gain(surface, training_problem, idx),
         })
         remaining.remove(idx)
 
-    delayed_problem = make_problem(rng)
-    delayed = ProblemObservation(
-        f"holdout-{seed}-{episode}",
-        delayed_problem,
-    )
+    return {"episode": episode, "rows": rows}
 
-    h9_choice, h9_trace = learner.select(delayed, interventions)
+
+def run_holdout_episode(
+    *,
+    seed: int,
+    episode: int,
+    surface: tuple[tuple[float, ...], ...],
+    interventions: tuple[CapabilityIntervention, ...],
+    learner: AnonymousCapabilityDemandInferencer,
+    history: dict[str, list[float]],
+) -> dict:
+    rng = random.Random(seed * 300007 + episode * 101 + 7)
+    problem_vector = make_problem(rng)
+    problem = ProblemObservation(f"holdout-{seed}-{episode}", problem_vector)
+
+    h9_choice, h9_trace = learner.select(problem, interventions)
+    if h9_choice is None:
+        raise RuntimeError("H9 produced no holdout intervention")
     h9_idx = next(
         i for i, x in enumerate(interventions)
         if x.signature == h9_choice.signature
     )
 
-    random_rng = random.Random(seed * 300007 + episode * 101 + 7)
-    random_choice_idx = random_rng.randrange(INTERVENTION_COUNT)
-
+    random_idx = rng.randrange(INTERVENTION_COUNT)
     heuristic_choice = best_historical_choice(history, interventions)
     heuristic_idx = next(
         i for i, x in enumerate(interventions)
         if x.signature == heuristic_choice.signature
     )
 
-    h9_gain = net_gain(surface, delayed_problem, h9_idx)
-    random_gain = net_gain(surface, delayed_problem, random_choice_idx)
-    heuristic_gain = net_gain(surface, delayed_problem, heuristic_idx)
+    h9_gain = net_gain(surface, problem_vector, h9_idx)
+    random_gain = net_gain(surface, problem_vector, random_idx)
+    heuristic_gain = net_gain(surface, problem_vector, heuristic_idx)
     oracle_gain = max(
-        net_gain(surface, delayed_problem, i)
+        net_gain(surface, problem_vector, i)
         for i in range(INTERVENTION_COUNT)
     )
 
     return {
         "episode": episode,
-        "training": observed_training,
-        "holdout": {
-            "h9_choice": h9_choice.signature,
-            "random_choice": interventions[random_choice_idx].signature,
-            "heuristic_choice": heuristic_choice.signature,
-            "h9_predicted_demand": h9_trace.selected_demand,
-            "h9_information_gain": h9_trace.selected_information_gain,
-            "h9_gain": h9_gain,
-            "random_gain": random_gain,
-            "heuristic_gain": heuristic_gain,
-            "oracle_gain": oracle_gain,
-            "h9_regret": oracle_gain - h9_gain,
-            "random_regret": oracle_gain - random_gain,
-            "heuristic_regret": oracle_gain - heuristic_gain,
-        },
+        "h9_choice": h9_choice.signature,
+        "random_choice": interventions[random_idx].signature,
+        "heuristic_choice": heuristic_choice.signature,
+        "h9_predicted_demand": h9_trace.selected_demand,
+        "h9_information_gain": h9_trace.selected_information_gain,
+        "h9_gain": h9_gain,
+        "random_gain": random_gain,
+        "heuristic_gain": heuristic_gain,
+        "oracle_gain": oracle_gain,
+        "h9_regret": oracle_gain - h9_gain,
+        "random_regret": oracle_gain - random_gain,
+        "heuristic_regret": oracle_gain - heuristic_gain,
     }
+
 
 
 def sign_test_pvalue(values: list[float]) -> tuple[int, int, float]:
@@ -232,23 +239,41 @@ def run_seed(seed: int) -> dict:
     surface = make_hidden_surface(rng)
     interventions = make_interventions()
 
-    rows = [
-        run_episode(
+    learner = AnonymousCapabilityDemandInferencer(
+        observation_variance=NOISE_STD ** 2,
+    )
+    history: dict[str, list[float]] = {}
+
+    training_rows = []
+    for episode in range(TRAIN_EPISODES):
+        training_rows.append(
+            run_training_episode(
+                seed=seed,
+                episode=episode,
+                surface=surface,
+                interventions=interventions,
+                learner=learner,
+                history=history,
+            )
+        )
+
+    holdout_rows = [
+        run_holdout_episode(
             seed=seed,
             episode=episode,
             surface=surface,
             interventions=interventions,
+            learner=learner,
+            history=history,
         )
-        for episode in range(EPISODES_PER_SEED)
+        for episode in range(HOLDOUT_EPISODES)
     ]
 
-    h9 = [r["holdout"]["h9_gain"] for r in rows]
-    rnd = [r["holdout"]["random_gain"] for r in rows]
-    heu = [r["holdout"]["heuristic_gain"] for r in rows]
-
+    h9 = [r["h9_gain"] for r in holdout_rows]
+    rnd = [r["random_gain"] for r in holdout_rows]
+    heu = [r["heuristic_gain"] for r in holdout_rows]
     h9_vs_random = [a - b for a, b in zip(h9, rnd)]
     h9_vs_heuristic = [a - b for a, b in zip(h9, heu)]
-
     p_hr = sign_test_pvalue(h9_vs_random)
     p_hh = sign_test_pvalue(h9_vs_heuristic)
 
@@ -264,9 +289,10 @@ def run_seed(seed: int) -> dict:
     ) else "FAILED"
 
     return {
-        "schema": "ACSIE.h9.capability-demand.v1",
+        "schema": "ACSIE.h9.capability-demand.v2",
         "seed": seed,
-        "episode_count": EPISODES_PER_SEED,
+        "train_episode_count": TRAIN_EPISODES,
+        "holdout_episode_count": HOLDOUT_EPISODES,
         "intervention_count": INTERVENTION_COUNT,
         "problem_dimensions": PROBLEM_DIMENSIONS,
         "train_rounds": TRAIN_ROUNDS,
@@ -286,29 +312,28 @@ def run_seed(seed: int) -> dict:
             "h9_improvement_over_random": h9_mean - random_mean,
             "h9_improvement_over_heuristic": h9_mean - heuristic_mean,
             "h9_mean_holdout_regret": statistics.mean(
-                r["holdout"]["h9_regret"] for r in rows
+                r["h9_regret"] for r in holdout_rows
             ),
             "random_mean_holdout_regret": statistics.mean(
-                r["holdout"]["random_regret"] for r in rows
+                r["random_regret"] for r in holdout_rows
             ),
             "heuristic_mean_holdout_regret": statistics.mean(
-                r["holdout"]["heuristic_regret"] for r in rows
+                r["heuristic_regret"] for r in holdout_rows
             ),
         },
         "paired_sign_tests": {
             "h9_vs_random": {
-                "positive": p_hr[0],
-                "nonzero": p_hr[1],
-                "p": p_hr[2],
+                "positive": p_hr[0], "nonzero": p_hr[1], "p": p_hr[2]
             },
             "h9_vs_heuristic": {
-                "positive": p_hh[0],
-                "nonzero": p_hh[1],
-                "p": p_hh[2],
+                "positive": p_hh[0], "nonzero": p_hh[1], "p": p_hh[2]
             },
         },
         "claim_ledger": {
             "anonymous_capability_demand_inference": (
+                "PASSED" if status == "PASSED" else "NOT_DEMONSTRATED"
+            ),
+            "cross_problem_transfer_of_demand_inference": (
                 "PASSED" if status == "PASSED" else "NOT_DEMONSTRATED"
             ),
             "general_capability_demand_inference": "NOT_DEMONSTRATED",
@@ -317,8 +342,10 @@ def run_seed(seed: int) -> dict:
             "agi": "NOT_DEMONSTRATED",
             "asi": "NOT_DEMONSTRATED",
         },
-        "episodes": rows,
+        "training": training_rows,
+        "holdout": holdout_rows,
     }
+
 
 
 def main() -> int:
