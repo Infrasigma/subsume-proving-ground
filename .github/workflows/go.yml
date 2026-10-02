@@ -83,3 +83,47 @@ jobs:
           path: acex-result.txt
 
 # ACE-X forensic trigger revision.
+
+
+  acsie-gen2-stateful-selector-v1:
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/research/gen2-stateful-selector-v1-20261002') || (github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'research/gen2-stateful-selector-v1-20261002')
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [771221, 771222, 771223, 771224, 771225]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+      - name: Checkout exact ACSIE stateful-selector source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: research/gen2-stateful-selector-v1-20261002
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-gen2-stateful
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source
+        working-directory: acsie-gen2-stateful
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "830db3c3b971f52385d2d13f5885bcd77360df3a"
+          git merge-base --is-ancestor "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d" HEAD
+      - name: Run stateful Gen2 selector
+        working-directory: acsie-gen2-stateful
+        env:
+          SEED: "${{ matrix.seed }}"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          mkdir -p evidence/gen2-stateful-selector-v1
+          python research/gen2_stateful_selector_v1.py "$SEED" > "evidence/gen2-stateful-selector-v1/result-${SEED}.json"
+      - name: Upload stateful-selector evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen2-stateful-selector-v1-${{ matrix.seed }}
+          path: acsie-gen2-stateful/evidence/gen2-stateful-selector-v1/**
+          if-no-files-found: error
