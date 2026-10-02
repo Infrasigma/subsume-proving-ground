@@ -31,7 +31,7 @@ jobs:
         working-directory: acsie-foundry
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "00c0f0f7141fb315de9799076bfb49bf7c321ddc"
+          test "$(git rev-parse HEAD)" = "292c40912667dff085a7edd7a2199625ed1463f7"
           git merge-base --is-ancestor "b4beeeb792abe45a62d583287356fb80c87c2fb7" HEAD
       - name: Syntax-check Foundry
         working-directory: acsie-foundry
