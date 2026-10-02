@@ -124,6 +124,34 @@ def execute_experiment(
 
 
 
+def causal_direction_margin(
+    learner: ActiveCausalLearner,
+    state: dict[str, float],
+    hidden_cause: int,
+    hidden_effect: int,
+) -> float:
+    factor_map = learner._factor_map(state)
+    by_locator = {
+        factor.locator[0]: factor.factor_id
+        for factor in factor_map.values()
+        if factor.locator
+    }
+    cause_id = by_locator[f"v{hidden_cause}"]
+    effect_id = by_locator[f"v{hidden_effect}"]
+
+    true_scores = [
+        h.posterior_score()
+        for h in learner.state.hypotheses
+        if h.valid and h.cause == cause_id and h.effect == effect_id
+    ]
+    reverse_scores = [
+        h.posterior_score()
+        for h in learner.state.hypotheses
+        if h.valid and h.cause == effect_id and h.effect == cause_id
+    ]
+    return max(true_scores, default=0.0) - max(reverse_scores, default=0.0)
+
+
 def run_method(
     method: str,
     seed: int,
@@ -148,6 +176,9 @@ def run_method(
 
     selected_rows = []
     q_quality = []
+    direction_margin_trace = [causal_direction_margin(
+        learner, state, hidden_cause, hidden_effect
+    )]
     remaining = list(candidates)
 
     for round_index in range(ROUNDS):
@@ -196,6 +227,11 @@ def run_method(
             selected_reason=method,
         )
         state = after
+        direction_margin_trace.append(
+            causal_direction_margin(
+                learner, state, hidden_cause, hidden_effect
+            )
+        )
         remaining = [
             c for c in remaining
             if not (
@@ -233,6 +269,17 @@ def run_method(
         "selected": selected_rows,
         "mean_discriminative_quality": statistics.mean(q_quality),
         "any_discriminative": any(q_quality),
+        "direction_margin_trace": direction_margin_trace,
+        "final_direction_margin": direction_margin_trace[-1],
+        "direction_margin_improvement": direction_margin_trace[-1] - direction_margin_trace[0],
+        "direction_improved_at_least_once": any(
+            later > earlier
+            for earlier, later in zip(
+                direction_margin_trace,
+                direction_margin_trace[1:],
+            )
+        ),
+        "direction_correct_final": direction_margin_trace[-1] > 0.0,
         "runtime_integrity": {
             "external_model": False,
             "network_dependency": False,
@@ -285,6 +332,8 @@ def run_seed(seed: int) -> dict:
         and h > r
         and h > b
         and rows["h8e2"]["any_discriminative"]
+        and rows["h8e2"]["direction_improved_at_least_once"]
+        and rows["h8e2"]["direction_correct_final"]
         and rows["h8e2"]["runtime_integrity"]["external_model"] is False
         and rows["h8e2"]["runtime_integrity"]["network_dependency"] is False
         and rows["h8e2"]["runtime_integrity"]["manual_runtime_strategy"] is False
