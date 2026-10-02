@@ -74,7 +74,8 @@ def hidden_targets():
 
 
 def config_signature(cfg):
-    return repr(asdict(cfg))
+    payload = cfg if isinstance(cfg, dict) else asdict(cfg)
+    return json.dumps(payload, sort_keys=True, default=str, separators=(",", ":"))
 
 
 def rank_regret(controller: H6Controller, candidates, datasets):
@@ -229,7 +230,7 @@ def main():
         # The accepted artifact contains its resulting config; compare that
         # configuration against the exposed single-primitive baseline.
         cfg = stage["record"].get("accepted_config")
-        if cfg and config_signature(type("Cfg", (), cfg)()) not in primitive_cfgs:
+        if cfg and config_signature(cfg) not in primitive_cfgs:
             withheld_novel_configs += 1
 
     novel_count = sum(1 for p in meta_candidates if p.nodes() >= 3)
