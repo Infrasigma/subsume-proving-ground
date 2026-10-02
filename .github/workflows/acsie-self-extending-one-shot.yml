@@ -7,6 +7,7 @@ on:
       - "lab/run-self-extending-once"
 permissions:
   contents: read
+  issues: write
 jobs:
   run-once:
     runs-on: ubuntu-slim
@@ -45,3 +46,21 @@ jobs:
         with:
           name: acsie-self-extending-one-shot-${{ github.sha }}
           path: open-ended-self-extending-result.txt
+
+      - name: Publish one-shot result to execution ledger
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "## One-shot self-extending execution"
+            echo ""
+            echo "workflow_sha=${{ github.sha }}"
+            echo ""
+            if [ -f open-ended-self-extending-result.txt ]; then
+              cat open-ended-self-extending-result.txt
+            else
+              echo "No result file was produced; inspect workflow logs."
+            fi
+          } > ledger-body.txt
+          gh api repos/Infrasigma/subsume-proving-ground/issues/168/comments             --method POST             -f body="$(cat ledger-body.txt)"
