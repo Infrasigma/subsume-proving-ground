@@ -203,9 +203,13 @@ def main():
     )
 
     meta_observed = {}
+    meta_baseline_core = loop.core.__class__.from_state(loop.core.export_state())
+    meta_baseline_core.seed = seed + 92000
+    meta_baseline_core.observe_batch(meta_ds["train"])
     for index, candidate in enumerate(meta_candidates):
         meta_observed[candidate.fingerprint] = loop.experimenter.evaluate(
             loop.core,
+            meta_baseline_core,
             loop.config,
             candidate,
             meta_ds,
