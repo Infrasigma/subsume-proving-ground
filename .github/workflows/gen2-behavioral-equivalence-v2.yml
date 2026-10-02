@@ -1,0 +1,109 @@
+name: Gen2 behavioral equivalence diagnostic v2
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  behavioral-equivalence:
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [771221, 771222, 771223, 771224, 771225]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact ACSIE diagnostic source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: research/gen2-behavioral-equivalence-v2-20261002
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-diagnostic
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact diagnostic source
+        working-directory: acsie-diagnostic
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "c7461a38cd0c192c2f5797cfc5e8fd2ad65a4bd1"
+          git merge-base --is-ancestor "a3b772928f14aaa8373953801507aefd1c195427" HEAD
+
+      - name: Run optimized inner-data behavioral diagnostic
+        working-directory: acsie-diagnostic
+        env:
+          SEED: "${{ matrix.seed }}"
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD"
+          mkdir -p evidence/gen2-behavioral-equivalence-v2
+          python research/gen2_behavioral_equivalence_v2.py "$SEED"             > "evidence/gen2-behavioral-equivalence-v2/result-$SEED.json"
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen2-behavioral-equivalence-v2-${{ matrix.seed }}
+          path: acsie-diagnostic/evidence/gen2-behavioral-equivalence-v2/**
+          if-no-files-found: error
+
+  aggregate:
+    needs: behavioral-equivalence
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: gen2-behavioral-equivalence-v2-*
+          path: evidence/gen2-behavioral-equivalence-v2
+          merge-multiple: true
+
+      - name: Aggregate
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import glob, json
+          from pathlib import Path
+
+          paths = sorted(glob.glob("evidence/gen2-behavioral-equivalence-v2/result-*.json"))
+          expected = {f"result-{s}.json" for s in (771221,771222,771223,771224,771225)}
+          found = {Path(p).name for p in paths}
+          if found != expected:
+              print(json.dumps({"status":"INCONCLUSIVE","found":sorted(found)}, indent=2))
+              raise SystemExit(0)
+
+          data=[json.load(open(p)) for p in paths]
+          all_pred=all(d["summary"]["all_prediction_deltas_zero"] for d in data)
+          all_win=all(d["summary"]["all_winner_deltas_zero"] for d in data)
+          all_state=all(d["summary"]["all_structural_state_deltas_zero"] for d in data)
+          collapse=all(d["summary"]["semantic_collapse_across_all_candidates"] for d in data)
+          status="SEMANTIC_COLLAPSE_CONFIRMED" if (all_pred and all_win and all_state and collapse) else "SEMANTIC_COLLAPSE_NOT_CONFIRMED"
+
+          out={
+            "version":"gen2-behavioral-equivalence-v2",
+            "status":status,
+            "seed_count":len(data),
+            "all_prediction_deltas_zero":all_pred,
+            "all_winner_deltas_zero":all_win,
+            "all_structural_state_deltas_zero":all_state,
+            "per_seed":[{"seed":d["seed"],"summary":d["summary"],"integrity":d["integrity"]} for d in data],
+          }
+          Path("evidence/gen2-behavioral-equivalence-v2").mkdir(parents=True, exist_ok=True)
+          Path("evidence/gen2-behavioral-equivalence-v2/aggregate.json").write_text(json.dumps(out,indent=2,sort_keys=True))
+          print(json.dumps(out,indent=2,sort_keys=True))
+          PY
+
+      - name: Upload aggregate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen2-behavioral-equivalence-v2-aggregate
+          path: evidence/gen2-behavioral-equivalence-v2/aggregate.json
+          if-no-files-found: error
