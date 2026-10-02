@@ -17,11 +17,11 @@ jobs:
         run: |
           : > opaque-operator-growth-result.txt
           echo "WORKFLOW_SHA=${{ github.sha }}" >> opaque-operator-growth-result.txt
-          echo "ACSIE_REF=29cf68feee2aaa788f7daf1a91cb2e5f28adb8a9" >> opaque-operator-growth-result.txt
+          echo "ACSIE_REF=e719d7e6f4494ed079fde8f49f98ab082d0b49e4" >> opaque-operator-growth-result.txt
       - name: Clone exact ACSIE operator-algebra research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "29cf68feee2aaa788f7daf1a91cb2e5f28adb8a9"
+          ACSIE_REF: "e719d7e6f4494ed079fde8f49f98ab082d0b49e4"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
