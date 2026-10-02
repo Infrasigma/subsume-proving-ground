@@ -268,6 +268,7 @@ def run_method(
         "candidate_count": len(candidates),
         "selected": selected_rows,
         "mean_discriminative_quality": statistics.mean(q_quality),
+        "late_round_discriminative_quality": statistics.mean(q_quality[1:]) if len(q_quality) > 1 else 0.0,
         "any_discriminative": any(q_quality),
         "direction_margin_trace": direction_margin_trace,
         "final_direction_margin": direction_margin_trace[-1],
@@ -326,11 +327,16 @@ def run_seed(seed: int) -> dict:
     h = rows["h8e2"]["mean_discriminative_quality"]
     r = rows["random"]["mean_discriminative_quality"]
     b = rows["heuristic"]["mean_discriminative_quality"]
+    h_late = rows["h8e2"]["late_round_discriminative_quality"]
+    r_late = rows["random"]["late_round_discriminative_quality"]
+    b_late = rows["heuristic"]["late_round_discriminative_quality"]
 
     status = "PASSED" if (
         rows["h8e2"]["candidate_count"] == 48
         and h > r
         and h > b
+        and h_late > r_late
+        and h_late > b_late
         and rows["h8e2"]["any_discriminative"]
         and rows["h8e2"]["direction_improved_at_least_once"]
         and rows["h8e2"]["direction_correct_final"]
@@ -358,6 +364,8 @@ def run_seed(seed: int) -> dict:
             "heuristic_mean_discriminative_quality": b,
             "h8e2_improvement_over_random": h - r,
             "h8e2_improvement_over_heuristic": h - b,
+            "h8e2_late_improvement_over_random": h_late - r_late,
+            "h8e2_late_improvement_over_heuristic": h_late - b_late,
         },
         "integrity": rows["h8e2"]["runtime_integrity"],
         "claim_ledger": {
