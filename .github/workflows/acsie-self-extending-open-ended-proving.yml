@@ -16,7 +16,7 @@ jobs:
       - name: Clone exact ACSIE research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "b21c63cd7bb5bbed2aa5c33fe68ab87afbe78c75"
+          ACSIE_REF: "531d4be7ef4cb86185da68887eacd217b01e3cd9"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
@@ -31,13 +31,27 @@ jobs:
           . /tmp/open-ended-venv/bin/activate
           python -m pip install --upgrade pip pytest
           PYTHONPATH=/tmp/acsie-open-ended-self-extending pytest -q /tmp/acsie-open-ended-self-extending/tests/test_open_ended_growth.py
+      - name: Initialize scientific evidence file
+        run: |
+          : > open-ended-self-extending-result.txt
+          {
+            echo "WORKFLOW_SHA=${{ github.sha }}"
+            echo "ACSIE_REF=531d4be7ef4cb86185da68887eacd217b01e3cd9"
+            echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> open-ended-self-extending-result.txt
       - name: Run five-seed open-ended growth gate
         env:
+          PYTHONUNBUFFERED: "1"
           PYTHONPATH: /tmp/acsie-open-ended-self-extending
-          ACSIE_REF: "b21c63cd7bb5bbed2aa5c33fe68ab87afbe78c75"
+          ACSIE_REF: "531d4be7ef4cb86185da68887eacd217b01e3cd9"
         run: |
+          set +e
           . /tmp/open-ended-venv/bin/activate
-          python3 lab/acsie_open_ended_self_extending_proving.py --strict | tee open-ended-self-extending-result.txt
+          python3 -u lab/acsie_open_ended_self_extending_proving.py --strict > open-ended-self-extending-result.txt 2>&1
+          rc=$?
+          echo "SCIENTIFIC_GATE_RC=$rc" >> open-ended-self-extending-result.txt
+          cat open-ended-self-extending-result.txt
+          exit "$rc"
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
