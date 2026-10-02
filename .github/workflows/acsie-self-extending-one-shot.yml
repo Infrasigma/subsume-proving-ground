@@ -18,11 +18,11 @@ jobs:
         run: |
           : > open-ended-self-extending-result.txt
           echo "WORKFLOW_SHA=${{ github.sha }}" >> open-ended-self-extending-result.txt
-          echo "ACSIE_REF=77cfa1c3e9e9a2bb06e424b76ad5ac83c39df7ab" >> open-ended-self-extending-result.txt
+          echo "ACSIE_REF=c54a706f8ddf744c7217d9421c56951eee294a9f" >> open-ended-self-extending-result.txt
       - name: Clone exact ACSIE research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "77cfa1c3e9e9a2bb06e424b76ad5ac83c39df7ab"
+          ACSIE_REF: "c54a706f8ddf744c7217d9421c56951eee294a9f"
         run: |
           set +e
           {
