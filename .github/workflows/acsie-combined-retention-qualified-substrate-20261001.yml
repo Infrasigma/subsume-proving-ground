@@ -1,15 +1,13 @@
-name: ACSIE combined retention qualification 20261001
+name: ACSIE combined retention qualified substrate 20261001
 
 on:
   push:
     paths:
-      - ".github/workflows/acsie-l2c-retention-quarantine-v7-immutable-admission-20260930.yml"
-      - "research/combined-retention-execution-trigger-20261001.md"
+      - ".github/workflows/acsie-combined-retention-qualified-substrate-20261001.yml"
   workflow_dispatch:
   pull_request:
     paths:
-      - ".github/workflows/acsie-l2c-retention-quarantine-v7-immutable-admission-20260930.yml"
-      - "research/combined-retention-execution-trigger-20261001.md"
+      - ".github/workflows/acsie-combined-retention-qualified-substrate-20261001.yml"
 
 permissions:
   contents: read
@@ -246,6 +244,11 @@ jobs:
   '''
           s = s[:start] + replacement + s[end:]
 
+          diagnostic_old = "        eligible = [\n            r for r in records\n            if r[\"train_score\"] >= 0.70 and r[\"selection_score\"] >= 0.70\n        ]\n"
+          diagnostic_new = "        eligible = [\n            r for r in records\n            if r[\"train_score\"] >= 0.70 and r[\"selection_score\"] >= 0.70\n        ]\n        diagnostic_rows = sorted(\n            (\n                {\n                    \"index\": int(r[\"index\"]),\n                    \"train_score\": float(r[\"train_score\"]),\n                    \"selection_score\": float(r[\"selection_score\"]),\n                    \"complexity\": int(r[\"complexity\"]),\n                    \"program\": r[\"program\"],\n                    \"program_digest\": r[\"program_digest\"],\n                    \"eligible\": bool(r[\"train_score\"] >= 0.70 and r[\"selection_score\"] >= 0.70),\n                }\n                for r in records\n            ),\n            key=lambda r: (r[\"selection_score\"], r[\"train_score\"], -r[\"complexity\"], -r[\"index\"]),\n            reverse=True,\n        )\n        print(json.dumps({\n            \"candidate_frontier_diagnostic\": {\n                \"stage\": stage_name,\n                \"candidate_count\": len(records),\n                \"eligible_count\": len(eligible),\n                \"top_candidates\": diagnostic_rows[:32],\n            }\n        }, sort_keys=True, indent=2))\n"
+          if diagnostic_old not in s:
+              raise SystemExit("candidate diagnostic anchor not found")
+          s = s.replace(diagnostic_old, diagnostic_new, 1)
           p.write_text(s)
           patched = p.read_text()
           print("ORIGINAL_HARNESS_BLOB=" + actual)
