@@ -25,6 +25,7 @@ class HiddenCapability:
     depth: int
     generation: int
     parent_hidden_id: str | None = None
+    parent_hidden_ids: tuple[str, ...] = ()
 
 
 def stable_int(text: str) -> int:
@@ -54,6 +55,20 @@ def wrap_parent(rng: random.Random, parent: dict[str, Any]) -> dict[str, Any]:
     else:
         rhs = {"op": "const", "value": rng.choice((-2, -1, 0, 1, 2, 3, 4))}
     return {"op": op, "left": parent, "right": rhs}
+
+
+def combine_parents(
+    rng: random.Random,
+    parents: tuple[HiddenCapability, ...],
+) -> dict[str, Any]:
+    if len(parents) == 1:
+        return wrap_parent(rng, parents[0].expression)
+    op = rng.choice(("add", "sub", "mul", "max", "min"))
+    return {
+        "op": op,
+        "left": parents[0].expression,
+        "right": parents[1].expression,
+    }
 
 
 def eval_hidden(expr: dict[str, Any], row: dict[str, float]) -> float:
@@ -102,11 +117,16 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
 
     for generation in range(generations):
         learner.generation = generation
-        target_parent = retained[-1] if retained else None
-        if target_parent is None:
+        target_parents: tuple[HiddenCapability, ...]
+        if not retained:
+            target_parents = ()
             target = random_base_expr(rng, 3)
+        elif len(retained) == 1:
+            target_parents = (retained[0],)
+            target = combine_parents(rng, target_parents)
         else:
-            target = wrap_parent(rng, target_parent.expression)
+            target_parents = tuple(rng.sample(retained, 2))
+            target = combine_parents(rng, target_parents)
 
         target_depth = ast_depth(target)
 
@@ -139,7 +159,8 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                         expression=target,
                         depth=target_depth,
                         generation=generation,
-                        parent_hidden_id=target_parent.hidden_id if target_parent else None,
+                        parent_hidden_id=target_parents[0].hidden_id if target_parents else None,
+                        parent_hidden_ids=tuple(p.hidden_id for p in target_parents),
                     )
                 )
 
@@ -151,6 +172,48 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
             baseline_accepted = (
                 bprim.transfer_error <= 1e-9 and b_ood <= 1e-9
             )
+
+        closure_rates = []
+        baseline_closure_rates = []
+        if len(retained) >= 2:
+            for pair_idx, (left_parent, right_parent) in enumerate(
+                [(retained[i], retained[j])
+                 for i in range(len(retained))
+                 for j in range(i + 1, len(retained))]
+            ):
+                closure_expr = {
+                    "op": "add",
+                    "left": left_parent.expression,
+                    "right": right_parent.expression,
+                }
+                ctr = make_traces(
+                    closure_expr, seed + 1700 + pair_idx, generation,
+                    "closure_train", 8, 0.13
+                )
+                cv = make_traces(
+                    closure_expr, seed + 1700 + pair_idx, generation,
+                    "closure_transfer", 5, -0.19
+                )
+                co = make_traces(
+                    closure_expr, seed + 1700 + pair_idx, generation,
+                    "closure_ood", 5, 0.29
+                )
+                cproc = learner.synthesize_process(ctr, cv, co)
+                if cproc is not None:
+                    ceval = learner.evaluate(cproc, ctr, cv, cv, co, ())
+                    closure_rates.append(float(
+                        ceval.accepted and ceval.ood_error <= 1e-9
+                    ))
+                else:
+                    closure_rates.append(0.0)
+                bproc = baseline.synthesize_process(ctr, cv, co)
+                if bproc is not None:
+                    beval = baseline.evaluate(bproc, ctr, cv, cv, co, ())
+                    baseline_closure_rates.append(float(
+                        beval.accepted and beval.ood_error <= 1e-9
+                    ))
+                else:
+                    baseline_closure_rates.append(0.0)
 
         probe_rates = []
         baseline_probe_rates = []
@@ -200,6 +263,10 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "baseline_accepted": baseline_accepted,
                 "parent_used": bool(parent_used),
                 "parent_ids": list(parent_used),
+                "multi_parent_used": len(target_parents) >= 2,
+                "closure_success_rate": statistics.fmean(closure_rates) if closure_rates else 0.0,
+                "baseline_closure_success_rate": statistics.fmean(baseline_closure_rates) if baseline_closure_rates else 0.0,
+                "closure_pair_count": len(closure_rates),
                 "retained_count": len(retained),
                 "runtime_max_depth": int(learner.meta_policy["max_depth"]),
                 "transfer_error": transfer_error,
@@ -223,16 +290,31 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         for row in generations_out[1:]
     )
     last_three = generations_out[-3:]
+    multi_parent_generations = sum(
+        row["accepted"] and row["multi_parent_used"]
+        for row in generations_out[1:]
+    )
+    final_closure_gain = (
+        final["closure_success_rate"] - final["baseline_closure_success_rate"]
+    )
+    closure_growth = (
+        final["closure_success_rate"]
+        - generations_out[min(2, len(generations_out)-1)]["closure_success_rate"]
+    )
 
     finite_gate = (
         accepted_after_bootstrap >= generations - 2
         and recursive_generations >= generations - 2
+        and multi_parent_generations >= generations - 2
         and all(row["accepted"] for row in last_three)
         and final["retained_count"] >= generations - 1
         and final["runtime_max_depth"] > initial_depth
         and final["target_depth"] > generations_out[0]["target_depth"]
         and probe_gain >= 0.25
         and final["probe_success_rate"] > final["baseline_probe_success_rate"]
+        and final["closure_pair_count"] >= 6
+        and final_closure_gain >= 0.20
+        and closure_growth >= 0.10
         and final["baseline_accepted"] is False
     )
 
@@ -245,6 +327,11 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         "retained_count": final["retained_count"],
         "accepted_after_bootstrap": accepted_after_bootstrap,
         "recursive_generations": recursive_generations,
+        "multi_parent_generations": multi_parent_generations,
+        "final_closure_success_rate": final["closure_success_rate"],
+        "final_baseline_closure_success_rate": final["baseline_closure_success_rate"],
+        "final_closure_gain": final_closure_gain,
+        "closure_growth": closure_growth,
         "mean_probe_gain": probe_gain,
         "final_probe_success_rate": final["probe_success_rate"],
         "final_baseline_probe_success_rate": final["baseline_probe_success_rate"],
