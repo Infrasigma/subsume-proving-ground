@@ -224,6 +224,7 @@ jobs:
         run: |
           mkdir -p "evidence/i1-i5/$SEED"
           set +e
+          mkdir -p "evidence/i1-i5/$SEED"
           python3 research/acsie_i1_i5_decisive_test.py --seed "$SEED" --stages 7 --out "evidence/i1-i5/$SEED" | tee "evidence/i1-i5/$SEED/stdout.json"
           rc=${PIPESTATUS[0]}
           echo "$rc" > "evidence/i1-i5/$SEED/exit_code"
@@ -237,3 +238,49 @@ jobs:
           name: acsie-i1-i5-${{ matrix.seed }}
           path: evidence/i1-i5/${{ matrix.seed }}/**
           if-no-files-found: error
+
+
+  i1-i5-scientific-gate:
+    if: always()
+    needs: [i1-i5-decisive]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all I1-I5 scientific artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: acsie-i1-i5-*
+          path: evidence/i1-i5-gate
+          merge-multiple: true
+
+      - name: Enforce hard scientific promotion gate
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import glob
+          import json
+          import pathlib
+          import sys
+
+          paths = sorted(glob.glob("evidence/i1-i5-gate/**/i1_i5_result.json", recursive=True))
+          print("artifact_count=", len(paths))
+          if len(paths) != 10:
+              print("BLOCKED: expected exactly 10 seed artifacts", file=sys.stderr)
+              sys.exit(2)
+
+          rows = [json.loads(pathlib.Path(p).read_text()) for p in paths]
+          failures = []
+          for row in rows:
+              seed = row.get("seed")
+              status = row.get("scientific_status")
+              integrity = (row.get("integrity") or {}).get("integrity_ok")
+              if status != "PASSED" or integrity is not True:
+                  failures.append({
+                      "seed": seed,
+                      "scientific_status": status,
+                      "integrity_ok": integrity,
+                  })
+          print(json.dumps({"seed_results": rows, "failures": failures}, indent=2, sort_keys=True))
+          if failures:
+              sys.exit(1)
+          print("HARD_SCIENTIFIC_GATE=PASSED")
+          PY
