@@ -12,6 +12,7 @@ from dataclasses import asdict
 from hashlib import sha256
 
 from cognitive_core.recursive_research import (
+    CausalSelfModel,
     MechanismConfig,
     RecursiveResearchLoop,
     score_core,
@@ -159,6 +160,103 @@ def main():
             "record": record,
         })
 
+    # I5 decisive test: compare the learned intervention model against a
+    # matched blind model on a completely fresh task/intervention family.
+    meta_ds = dataset(
+        seed + 90000,
+        "or_sign_parity",
+        transfer_rule="and_sign_parity",
+        future_rule="parity_yz",
+    )
+    meta_candidates = loop.hypotheses.generate(
+        loop.config,
+        rows=meta_ds["train"],
+        width=16,
+    )
+    blank_model = CausalSelfModel()
+
+    post_ranked = [
+        (candidate, loop.self_model.predict(loop.config, candidate, meta_ds["train"]))
+        for candidate in meta_candidates
+    ]
+    pre_ranked = [
+        (candidate, blank_model.predict(loop.config, candidate, meta_ds["train"]))
+        for candidate in meta_candidates
+    ]
+    post_ranked.sort(
+        key=lambda item: (
+            item[1].predicted_success_probability,
+            item[1].predicted_future_learning_gain,
+            -item[1].predicted_regression,
+            -item[0].resource_cost,
+        ),
+        reverse=True,
+    )
+    pre_ranked.sort(
+        key=lambda item: (
+            item[1].predicted_success_probability,
+            item[1].predicted_future_learning_gain,
+            -item[1].predicted_regression,
+            -item[0].resource_cost,
+        ),
+        reverse=True,
+    )
+
+    meta_observed = {}
+    for index, candidate in enumerate(meta_candidates):
+        meta_observed[candidate.fingerprint] = loop.experimenter.evaluate(
+            loop.core,
+            loop.config,
+            candidate,
+            meta_ds,
+            seed_offset=5000 + index,
+        )
+
+    def _rank_metrics(ranked):
+        best_future = max(
+            (r.future_learning_auc - r.baseline_future_learning_auc
+             for r in meta_observed.values()),
+            default=0.0,
+        )
+        top = (
+            meta_observed[ranked[0][0].fingerprint].future_learning_auc
+            - meta_observed[ranked[0][0].fingerprint].baseline_future_learning_auc
+            if ranked else 0.0
+        )
+        regret = max(0.0, best_future - top)
+
+        observed = [
+            meta_observed[c.fingerprint].future_learning_auc
+            - meta_observed[c.fingerprint].baseline_future_learning_auc
+            for c, _ in ranked
+        ]
+        predicted = [p.predicted_future_learning_gain for _, p in ranked]
+        mae = (
+            sum(abs(a - b) for a, b in zip(observed, predicted))
+            / max(1, len(observed))
+        )
+        return {
+            "ranking_regret": regret,
+            "prediction_mae_future_learning": mae,
+            "best_future_learning_gain": best_future,
+            "top_future_learning_gain": top,
+        }
+
+    meta_post = _rank_metrics(post_ranked)
+    meta_pre = _rank_metrics(pre_ranked)
+    meta_improvement = {
+        "ranking_regret_delta": meta_pre["ranking_regret"] - meta_post["ranking_regret"],
+        "prediction_mae_delta": meta_pre["prediction_mae_future_learning"] - meta_post["prediction_mae_future_learning"],
+        "post": meta_post,
+        "blind": meta_pre,
+        "fresh_task_digest": digest(meta_ds["train"]),
+        "candidate_count": len(meta_candidates),
+    }
+    meta_pass = (
+        meta_improvement["ranking_regret_delta"] > 0.0
+        or meta_improvement["prediction_mae_delta"] > 0.0
+    )
+
     # The hidden rule name is written only to the evaluator artifact; it is never
     # passed to the ACSIE loop or used by any candidate-selection decision.
     accepted = [r for r in stage_records if r["record"]["accepted"]]
@@ -182,7 +280,11 @@ def main():
     artifact = {
         "schema": "ACSIE.i1-i5.decisive-test.v1",
         "seed": seed,
-        "scientific_status": "PASSED" if len(accepted) >= max(3, args.stages // 2) and unknown_stage_detected else "FAILED",
+        "scientific_status": "PASSED" if (
+            len(accepted) >= max(3, args.stages // 2)
+            and unknown_stage_detected
+            and meta_pass
+        ) else "FAILED",
         "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "source_tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip(),
         "acsie_ref": "research/i1-i5-decisive-loop-20261002",
@@ -192,6 +294,8 @@ def main():
         "diagnosis_head_count": len(diagnoses),
         "ranking_regret_sequence": ranking_regrets,
         "unknown_stage_detected": unknown_stage_detected,
+        "meta_improvement": meta_improvement,
+        "meta_improvement_pass": meta_pass,
         "diagnosis_sequence": diagnoses,
         "future_learning_values": positive_future,
         "ontology": sorted(loop.ontology),
@@ -201,7 +305,7 @@ def main():
             "causal_self_model": "PROVISIONAL" if loop.self_model.records else "FAILED",
             "open_hypothesis_engine": "PROVISIONAL",
             "quarantined_admission": "PROVISIONAL",
-            "recursive_improvement": "PROVISIONAL" if len(accepted) >= 3 and len(ranking_regrets) >= 4 else "FAILED",
+            "recursive_improvement": "PASSED" if meta_pass else "FAILED",
             "ontology_expansion": "PROVISIONAL" if unknown_stage_detected else "NOT_DEMONSTRATED",
         },
     }
