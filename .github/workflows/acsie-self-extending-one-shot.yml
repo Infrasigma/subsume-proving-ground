@@ -14,32 +14,51 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Initialize forensic result
+        run: |
+          : > open-ended-self-extending-result.txt
+          echo "WORKFLOW_SHA=${{ github.sha }}" >> open-ended-self-extending-result.txt
+          echo "ACSIE_REF=9e1e92d7f23e1c62ec5efdb3399967b748673963" >> open-ended-self-extending-result.txt
       - name: Clone exact ACSIE research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
           ACSIE_REF: "9e1e92d7f23e1c62ec5efdb3399967b748673963"
         run: |
-          set -euo pipefail
-          test -n "$ACSIE_READ_TOKEN"
-          rm -rf /tmp/acsie-open-ended-self-extending
-          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-open-ended-self-extending
-          git -C /tmp/acsie-open-ended-self-extending fetch --depth 1 origin "research/open-ended-self-extending-core-20261003"
-          git -C /tmp/acsie-open-ended-self-extending checkout --detach FETCH_HEAD
-          actual="$(git -C /tmp/acsie-open-ended-self-extending rev-parse HEAD)"
-          test "$actual" = "$ACSIE_REF"
-          echo "ACSIE_HEAD=$actual"
+          set +e
+          {
+            echo "=== CLONE ==="
+            test -n "$ACSIE_READ_TOKEN"
+            rm -rf /tmp/acsie-open-ended-self-extending
+            git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-open-ended-self-extending
+            git -C /tmp/acsie-open-ended-self-extending fetch --depth 1 origin "research/open-ended-self-extending-core-20261003"
+            git -C /tmp/acsie-open-ended-self-extending checkout --detach FETCH_HEAD
+            actual="$(git -C /tmp/acsie-open-ended-self-extending rev-parse HEAD)"
+            echo "ACTUAL_HEAD=$actual"
+            test "$actual" = "$ACSIE_REF"
+          } >> open-ended-self-extending-result.txt 2>&1
+          rc=$?
+          echo "CLONE_RC=$rc" >> open-ended-self-extending-result.txt
+          test "$rc" -eq 0
       - name: Run exact unit tests
         run: |
-          python3 -m venv /tmp/open-ended-venv
-          . /tmp/open-ended-venv/bin/activate
-          python -m pip install --upgrade pip pytest
-          PYTHONPATH=/tmp/acsie-open-ended-self-extending pytest -q /tmp/acsie-open-ended-self-extending/tests/test_open_ended_growth.py
+          set +e
+          python3 -m venv /tmp/open-ended-venv >> open-ended-self-extending-result.txt 2>&1
+          . /tmp/open-ended-venv/bin/activate >> open-ended-self-extending-result.txt 2>&1
+          python -m pip install --upgrade pip pytest >> open-ended-self-extending-result.txt 2>&1
+          PYTHONPATH=/tmp/acsie-open-ended-self-extending pytest -q /tmp/acsie-open-ended-self-extending/tests/test_open_ended_growth.py >> open-ended-self-extending-result.txt 2>&1
+          rc=$?
+          echo "UNIT_RC=$rc" >> open-ended-self-extending-result.txt
+          test "$rc" -eq 0
       - name: Run branching self-extending gate
         env:
           PYTHONPATH: /tmp/acsie-open-ended-self-extending
         run: |
-          . /tmp/open-ended-venv/bin/activate
-          python3 lab/acsie_open_ended_self_extending_proving.py --strict | tee open-ended-self-extending-result.txt
+          set +e
+          . /tmp/open-ended-venv/bin/activate >> open-ended-self-extending-result.txt 2>&1
+          python3 lab/acsie_open_ended_self_extending_proving.py --strict >> open-ended-self-extending-result.txt 2>&1
+          rc=$?
+          echo "SCIENTIFIC_GATE_RC=$rc" >> open-ended-self-extending-result.txt
+          exit "$rc"
       - name: Upload one-shot evidence
         if: always()
         uses: actions/upload-artifact@v4
