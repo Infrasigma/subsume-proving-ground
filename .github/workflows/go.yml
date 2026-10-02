@@ -109,7 +109,7 @@ jobs:
         working-directory: acsie-gen2-stateful
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "830db3c3b971f52385d2d13f5885bcd77360df3a"
+          test "$(git rev-parse HEAD)" = "635b3bf2c625e204cd5d1d198312a525ac670d68"
           git merge-base --is-ancestor "5d9e1229d62d8218398b81ca9f89fa1da2ebf70d" HEAD
       - name: Run stateful Gen2 selector
         working-directory: acsie-gen2-stateful
