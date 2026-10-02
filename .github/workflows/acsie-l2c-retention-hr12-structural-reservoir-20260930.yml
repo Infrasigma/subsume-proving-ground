@@ -62,7 +62,7 @@ jobs:
           cp gate.stdout.txt gate.stderr.txt gate.rc evidence/hr12/
           python - <<'PY'
           import json, pathlib, subprocess
-          rows=[json.loads(p.read_text()) for p in pathlib.Path("evidence/v7").glob("l2a-*.json")]
+          rows=[json.loads(p.read_text()) for p in pathlib.Path("evidence/hr12").glob("l2a-*.json")]
           if len(rows) != 1:
               raise SystemExit(f"expected exactly one seed artifact, found {len(rows)}")
           d=rows[0]
