@@ -23,7 +23,10 @@ permissions:
 
 jobs:
   acsie-lab:
-    if: github.event_name != 'pull_request' || !startsWith(github.event.pull_request.head.ref, 'research/acsie-h9e-independent-proof-20261003')
+    if: github.event_name != 'pull_request' || (
+      !startsWith(github.event.pull_request.head.ref, 'research/acsie-h9e-independent-proof-20261003') &&
+      !startsWith(github.event.pull_request.head.ref, 'research/open-ended-growth-proving-20261003')
+    )
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -65,3 +68,39 @@ jobs:
         run: |
           . /tmp/acsie-h9e-venv/bin/activate
           python3 lab/acsie_h9e_independent_proving.py --strict
+
+
+  open-ended-growth:
+    if: github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'research/open-ended-growth-proving-20261003')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone exact ACSIE main
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "9e12988c576b7fa16909b527edff6b677f549fe5"
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          rm -rf /tmp/acsie-open-ended
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-open-ended
+          git -C /tmp/acsie-open-ended fetch --depth 1 origin "main"
+          git -C /tmp/acsie-open-ended checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie-open-ended rev-parse HEAD)" = "$ACSIE_REF"
+          echo "ACSIE_HEAD=$(git -C /tmp/acsie-open-ended rev-parse HEAD)"
+      - name: Run open-ended growth evaluator
+        env:
+          PYTHONPATH: /tmp/acsie-open-ended
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/acsie-open-ended-venv
+          . /tmp/acsie-open-ended-venv/bin/activate
+          python -m pip install --upgrade pip pytest
+          python3 lab/acsie_open_ended_growth_proving.py --strict | tee open-ended-growth-result.txt
+      - name: Upload open-ended evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-open-ended-growth-evidence-${{ github.sha }}
+          path: open-ended-growth-result.txt
