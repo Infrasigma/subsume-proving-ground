@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import random
+import statistics
+from dataclasses import dataclass
+from hashlib import sha256
+from typing import Any
+
+from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
+from cognitive_core.recursive_cognitive_compiler import Trace, eval_expr, ast_depth
+
+
+BASE_BIN_OPS = ("add", "sub", "mul", "max", "min")
+UNARY_OPS = ("abs", "neg")
+KEYS = ("x", "y", "z")
+
+
+@dataclass(frozen=True)
+class HiddenCapability:
+    hidden_id: str
+    expression: dict[str, Any]
+    depth: int
+    generation: int
+    parent_hidden_id: str | None = None
+
+
+def stable_int(text: str) -> int:
+    return int.from_bytes(sha256(text.encode()).digest()[:4], "big")
+
+
+def random_base_expr(rng: random.Random, depth: int) -> dict[str, Any]:
+    if depth <= 1:
+        if rng.random() < 0.75:
+            return {"op": "get", "key": rng.choice(KEYS)}
+        return {"op": "const", "value": rng.choice((-2, -1, 0, 1, 2, 3, 4))}
+    if rng.random() < 0.20:
+        return {"op": rng.choice(UNARY_OPS), "arg": random_base_expr(rng, depth - 1)}
+    return {
+        "op": rng.choice(BASE_BIN_OPS),
+        "left": random_base_expr(rng, depth - 1),
+        "right": random_base_expr(rng, depth - 1),
+    }
+
+
+def wrap_parent(rng: random.Random, parent: dict[str, Any]) -> dict[str, Any]:
+    op = rng.choice(BASE_BIN_OPS + UNARY_OPS)
+    if op in UNARY_OPS:
+        return {"op": op, "arg": parent}
+    if rng.random() < 0.5:
+        rhs = {"op": "get", "key": rng.choice(KEYS)}
+    else:
+        rhs = {"op": "const", "value": rng.choice((-2, -1, 0, 1, 2, 3, 4))}
+    return {"op": op, "left": parent, "right": rhs}
+
+
+def eval_hidden(expr: dict[str, Any], row: dict[str, float]) -> float:
+    return float(eval_expr(expr, row, {}))
+
+
+def make_traces(expr, seed, generation, split, count, shift):
+    rng = random.Random(seed * 1000003 + generation * 9176 + stable_int(split))
+    span = {"train": 2.0, "holdout": 3.0, "transfer": 4.0, "ood": 5.0}[split]
+    rows = []
+    for i in range(count):
+        inputs = {k: rng.uniform(-span, span) + shift for k in KEYS}
+        rows.append(
+            Trace(
+                inputs=inputs,
+                target=eval_hidden(expr, inputs),
+                family="opaque",
+                context={"risk": 0.0, "ambiguity": 0.0},
+                task_id=f"opaque-{seed}-{generation}-{split}-{i}",
+            )
+        )
+    return tuple(rows)
+
+
+def mae(expr, rows, macros):
+    if not rows:
+        return float("inf")
+    vals = []
+    for row in rows:
+        try:
+            vals.append(abs(float(eval_expr(expr, row.inputs, macros)) - row.target))
+        except Exception:
+            return float("inf")
+    return statistics.fmean(vals)
+
+
+def run_seed(seed: int, generations: int) -> dict[str, Any]:
+    rng = random.Random(seed)
+    learner = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed)
+    baseline = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed + 10091)
+
+    retained: list[HiddenCapability] = []
+    generations_out = []
+
+    initial_depth = learner.meta_policy["max_depth"]
+
+    for generation in range(generations):
+        learner.generation = generation
+        target_parent = retained[-1] if retained else None
+        if target_parent is None:
+            target = random_base_expr(rng, 3)
+        else:
+            target = wrap_parent(rng, target_parent.expression)
+
+        target_depth = ast_depth(target)
+
+        train = make_traces(target, seed, generation, "train", 12, 0.0)
+        hold = make_traces(target, seed, generation, "holdout", 6, 0.31)
+        transfer = make_traces(target, seed, generation, "transfer", 8, -0.57)
+        ood = make_traces(target, seed, generation, "ood", 8, 0.93)
+
+        primitive = learner.invent_primitive(train, hold, transfer)
+        accepted = False
+        transfer_error = float("inf")
+        ood_error = float("inf")
+        parent_used = tuple()
+
+        if primitive is not None:
+            transfer_error = primitive.transfer_error
+            ood_error = mae(primitive.expression, ood, learner._pmap())
+            parent_used = primitive.parent_ids
+            accepted = learner.accept_primitive(
+                primitive.primitive_id,
+                transfer_error=transfer_error,
+                ood_error=ood_error,
+                novelty=1.0 / max(1, primitive.complexity),
+                resource_cost=max(1, primitive.complexity),
+            )
+            if accepted:
+                retained.append(
+                    HiddenCapability(
+                        hidden_id=primitive.primitive_id,
+                        expression=target,
+                        depth=target_depth,
+                        generation=generation,
+                        parent_hidden_id=target_parent.hidden_id if target_parent else None,
+                    )
+                )
+
+        baseline.generation = 0
+        bprim = baseline.invent_primitive(train, hold, transfer)
+        baseline_accepted = False
+        if bprim is not None:
+            b_ood = mae(bprim.expression, ood, baseline._pmap())
+            baseline_accepted = (
+                bprim.transfer_error <= 1e-9 and b_ood <= 1e-9
+            )
+
+        probe_rates = []
+        baseline_probe_rates = []
+        for probe_idx in range(4):
+            probe_parent = retained[-1] if retained else None
+            probe = (
+                wrap_parent(
+                    random.Random(seed * 193 + generation * 17 + probe_idx),
+                    probe_parent.expression,
+                )
+                if probe_parent is not None
+                else random_base_expr(
+                    random.Random(seed * 193 + generation * 17 + probe_idx),
+                    3,
+                )
+            )
+            ptrain = make_traces(
+                probe, seed + 700 + probe_idx, generation,
+                "probe_train", 8, 0.17
+            )
+            ptransfer = make_traces(
+                probe, seed + 700 + probe_idx, generation,
+                "probe_transfer", 5, -0.22
+            )
+            pood = make_traces(
+                probe, seed + 700 + probe_idx, generation,
+                "probe_ood", 5, 0.41
+            )
+            proc = learner.synthesize_process(ptrain, ptransfer, pood)
+            probe_rates.append(float(proc is not None))
+            bproc = baseline.synthesize_process(ptrain, ptransfer, pood)
+            baseline_probe_rates.append(float(bproc is not None))
+
+        generations_out.append(
+            {
+                "generation": generation,
+                "target_depth": target_depth,
+                "accepted": accepted,
+                "baseline_accepted": baseline_accepted,
+                "parent_used": bool(parent_used),
+                "parent_ids": list(parent_used),
+                "retained_count": len(retained),
+                "runtime_max_depth": int(learner.meta_policy["max_depth"]),
+                "transfer_error": transfer_error,
+                "ood_error": ood_error,
+                "probe_success_rate": statistics.fmean(probe_rates),
+                "baseline_probe_success_rate": statistics.fmean(baseline_probe_rates),
+            }
+        )
+
+    probe_gain = statistics.fmean(
+        row["probe_success_rate"] - row["baseline_probe_success_rate"]
+        for row in generations_out
+    )
+    final = generations_out[-1]
+
+    accepted_after_bootstrap = sum(
+        row["accepted"] for row in generations_out[1:]
+    )
+    recursive_generations = sum(
+        row["accepted"] and row["parent_used"]
+        for row in generations_out[1:]
+    )
+    last_three = generations_out[-3:]
+
+    finite_gate = (
+        accepted_after_bootstrap >= generations - 2
+        and recursive_generations >= generations - 2
+        and all(row["accepted"] for row in last_three)
+        and final["retained_count"] >= generations - 1
+        and final["runtime_max_depth"] > initial_depth
+        and final["target_depth"] > generations_out[0]["target_depth"]
+        and probe_gain >= 0.25
+        and final["probe_success_rate"] > final["baseline_probe_success_rate"]
+        and final["baseline_accepted"] is False
+    )
+
+    return {
+        "seed": seed,
+        "generations": generations,
+        "initial_depth": initial_depth,
+        "final_runtime_max_depth": final["runtime_max_depth"],
+        "final_target_depth": final["target_depth"],
+        "retained_count": final["retained_count"],
+        "accepted_after_bootstrap": accepted_after_bootstrap,
+        "recursive_generations": recursive_generations,
+        "mean_probe_gain": probe_gain,
+        "final_probe_success_rate": final["probe_success_rate"],
+        "final_baseline_probe_success_rate": final["baseline_probe_success_rate"],
+        "finite_open_ended_growth_gate": finite_gate,
+        "external_model": False,
+        "target_identity_available_to_runtime": False,
+        "task_family_route": False,
+        "generations_detail": generations_out,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--seeds",
+        default="2026100301,2026100302,2026100303,2026100304,2026100305",
+    )
+    parser.add_argument("--generations", type=int, default=8)
+    parser.add_argument("--strict", action="store_true")
+    args = parser.parse_args()
+
+    rows = [
+        run_seed(int(s), args.generations)
+        for s in args.seeds.split(",")
+        if s.strip()
+    ]
+    for row in rows:
+        print(json.dumps(row, sort_keys=True))
+
+    gate = (
+        len(rows) == 5
+        and all(row["finite_open_ended_growth_gate"] for row in rows)
+        and all(not row["external_model"] for row in rows)
+        and all(not row["target_identity_available_to_runtime"] for row in rows)
+        and all(not row["task_family_route"] for row in rows)
+    )
+    print("OPEN_ENDED_SELF_EXTENDING_GATE=" + ("PASS" if gate else "FAIL"))
+    raise SystemExit(0 if (gate or not args.strict) else 2)
+
+
+if __name__ == "__main__":
+    main()
