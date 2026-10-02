@@ -16,11 +16,11 @@ from pathlib import Path
 
 from cognitive_core.h6_compositional import (
     H6Controller,
-    H6R2Controller,
     MechanismConfig,
     _candidate_ir,
     compile_program,
 )
+from cognitive_core.h6_r2_active_acquisition import H6R2Controller
 from cognitive_core.recursive_research import (
     clone_with_config,
     fit_core,
