@@ -105,7 +105,7 @@ def expanded_depth(
     )
 
 
-def make_traces(expr, seed, generation, split, count, shift):
+def make_traces(expr, seed, generation, split, count, shift, macros):
     rng = random.Random(seed * 1000003 + generation * 9176 + stable_int(split))
     base_split = split.rsplit("_", 1)[-1]
     span = {"train": 2.0, "holdout": 3.0, "transfer": 4.0, "ood": 5.0}[base_split]
