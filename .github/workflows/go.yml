@@ -82,4 +82,87 @@ jobs:
           name: acex-forensic-result
           path: acex-result.txt
 
+
+  gen5-isolated:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: "eafa43db1635381287e5cf6fcfe977fbe187d300"
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact source
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "eafa43db1635381287e5cf6fcfe977fbe187d300"
+          test -f research/l1_gen5_autonomous_acquisition_v1.py
+      - name: Download repaired Gen2 freeze
+        uses: actions/download-artifact@v4
+        with:
+          name: acsie-gen2-behavioral-frozen-state-20260928-36407812884
+          path: input
+          run-id: 36407812884
+          repository: Infrasigma/subsume-proving-ground
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify frozen input
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json
+          raw=open("input/verified-gen2-state.json","rb").read()
+          assert hashlib.sha256(raw).hexdigest()=="3fc90234b00093d7303ca26d9f5f88824f9d1419ba2ada718213f3c4b547e04b"
+          export=json.load(open("input/verified-gen2-export.json"))
+          assert export["scientific_status"]=="PASSED"
+          PY
+      - name: Execute isolated Gen5 gate
+        env:
+          SEED: "2026092801"
+        run: |
+          set +e
+          PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie"             python acsie/research/l1_gen5_autonomous_acquisition_v1.py             input/verified-gen2-state.json             --seed "$SEED"             --source-commit "eafa43db1635381287e5cf6fcfe977fbe187d300"             > "gen5-$SEED.json" 2> "gen5-$SEED.stderr"
+          rc=$?
+          printf '%s
+' "$rc" > "gen5-$SEED.exit"
+          echo "experiment_exit=$rc"
+          exit 0
+      - name: Classify isolated result
+        if: always()
+        env:
+          SEED: "2026092801"
+        run: |
+          python - <<'PY'
+          import json, os, sys
+          p=f"gen5-{os.environ['SEED']}.json"
+          try:
+              row=json.load(open(p))
+          except Exception as exc:
+              print("CRASHED:", exc)
+              sys.exit(1)
+          print(json.dumps({
+              "scientific_status": row.get("scientific_status"),
+              "gates": row.get("gates"),
+              "final_holdout": row.get("final_holdout"),
+              "final_transfer": row.get("final_transfer"),
+              "same_episode_reuse": row.get("same_episode_reuse"),
+          }, indent=2, sort_keys=True))
+      - name: Upload Gen5 isolated evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-gen5-isolated-seed-2026092801-${{ github.run_id }}
+          path: |
+            gen5-2026092801.json
+            gen5-2026092801.stderr
+            gen5-2026092801.exit
+          if-no-files-found: error
+          retention-days: 90
+
 # ACE-X forensic trigger revision.

@@ -1,0 +1,112 @@
+name: ACSIE protected Gen3 exact merge recovery
+
+on:
+  push:
+    branches:
+      - acsie/protected-gen3-exact-sharded-20260928
+    paths:
+      - ".github/workflows/acsie-protected-gen3-merge-recovery.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  ACSIE_SOURCE: "08e3d6732c5555e765cf32ea4030f9cd02d711f7"
+  SOURCE_RUN: "36373562036"
+  VERIFIED_PARENT: "b31109864ae547320d877e6c1575b805d950edf9"
+  EXPORT_SOURCE: "94a2a770a5799fd386217998bc21b585632ef7ed"
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact ACSIE merge harness
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_SOURCE }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact ACSIE harness
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
+          git diff --name-only eced0c7ed816b0baa15769fd841abde62fcccbd5 $(git rev-parse HEAD) | tee ../acsie-changed-files.txt
+          test "$(cat ../acsie-changed-files.txt)" = "research/gen3_frozen_verified_gen2_sharded_v1.py"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download exact frozen verified Gen2 input
+        uses: actions/download-artifact@v4
+        with:
+          name: acsie-verified-gen2-input-${{ env.SOURCE_RUN }}
+          path: input
+          run-id: ${{ env.SOURCE_RUN }}
+          repository: Infrasigma/subsume-proving-ground
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download all eight exact candidate shard artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: acsie-gen3-exact-shard-*-${{ env.SOURCE_RUN }}
+          path: shards
+          merge-multiple: true
+          run-id: ${{ env.SOURCE_RUN }}
+          repository: Infrasigma/subsume-proving-ground
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify exact shard coverage and hashes
+        run: |
+          set -euo pipefail
+          test -f input/verified-gen2-export.json
+          test -f input/verified-gen2-state.json
+          test "$(find shards -maxdepth 1 -name 'shard-*.json' | wc -l)" = "8"
+          sha256sum input/verified-gen2-state.json
+          printf '%s\n' "SOURCE_RUN=${SOURCE_RUN}" "ACSIE_SOURCE=${ACSIE_SOURCE}" "VERIFIED_PARENT=${VERIFIED_PARENT}" > recovery-provenance.txt
+      - name: Merge exact candidate evaluations and execute unchanged final gate
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. python research/gen3_frozen_verified_gen2_sharded_v1.py \
+            ../input/verified-gen2-export.json \
+            --merge \
+            ../shards/shard-0.json \
+            ../shards/shard-1.json \
+            ../shards/shard-2.json \
+            ../shards/shard-3.json \
+            ../shards/shard-4.json \
+            ../shards/shard-5.json \
+            ../shards/shard-6.json \
+            ../shards/shard-7.json \
+            > ../gen3-final.json
+          cat ../gen3-final.json
+      - name: Package merge recovery evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp input/verified-gen2-export.json evidence/
+          cp input/verified-gen2-state.json evidence/
+          cp recovery-provenance.txt evidence/
+          cp acsie-changed-files.txt evidence/
+          cp gen3-final.json evidence/
+          cp shards/shard-*.json evidence/
+          sha256sum evidence/verified-gen2-state.json > evidence/state.sha256
+          printf '%s\n' \
+            "source_candidate_run=${SOURCE_RUN}" \
+            "merge_workflow=${{ github.run_id }}" \
+            "merge_workflow_sha=${{ github.sha }}" \
+            "acsie_source=${ACSIE_SOURCE}" \
+            "candidate_count=128" \
+            "shard_count=8" \
+            "scientific_core_source=eced0c7ed816b0baa15769fd841abde62fcccbd5" > evidence/execution-provenance.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acsie-protected-gen3-merge-recovery-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: error

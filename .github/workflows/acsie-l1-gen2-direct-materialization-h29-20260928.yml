@@ -1,0 +1,120 @@
+name: ACSIE Layer1 independent procedure bank H30 20260928
+
+on:
+  push:
+    branches:
+      - acsie/l1-gen2-materialization-h29b-20260928
+    paths:
+      - ".github/workflows/acsie-l1-gen2-direct-materialization-h29-20260928.yml"
+      - "research/l1_independent_procedure_bank_h30_v1.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  ACSIE_SOURCE: "aedf4e2fa4adfe174eebf5d63133a14d85c4f753"
+  GEN2_FREEZE_RUN: "36407812884"
+
+jobs:
+  screen:
+    name: H30 procedure bank seed ${{ matrix.seed }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026092801, 2026092802, 2026092803, 2026092804, 2026092805]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: ${{ env.ACSIE_SOURCE }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify source
+        working-directory: acsie
+        run: test "$(git rev-parse HEAD)" = "${ACSIE_SOURCE}"
+      - name: Download repaired Gen2 freeze
+        uses: actions/download-artifact@v4
+        with:
+          name: acsie-gen2-behavioral-frozen-state-20260928-36407812884
+          path: input
+          run-id: ${{ env.GEN2_FREEZE_RUN }}
+          repository: Infrasigma/subsume-proving-ground
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify frozen input
+        run: |
+          set -euo pipefail
+          test -f input/verified-gen2-state.json
+          test -f input/verified-gen2-export.json
+          python - <<'PY'
+          import hashlib, json
+          raw=open("input/verified-gen2-state.json","rb").read()
+          assert hashlib.sha256(raw).hexdigest()=="3fc90234b00093d7303ca26d9f5f88824f9d1419ba2ada718213f3c4b547e04b"
+          export=json.load(open("input/verified-gen2-export.json"))
+          assert export["scientific_status"]=="PASSED"
+          PY
+      - name: Execute H30
+        env:
+          SEED: ${{ matrix.seed }}
+        run: |
+          set -euo pipefail
+          set +e
+          PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie"             python research/l1_independent_procedure_bank_h30_v1.py             input/verified-gen2-state.json --seed "$SEED" > "h30-$SEED.json" 2> "h30-$SEED.stderr"
+          rc=$?
+          printf '%s\n' "$rc" > "h30-$SEED.exit"
+          exit "$rc"
+      - name: Upload H30 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-h30-seed-${{ matrix.seed }}-${{ github.run_id }}
+          path: |
+            h30-${{ matrix.seed }}.json
+            h30-${{ matrix.seed }}.stderr
+            h30-${{ matrix.seed }}.exit
+          if-no-files-found: error
+          retention-days: 90
+
+  aggregate:
+    needs: screen
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: acsie-h30-seed-*-${{ github.run_id }}
+          path: evidence
+          merge-multiple: true
+      - name: Strict aggregate
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib, sys
+          rows=[]; bad=[]
+          for p in sorted(pathlib.Path("evidence").glob("h30-*.json")):
+              try: rows.append(json.loads(p.read_text()))
+              except Exception as exc: bad.append(f"{p.name}: {exc}")
+          expected={2026092801,2026092802,2026092803,2026092804,2026092805}
+          seeds={r.get("seed") for r in rows}
+          strict=(not bad and len(rows)==5 and seeds==expected and all(r.get("scientific_status")=="PASSED" for r in rows))
+          status="CRASHED" if bad or len(rows)!=5 or seeds!=expected else ("PASSED" if strict else "FAILED")
+          out={"schema":"ACSIE.layer1-independent-procedure-bank-h30-multiseed.v2","scientific_status":status,"strict":strict,"seed_count":len(rows),"rows":rows,"failures":bad,"source_commit":"aedf4e2fa4adfe174eebf5d63133a14d85c4f753","workflow_run":"${{ github.run_id }}"}
+          pathlib.Path("h30-aggregate.json").write_text(json.dumps(out,indent=2,sort_keys=True))
+          print(json.dumps(out,indent=2,sort_keys=True))
+          if status!="PASSED": sys.exit(1)
+          PY
+      - name: Upload aggregate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-h30-aggregate-${{ github.run_id }}
+          path: h30-aggregate.json
+          if-no-files-found: error
+          retention-days: 90
