@@ -28,6 +28,7 @@ from typing import Sequence
 
 from cognitive_core.h8_active_causal_experiment import ActiveCausalExperimentPlanner
 from cognitive_core.h8_bayesian_active_experiment import BayesianActiveCausalExperimentPlanner
+from cognitive_core.h8_linear_active_experiment import BayesianLinearActiveCausalPlanner
 
 
 MAGNITUDES = (0.25, 0.50, 0.75, 1.00, 1.25, 1.50)
@@ -161,11 +162,17 @@ def run_method(
     seed: int,
 ) -> dict:
     if method_name == "h8":
-        planner: ActiveCausalExperimentPlanner = BayesianActiveCausalExperimentPlanner()
+        planner: ActiveCausalExperimentPlanner = BayesianLinearActiveCausalPlanner(
+            observation_variance=0.05 ** 2,
+        )
     elif method_name == "greedy":
-        planner = BayesianActiveCausalExperimentPlanner()
+        planner = BayesianLinearActiveCausalPlanner(
+            observation_variance=0.05 ** 2,
+        )
     elif method_name == "random":
-        planner = BayesianActiveCausalExperimentPlanner()
+        planner = BayesianLinearActiveCausalPlanner(
+            observation_variance=0.05 ** 2,
+        )
     else:
         raise ValueError(method_name)
 
