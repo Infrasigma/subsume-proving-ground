@@ -10,7 +10,12 @@ from hashlib import sha256
 from typing import Any
 
 from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
-from cognitive_core.recursive_cognitive_compiler import Trace, eval_expr, ast_depth
+from cognitive_core.recursive_cognitive_compiler import (
+    RecursiveCognitiveCompiler,
+    Trace,
+    eval_expr,
+    ast_depth,
+)
 
 
 BASE_BIN_OPS = ("add", "sub", "mul", "max", "min")
