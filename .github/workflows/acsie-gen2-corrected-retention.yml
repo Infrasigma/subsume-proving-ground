@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: acsie-i1-i5-pg-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   corrected-gen2:
     if: github.event.pull_request.head.ref == 'acsie-gen2-corrected-retention-20260927'
@@ -184,7 +188,7 @@ jobs:
       - name: Checkout exact ACSIE candidate
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "b8e16058b2d02e6e3545d11a5148d72637bda74e"
+          ACSIE_REF: "19038a5402ba534839e58c19d92a4ded75491ffc"
         run: |
           set -euo pipefail
           ASKPASS="$RUNNER_TEMP/acsie-askpass.sh"
@@ -225,11 +229,38 @@ jobs:
           mkdir -p "evidence/i1-i5/$SEED"
           set +e
           mkdir -p "evidence/i1-i5/$SEED"
-          python3 research/acsie_i1_i5_decisive_test.py --seed "$SEED" --stages 7 --out "evidence/i1-i5/$SEED" | tee "evidence/i1-i5/$SEED/stdout.json"
+          if [ "${{ steps.net.outputs.mode }}" != "unshare-net" ]; then
+            mkdir -p "evidence/i1-i5/$SEED"
+            printf '%s\n' '{"scientific_status":"BLOCKED","reason":"network_namespace_unavailable"}' > "evidence/i1-i5/$SEED/i1_i5_result.json"
+            printf '%s\n' '2' > "evidence/i1-i5/$SEED/exit_code"
+            exit 0
+          fi
+          unshare -Urn python3 research/acsie_i1_i5_decisive_test.py --seed "$SEED" --stages 7 --out "evidence/i1-i5/$SEED" | tee "evidence/i1-i5/$SEED/stdout.json"
           rc=${PIPESTATUS[0]}
           echo "$rc" > "evidence/i1-i5/$SEED/exit_code"
           test -f "evidence/i1-i5/$SEED/i1_i5_result.json"
           exit 0
+
+      - name: Add exact source/network identity
+        if: always()
+        env:
+          SEED: "${{ matrix.seed }}"
+          NET_MODE: "${{ steps.net.outputs.mode }}"
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path("evidence/i1-i5") / os.environ["SEED"] / "i1_i5_result.json"
+          d = json.loads(p.read_text())
+          d["source_identity"] = {
+              "acsie_commit": os.environ["ACSIE_COMMIT"],
+              "network_guard": os.environ["NET_MODE"],
+              "external_model": False,
+              "target_identity_accessible": False,
+              "manual_runtime_strategy": False,
+          }
+          p.write_text(json.dumps(d, indent=2, sort_keys=True))
+          PY
 
       - name: Upload scientific artifact
         if: always()
@@ -273,11 +304,20 @@ jobs:
               seed = row.get("seed")
               status = row.get("scientific_status")
               integrity = (row.get("integrity") or {}).get("integrity_ok")
-              if status != "PASSED" or integrity is not True:
+              ident = row.get("source_identity") or {}
+              if (
+                  status != "PASSED"
+                  or integrity is not True
+                  or ident.get("acsie_commit") != "19038a5402ba534839e58c19d92a4ded75491ffc"
+                  or ident.get("network_guard") != "unshare-net"
+                  or ident.get("external_model") is not False
+                  or ident.get("target_identity_accessible") is not False
+              ):
                   failures.append({
                       "seed": seed,
                       "scientific_status": status,
                       "integrity_ok": integrity,
+                      "source_identity": ident,
                   })
           print(json.dumps({"seed_results": rows, "failures": failures}, indent=2, sort_keys=True))
           if failures:
