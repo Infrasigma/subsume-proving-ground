@@ -18,6 +18,7 @@ from cognitive_core.open_ended_operator_algebra import (
 
 OBS = ("a", "b", "c", "d")
 OUT = ("u", "v", "w")
+START = "<START>"
 DEPTH = 3
 
 
@@ -27,14 +28,13 @@ class HiddenRouter:
     depth: int = DEPTH
 
     def apply(self, sequence: tuple[str, ...]) -> tuple[str, ...]:
-        start = ["<START>"] * (self.depth - 1)
-        buf = start + list(sequence)
-        return tuple(
-            self.table[tuple(buf[max(0, i + 1 - self.depth): i + 1])]
-            if i + 1 >= self.depth
-            else self.table[tuple(buf[: i + 1])]
-            for i in range(len(sequence))
-        )
+        prefix = [START] * (self.depth - 1)
+        prefix.extend(sequence[:0])
+        out = []
+        for i in range(len(sequence)):
+            history = prefix + list(sequence[:i])
+            out.append(self.table[tuple(history[-self.depth:])])
+        return tuple(out)
 
 
 @dataclass(frozen=True)
@@ -54,12 +54,19 @@ def stable_seed(seed: int, *parts: object) -> int:
     return int.from_bytes(sha256(raw).digest()[:8], "big")
 
 
-def make_router(seed: int, generation: int, salt: int) -> HiddenRouter:
+def make_router(
+    seed: int,
+    generation: int,
+    salt: int,
+    alphabet: tuple[str, ...],
+) -> HiddenRouter:
     rng = random.Random(stable_seed(seed, generation, salt, "router"))
-    table = {
-        history: rng.choice(OUT)
-        for history in itertools.product(OBS if generation == 0 else OUT, repeat=DEPTH)
-    }
+    table = {}
+    for pad in range(DEPTH - 1, -1, -1):
+        suffix_len = DEPTH - pad
+        for suffix in itertools.product(alphabet, repeat=suffix_len):
+            key = (START,) * pad + tuple(suffix)
+            table[key] = rng.choice(OUT)
     return HiddenRouter(table)
 
 
@@ -118,7 +125,7 @@ def run_seed(seed: int, generations: int) -> dict:
 
     for generation in range(generations):
         if generation == 0:
-            target: HiddenProgram = make_router(seed, generation, 0)
+            target: HiddenProgram = make_router(seed, generation, 0, OBS)
             parent_index = None
         else:
             parent_index = random.Random(
@@ -127,7 +134,7 @@ def run_seed(seed: int, generations: int) -> dict:
             parent = hidden_retained[parent_index]
             target = HiddenComposite(
                 parent=parent,
-                child=make_router(seed, generation, generation),
+                child=make_router(seed, generation, generation, OUT),
             )
             parent_indices.append(parent_index)
 
