@@ -5,12 +5,13 @@ on:
     paths:
       - ".github/workflows/q4-self-learning-kernel.yml"
       - ".github/workflows/q4-self-learning-kernel-trigger.txt"
+  pull_request:
   workflow_dispatch:
     inputs:
       acsie_ref:
         description: "Exact ACSIE commit SHA"
         required: true
-        default: "fe14edbc5621d77524c0999f6a033f6af0f8b307"
+        default: "e67fbc5970b932b099f93670b2886a3754597a70"
         type: string
 
 permissions:
@@ -24,7 +25,7 @@ jobs:
       - name: Run pinned self-learning kernel gate
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'fe14edbc5621d77524c0999f6a033f6af0f8b307' }}
+          ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || 'e67fbc5970b932b099f93670b2886a3754597a70' }}
         run: |
           set -euo pipefail
           WORK=/tmp/acsie-q4-self-kernel

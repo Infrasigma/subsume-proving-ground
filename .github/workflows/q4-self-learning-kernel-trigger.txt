@@ -1,1 +1,3 @@
 self-learning kernel trigger
+retention-repair-20260927
+clean-repair-20260927T1040Z
