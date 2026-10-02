@@ -206,6 +206,25 @@ def main():
     meta_baseline_core = loop.core.__class__.from_state(loop.core.export_state())
     meta_baseline_core.seed = seed + 92000
     meta_baseline_core.observe_batch(meta_ds["train"])
+    meta_baseline_fresh = score_core(meta_baseline_core, meta_ds["fresh"])
+    meta_baseline_holdout = score_core(meta_baseline_core, meta_ds["holdout"])
+    meta_baseline_transfer = score_core(meta_baseline_core, meta_ds["transfer"])
+    meta_future_baseline_core = loop.core.__class__.from_state(loop.core.export_state())
+    meta_future_baseline_core.seed = seed + 93001
+    meta_baseline_future = loop.experimenter and __import__(
+        "cognitive_core.recursive_research",
+        fromlist=["learning_curve_auc"],
+    ).learning_curve_auc(
+        meta_future_baseline_core,
+        meta_ds["future"],
+        (4, 8, 16, 32),
+    )
+    meta_baseline_metrics = {
+        "fresh": meta_baseline_fresh,
+        "holdout": meta_baseline_holdout,
+        "transfer": meta_baseline_transfer,
+        "future_learning_auc": meta_baseline_future,
+    }
     for index, candidate in enumerate(meta_candidates):
         meta_observed[candidate.fingerprint] = loop.experimenter.evaluate(
             loop.core,
@@ -214,6 +233,7 @@ def main():
             candidate,
             meta_ds,
             seed_offset=5000 + index,
+            baseline_metrics=meta_baseline_metrics,
         )
 
     def _rank_metrics(ranked):
