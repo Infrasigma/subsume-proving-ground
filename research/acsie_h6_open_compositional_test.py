@@ -196,7 +196,7 @@ def main():
             meta_ds["train"], {}, controller._fresh_core(), controller.config
         ),
         meta_ds["train"],
-        width=12,
+        width=48,
     )
     meta_rank = rank_regret(controller, tuple(meta_candidates), meta_ds)
 
@@ -258,6 +258,7 @@ def main():
         "withheld_novel_configuration_count": withheld_novel_configs,
         "hidden_target_signatures": sorted(target_sigs),
         "meta_test": meta_rank,
+        "meta_candidate_count": len(meta_candidates),
         "integrity": {
             "external_model": False,
             "network_dependency": False,
