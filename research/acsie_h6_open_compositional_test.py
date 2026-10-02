@@ -221,7 +221,7 @@ def main():
             meta_ds["train"], {}, controller._fresh_core(), controller.config
         ),
         meta_ds["train"],
-        width=12,
+        width=48,
     )
     meta_rank = rank_regret(controller, tuple(meta_candidates), meta_ds)
 
