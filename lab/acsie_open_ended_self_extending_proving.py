@@ -134,7 +134,9 @@ def mae(expr, rows, macros):
 def run_seed(seed: int, generations: int) -> dict[str, Any]:
     rng = random.Random(seed)
     learner = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed)
-    baseline = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed + 10091)
+    # Fixed baseline: no recursive depth growth and no retained-capability
+    # archive. This is the actual non-self-extending control.
+    baseline = RecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed + 10091)
 
     retained: list[HiddenCapability] = []
     generations_out = []
