@@ -48,8 +48,8 @@ jobs:
           test -n "$ACSIE_READ_TOKEN"
           rm -rf /tmp/acsie-h9e
           git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-h9e
-          git -C /tmp/acsie-h9e fetch --depth 1 origin "$ACSIE_REF"
-          git -C /tmp/acsie-h9e checkout --detach "$ACSIE_REF"
+          git -C /tmp/acsie-h9e fetch --depth 1 origin "research/h9-posterior-sampling-demand-20261003"
+          git -C /tmp/acsie-h9e checkout --detach FETCH_HEAD
           test "$(git -C /tmp/acsie-h9e rev-parse HEAD)" = "$ACSIE_REF"
       - name: Run exact H9-E unit tests
         run: |
