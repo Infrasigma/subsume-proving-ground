@@ -100,17 +100,25 @@ def rank_regret(controller: H6Controller, candidates, datasets):
         (r[2].future_learning_auc - r[2].baseline_future_learning_auc for r in rows),
         default=0.0
     )
-    rows_by_model = sorted(
+    model_ranked = sorted(
         rows,
-        key=lambda r: (controller.model.predict(r[0], controller.config, ()).predicted_future,
-                       r[0].signature()),
-        reverse=True
+        key=lambda r: (r[1].predicted_future, r[0].signature()),
+        reverse=True,
     )
-    top = (
-        rows_by_model[0][2].future_learning_auc - rows_by_model[0][2].baseline_future_learning_auc
-        if rows_by_model else 0.0
+    blind_ranked = sorted(rows, key=lambda r: r[0].signature())
+    model_top = (
+        model_ranked[0][2].future_learning_auc - model_ranked[0][2].baseline_future_learning_auc
+        if model_ranked else 0.0
     )
-    return max(0.0, best - top)
+    blind_top = (
+        blind_ranked[0][2].future_learning_auc - blind_ranked[0].baseline_future_learning_auc
+        if blind_ranked else 0.0
+    )
+    return {
+        "model_regret": max(0.0, best - model_top),
+        "blind_regret": max(0.0, best - blind_top),
+        "model_better": model_top > blind_top,
+    }
 
 
 def main():
@@ -184,7 +192,7 @@ def main():
         meta_ds["train"],
         width=12,
     )
-    blind_regret = rank_regret(controller, tuple(meta_candidates), meta_ds)
+    meta_rank = rank_regret(controller, tuple(meta_candidates), meta_ds)
 
     target_recovery = 0
     target_sigs = {t.signature() for t in targets}
@@ -201,7 +209,7 @@ def main():
         and novel_count >= 3
         and repeated_q_improvement
         and target_recovery >= 1
-        and blind_regret >= 0.0
+        and meta_rank["model_better"]
     ) else "FAILED"
 
     artifact = {
@@ -216,7 +224,7 @@ def main():
         "generated_compositional_candidate_count": novel_count,
         "withheld_target_recovery_count": target_recovery,
         "hidden_target_signatures": sorted(target_sigs),
-        "meta_test_blind_regret": blind_regret,
+        "meta_test": meta_rank,
         "integrity": {
             "external_model": False,
             "network_dependency": False,
