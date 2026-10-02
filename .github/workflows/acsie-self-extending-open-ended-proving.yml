@@ -8,7 +8,7 @@ permissions:
   contents: read
 jobs:
   open-ended-self-extending:
-    if: startsWith(github.ref_name, 'research/open-ended-self-extending-proving-20261003')
+    if: github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'research/open-ended-self-extending-proving-20261003') || github.event_name == 'push' && startsWith(github.ref_name, 'research/open-ended-self-extending-proving-20261003')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
