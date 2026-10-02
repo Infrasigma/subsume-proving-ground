@@ -109,7 +109,7 @@ jobs:
         working-directory: acsie-q4-reuse
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "bfd621cbac20670933d0fddcae46ce25add38a89"
+          test "$(git rev-parse HEAD)" = "b953d4747f7fddb793d45430a905017bf3e752fd"
           test "$(git merge-base --is-ancestor 'dc99642ec3fefa13239342cf4ce5ab1929874f32' HEAD; echo $?)" = "0"
       - name: Run Q4 reuse-reserve experiment
         working-directory: acsie-q4-reuse
