@@ -1,0 +1,74 @@
+name: H9-E ledger execution
+on:
+  push:
+    paths:
+      - ".github/workflows/h9e-ledger-execution.yml"
+      - "lab/acsie_h9e_independent_proving.py"
+permissions:
+  contents: read
+  issues: write
+jobs:
+  h9e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare result capture
+        run: |
+          : > h9e-ledger-result.txt
+          echo "LEDGER_ISSUE=154" >> h9e-ledger-result.txt
+      - name: Clone exact ACSIE H9-E branch and verify SHA
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "9b80411c1df70badb14bfeda38a151b640f76531"
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          rm -rf /tmp/acsie-h9e
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-h9e
+          git -C /tmp/acsie-h9e fetch --depth 1 origin "research/h9-posterior-sampling-demand-20261003"
+          git -C /tmp/acsie-h9e checkout --detach FETCH_HEAD
+          actual="$(git -C /tmp/acsie-h9e rev-parse HEAD)"
+          test "$actual" = "$ACSIE_REF"
+          echo "ACSIE_HEAD=$actual" >> "$GITHUB_WORKSPACE/h9e-ledger-result.txt"
+      - name: Run H9-E unit tests and scientific gate
+        env:
+          ACSIE_REF: "9b80411c1df70badb14bfeda38a151b640f76531"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          python3 -m venv /tmp/acsie-h9e-venv
+          . /tmp/acsie-h9e-venv/bin/activate
+          python -m pip install --upgrade pip pytest >> "$GITHUB_WORKSPACE/h9e-ledger-result.txt" 2>&1
+          PYTHONPATH=/tmp/acsie-h9e pytest -q /tmp/acsie-h9e/tests/test_h9_posterior_sampling_demand.py >> "$GITHUB_WORKSPACE/h9e-ledger-result.txt" 2>&1
+          UNIT_RC=$?
+          echo "UNIT_TEST_RC=$UNIT_RC" >> "$GITHUB_WORKSPACE/h9e-ledger-result.txt"
+          if [ "$UNIT_RC" -eq 0 ]; then
+            PYTHONPATH=/tmp/acsie-h9e python3 lab/acsie_h9e_independent_proving.py --strict >> "$GITHUB_WORKSPACE/h9e-ledger-result.txt" 2>&1
+            SCI_RC=$?
+            echo "SCIENTIFIC_GATE_RC=$SCI_RC" >> "$GITHUB_WORKSPACE/h9e-ledger-result.txt"
+          else
+            echo "SCIENTIFIC_GATE=NOT_RUN_DUE_UNIT_FAILURE" >> "$GITHUB_WORKSPACE/h9e-ledger-result.txt"
+          fi
+          exit 0
+      - name: Publish result to issue ledger
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          body = "## H9-E ledger execution\n\n" + Path("h9e-ledger-result.txt").read_text()
+          subprocess.run(
+              ["gh","api","repos/Infrasigma/subsume-proving-ground/issues/154/comments",
+               "--method","POST","-f",f"body={body}"],
+              check=False,
+          )
+          PY
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h9e-ledger-evidence-${{ github.sha }}
+          path: h9e-ledger-result.txt
