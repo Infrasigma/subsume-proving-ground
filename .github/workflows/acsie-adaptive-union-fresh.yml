@@ -1,0 +1,45 @@
+name: ACSIE adaptive-union fresh Gen2 probe
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  fresh:
+    if: github.event.pull_request.head.ref == 'acsie-adaptive-union-fresh-gen2-probe-20260927'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run fresh Gen2 adaptive-union probe
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "46a0c35457d83f9728d91aa9947d6c2b56d2bfb2"
+        run: |
+          set -euo pipefail
+          WORK=/tmp/acsie-fresh-union
+          ASKPASS=/tmp/acsie-askpass.sh
+          trap 'rm -rf "$WORK" "$ASKPASS"' EXIT
+          : "${ACSIE_READ_TOKEN:?ACSIE_READ_TOKEN is required}"
+          cat > "$ASKPASS" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$ACSIE_READ_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 "$ASKPASS"
+          export GIT_ASKPASS="$ASKPASS"
+          export GIT_TERMINAL_PROMPT=0
+          git clone -q --no-checkout https://github.com/Infrasigma/ACSIE.git "$WORK"
+          git -C "$WORK" checkout --detach --force "$ACSIE_REF"
+          [[ "$(git -C "$WORK" rev-parse HEAD)" == "$ACSIE_REF" ]]
+          cd "$WORK"
+          python3 -m venv "$WORK/.venv"
+          . "$WORK/.venv/bin/activate"
+          python -m pip install -q pytest
+          PYTHONPATH="$WORK" pytest -q tests/test_native_independent_core.py
+          PYTHONPATH="$WORK" python research/native_self_learning_kernel_gen2_corrected_retention_v1.py
