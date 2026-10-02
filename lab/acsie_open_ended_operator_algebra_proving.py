@@ -73,9 +73,52 @@ def make_router(
     return HiddenRouter(table)
 
 
-def sample_sequence(seed: int, generation: int, split: str, idx: int, length: int = 512) -> tuple[str, ...]:
-    rng = random.Random(stable_seed(seed, generation, split, idx))
+def sample_sequence(
+    seed: int,
+    generation: int,
+    split: str,
+    idx: int,
+    length: int = 128,
+) -> tuple[str, ...]:
+    rng = random.Random(stable_seed(seed, generation, split, idx, "sequence"))
     return tuple(rng.choice(OBS) for _ in range(length))
+
+
+def _history_key(sequence, index, depth):
+    prefix = [START] * (depth - 1)
+    prefix.extend(sequence[:index])
+    return tuple(prefix[-depth:])
+
+
+def _history_coverage(
+    sequences: list[tuple[str, ...]],
+    alphabet: tuple[str, ...],
+    depth: int,
+) -> tuple[set[tuple[str, ...]], set[tuple[str, ...]]]:
+    full = set()
+    warm = set()
+    for sequence in sequences:
+        for i in range(len(sequence)):
+            key = _history_key(sequence, i, depth)
+            if i < depth:
+                warm.add(key)
+            else:
+                full.add(key)
+    return full, warm
+
+
+def _required_full_keys(alphabet, depth):
+    return set(itertools.product(alphabet, repeat=depth))
+
+
+def _required_warm_keys(alphabet, depth):
+    required = {(START,) * (depth - 1)}
+    for prefix_len in range(1, depth):
+        for suffix in itertools.product(alphabet, repeat=prefix_len):
+            padded = [START] * (depth - 1)
+            padded.extend(suffix)
+            required.add(tuple(padded[-depth:]))
+    return required
 
 
 def make_dataset(
@@ -86,10 +129,43 @@ def make_dataset(
     count: int,
 ) -> tuple[tuple[tuple[str, ...], tuple[str, ...]], ...]:
     rows = []
-    for i in range(count):
-        source = sample_sequence(seed, generation, split, i)
-        target_out = target.apply(source)
-        rows.append((source, target_out))
+    sequences = []
+    parent_sequences = []
+    rng = random.Random(stable_seed(seed, generation, split, "dataset"))
+    attempts = 0
+
+    while attempts < 200:
+        attempts += 1
+        idx = len(sequences) + attempts
+        source = sample_sequence(seed, generation, split, idx)
+        sequences.append(source)
+
+        if isinstance(target, HiddenComposite):
+            parent_sequences.append(target.parent.apply(source))
+
+        needed_raw_full = _required_full_keys(OBS, DEPTH)
+        needed_raw_warm = _required_warm_keys(OBS, DEPTH)
+        raw_full, raw_warm = _history_coverage(sequences, OBS, DEPTH)
+        raw_complete = needed_raw_full.issubset(raw_full) and needed_raw_warm.issubset(raw_warm)
+
+        parent_complete = True
+        if parent_sequences:
+            parent_full, parent_warm = _history_coverage(parent_sequences, OUT, DEPTH)
+            parent_complete = (
+                _required_full_keys(OUT, DEPTH).issubset(parent_full)
+                and _required_warm_keys(OUT, DEPTH).issubset(parent_warm)
+            )
+
+        if raw_complete and parent_complete and len(sequences) >= count:
+            break
+
+    if not sequences:
+        raise RuntimeError("coverage generator produced no sequences")
+
+    for source in sequences:
+        rows.append((source, target.apply(source)))
+    if len(rows) < count:
+        raise RuntimeError("coverage generator exhausted before minimum row count")
     return tuple(rows)
 
 
