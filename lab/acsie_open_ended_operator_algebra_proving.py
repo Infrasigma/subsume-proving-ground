@@ -62,11 +62,15 @@ def make_router(
 ) -> HiddenRouter:
     rng = random.Random(stable_seed(seed, generation, salt, "router"))
     table = {}
-    for pad in range(DEPTH - 1, -1, -1):
-        suffix_len = DEPTH - pad
-        for suffix in itertools.product(alphabet, repeat=suffix_len):
-            key = (START,) * pad + tuple(suffix)
-            table[key] = rng.choice(OUT)
+    # Match the learner's warm-up history semantics exactly:
+    # the first output sees DEPTH-1 start markers, then subsequent outputs
+    # use padded/full causal histories.
+    table[(START,) * (DEPTH - 1)] = rng.choice(OUT)
+    if DEPTH > 1:
+        for suffix in itertools.product(alphabet, repeat=DEPTH - 1):
+            table[(START,) + tuple(suffix)] = rng.choice(OUT)
+    for full in itertools.product(alphabet, repeat=DEPTH):
+        table[tuple(full)] = rng.choice(OUT)
     return HiddenRouter(table)
 
 
