@@ -247,8 +247,12 @@ def run_seed(seed: int, generations: int) -> dict:
                 and base_transfer >= 1.0
             )
 
+        # The hidden world retains the independently generated oracle
+        # program only after the learner has actually solved and retained the
+        # corresponding executable capability. The oracle never depends on the
+        # learner's internal operator library.
         if active_ok and active_op is not None:
-            hidden_retained.append(active_op)
+            hidden_retained.append(target)
 
         active_records.append(
             {
