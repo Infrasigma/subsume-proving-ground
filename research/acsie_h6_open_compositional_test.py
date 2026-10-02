@@ -276,6 +276,7 @@ def main():
         and repeated_q_improvement
         and meta_rank["model_better"]
         and meta_rank["model_excess_over_chance"] > 0.0
+        and meta_rank["top_k_excess_over_chance"] > 0.0
     ) else "FAILED"
 
     artifact = {
