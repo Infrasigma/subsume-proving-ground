@@ -549,18 +549,56 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                     flush=True,
                 )
 
-                cproc = learner.synthesize_process(closure_discovery_rows, cv, co)
+                if hasattr(learner, "synthesize_process_frontier"):
+                    cprocs = tuple(
+                        learner.synthesize_process_frontier(
+                            closure_discovery_rows,
+                            cv,
+                            co,
+                            max_candidates=32,
+                        )
+                    )
+                else:
+                    fallback = learner.synthesize_process(closure_discovery_rows, cv, co)
+                    cprocs = (fallback,) if fallback is not None else ()
+
                 competence = False
                 reuse_ok = False
-                if cproc is not None:
-                    ceval = learner.evaluate(cproc, ctr, ch, cv, co, ())
-                    competence = bool(ceval.accepted and ceval.ood_error <= 1e-9)
-                    expected = {left_parent.primitive_id, right_parent.primitive_id}
+                expected = {left_parent.primitive_id, right_parent.primitive_id}
+                selected_proc = None
+                frontier_lineage_matches = 0
+                for candidate_proc in cprocs:
+                    ceval = learner.evaluate(candidate_proc, ctr, ch, cv, co, ())
+                    candidate_competence = bool(
+                        ceval.accepted and ceval.ood_error <= 1e-9
+                    )
                     candidate_lineage = primitive_lineage_ids(
                         learner,
-                        tuple(cproc.used_primitives),
+                        tuple(candidate_proc.used_primitives),
                     )
-                    reuse_ok = competence and expected.issubset(candidate_lineage)
+                    if candidate_competence:
+                        competence = True
+                        if selected_proc is None:
+                            selected_proc = candidate_proc
+                    if candidate_competence and expected.issubset(candidate_lineage):
+                        frontier_lineage_matches += 1
+                        reuse_ok = True
+
+                cproc = selected_proc
+                print(
+                    json.dumps(
+                        {
+                            "event": "PROCESS_FRONTIER_CLOSURE_AUDIT",
+                            "seed": seed,
+                            "generation": generation,
+                            "expected_parent_ids": sorted(expected),
+                            "frontier_size": len(cprocs),
+                            "frontier_lineage_matches": frontier_lineage_matches,
+                        },
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
                 closure_rates.append(float(competence))
                 closure_reuse_rates.append(float(reuse_ok))
                 semantic_matches = semantic_parent_match_count(
