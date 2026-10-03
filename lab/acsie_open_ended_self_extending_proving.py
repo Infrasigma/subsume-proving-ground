@@ -166,6 +166,54 @@ def mae(expr, rows, macros):
     return statistics.fmean(vals)
 
 
+def semantic_parent_match_count(
+    learner: RecursiveCognitiveCompiler,
+    expected_caps: tuple[HiddenCapability, ...],
+    used_primitive_ids: tuple[str, ...],
+    rows: tuple[Trace, ...],
+    hidden_macros: dict[str, dict[str, Any]],
+) -> int:
+    if not expected_caps or not used_primitive_ids:
+        return 0
+    pmap = learner._pmap()
+    used_vectors: dict[str, tuple[float, ...]] = {}
+    for pid in used_primitive_ids:
+        primitive = learner.primitives.get(pid)
+        if primitive is None:
+            continue
+        try:
+            used_vectors[pid] = tuple(
+                float(eval_expr(primitive.expression, row.inputs, pmap))
+                for row in rows
+            )
+        except Exception:
+            continue
+
+    expected_vectors: list[tuple[float, ...]] = []
+    for cap in expected_caps:
+        try:
+            expected_vectors.append(
+                tuple(
+                    float(eval_hidden(cap.expression, row.inputs, hidden_macros))
+                    for row in rows
+                )
+            )
+        except Exception:
+            expected_vectors.append(())
+
+    matched: set[str] = set()
+    count = 0
+    for expected_vector in expected_vectors:
+        for pid, vector in used_vectors.items():
+            if pid in matched:
+                continue
+            if vector == expected_vector:
+                matched.add(pid)
+                count += 1
+                break
+    return count
+
+
 def retained_representation_error(
     learner: RecursiveCognitiveCompiler,
     cap: HiddenCapability,
@@ -345,6 +393,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         closure_rates = []
         baseline_closure_rates = []
         closure_reuse_rates = []
+        semantic_closure_reuse_rates = []
         closure_parent_fidelity = []
         closure_trap_count = 0
         if len(retained) >= 2:
@@ -383,6 +432,19 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                     reuse_ok = competence and expected.issubset(set(cproc.used_primitives))
                 closure_rates.append(float(competence))
                 closure_reuse_rates.append(float(reuse_ok))
+                semantic_matches = semantic_parent_match_count(
+                    learner,
+                    (left_parent, right_parent),
+                    tuple(cproc.used_primitives) if cproc is not None else tuple(),
+                    tuple(ctr),
+                    closure_macros,
+                )
+                semantic_closure_reuse_rates.append(
+                    float(
+                        semantic_matches == len((left_parent, right_parent))
+                        and competence
+                    )
+                )
                 closure_parent_fidelity.append(
                     statistics.fmean(parent_fidelities.values())
                 )
@@ -399,6 +461,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         probe_rates = []
         baseline_probe_rates = []
         probe_reuse_rates = []
+        semantic_probe_reuse_rates = []
         probe_parent_fidelity = []
         probe_trap_count = 0
         for probe_idx in range(4):
@@ -427,6 +490,20 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 reuse_ok = competence and (not expected or expected.issubset(set(proc.used_primitives)))
             probe_rates.append(float(competence))
             probe_reuse_rates.append(float(reuse_ok))
+            semantic_probe_matches = semantic_parent_match_count(
+                learner,
+                probe_parents,
+                tuple(proc.used_primitives) if proc is not None else tuple(),
+                tuple(ptrain),
+                probe_macros,
+            )
+            semantic_probe_reuse_rates.append(
+                float(
+                    probe_parents
+                    and semantic_probe_matches == len(probe_parents)
+                    and competence
+                )
+            )
             if probe_parents:
                 probe_parent_fidelity.append(
                     statistics.fmean(
@@ -459,6 +536,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "closure_success_rate": statistics.fmean(closure_rates) if closure_rates else 0.0,
                 "baseline_closure_success_rate": statistics.fmean(baseline_closure_rates) if baseline_closure_rates else 0.0,
                 "closure_reuse_rate": statistics.fmean(closure_reuse_rates) if closure_reuse_rates else 0.0,
+                "semantic_closure_reuse_rate": statistics.fmean(semantic_closure_reuse_rates) if semantic_closure_reuse_rates else 0.0,
                 "closure_pair_count": len(closure_rates),
                 "closure_success_count": int(sum(closure_rates)),
                 "closure_reuse_success_count": int(sum(closure_reuse_rates)),
@@ -471,6 +549,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "probe_success_rate": statistics.fmean(probe_rates),
                 "baseline_probe_success_rate": statistics.fmean(baseline_probe_rates),
                 "probe_reuse_rate": statistics.fmean(probe_reuse_rates),
+                "semantic_probe_reuse_rate": statistics.fmean(semantic_probe_reuse_rates) if semantic_probe_reuse_rates else 0.0,
                 "probe_parent_fidelity": (
                     statistics.fmean(probe_parent_fidelity)
                     if probe_parent_fidelity else 0.0
@@ -572,6 +651,8 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         "final_probe_reuse_rate": final_probe_reuse_rate,
         "final_closure_parent_fidelity": final["closure_parent_fidelity"],
         "final_probe_parent_fidelity": final["probe_parent_fidelity"],
+        "final_semantic_closure_reuse_rate": final["semantic_closure_reuse_rate"],
+        "final_semantic_probe_reuse_rate": final["semantic_probe_reuse_rate"],
         "max_generated_expressions": max(
             int(row["search_stats"].get("generated_expressions", 0))
             for row in generations_out
