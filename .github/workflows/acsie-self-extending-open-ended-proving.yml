@@ -12,8 +12,8 @@ permissions:
   contents: read
 jobs:
   open-ended-self-extending:
-    runs-on: ubuntu-slim
-    timeout-minutes: 45
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - name: Clone exact ACSIE research commit
