@@ -36,8 +36,8 @@ jobs:
           python3 -u - <<'PY'
           import json, time
           import lab.acsie_open_ended_self_extending_proving as proving
-          print(json.dumps({"event":"DIAGNOSTIC_START","seed":2026100301,"generations":2,"acsie_ref":"f90138a34facf6ba8e7de456cee8e0cb44363cf3"}), flush=True)
+          print(json.dumps({"event":"DIAGNOSTIC_START","seed":2026100301,"generations":6,"acsie_ref":"f90138a34facf6ba8e7de456cee8e0cb44363cf3"}), flush=True)
           t0 = time.time()
-          result = proving.run_seed(2026100301, 2)
+          result = proving.run_seed(2026100301, 6)
           print(json.dumps({"event":"DIAGNOSTIC_DONE","elapsed_seconds":time.time()-t0,"result":result}, sort_keys=True), flush=True)
           PY
