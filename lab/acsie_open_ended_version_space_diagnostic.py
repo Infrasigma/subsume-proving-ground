@@ -11,7 +11,6 @@ from cognitive_core.recursive_cognitive_compiler import Trace, eval_expr
 from lab.acsie_open_ended_self_extending_proving import (
     BASE_BIN_OPS,
     KEYS,
-    capability_macro,
     hard_bootstrap_expr,
     make_traces,
     expanded_depth,
@@ -19,6 +18,10 @@ from lab.acsie_open_ended_self_extending_proving import (
     retained_representation_error,
     primitive_lineage_ids,
 )
+
+def capability_macro(cap):
+    return {"op": "macro", "id": cap.hidden_id if hasattr(cap, "hidden_id") else cap["hidden_id"]}
+
 
 def run_seed(seed: int = 2026100303, generations: int = 12) -> dict:
     rng = random.Random(seed)
