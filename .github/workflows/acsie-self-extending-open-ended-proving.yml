@@ -1,28 +1,34 @@
 name: ACSIE self-extending open-ended proving
+# Resource-stability experiment: release logically dominated states; scientific gate remains unchanged.
 on:
   push:
+    branches:
+      - research/open-ended-self-extending-proving-20261003-resource-f557
   pull_request:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
+concurrency:
+  group: acsie-self-extending-open-ended-${{ github.ref }}
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
   open-ended-self-extending:
-    if: github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'research/open-ended-self-extending-proving-20261003') || github.event_name == 'push' && startsWith(github.ref_name, 'research/open-ended-self-extending-proving-20261003')
-    runs-on: ubuntu-slim
-    timeout-minutes: 45
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - name: Clone exact ACSIE research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "d053f729d3ca1f3f46d5c206b3c43437857ae258"
+          ACSIE_REF: "0f0c742bbe8131d3d1775b7c5dbbb8cea114e4bd"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
           rm -rf /tmp/acsie-open-ended-self-extending
           git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-open-ended-self-extending
-          git -C /tmp/acsie-open-ended-self-extending fetch --depth 1 origin "research/open-ended-self-extending-core-20261003"
+          git -C /tmp/acsie-open-ended-self-extending fetch --depth 1 origin "$ACSIE_REF"
           git -C /tmp/acsie-open-ended-self-extending checkout --detach FETCH_HEAD
           test "$(git -C /tmp/acsie-open-ended-self-extending rev-parse HEAD)" = "$ACSIE_REF"
       - name: Run exact unit tests
@@ -37,21 +43,21 @@ jobs:
           : > open-ended-self-extending-result.txt
           {
             echo "WORKFLOW_SHA=${{ github.sha }}"
-            echo "ACSIE_REF=d053f729d3ca1f3f46d5c206b3c43437857ae258"
+            echo "ACSIE_REF=0f0c742bbe8131d3d1775b7c5dbbb8cea114e4bd"
             echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> open-ended-self-extending-result.txt
       - name: Run five-seed open-ended growth gate
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONPATH: /tmp/acsie-open-ended-self-extending
-          ACSIE_REF: "d053f729d3ca1f3f46d5c206b3c43437857ae258"
+          ACSIE_REF: "0f0c742bbe8131d3d1775b7c5dbbb8cea114e4bd"
         run: |
           set +e
           . /tmp/open-ended-venv/bin/activate
-          python3 -u lab/acsie_open_ended_self_extending_proving.py --strict > open-ended-self-extending-result.txt 2>&1
-          rc=$?
-          echo "SCIENTIFIC_GATE_RC=$rc" >> open-ended-self-extending-result.txt
-          cat open-ended-self-extending-result.txt
+          set -o pipefail
+          python3 -u lab/acsie_open_ended_self_extending_proving.py --strict 2>&1 | tee -a open-ended-self-extending-result.txt
+          rc=${PIPESTATUS[0]}
+          echo "SCIENTIFIC_GATE_RC=$rc" | tee -a open-ended-self-extending-result.txt
           exit "$rc"
       - name: Upload evidence
         if: always()
