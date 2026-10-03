@@ -228,6 +228,11 @@ def macro_frontier_representation_count(
         nonlocal matches
         if not any(node.get("op") == "macro" for node in RecursiveCognitiveCompiler()._walk(expr)):
             return
+        if expr.get("op") in {"add", "mul", "max", "min"}:
+            left_key = json.dumps(expr["left"], sort_keys=True, separators=(",", ":"))
+            right_key = json.dumps(expr["right"], sort_keys=True, separators=(",", ":"))
+            if left_key > right_key:
+                expr = {"op": expr["op"], "left": expr["right"], "right": expr["left"]}
         key = json.dumps(expr, sort_keys=True, separators=(",", ":"))
         if key in seen:
             return
