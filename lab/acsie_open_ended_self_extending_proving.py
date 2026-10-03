@@ -560,6 +560,17 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
             if not generations_out
             else generations_out[-1]["runtime_max_depth"]
         )
+        progress = {
+            "seed": seed,
+            "generation": generation,
+            "retained_count": len(retained),
+            "runtime_max_depth": int(learner.meta_policy["max_depth"]),
+            "generated_expressions": int(learner.last_search_stats.get("generated_expressions", 0)),
+            "unique_search_states": int(learner.last_search_stats.get("unique_states", 0)),
+            "max_states_in_depth": int(learner.last_search_stats.get("max_states_in_depth", 0)),
+            "process_history_size": len(learner.processes),
+        }
+        print("GENERATION_CHECKPOINT=" + json.dumps(progress, sort_keys=True), flush=True)
         generations_out.append(
             {
                 "generation": generation,
