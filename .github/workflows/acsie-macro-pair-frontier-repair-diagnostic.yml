@@ -1,3 +1,4 @@
+# Scientific diagnostic only; no target identity is supplied.
 name: ACSIE macro-pair frontier repair diagnostic
 on:
   push:
