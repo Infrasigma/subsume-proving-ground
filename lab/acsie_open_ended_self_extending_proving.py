@@ -26,6 +26,7 @@ KEYS = ("x", "y", "z")
 @dataclass(frozen=True)
 class HiddenCapability:
     hidden_id: str
+    primitive_id: str
     expression: dict[str, Any]
     depth: int
     generation: int
@@ -233,6 +234,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 retained.append(
                     HiddenCapability(
                         hidden_id=hidden_id,
+                        primitive_id=primitive.primitive_id,
                         expression=target,
                         depth=target_depth,
                         generation=generation,
