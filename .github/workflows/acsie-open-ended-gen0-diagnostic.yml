@@ -1,0 +1,40 @@
+name: ACSIE open-ended Gen-0 diagnostic
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  gen0-diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone exact ACSIE research commit
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "02db816c32468afe40e375520aa5d0f706d56940"
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          rm -rf /tmp/acsie-open-ended-diagnostic
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-open-ended-diagnostic
+          git -C /tmp/acsie-open-ended-diagnostic fetch --depth 1 origin "$ACSIE_REF"
+          git -C /tmp/acsie-open-ended-diagnostic checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie-open-ended-diagnostic rev-parse HEAD)" = "$ACSIE_REF"
+      - name: Run one-seed Gen-0 diagnostic
+        env:
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: /tmp/acsie-open-ended-diagnostic
+          ACSIE_REF: "02db816c32468afe40e375520aa5d0f706d56940"
+        run: |
+          python3 -u - <<'PY'
+          import json, time
+          import lab.acsie_open_ended_self_extending_proving as proving
+          print(json.dumps({"event":"DIAGNOSTIC_START","seed":2026100301,"generations":1,"acsie_ref":"02db816c32468afe40e375520aa5d0f706d56940"}), flush=True)
+          t0 = time.time()
+          result = proving.run_seed(2026100301, 1)
+          print(json.dumps({"event":"DIAGNOSTIC_DONE","elapsed_seconds":time.time()-t0,"result":result}, sort_keys=True), flush=True)
+          PY
