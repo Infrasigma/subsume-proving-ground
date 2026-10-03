@@ -209,9 +209,6 @@ def synthesize_discovery_only(
 def run_seed(seed: int, generations: int) -> dict[str, Any]:
     rng = random.Random(seed)
     learner = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed)
-    # Fixed baseline: no recursive depth growth and no retained-capability
-    # archive. This is the actual non-self-extending control.
-    baseline = RecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed + 10091)
 
     retained: list[HiddenCapability] = []
     generations_out = []
@@ -295,14 +292,26 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                     )
                 )
 
-        baseline.generation = 0
-        bprim = baseline.invent_primitive(train, hold, transfer)
+        # Fresh direct-task control: it gets the same observations for this
+        # generation but cannot carry prior archive state forward.
+        baseline_direct = RecursiveCognitiveCompiler(
+            max_depth=2, population=24, seed=seed + 10091 + generation
+        )
+        baseline_direct.generation = 0
+        bprim = baseline_direct.invent_primitive(train, hold, transfer)
         baseline_accepted = False
         if bprim is not None:
-            b_ood = mae(bprim.expression, ood, baseline._pmap())
+            b_ood = mae(bprim.expression, ood, baseline_direct._pmap())
             baseline_accepted = (
                 bprim.transfer_error <= 1e-9 and b_ood <= 1e-9
             )
+
+        # Fresh non-recursive control for closure/probe tests. It has no
+        # retained ACSIE capabilities and is reset independently each
+        # generation, so longitudinal gains cannot come from baseline memory.
+        baseline = RecursiveCognitiveCompiler(
+            max_depth=2, population=24, seed=seed + 21091 + generation
+        )
 
         closure_rates = []
         baseline_closure_rates = []
