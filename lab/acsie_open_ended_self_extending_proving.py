@@ -302,6 +302,8 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
 
         closure_rates = []
         baseline_closure_rates = []
+        closure_reuse_rates = []
+        closure_trap_count = 0
         if len(retained) >= 2:
             pairs = [
                 (retained[i], retained[j])
@@ -315,95 +317,66 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                     "right": capability_macro(right_parent),
                 }
                 closure_macros = hidden_library()
-                ctr = make_traces(
-                    closure_expr, seed + 1700 + pair_idx, generation,
-                    "closure_train", 8, 0.13, closure_macros
-                )
-                cv = make_traces(
-                    closure_expr, seed + 1700 + pair_idx, generation,
-                    "closure_transfer", 5, -0.19, closure_macros
-                )
-                co = make_traces(
-                    closure_expr, seed + 1700 + pair_idx, generation,
-                    "closure_ood", 5, 0.29, closure_macros
-                )
+                ctr = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_train', 8, 0.13, closure_macros)
+                cv = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_transfer', 5, -0.19, closure_macros)
+                co = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_ood', 5, 0.29, closure_macros)
                 cproc = learner.synthesize_process(ctr, cv, co)
+                competence = False
+                reuse_ok = False
                 if cproc is not None:
                     ceval = learner.evaluate(cproc, ctr, cv, cv, co, ())
-                    closure_rates.append(
-                        float(ceval.accepted and ceval.ood_error <= 1e-9)
-                    )
-                else:
-                    closure_rates.append(0.0)
-                bproc = baseline.synthesize_process(ctr, cv, co)
+                    competence = bool(ceval.accepted and ceval.ood_error <= 1e-9)
+                    expected = {left_parent.primitive_id, right_parent.primitive_id}
+                    reuse_ok = competence and expected.issubset(set(cproc.used_primitives))
+                closure_rates.append(float(competence))
+                closure_reuse_rates.append(float(reuse_ok))
+                if competence and not reuse_ok:
+                    closure_trap_count += 1
+
+                bproc = synthesize_discovery_only(baseline, ctr, cv)
+                bcompetence = False
                 if bproc is not None:
                     beval = baseline.evaluate(bproc, ctr, cv, cv, co, ())
-                    baseline_closure_rates.append(
-                        float(beval.accepted and beval.ood_error <= 1e-9)
-                    )
-                else:
-                    baseline_closure_rates.append(0.0)
+                    bcompetence = bool(beval.accepted and beval.ood_error <= 1e-9)
+                baseline_closure_rates.append(float(bcompetence))
 
         probe_rates = []
         baseline_probe_rates = []
+        probe_reuse_rates = []
+        probe_trap_count = 0
         for probe_idx in range(4):
-            probe_parents = tuple(
-                rng.sample(retained, 2)
-            ) if len(retained) >= 2 else tuple(retained[:1])
+            probe_parents = tuple(rng.sample(retained, 2)) if len(retained) >= 2 else tuple(retained[:1])
             probe_macros = hidden_library()
             if probe_parents:
                 if len(probe_parents) == 1:
-                    probe = {
-                        "op": "add",
-                        "left": capability_macro(probe_parents[0]),
-                        "right": {"op": "get", "key": KEYS[probe_idx % len(KEYS)]},
-                    }
+                    probe = {'op': 'add', 'left': capability_macro(probe_parents[0]), 'right': {'op': 'get', 'key': KEYS[probe_idx % len(KEYS)]}}
                 else:
-                    probe = {
-                        "op": "add",
-                        "left": capability_macro(probe_parents[0]),
-                        "right": capability_macro(probe_parents[1]),
-                    }
+                    probe = {'op': 'add', 'left': capability_macro(probe_parents[0]), 'right': capability_macro(probe_parents[1])}
             else:
-                probe = random_base_expr(
-                    random.Random(seed * 193 + generation * 17 + probe_idx),
-                    3,
-                )
+                probe = random_base_expr(random.Random(seed * 193 + generation * 17 + probe_idx), 3)
 
-            ptrain = make_traces(
-                probe, seed + 700 + probe_idx, generation,
-                "probe_train", 8, 0.17, probe_macros
-            )
-            ptransfer = make_traces(
-                probe, seed + 700 + probe_idx, generation,
-                "probe_transfer", 5, -0.22, probe_macros
-            )
-            pood = make_traces(
-                probe, seed + 700 + probe_idx, generation,
-                "probe_ood", 5, 0.41, probe_macros
-            )
+            ptrain = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_train', 8, 0.17, probe_macros)
+            ptransfer = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_transfer', 5, -0.22, probe_macros)
+            pood = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_ood', 5, 0.41, probe_macros)
             proc = learner.synthesize_process(ptrain, ptransfer, pood)
+            competence = False
+            reuse_ok = False
             if proc is not None:
-                peval = learner.evaluate(
-                    proc, ptrain, ptransfer, ptransfer, pood, ()
-                )
-                probe_rates.append(
-                    float(peval.accepted and peval.ood_error <= 1e-9)
-                )
-            else:
-                probe_rates.append(0.0)
+                peval = learner.evaluate(proc, ptrain, ptransfer, ptransfer, pood, ())
+                competence = bool(peval.accepted and peval.ood_error <= 1e-9)
+                expected = {p.primitive_id for p in probe_parents}
+                reuse_ok = competence and (not expected or expected.issubset(set(proc.used_primitives)))
+            probe_rates.append(float(competence))
+            probe_reuse_rates.append(float(reuse_ok))
+            if competence and not reuse_ok and probe_parents:
+                probe_trap_count += 1
 
-            bproc = baseline.synthesize_process(ptrain, ptransfer, pood)
+            bproc = synthesize_discovery_only(baseline, ptrain, ptransfer)
+            bcompetence = False
             if bproc is not None:
-                beval = baseline.evaluate(
-                    bproc, ptrain, ptransfer, ptransfer, pood, ()
-                )
-                baseline_probe_rates.append(
-                    float(beval.accepted and beval.ood_error <= 1e-9)
-                )
-            else:
-                baseline_probe_rates.append(0.0)
-
+                beval = baseline.evaluate(bproc, ptrain, ptransfer, ptransfer, pood, ())
+                bcompetence = bool(beval.accepted and beval.ood_error <= 1e-9)
+            baseline_probe_rates.append(float(bcompetence))
         generations_out.append(
             {
                 "generation": generation,
