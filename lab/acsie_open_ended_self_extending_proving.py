@@ -54,7 +54,7 @@ def random_base_expr(rng: random.Random, depth: int) -> dict[str, Any]:
 
 
 def hard_bootstrap_expr(rng: random.Random) -> dict[str, Any]:
-    """Generate a neutral, nontrivial depth-3 bootstrap capability."""
+    """Generate a neutral, nontrivial depth-4+ bootstrap capability."""
     def leaf() -> dict[str, Any]:
         if rng.random() < 0.8:
             return {"op": "get", "key": rng.choice(KEYS)}
@@ -68,10 +68,16 @@ def hard_bootstrap_expr(rng: random.Random) -> dict[str, Any]:
         "left": leaf(),
         "right": leaf(),
     }
-    return {
+    depth_three = {
         "op": rng.choice(BASE_BIN_OPS),
         "left": unary_child,
         "right": binary_child,
+    }
+    # Baseline induction searches at depth <=3. Wrap once more so bootstrap
+    # cannot be solved by that fresh non-recursive control by construction.
+    return {
+        "op": rng.choice(UNARY_OPS),
+        "arg": depth_three,
     }
 
 
@@ -164,6 +170,158 @@ def mae(expr, rows, macros):
         except Exception:
             return float("inf")
     return statistics.fmean(vals)
+
+def admission_rows(seed: int, generation: int, count: int = 24) -> tuple[Trace, ...]:
+    rng = random.Random(seed * 1000033 + generation * 7919 + stable_int("admission-rows"))
+    rows = []
+    for i in range(count):
+        inputs = {k: rng.uniform(-7.0, 7.0) + 0.37 for k in KEYS}
+        rows.append(
+            Trace(
+                inputs=inputs,
+                target=0.0,
+                family="admission-only",
+                context={},
+                task_id=f"admission-{seed}-{generation}-{i}",
+            )
+        )
+    return tuple(rows)
+
+
+def exact_vector(expr, rows: tuple[Trace, ...], macros: dict[str, dict[str, Any]]) -> tuple[float, ...]:
+    return tuple(float(eval_hidden(expr, row.inputs, macros)) for row in rows)
+
+
+def raw_baseline_exact(expr, rows: tuple[Trace, ...]) -> bool:
+    """Reject targets representable by the actual fresh baseline grammar (depth <=3)."""
+    keys = tuple(sorted(set().union(*(row.inputs.keys() for row in rows))))
+    compiler = RecursiveCognitiveCompiler(max_depth=3, population=1, seed=0)
+    target = exact_vector(expr, rows, {})
+    for candidate in compiler._exprs(keys, (), 3):
+        try:
+            vector = tuple(float(eval_expr(candidate, row.inputs, {})) for row in rows)
+        except Exception:
+            continue
+        if vector == target:
+            return True
+    return False
+
+
+def macro_frontier_representation_count(
+    target: dict[str, Any],
+    retained: tuple[HiddenCapability, ...],
+    rows: tuple[Trace, ...],
+    macros: dict[str, dict[str, Any]],
+) -> int:
+    """Count exact depth-2 representations that reuse retained capabilities."""
+    keys = tuple(KEYS)
+    atoms = [capability_macro(cap) for cap in retained]
+    atoms.extend({"op": "get", "key": key} for key in keys)
+    atoms.extend({"op": "const", "value": value} for value in (-2, -1, 0, 1, 2, 3, 4))
+    target_vec = exact_vector(target, rows, macros)
+    seen: set[str] = set()
+    matches = 0
+
+    def add_match(expr: dict[str, Any]) -> None:
+        nonlocal matches
+        if not any(node.get("op") == "macro" for node in RecursiveCognitiveCompiler()._walk(expr)):
+            return
+        key = json.dumps(expr, sort_keys=True, separators=(",", ":"))
+        if key in seen:
+            return
+        try:
+            vector = tuple(float(eval_hidden(expr, row.inputs, macros)) for row in rows)
+        except Exception:
+            return
+        if vector == target_vec:
+            seen.add(key)
+            matches += 1
+
+    for atom in atoms:
+        if atom.get("op") == "macro":
+            for op in UNARY_OPS:
+                add_match({"op": op, "arg": atom})
+
+    for left in atoms:
+        for right in atoms:
+            for op in BASE_BIN_OPS:
+                if op in {"add", "mul", "max", "min"}:
+                    lk = json.dumps(left, sort_keys=True, separators=(",", ":"))
+                    rk = json.dumps(right, sort_keys=True, separators=(",", ":"))
+                    if lk > rk:
+                        continue
+                add_match({"op": op, "left": left, "right": right})
+    return matches
+
+
+def closure_library_identifiable(
+    retained: tuple[HiddenCapability, ...],
+    rows: tuple[Trace, ...],
+) -> bool:
+    """Require fresh retained capabilities and all pairwise-add closures to be identifiable."""
+    macros = {cap.hidden_id: cap.expression for cap in retained}
+    capability_vectors = [exact_vector(cap.expression, rows, macros) for cap in retained]
+    if len(set(capability_vectors)) != len(capability_vectors):
+        return False
+    pair_vectors: dict[tuple[float, ...], tuple[str, str]] = {}
+    for i in range(len(retained)):
+        for j in range(i + 1, len(retained)):
+            expr = {
+                "op": "add",
+                "left": capability_macro(retained[i]),
+                "right": capability_macro(retained[j]),
+            }
+            vector = exact_vector(expr, rows, macros)
+            pair_id = (retained[i].hidden_id, retained[j].hidden_id)
+            previous = pair_vectors.get(vector)
+            if previous is not None and previous != pair_id:
+                return False
+            pair_vectors[vector] = pair_id
+            if raw_baseline_exact(expr, rows):
+                return False
+    return True
+
+
+def target_is_admissible(
+    target: dict[str, Any],
+    target_parents: tuple[HiddenCapability, ...],
+    retained: tuple[HiddenCapability, ...],
+    seed: int,
+    generation: int,
+) -> bool:
+    rows = admission_rows(seed, generation)
+    macros = {cap.hidden_id: cap.expression for cap in retained}
+    if raw_baseline_exact(target, rows):
+        return False
+    target_vec = exact_vector(target, rows, macros)
+    if any(
+        target_vec == exact_vector(cap.expression, rows, macros)
+        for cap in retained
+    ):
+        return False
+    if target_parents:
+        # The target must have exactly one reusable depth-2 representation in
+        # the retained executable vocabulary. This makes exact lineage a
+        # scientifically identifiable property rather than an arbitrary tie.
+        if macro_frontier_representation_count(
+            target, retained, rows, macros
+        ) != 1:
+            return False
+    prospective = list(retained)
+    prospective.append(
+        HiddenCapability(
+            hidden_id=f"admission:{generation}",
+            primitive_id=f"admission:{generation}",
+            expression=target,
+            depth=expanded_depth(target, macros),
+            generation=generation,
+        )
+    prospective_macros = {
+        cap.hidden_id: cap.expression for cap in prospective
+    }
+    del prospective_macros  # only the hidden-library structure is tested below
+    return closure_library_identifiable(tuple(prospective), rows)
+
 
 
 def semantic_parent_match_count(
@@ -311,23 +469,43 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         learner.generation = generation
         hidden_macros = hidden_library()
 
-        target_parents: tuple[HiddenCapability, ...]
-        if not retained:
-            target_parents = ()
-            target = hard_bootstrap_expr(rng)
-        elif len(retained) == 1:
-            target_parents = (retained[0],)
-            target = {
-                "op": rng.choice(("add", "sub", "mul", "max", "min")),
-                "left": capability_macro(retained[0]),
-                "right": {"op": "get", "key": rng.choice(KEYS)},
-            }
-        else:
-            target_parents = tuple(rng.sample(retained, 2))
-            target = {
-                "op": rng.choice(("add", "sub", "mul", "max", "min")),
-                "left": capability_macro(target_parents[0]),
-                "right": capability_macro(target_parents[1]),
+        target_parents: tuple[HiddenCapability, ...] = ()
+        target: dict[str, Any] | None = None
+        for _attempt in range(512):
+            if not retained:
+                candidate_parents = ()
+                candidate = hard_bootstrap_expr(rng)
+            elif len(retained) == 1:
+                candidate_parents = (retained[0],)
+                candidate = {
+                    "op": rng.choice(("add", "sub", "mul", "max", "min")),
+                    "left": capability_macro(retained[0]),
+                    "right": {"op": "get", "key": rng.choice(KEYS)},
+                }
+            else:
+                candidate_parents = tuple(rng.sample(retained, 2))
+                candidate = {
+                    "op": rng.choice(("add", "sub", "mul", "max", "min")),
+                    "left": capability_macro(candidate_parents[0]),
+                    "right": capability_macro(candidate_parents[1]),
+                }
+            if target_is_admissible(
+                candidate,
+                tuple(candidate_parents),
+                tuple(retained),
+                seed,
+                generation,
+            ):
+                target_parents = tuple(candidate_parents)
+                target = candidate
+                break
+        if target is None:
+            return {
+                "seed": seed,
+                "generations": generations,
+                "benchmark_valid": False,
+                "benchmark_failure": f"NO_ADMISSIBLE_TARGET_GENERATION_{generation}",
+                "finite_open_ended_growth_gate": False,
             }
 
         target_depth = expanded_depth(target, hidden_macros)
@@ -681,6 +859,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         and final["closure_reuse_rate"] == 1.0
         and trap_free_ok
         and final["baseline_accepted"] is False
+        and all(not row["baseline_accepted"] for row in generations_out)
     )
     return {
         "seed": seed,
@@ -712,6 +891,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         "external_model": False,
         "target_identity_available_to_runtime": False,
         "task_family_route": False,
+        "benchmark_valid": True,
         "selection_split_used": True,
         "holdout_used_for_search_selection": False,
         "transfer_used_for_search_selection": False,
@@ -760,6 +940,7 @@ def main():
     gate = (
         len(rows) == 5
         and all(row["finite_open_ended_growth_gate"] for row in rows)
+        and all(row.get("benchmark_valid", True) for row in rows)
         and all(not row["external_model"] for row in rows)
         and all(not row["target_identity_available_to_runtime"] for row in rows)
         and all(not row["task_family_route"] for row in rows)
