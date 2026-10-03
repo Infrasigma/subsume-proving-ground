@@ -383,13 +383,18 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "target_depth": target_depth,
                 "accepted": accepted,
                 "baseline_accepted": baseline_accepted,
-                "parent_used": bool(parent_used),
+                "parent_used": bool(recursive_reuse_ok),
                 "parent_ids": list(parent_used),
-                "multi_parent_used": len(target_parents) >= 2,
+                "expected_parent_ids": sorted(expected_parent_ids),
+                "recursive_reuse_ok": bool(recursive_reuse_ok),
+                "multi_parent_used": len(target_parents) >= 2 and recursive_reuse_ok,
                 "closure_success_rate": statistics.fmean(closure_rates) if closure_rates else 0.0,
                 "baseline_closure_success_rate": statistics.fmean(baseline_closure_rates) if baseline_closure_rates else 0.0,
+                "closure_reuse_rate": statistics.fmean(closure_reuse_rates) if closure_reuse_rates else 0.0,
                 "closure_pair_count": len(closure_rates),
                 "closure_success_count": int(sum(closure_rates)),
+                "closure_reuse_success_count": int(sum(closure_reuse_rates)),
+                "closure_trap_count": int(closure_trap_count),
                 "baseline_closure_success_count": int(sum(baseline_closure_rates)),
                 "retained_count": len(retained),
                 "runtime_max_depth": int(learner.meta_policy["max_depth"]),
@@ -397,6 +402,8 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "ood_error": ood_error,
                 "probe_success_rate": statistics.fmean(probe_rates),
                 "baseline_probe_success_rate": statistics.fmean(baseline_probe_rates),
+                "probe_reuse_rate": statistics.fmean(probe_reuse_rates),
+                "probe_trap_count": int(probe_trap_count),
             }
         )
 
@@ -407,26 +414,29 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
     final = generations_out[-1]
     accepted_after_bootstrap = sum(row["accepted"] for row in generations_out[1:])
     recursive_generations = sum(
-        row["accepted"] and row["parent_used"] for row in generations_out[1:]
+        row["recursive_reuse_ok"] for row in generations_out[1:]
+    )
+    multi_parent_generations = sum(
+        row["multi_parent_used"] for row in generations_out[1:]
     )
     last_three = generations_out[-3:]
-    multi_parent_generations = sum(
-        row["accepted"] and row["multi_parent_used"]
-        for row in generations_out[1:]
-    )
     final_closure_gain = (
         final["closure_success_rate"] - final["baseline_closure_success_rate"]
     )
+    final_closure_reuse_rate = final["closure_reuse_rate"]
+    final_probe_reuse_rate = final["probe_reuse_rate"]
     early = generations_out[min(2, len(generations_out) - 1)]
     closure_growth = (
-        final["closure_success_count"] - early["closure_success_count"]
+        final["closure_reuse_success_count"] - early["closure_reuse_success_count"]
     )
     closure_capacity_ok = (
         final["closure_pair_count"] > 0
-        and final["closure_success_count"] >= max(
-            1, final["closure_pair_count"] - 1
-        )
-        and final["closure_success_count"] > early["closure_success_count"]
+        and final["closure_reuse_rate"] >= 0.75
+        and final["closure_reuse_success_count"] > 0
+    )
+    trap_free_ok = (
+        all(row["closure_trap_count"] == 0 for row in generations_out)
+        and all(row["probe_trap_count"] == 0 for row in generations_out)
     )
 
     finite_gate = (
@@ -439,12 +449,14 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         and final["target_depth"] > generations_out[0]["target_depth"]
         and final["probe_success_rate"] > 0.75
         and final["probe_success_rate"] > final["baseline_probe_success_rate"]
+        and final_probe_reuse_rate > 0.75
         and final["closure_pair_count"] >= 6
         and final_closure_gain >= 0.20
         and closure_capacity_ok
+        and closure_growth > 0
+        and trap_free_ok
         and final["baseline_accepted"] is False
     )
-
     return {
         "seed": seed,
         "generations": generations,
@@ -469,6 +481,11 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         "external_model": False,
         "target_identity_available_to_runtime": False,
         "task_family_route": False,
+        "ood_used_for_search_selection": False,
+        "closure_trap_count": int(final["closure_trap_count"]),
+        "probe_trap_count": int(final["probe_trap_count"]),
+        "final_closure_reuse_rate": final_closure_reuse_rate,
+        "final_probe_reuse_rate": final_probe_reuse_rate,
         "generations_detail": generations_out,
     }
 
