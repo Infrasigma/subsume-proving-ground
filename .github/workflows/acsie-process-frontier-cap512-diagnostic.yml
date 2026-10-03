@@ -1,0 +1,58 @@
+name: ACSIE process frontier cap512 diagnostic
+on:
+  push:
+    branches:
+      - research/open-ended-process-lineage-frontier-cap512-diagnostic-20261003
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnostic:
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100301, 2026100303]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone exact ACSIE research commit
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "ff525043d641fc312db33843457e86adf690bca1"
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          rm -rf /tmp/acsie-open-ended-self-extending
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-open-ended-self-extending
+          git -C /tmp/acsie-open-ended-self-extending fetch --depth 1 origin "$ACSIE_REF"
+          git -C /tmp/acsie-open-ended-self-extending checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie-open-ended-self-extending rev-parse HEAD)" = "$ACSIE_REF"
+      - name: Run exact unit tests
+        run: |
+          python3 -m venv /tmp/open-ended-venv
+          . /tmp/open-ended-venv/bin/activate
+          python -m pip install --upgrade pip pytest
+          PYTHONPATH=/tmp/acsie-open-ended-self-extending pytest -q /tmp/acsie-open-ended-self-extending/tests/test_open_ended_growth.py
+          PYTHONPATH=/tmp/acsie-open-ended-self-extending:. pytest -q lab/test_open_ended_bootstrap_language.py
+      - name: Run 12-generation diagnostic
+        env:
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: /tmp/acsie-open-ended-self-extending
+        run: |
+          set -euo pipefail
+          . /tmp/open-ended-venv/bin/activate
+          python3 -u - <<PY 2>&1 | tee cap512-seed-result.txt
+          import json
+          import lab.acsie_open_ended_self_extending_proving as proving
+          seed = int("${{ matrix.seed }}")
+          result = proving.run_seed(seed, 12)
+          print(json.dumps(result, sort_keys=True), flush=True)
+          raise SystemExit(0)
+          PY
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-cap512-seed-${{ matrix.seed }}
+          path: cap512-seed-result.txt
