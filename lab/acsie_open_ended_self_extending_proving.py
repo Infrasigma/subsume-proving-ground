@@ -555,12 +555,28 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                             closure_discovery_rows,
                             cv,
                             co,
-                            max_candidates=32,
+                            max_candidates=512,
                         )
                     )
                 else:
                     fallback = learner.synthesize_process(closure_discovery_rows, cv, co)
                     cprocs = (fallback,) if fallback is not None else ()
+
+                print(
+                    json.dumps(
+                        {
+                            "event": "PROCESS_FRONTIER_SUMMARY",
+                            "seed": seed,
+                            "generation": generation,
+                            "frontier_size": len(cprocs),
+                            "distinct_lineage_sets": len(
+                                {tuple(p.used_primitives) for p in cprocs}
+                            ),
+                        },
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
 
                 competence = False
                 reuse_ok = False
