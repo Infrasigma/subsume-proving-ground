@@ -159,6 +159,49 @@ def mae(expr, rows, macros):
     return statistics.fmean(vals)
 
 
+def synthesize_discovery_only(
+    compiler: RecursiveCognitiveCompiler,
+    rows: tuple[Trace, ...],
+    transfer: tuple[Trace, ...],
+) -> Any:
+    """Baseline process selection that never observes OOD during search."""
+    keys = sorted(set().union(*(trace.inputs.keys() for trace in rows)))
+    pids = tuple(compiler.primitives)
+    candidates = []
+    pmap = compiler._pmap()
+    for policy in compiler.propose_search_policies():
+        for expr in compiler._exprs(keys, pids, min(3, int(policy['max_depth']))):
+            try:
+                train_error = sum(
+                    abs(eval_expr(expr, trace.inputs, pmap) - trace.target)
+                    for trace in rows
+                ) / len(rows)
+                if train_error > 1e-9:
+                    continue
+                transfer_error = sum(
+                    abs(eval_expr(expr, trace.inputs, pmap) - trace.target)
+                    for trace in transfer
+                ) / len(transfer)
+                if transfer_error > 1e-9:
+                    continue
+                used = tuple(sorted({str(node['id']) for node in compiler._walk(expr) if node.get('op') == 'macro'}))
+                novelty = 1.0 / (1 + len(json.dumps(expr, sort_keys=True)))
+                candidates.append((len(used), novelty, -len(json.dumps(expr, sort_keys=True)), json.dumps(expr, sort_keys=True), expr, used, policy))
+            except Exception:
+                continue
+    if not candidates:
+        return None
+    _, _, _, _, expr, used, policy = max(candidates)
+    process_id = 'baseline-proc:' + sha256(json.dumps((expr, policy, compiler.generation), sort_keys=True).encode()).hexdigest()[:20]
+    proc = ProcessCandidate(
+        process_id, expr, used, compiler.generation, tuple(used), dict(policy),
+        tuple(sorted({trace.family for trace in list(rows) + list(transfer)})),
+        len(json.dumps(expr, sort_keys=True)),
+        {'origin': 'discovery_only_baseline', 'external_model': False, 'ood_used_for_selection': False},
+    )
+    compiler.processes[proc.process_id] = proc
+    return proc
+
 def run_seed(seed: int, generations: int) -> dict[str, Any]:
     rng = random.Random(seed)
     learner = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed)
@@ -220,10 +263,12 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         ood_error = float("inf")
         parent_used = tuple()
 
+        parent_used = primitive.parent_ids if primitive is not None else tuple()
+        expected_parent_ids = {p.primitive_id for p in target_parents}
+        recursive_reuse_ok = False
         if primitive is not None:
             transfer_error = primitive.transfer_error
             ood_error = mae(primitive.expression, ood, learner._pmap())
-            parent_used = primitive.parent_ids
             accepted = learner.accept_primitive(
                 primitive.primitive_id,
                 transfer_error=transfer_error,
@@ -231,6 +276,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 novelty=1.0 / max(1, primitive.complexity),
                 resource_cost=max(1, primitive.complexity),
             )
+            recursive_reuse_ok = expected_parent_ids.issubset(set(primitive.parent_ids))
             if accepted:
                 hidden_id = f"hidden:{generation}:{len(retained)}"
                 retained.append(
