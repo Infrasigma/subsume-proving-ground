@@ -279,20 +279,6 @@ def synthesize_discovery_only(
     compiler.processes[proc.process_id] = proc
     return proc
 
-def run_seed(seed: int, generations: int) -> dict[str, Any]:
-    rng = random.Random(seed)
-    learner = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed)
-
-    retained: list[HiddenCapability] = []
-    generations_out = []
-    initial_depth = learner.meta_policy["max_depth"]
-
-    def hidden_library() -> dict[str, dict[str, Any]]:
-        return {cap.hidden_id: cap.expression for cap in retained}
-
-    def capability_macro(cap: HiddenCapability) -> dict[str, Any]:
-        return {"op": "macro", "id": cap.hidden_id}
-
 def primitive_lineage_ids(
     learner: RecursiveCognitiveCompiler,
     primitive_ids: tuple[str, ...],
@@ -306,6 +292,20 @@ def primitive_lineage_ids(
             lineage.update(str(x) for x in method(str(pid)))
     return lineage
 
+
+def run_seed(seed: int, generations: int) -> dict[str, Any]:
+    rng = random.Random(seed)
+    learner = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed)
+
+    retained: list[HiddenCapability] = []
+    generations_out = []
+    initial_depth = learner.meta_policy["max_depth"]
+
+    def hidden_library() -> dict[str, dict[str, Any]]:
+        return {cap.hidden_id: cap.expression for cap in retained}
+
+    def capability_macro(cap: HiddenCapability) -> dict[str, Any]:
+        return {"op": "macro", "id": cap.hidden_id}
 
     for generation in range(generations):
         learner.generation = generation
