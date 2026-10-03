@@ -217,7 +217,7 @@ def macro_frontier_representation_count(
 ) -> int:
     """Count exact depth-2 representations that reuse retained capabilities."""
     keys = tuple(KEYS)
-    atoms = [capability_macro(cap) for cap in retained]
+    atoms = [{"op": "macro", "id": cap.hidden_id} for cap in retained]
     atoms.extend({"op": "get", "key": key} for key in keys)
     atoms.extend({"op": "const", "value": value} for value in (-2, -1, 0, 1, 2, 3, 4))
     target_vec = exact_vector(target, rows, macros)
