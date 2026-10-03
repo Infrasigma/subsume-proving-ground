@@ -55,12 +55,12 @@ jobs:
           set +e
           . /tmp/open-ended-venv/bin/activate
           set -o pipefail
-          python3 -u - <<'PY' 2>&1 | tee -a open-ended-self-extending-result.txt
+          python3 -u - <<PY 2>&1 | tee -a open-ended-self-extending-result.txt
 import json
 import lab.acsie_open_ended_self_extending_proving as proving
-for seed in (2026100301, 2026100303):
-    result = proving.run_seed(seed, 12)
-    print(json.dumps(result, sort_keys=True), flush=True)
+seed = int("${{ matrix.seed }}")
+result = proving.run_seed(seed, 12)
+print(json.dumps(result, sort_keys=True), flush=True)
 PY
           rc=${PIPESTATUS[0]}
           echo "SCIENTIFIC_GATE_RC=$rc" | tee -a open-ended-self-extending-result.txt
