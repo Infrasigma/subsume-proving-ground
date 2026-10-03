@@ -2,7 +2,7 @@ name: ACSIE open-ended Gen-0 diagnostic
 on:
   push:
     branches:
-      - research/open-ended-gen0-diagnostic-20261003
+      - research/open-ended-process-lineage-frontier-antidominance-20261003
   pull_request:
     branches:
       - main
@@ -22,7 +22,7 @@ jobs:
       - name: Clone exact ACSIE research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "a81afecc30ee2f19acdca3644b6f927f4fa76d9e"
+          ACSIE_REF: "ff525043d641fc312db33843457e86adf690bca1"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
@@ -35,7 +35,7 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONPATH: /tmp/acsie-open-ended-diagnostic
-          ACSIE_REF: "a81afecc30ee2f19acdca3644b6f927f4fa76d9e"
+          ACSIE_REF: "ff525043d641fc312db33843457e86adf690bca1"
         run: |
           python3 -u - <<'PY'
           import json, time
