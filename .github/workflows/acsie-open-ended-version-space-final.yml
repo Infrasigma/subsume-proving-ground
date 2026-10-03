@@ -1,0 +1,33 @@
+name: ACSIE open-ended version-space diagnostic
+on:
+  push:
+    branches:
+      - research/open-ended-primitive-version-space-v1-20261004
+permissions:
+  contents: read
+jobs:
+  seed3:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run exact version-space diagnostic
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/acsie-vs
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-vs
+          git -C /tmp/acsie-vs fetch --depth 1 origin 6d39c3aa9818e10c8bb728cf9067037681db02fa
+          git -C /tmp/acsie-vs checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie-vs rev-parse HEAD)" = 6d39c3aa9818e10c8bb728cf9067037681db02fa
+          python3 -m venv /tmp/vsenv
+          . /tmp/vsenv/bin/activate
+          python -m pip install -q pytest
+          PYTHONPATH=/tmp/acsie-vs python -m py_compile lab/acsie_open_ended_version_space_diagnostic_v3.py
+          PYTHONPATH=/tmp/acsie-vs:. python -u lab/acsie_open_ended_version_space_diagnostic_v3.py | tee version-space-final.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: version-space-final-${{ github.sha }}
+          path: version-space-final.txt
