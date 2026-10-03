@@ -19,10 +19,10 @@ def walk(expr):
         yield from walk(expr["right"])
 
 
-def test_hard_bootstrap_is_inside_generic_enumerable_language():
+def test_hard_bootstrap_is_inside_generic_enumerable_language_at_depth_four():
     for seed in range(32):
         expr = hard_bootstrap_expr(random.Random(seed))
-        assert ast_depth(expr) == 3
+        assert ast_depth(expr) == 4
         for node in walk(expr):
             assert node["op"] in ALLOWED_OPS
             if node["op"] == "const":
