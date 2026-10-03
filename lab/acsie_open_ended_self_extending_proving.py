@@ -506,6 +506,22 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                     statistics.fmean(parent_fidelities.values())
                 )
                 if competence and not reuse_ok:
+                    print(
+                        json.dumps(
+                            {
+                                "event": "CLOSURE_LINEAGE_MISMATCH",
+                                "seed": seed,
+                                "generation": generation,
+                                "expected_parent_ids": sorted(expected),
+                                "used_primitives": list(cproc.used_primitives) if cproc is not None else [],
+                                "candidate_lineage": sorted(candidate_lineage),
+                                "expression": cproc.expression if cproc is not None else None,
+                                "search_stats": dict(getattr(learner, "last_search_stats", {})),
+                            },
+                            sort_keys=True,
+                        ),
+                        flush=True,
+                    )
                     closure_trap_count += 1
 
                 bproc = synthesize_discovery_only(baseline, tuple(ctr) + tuple(cs), cv)
@@ -579,6 +595,21 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                     )
                 )
             if competence and not reuse_ok and probe_parents:
+                print(
+                    json.dumps(
+                        {
+                            "event": "PROBE_LINEAGE_MISMATCH",
+                            "seed": seed,
+                            "generation": generation,
+                            "expected_parent_ids": sorted(expected),
+                            "used_primitives": list(proc.used_primitives) if proc is not None else [],
+                            "candidate_lineage": sorted(candidate_lineage),
+                            "expression": proc.expression if proc is not None else None,
+                        },
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
                 probe_trap_count += 1
 
             bproc = synthesize_discovery_only(baseline, ptrain, ptransfer)
