@@ -244,6 +244,9 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         train = make_traces(
             target, seed, generation, "train", 12, 0.0, hidden_macros
         )
+        selection = make_traces(
+            target, seed, generation, "selection", 8, 0.17, hidden_macros
+        )
         hold = make_traces(
             target, seed, generation, "holdout", 6, 0.31, hidden_macros
         )
@@ -254,7 +257,8 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
             target, seed, generation, "ood", 8, 0.93, hidden_macros
         )
 
-        primitive = learner.invent_primitive(train, hold, transfer)
+        discovery_train = tuple(train) + tuple(selection)
+        primitive = learner.invent_primitive(discovery_train, hold, transfer)
         accepted = False
         transfer_error = float("inf")
         ood_error = float("inf")
@@ -294,7 +298,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
             max_depth=2, population=24, seed=seed + 10091 + generation
         )
         baseline_direct.generation = 0
-        bprim = baseline_direct.invent_primitive(train, hold, transfer)
+        bprim = baseline_direct.invent_primitive(discovery_train, hold, transfer)
         baseline_accepted = False
         if bprim is not None:
             b_ood = mae(bprim.expression, ood, baseline_direct._pmap())
@@ -327,10 +331,11 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 }
                 closure_macros = hidden_library()
                 ctr = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_train', 8, 0.13, closure_macros)
+                cs = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_selection', 6, 0.07, closure_macros)
                 ch = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_holdout', 5, 0.23, closure_macros)
                 cv = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_transfer', 5, -0.19, closure_macros)
                 co = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_ood', 5, 0.29, closure_macros)
-                cproc = learner.synthesize_process(ctr, cv, co)
+                cproc = learner.synthesize_process(tuple(ctr) + tuple(cs), cv, co)
                 competence = False
                 reuse_ok = False
                 if cproc is not None:
@@ -343,7 +348,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 if competence and not reuse_ok:
                     closure_trap_count += 1
 
-                bproc = synthesize_discovery_only(baseline, ctr, cv)
+                bproc = synthesize_discovery_only(baseline, tuple(ctr) + tuple(cs), cv)
                 bcompetence = False
                 if bproc is not None:
                     beval = baseline.evaluate(bproc, ctr, ch, cv, co, ())
@@ -366,10 +371,11 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 probe = random_base_expr(random.Random(seed * 193 + generation * 17 + probe_idx), 3)
 
             ptrain = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_train', 8, 0.17, probe_macros)
+            pselection = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_selection', 6, 0.05, probe_macros)
             pholdout = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_holdout', 5, 0.27, probe_macros)
             ptransfer = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_transfer', 5, -0.22, probe_macros)
             pood = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_ood', 5, 0.41, probe_macros)
-            proc = learner.synthesize_process(ptrain, ptransfer, pood)
+            proc = learner.synthesize_process(tuple(ptrain) + tuple(pselection), ptransfer, pood)
             competence = False
             reuse_ok = False
             if proc is not None:
@@ -415,6 +421,10 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "baseline_probe_success_rate": statistics.fmean(baseline_probe_rates),
                 "probe_reuse_rate": statistics.fmean(probe_reuse_rates),
                 "probe_trap_count": int(probe_trap_count),
+                "selection_rows": len(discovery_train),
+                "holdout_used_for_selection": False,
+                "transfer_used_for_selection": False,
+                "ood_used_for_selection": False,
             }
         )
 
@@ -492,6 +502,9 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         "external_model": False,
         "target_identity_available_to_runtime": False,
         "task_family_route": False,
+        "selection_split_used": True,
+        "holdout_used_for_search_selection": False,
+        "transfer_used_for_search_selection": False,
         "ood_used_for_search_selection": False,
         "closure_trap_count": int(final["closure_trap_count"]),
         "probe_trap_count": int(final["probe_trap_count"]),
