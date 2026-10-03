@@ -585,6 +585,10 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                         reuse_ok = True
 
                 cproc = selected_proc
+                candidate_pool_lineage_sets = set(
+                    getattr(learner, "last_process_candidate_lineage_sets", set())
+                )
+                expected_lineage_set = tuple(sorted(expected))
                 print(
                     json.dumps(
                         {
@@ -594,6 +598,10 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                             "expected_parent_ids": sorted(expected),
                             "frontier_size": len(cprocs),
                             "frontier_lineage_matches": frontier_lineage_matches,
+                            "candidate_pool_distinct_lineage_sets": len(candidate_pool_lineage_sets),
+                            "candidate_pool_expected_lineage_present": (
+                                expected_lineage_set in candidate_pool_lineage_sets
+                            ),
                         },
                         sort_keys=True,
                     ),
