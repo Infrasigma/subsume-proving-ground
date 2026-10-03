@@ -71,7 +71,8 @@ jobs:
             echo "SEED=2026100303"
             echo "GENERATIONS=12"
             echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            git show 4db598df6464cea6b40f869b7bdd923207628d0d:lab/acsie_open_ended_version_space_diagnostic_v3.py > /tmp/diagnostic.py
+            git fetch --depth 1 origin 4db598df6464cea6b40f869b7bdd923207628d0d
+          git show 4db598df6464cea6b40f869b7bdd923207628d0d:lab/acsie_open_ended_version_space_diagnostic_v3.py > /tmp/diagnostic.py
             sed -i 's/{p.primitive_id for p in target_parents}/{p["primitive_id"] for p in target_parents}/' /tmp/diagnostic.py
             python3 -u /tmp/diagnostic.py
           } 2>&1 | tee version-space-seed3.txt
