@@ -671,6 +671,26 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
             ptransfer = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_transfer', 5, -0.22, probe_macros)
             pood = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_ood', 5, 0.41, probe_macros)
             proc = learner.synthesize_process(tuple(ptrain) + tuple(pselection), ptransfer, pood)
+            print(
+                json.dumps(
+                    {
+                        "event": "PRIMARY_PROCESS_OOD_CANDIDATE_AUDIT",
+                        "seed": seed,
+                        "generation": generation,
+                        "candidate_ood_summary": getattr(
+                            learner,
+                            "last_process_candidate_ood_summary",
+                            {},
+                        ),
+                        "selected_process_id": getattr(proc, "process_id", None),
+                        "selected_process_used_primitives": (
+                            list(getattr(proc, "used_primitives", ())) if proc is not None else []
+                        ),
+                    },
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
             competence = False
             reuse_ok = False
             if proc is not None:
