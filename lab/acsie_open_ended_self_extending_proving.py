@@ -491,3 +491,5 @@ if __name__ == "__main__":
 # execution marker: fresh exact-SHA PR sync
 
 # execution marker: fixed-baseline scientific run
+
+# execution marker: hard-bootstrap closure-capacity rerun
