@@ -1,4 +1,5 @@
 name: ACSIE self-extending open-ended proving
+# Locked H-O8 execution branch; scientific thresholds unchanged.
 on:
   push:
   pull_request:
