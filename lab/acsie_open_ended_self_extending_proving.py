@@ -431,6 +431,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "holdout_used_for_selection": False,
                 "transfer_used_for_selection": False,
                 "ood_used_for_selection": False,
+                "search_stats": dict(learner.last_search_stats),
             }
         )
 
@@ -516,6 +517,18 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         "probe_trap_count": int(final["probe_trap_count"]),
         "final_closure_reuse_rate": final_closure_reuse_rate,
         "final_probe_reuse_rate": final_probe_reuse_rate,
+        "max_generated_expressions": max(
+            int(row["search_stats"].get("generated_expressions", 0))
+            for row in generations_out
+        ),
+        "max_unique_search_states": max(
+            int(row["search_stats"].get("unique_states", 0))
+            for row in generations_out
+        ),
+        "max_search_states_in_depth": max(
+            int(row["search_stats"].get("max_states_in_depth", 0))
+            for row in generations_out
+        ),
         "generations_detail": generations_out,
     }
 
