@@ -360,6 +360,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                     "right": capability_macro(right_parent),
                 }
                 closure_macros = hidden_library()
+                ctr = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_train', 8, 0.13, closure_macros)
                 parent_fidelities = {
                     left_parent.primitive_id: retained_representation_error(
                         learner, left_parent, tuple(ctr), closure_macros
@@ -368,7 +369,6 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                         learner, right_parent, tuple(ctr), closure_macros
                     ),
                 }
-                ctr = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_train', 8, 0.13, closure_macros)
                 cs = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_selection', 6, 0.07, closure_macros)
                 ch = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_holdout', 5, 0.23, closure_macros)
                 cv = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_transfer', 5, -0.19, closure_macros)
