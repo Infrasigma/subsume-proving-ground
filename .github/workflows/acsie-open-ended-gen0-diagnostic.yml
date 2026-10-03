@@ -1,5 +1,8 @@
 name: ACSIE open-ended Gen-0 diagnostic
 on:
+  push:
+    branches:
+      - research/open-ended-gen0-diagnostic-20261003
   pull_request:
     branches:
       - main
