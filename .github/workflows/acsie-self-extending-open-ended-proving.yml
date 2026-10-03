@@ -16,7 +16,7 @@ jobs:
       - name: Clone exact ACSIE research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "f6edcdcea57974a73250537957bfda394f742738"
+          ACSIE_REF: "ef8b9c7907685fee328181306cf8fa27710e3e2d"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
@@ -37,14 +37,14 @@ jobs:
           : > open-ended-self-extending-result.txt
           {
             echo "WORKFLOW_SHA=${{ github.sha }}"
-            echo "ACSIE_REF=f6edcdcea57974a73250537957bfda394f742738"
+            echo "ACSIE_REF=ef8b9c7907685fee328181306cf8fa27710e3e2d"
             echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> open-ended-self-extending-result.txt
       - name: Run five-seed open-ended growth gate
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONPATH: /tmp/acsie-open-ended-self-extending
-          ACSIE_REF: "f6edcdcea57974a73250537957bfda394f742738"
+          ACSIE_REF: "ef8b9c7907685fee328181306cf8fa27710e3e2d"
         run: |
           set +e
           . /tmp/open-ended-venv/bin/activate
