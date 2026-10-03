@@ -475,7 +475,81 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 ch = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_holdout', 5, 0.23, closure_macros)
                 cv = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_transfer', 5, -0.19, closure_macros)
                 co = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_ood', 5, 0.29, closure_macros)
-                cproc = learner.synthesize_process(tuple(ctr) + tuple(cs), cv, co)
+                closure_discovery_rows = tuple(ctr) + tuple(cs)
+                closure_candidate_audit = {
+                    "expected_lineage_candidate_count": 0,
+                    "perfect_candidate_count": 0,
+                    "expected_lineage_expressions": [],
+                }
+                try:
+                    expected_ids_for_audit = {left_parent.primitive_id, right_parent.primitive_id}
+                    keys_for_audit = sorted(
+                        set().union(*(t.inputs.keys() for t in closure_discovery_rows))
+                    )
+                    for policy in learner.propose_search_policies():
+                        for expr in learner._exprs(
+                            keys_for_audit,
+                            tuple(learner.primitives),
+                            min(3, int(policy["max_depth"])),
+                        ):
+                            try:
+                                trerr = sum(
+                                    abs(eval_expr(expr, t.inputs, learner._pmap()) - t.target)
+                                    for t in closure_discovery_rows
+                                ) / len(closure_discovery_rows)
+                                if trerr > 1e-9:
+                                    continue
+                                terv = sum(
+                                    abs(eval_expr(expr, t.inputs, learner._pmap()) - t.target)
+                                    for t in cv
+                                ) / len(cv)
+                                if terv > 1e-9:
+                                    continue
+                                oerr = sum(
+                                    abs(eval_expr(expr, t.inputs, learner._pmap()) - t.target)
+                                    for t in co
+                                ) / len(co)
+                                if oerr > 1e-9:
+                                    continue
+                                closure_candidate_audit["perfect_candidate_count"] += 1
+                                used = {
+                                    str(x["id"])
+                                    for x in learner._walk(expr)
+                                    if x.get("op") == "macro"
+                                }
+                                lineage = primitive_lineage_ids(
+                                    learner, tuple(sorted(used))
+                                )
+                                if expected_ids_for_audit.issubset(lineage):
+                                    closure_candidate_audit[
+                                        "expected_lineage_candidate_count"
+                                    ] += 1
+                                    if len(
+                                        closure_candidate_audit["expected_lineage_expressions"]
+                                    ) < 8:
+                                        closure_candidate_audit[
+                                            "expected_lineage_expressions"
+                                        ].append(dict(expr))
+                            except Exception:
+                                continue
+                except Exception:
+                    pass
+
+                print(
+                    json.dumps(
+                        {
+                            "event": "CLOSURE_CANDIDATE_AUDIT",
+                            "seed": seed,
+                            "generation": generation,
+                            "expected_parent_ids": sorted(expected_ids_for_audit),
+                            "audit": closure_candidate_audit,
+                        },
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
+
+                cproc = learner.synthesize_process(closure_discovery_rows, cv, co)
                 competence = False
                 reuse_ok = False
                 if cproc is not None:
