@@ -1,14 +1,16 @@
 name: ACSIE self-extending open-ended proving
 on:
   push:
-  pull_request:
-    branches: [main]
+    branches:
+      - research/open-ended-self-extending-proving-20261003-lineage
   workflow_dispatch:
+concurrency:
+  group: acsie-self-extending-open-ended-${{ github.ref }}
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
   open-ended-self-extending:
-    if: github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'research/open-ended-self-extending-proving-20261003') || github.event_name == 'push' && startsWith(github.ref_name, 'research/open-ended-self-extending-proving-20261003')
     runs-on: ubuntu-slim
     timeout-minutes: 45
     steps:
@@ -16,7 +18,7 @@ jobs:
       - name: Clone exact ACSIE research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "f557cf06902de674655faa8056a5e609b0a09a30"
+          ACSIE_REF: "0ce9adf455dcd028f096614fd2361303f2c4cac0"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
@@ -37,21 +39,21 @@ jobs:
           : > open-ended-self-extending-result.txt
           {
             echo "WORKFLOW_SHA=${{ github.sha }}"
-            echo "ACSIE_REF=f557cf06902de674655faa8056a5e609b0a09a30"
+            echo "ACSIE_REF=0ce9adf455dcd028f096614fd2361303f2c4cac0"
             echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> open-ended-self-extending-result.txt
       - name: Run five-seed open-ended growth gate
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONPATH: /tmp/acsie-open-ended-self-extending
-          ACSIE_REF: "f557cf06902de674655faa8056a5e609b0a09a30"
+          ACSIE_REF: "0ce9adf455dcd028f096614fd2361303f2c4cac0"
         run: |
           set +e
           . /tmp/open-ended-venv/bin/activate
-          python3 -u lab/acsie_open_ended_self_extending_proving.py --strict > open-ended-self-extending-result.txt 2>&1
-          rc=$?
-          echo "SCIENTIFIC_GATE_RC=$rc" >> open-ended-self-extending-result.txt
-          cat open-ended-self-extending-result.txt
+          set -o pipefail
+          python3 -u lab/acsie_open_ended_self_extending_proving.py --strict 2>&1 | tee -a open-ended-self-extending-result.txt
+          rc=${PIPESTATUS[0]}
+          echo "SCIENTIFIC_GATE_RC=$rc" | tee -a open-ended-self-extending-result.txt
           exit "$rc"
       - name: Upload evidence
         if: always()
