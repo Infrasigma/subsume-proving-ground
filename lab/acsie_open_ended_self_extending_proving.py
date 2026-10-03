@@ -296,6 +296,17 @@ def primitive_lineage_ids(
 def run_seed(seed: int, generations: int) -> dict[str, Any]:
     rng = random.Random(seed)
     learner = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed)
+    print(
+        json.dumps(
+            {
+                "event": "SEED_START",
+                "seed": seed,
+                "generations": generations,
+            },
+            sort_keys=True,
+        ),
+        flush=True,
+    )
 
     retained: list[HiddenCapability] = []
     generations_out = []
@@ -602,6 +613,26 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "ood_used_for_selection": False,
                 "search_stats": dict(learner.last_search_stats),
             }
+        )
+        print(
+            json.dumps(
+                {
+                    "event": "GENERATION_PROGRESS",
+                    "seed": seed,
+                    "generation": generation,
+                    "accepted": bool(accepted),
+                    "retained_count": len(retained),
+                    "runtime_max_depth": int(learner.meta_policy["max_depth"]),
+                    "closure_success_rate": generations_out[-1]["closure_success_rate"],
+                    "closure_reuse_rate": generations_out[-1]["closure_reuse_rate"],
+                    "probe_success_rate": generations_out[-1]["probe_success_rate"],
+                    "probe_reuse_rate": generations_out[-1]["probe_reuse_rate"],
+                    "target_depth": target_depth,
+                    "search_stats": dict(learner.last_search_stats),
+                },
+                sort_keys=True,
+            ),
+            flush=True,
         )
 
     probe_gain = statistics.fmean(
