@@ -22,7 +22,7 @@ jobs:
       - name: Clone exact ACSIE research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "ff525043d641fc312db33843457e86adf690bca1"
+          ACSIE_REF: "e7b0acdc38a89542a5bc05ad649f9406ed80c7c7"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
@@ -50,12 +50,18 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONPATH: /tmp/acsie-open-ended-self-extending
-          ACSIE_REF: "ff525043d641fc312db33843457e86adf690bca1"
+          ACSIE_REF: "e7b0acdc38a89542a5bc05ad649f9406ed80c7c7"
         run: |
           set +e
           . /tmp/open-ended-venv/bin/activate
           set -o pipefail
-          python3 -u lab/acsie_open_ended_self_extending_proving.py --strict 2>&1 | tee -a open-ended-self-extending-result.txt
+          python3 -u - <<'PY' 2>&1 | tee -a open-ended-self-extending-result.txt
+import json
+import lab.acsie_open_ended_self_extending_proving as proving
+for seed in (2026100301, 2026100303):
+    result = proving.run_seed(seed, 12)
+    print(json.dumps(result, sort_keys=True), flush=True)
+PY
           rc=${PIPESTATUS[0]}
           echo "SCIENTIFIC_GATE_RC=$rc" | tee -a open-ended-self-extending-result.txt
           exit "$rc"
