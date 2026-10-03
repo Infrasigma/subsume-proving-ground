@@ -16,7 +16,7 @@ jobs:
       - name: Clone exact ACSIE research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "dbd15cb2dce1fff92b45fbbf464872b980f669ff"
+          ACSIE_REF: "4c20141a3df6048ba5ad2f8f8d84e0c889cfc3af"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
