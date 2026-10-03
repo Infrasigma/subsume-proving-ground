@@ -2,7 +2,7 @@ name: ACSIE self-extending open-ended proving
 on:
   push:
     branches:
-      - research/open-ended-self-extending-proving-20261003-lineage
+      - research/open-ended-self-extending-proving-20261003-resource-f557
   workflow_dispatch:
 concurrency:
   group: acsie-self-extending-open-ended-${{ github.ref }}
@@ -18,7 +18,7 @@ jobs:
       - name: Clone exact ACSIE research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "f557cf06902de674655faa8056a5e609b0a09a30"
+          ACSIE_REF: "d0b427a8132af5c79024329b32285dfdf9db8e77"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
@@ -39,14 +39,14 @@ jobs:
           : > open-ended-self-extending-result.txt
           {
             echo "WORKFLOW_SHA=${{ github.sha }}"
-            echo "ACSIE_REF=f557cf06902de674655faa8056a5e609b0a09a30"
+            echo "ACSIE_REF=d0b427a8132af5c79024329b32285dfdf9db8e77"
             echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> open-ended-self-extending-result.txt
       - name: Run five-seed open-ended growth gate
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONPATH: /tmp/acsie-open-ended-self-extending
-          ACSIE_REF: "f557cf06902de674655faa8056a5e609b0a09a30"
+          ACSIE_REF: "d0b427a8132af5c79024329b32285dfdf9db8e77"
         run: |
           set +e
           . /tmp/open-ended-venv/bin/activate
