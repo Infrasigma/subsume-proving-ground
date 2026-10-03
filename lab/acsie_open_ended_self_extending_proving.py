@@ -57,7 +57,9 @@ def hard_bootstrap_expr(rng: random.Random) -> dict[str, Any]:
     def leaf() -> dict[str, Any]:
         if rng.random() < 0.8:
             return {"op": "get", "key": rng.choice(KEYS)}
-        return {"op": "const", "value": round(rng.uniform(-3.0, 3.0), 6)}
+        # Keep hard bootstrap inside the same neutral expression vocabulary
+        # that ACSIE's generic search substrate can actually enumerate.
+        return {"op": "const", "value": rng.choice((-2, -1, 0, 1, 2, 3, 4))}
 
     unary_child = {"op": rng.choice(UNARY_OPS), "arg": leaf()}
     binary_child = {
