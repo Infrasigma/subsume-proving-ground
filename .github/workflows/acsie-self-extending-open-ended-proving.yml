@@ -1,4 +1,5 @@
 name: ACSIE self-extending open-ended proving
+# Resource-stability experiment: scientific gate remains unchanged.
 on:
   push:
     branches:
