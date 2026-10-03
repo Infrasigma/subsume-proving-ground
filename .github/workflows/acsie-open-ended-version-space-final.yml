@@ -24,8 +24,10 @@ jobs:
           python3 -m venv /tmp/vsenv
           . /tmp/vsenv/bin/activate
           python -m pip install -q pytest
-          PYTHONPATH=/tmp/acsie-vs python -m py_compile lab/acsie_open_ended_version_space_diagnostic_v3.py
-          PYTHONPATH=/tmp/acsie-vs:. python -u lab/acsie_open_ended_version_space_diagnostic_v3.py | tee version-space-final.txt
+          git show b37f03cbb9fb86de79c78a711250a8b690fa1d0a:lab/acsie_open_ended_version_space_diagnostic_v3.py > /tmp/diagnostic.py
+          sed -i 's/{p.primitive_id for p in target_parents}/{p["primitive_id"] for p in target_parents}/' /tmp/diagnostic.py
+          PYTHONPATH=/tmp/acsie-vs:. python -m py_compile /tmp/diagnostic.py
+          PYTHONPATH=/tmp/acsie-vs:. python -u /tmp/diagnostic.py | tee version-space-final.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
