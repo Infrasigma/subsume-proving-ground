@@ -16,13 +16,13 @@ jobs:
       - name: Clone exact ACSIE research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "0ce9adf455dcd028f096614fd2361303f2c4cac0"
+          ACSIE_REF: "a727892a01c965e8ec92c1407df0beae8f66b8c1"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
           rm -rf /tmp/acsie-open-ended-self-extending
           git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-open-ended-self-extending
-          git -C /tmp/acsie-open-ended-self-extending fetch --depth 1 origin "research/open-ended-lineage-preserving-20261003"
+          git -C /tmp/acsie-open-ended-self-extending fetch --depth 1 origin "research/open-ended-decisive-search-20261003"
           git -C /tmp/acsie-open-ended-self-extending checkout --detach FETCH_HEAD
           test "$(git -C /tmp/acsie-open-ended-self-extending rev-parse HEAD)" = "$ACSIE_REF"
       - name: Run exact unit tests
@@ -44,7 +44,7 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONPATH: /tmp/acsie-open-ended-self-extending
-          ACSIE_REF: "0ce9adf455dcd028f096614fd2361303f2c4cac0"
+          ACSIE_REF: "a727892a01c965e8ec92c1407df0beae8f66b8c1"
         run: |
           set +e
           . /tmp/open-ended-venv/bin/activate
