@@ -517,6 +517,11 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                                 "candidate_lineage": sorted(candidate_lineage),
                                 "expression": cproc.expression if cproc is not None else None,
                                 "search_stats": dict(getattr(learner, "last_search_stats", {})),
+                                "target_candidate_frontier": list(
+                                    getattr(learner, "last_search_stats", {}).get(
+                                        "target_candidate_frontier", []
+                                    )
+                                ),
                             },
                             sort_keys=True,
                         ),
