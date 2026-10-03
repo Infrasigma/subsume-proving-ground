@@ -10,7 +10,12 @@ from hashlib import sha256
 from typing import Any
 
 from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
-from cognitive_core.recursive_cognitive_compiler import Trace, eval_expr, ast_depth
+from cognitive_core.recursive_cognitive_compiler import (
+    RecursiveCognitiveCompiler,
+    Trace,
+    eval_expr,
+    ast_depth,
+)
 
 
 BASE_BIN_OPS = ("add", "sub", "mul", "max", "min")
@@ -43,6 +48,26 @@ def random_base_expr(rng: random.Random, depth: int) -> dict[str, Any]:
         "op": rng.choice(BASE_BIN_OPS),
         "left": random_base_expr(rng, depth - 1),
         "right": random_base_expr(rng, depth - 1),
+    }
+
+
+def hard_bootstrap_expr(rng: random.Random) -> dict[str, Any]:
+    """Generate a neutral, nontrivial depth-3 bootstrap capability."""
+    def leaf() -> dict[str, Any]:
+        if rng.random() < 0.8:
+            return {"op": "get", "key": rng.choice(KEYS)}
+        return {"op": "const", "value": round(rng.uniform(-3.0, 3.0), 6)}
+
+    unary_child = {"op": rng.choice(UNARY_OPS), "arg": leaf()}
+    binary_child = {
+        "op": rng.choice(BASE_BIN_OPS),
+        "left": leaf(),
+        "right": leaf(),
+    }
+    return {
+        "op": rng.choice(BASE_BIN_OPS),
+        "left": unary_child,
+        "right": binary_child,
     }
 
 
@@ -100,7 +125,7 @@ def expanded_depth(
     )
 
 
-def make_traces(expr, seed, generation, split, count, shift):
+def make_traces(expr, seed, generation, split, count, shift, macros):
     rng = random.Random(seed * 1000003 + generation * 9176 + stable_int(split))
     base_split = split.rsplit("_", 1)[-1]
     span = {"train": 2.0, "holdout": 3.0, "transfer": 4.0, "ood": 5.0}[base_split]
@@ -155,7 +180,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         target_parents: tuple[HiddenCapability, ...]
         if not retained:
             target_parents = ()
-            target = random_base_expr(rng, 3)
+            target = hard_bootstrap_expr(rng)
         elif len(retained) == 1:
             target_parents = (retained[0],)
             target = {
@@ -204,9 +229,10 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 resource_cost=max(1, primitive.complexity),
             )
             if accepted:
+                hidden_id = f"hidden:{generation}:{len(retained)}"
                 retained.append(
                     HiddenCapability(
-                        hidden_id=primitive.primitive_id,
+                        hidden_id=hidden_id,
                         expression=target,
                         depth=target_depth,
                         generation=generation,
@@ -340,6 +366,8 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "closure_success_rate": statistics.fmean(closure_rates) if closure_rates else 0.0,
                 "baseline_closure_success_rate": statistics.fmean(baseline_closure_rates) if baseline_closure_rates else 0.0,
                 "closure_pair_count": len(closure_rates),
+                "closure_success_count": int(sum(closure_rates)),
+                "baseline_closure_success_count": int(sum(baseline_closure_rates)),
                 "retained_count": len(retained),
                 "runtime_max_depth": int(learner.meta_policy["max_depth"]),
                 "transfer_error": transfer_error,
@@ -366,9 +394,17 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
     final_closure_gain = (
         final["closure_success_rate"] - final["baseline_closure_success_rate"]
     )
+    early = generations_out[min(2, len(generations_out) - 1)]
     closure_growth = (
-        final["closure_success_rate"]
-        - generations_out[min(2, len(generations_out) - 1)]["closure_success_rate"]
+        final["closure_success_count"] - early["closure_success_count"]
+    )
+
+    closure_capacity_ok = (
+        final["closure_pair_count"] > 0
+        and final["closure_success_count"] >= max(
+            1, final["closure_pair_count"] - 1
+        )
+        and final["closure_success_count"] > early["closure_success_count"]
     )
 
     finite_gate = (
@@ -383,7 +419,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         and final["probe_success_rate"] > final["baseline_probe_success_rate"]
         and final["closure_pair_count"] >= 6
         and final_closure_gain >= 0.20
-        and closure_growth >= 0.10
+        and closure_capacity_ok
         and final["baseline_accepted"] is False
     )
 
@@ -399,8 +435,11 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         "multi_parent_generations": multi_parent_generations,
         "final_closure_success_rate": final["closure_success_rate"],
         "final_baseline_closure_success_rate": final["baseline_closure_success_rate"],
+        "final_closure_success_count": final["closure_success_count"],
+        "final_baseline_closure_success_count": final["baseline_closure_success_count"],
         "final_closure_gain": final_closure_gain,
         "closure_growth": closure_growth,
+        "closure_capacity_ok": closure_capacity_ok,
         "mean_probe_gain": probe_gain,
         "final_probe_success_rate": final["probe_success_rate"],
         "final_baseline_probe_success_rate": final["baseline_probe_success_rate"],
