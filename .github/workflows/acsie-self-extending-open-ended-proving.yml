@@ -1,5 +1,5 @@
 name: ACSIE self-extending open-ended proving
-# Resource-stability experiment: scientific gate remains unchanged.
+# Resource-stability experiment: release logically dominated states; scientific gate remains unchanged.
 on:
   push:
     branches:
@@ -19,7 +19,7 @@ jobs:
       - name: Clone exact ACSIE research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "d0b427a8132af5c79024329b32285dfdf9db8e77"
+          ACSIE_REF: "4f73576b9e26cfe9e8f187c04ee19a88f769dfec"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
@@ -40,14 +40,14 @@ jobs:
           : > open-ended-self-extending-result.txt
           {
             echo "WORKFLOW_SHA=${{ github.sha }}"
-            echo "ACSIE_REF=d0b427a8132af5c79024329b32285dfdf9db8e77"
+            echo "ACSIE_REF=4f73576b9e26cfe9e8f187c04ee19a88f769dfec"
             echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> open-ended-self-extending-result.txt
       - name: Run five-seed open-ended growth gate
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONPATH: /tmp/acsie-open-ended-self-extending
-          ACSIE_REF: "d0b427a8132af5c79024329b32285dfdf9db8e77"
+          ACSIE_REF: "4f73576b9e26cfe9e8f187c04ee19a88f769dfec"
         run: |
           set +e
           . /tmp/open-ended-venv/bin/activate
