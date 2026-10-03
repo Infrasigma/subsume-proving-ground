@@ -67,11 +67,11 @@ jobs:
           set -o pipefail
           {
             echo "WORKFLOW_SHA=${{ github.sha }}"
-            echo "ACSIE_REF=a48dce3ba6574da5bbae9e0aff3bae401421af0b"
+            echo "ACSIE_REF=6d39c3aa9818e10c8bb728cf9067037681db02fa"
             echo "SEED=2026100303"
             echo "GENERATIONS=12"
             echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            git show b37f03cbb9fb86de79c78a711250a8b690fa1d0a:lab/acsie_open_ended_version_space_diagnostic_v3.py > /tmp/diagnostic.py
+            git show 4db598df6464cea6b40f869b7bdd923207628d0d:lab/acsie_open_ended_version_space_diagnostic_v3.py > /tmp/diagnostic.py
             sed -i 's/{p.primitive_id for p in target_parents}/{p["primitive_id"] for p in target_parents}/' /tmp/diagnostic.py
             python3 -u /tmp/diagnostic.py
           } 2>&1 | tee version-space-seed3.txt
