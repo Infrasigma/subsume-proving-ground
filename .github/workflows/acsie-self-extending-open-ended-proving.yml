@@ -16,7 +16,7 @@ jobs:
       - name: Clone exact ACSIE research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "a727892a01c965e8ec92c1407df0beae8f66b8c1"
+          ACSIE_REF: "2765c6da529995b1567a4f847f72e53fe3a2a58"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
@@ -44,7 +44,7 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONPATH: /tmp/acsie-open-ended-self-extending
-          ACSIE_REF: "a727892a01c965e8ec92c1407df0beae8f66b8c1"
+          ACSIE_REF: "2765c6da529995b1567a4f847f72e53fe3a2a58"
         run: |
           set +e
           . /tmp/open-ended-venv/bin/activate
