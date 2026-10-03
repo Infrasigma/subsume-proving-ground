@@ -548,3 +548,5 @@ if __name__ == "__main__":
 # execution marker: fixed-baseline scientific run
 
 # execution marker: trap-free bootstrap closure v2
+
+# execution marker: current-main trap closure run
