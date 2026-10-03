@@ -293,6 +293,20 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
     def capability_macro(cap: HiddenCapability) -> dict[str, Any]:
         return {"op": "macro", "id": cap.hidden_id}
 
+def primitive_lineage_ids(
+    learner: RecursiveCognitiveCompiler,
+    primitive_ids: tuple[str, ...],
+) -> set[str]:
+    lineage: set[str] = set()
+    for pid in primitive_ids:
+        method = getattr(learner, "primitive_lineage", None)
+        if method is None:
+            lineage.add(str(pid))
+        else:
+            lineage.update(str(x) for x in method(str(pid)))
+    return lineage
+
+
     for generation in range(generations):
         learner.generation = generation
         hidden_macros = hidden_library()
@@ -343,6 +357,14 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
 
         parent_used = primitive.parent_ids if primitive is not None else tuple()
         expected_parent_ids = {p.primitive_id for p in target_parents}
+        candidate_lineage_ids = (
+            primitive_lineage_ids(
+                learner,
+                (primitive.primitive_id,),
+            )
+            if primitive is not None
+            else set()
+        )
         recursive_reuse_ok = False
         if primitive is not None:
             transfer_error = primitive.transfer_error
@@ -354,7 +376,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 novelty=1.0 / max(1, primitive.complexity),
                 resource_cost=max(1, primitive.complexity),
             )
-            recursive_reuse_ok = expected_parent_ids.issubset(set(primitive.parent_ids))
+            recursive_reuse_ok = expected_parent_ids.issubset(candidate_lineage_ids)
             if accepted:
                 hidden_id = f"hidden:{generation}:{len(retained)}"
                 retained.append(
@@ -429,7 +451,11 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                     ceval = learner.evaluate(cproc, ctr, ch, cv, co, ())
                     competence = bool(ceval.accepted and ceval.ood_error <= 1e-9)
                     expected = {left_parent.primitive_id, right_parent.primitive_id}
-                    reuse_ok = competence and expected.issubset(set(cproc.used_primitives))
+                    candidate_lineage = primitive_lineage_ids(
+                        learner,
+                        tuple(cproc.used_primitives),
+                    )
+                    reuse_ok = competence and expected.issubset(candidate_lineage)
                 closure_rates.append(float(competence))
                 closure_reuse_rates.append(float(reuse_ok))
                 semantic_matches = semantic_parent_match_count(
@@ -484,10 +510,16 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
             competence = False
             reuse_ok = False
             if proc is not None:
-                peval = learner.evaluate(proc, ptrain, ptransfer, ptransfer, pood, ())
+                peval = learner.evaluate(proc, ptrain, pholdout, ptransfer, pood, ())
                 competence = bool(peval.accepted and peval.ood_error <= 1e-9)
                 expected = {p.primitive_id for p in probe_parents}
-                reuse_ok = competence and (not expected or expected.issubset(set(proc.used_primitives)))
+                candidate_lineage = primitive_lineage_ids(
+                    learner,
+                    tuple(proc.used_primitives),
+                )
+                reuse_ok = competence and (
+                    not expected or expected.issubset(candidate_lineage)
+                )
             probe_rates.append(float(competence))
             probe_reuse_rates.append(float(reuse_ok))
             semantic_probe_matches = semantic_parent_match_count(
@@ -521,9 +553,14 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
             bproc = synthesize_discovery_only(baseline, ptrain, ptransfer)
             bcompetence = False
             if bproc is not None:
-                beval = baseline.evaluate(bproc, ptrain, ptransfer, ptransfer, pood, ())
+                beval = baseline.evaluate(bproc, ptrain, pholdout, ptransfer, pood, ())
                 bcompetence = bool(beval.accepted and beval.ood_error <= 1e-9)
             baseline_probe_rates.append(float(bcompetence))
+        previous_runtime_depth = (
+            initial_depth
+            if not generations_out
+            else generations_out[-1]["runtime_max_depth"]
+        )
         generations_out.append(
             {
                 "generation": generation,
@@ -533,6 +570,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "parent_used": bool(recursive_reuse_ok),
                 "parent_ids": list(parent_used),
                 "expected_parent_ids": sorted(expected_parent_ids),
+                "candidate_lineage_ids": sorted(candidate_lineage_ids),
                 "recursive_reuse_ok": bool(recursive_reuse_ok),
                 "multi_parent_used": len(target_parents) >= 2 and recursive_reuse_ok,
                 "closure_success_rate": statistics.fmean(closure_rates) if closure_rates else 0.0,
@@ -546,6 +584,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "baseline_closure_success_count": int(sum(baseline_closure_rates)),
                 "retained_count": len(retained),
                 "runtime_max_depth": int(learner.meta_policy["max_depth"]),
+                "growth_delta": int(learner.meta_policy["max_depth"]) - int(previous_runtime_depth),
                 "transfer_error": transfer_error,
                 "ood_error": ood_error,
                 "probe_success_rate": statistics.fmean(probe_rates),
@@ -601,21 +640,55 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         and all(row["probe_trap_count"] == 0 for row in generations_out)
     )
 
+    applicable_generations = generations_out[1:] if len(generations_out) > 1 else []
+    every_generation_accepted = bool(generations_out) and all(
+        row["accepted"] for row in generations_out
+    )
+    every_closure_perfect = all(
+        row["closure_pair_count"] == 0
+        or (
+            row["closure_success_rate"] == 1.0
+            and row["closure_reuse_rate"] == 1.0
+            and row["closure_trap_count"] == 0
+        )
+        for row in generations_out
+    )
+    every_probe_perfect = all(
+        row["probe_success_rate"] == 1.0
+        and row["probe_reuse_rate"] == 1.0
+        and row["probe_trap_count"] == 0
+        for row in generations_out
+    )
+    lineage_closed = all(
+        row["parent_used"]
+        for row in applicable_generations
+    )
+    strict_growth = all(
+        row["growth_delta"] > 0
+        for row in applicable_generations
+    )
+    depth_growth_contract = (
+        final["runtime_max_depth"] >= initial_depth + generations
+        and final["runtime_max_depth"] > max(
+            row["runtime_max_depth"]
+            for row in generations_out[:-1]
+        )
+    )
     finite_gate = (
-        accepted_after_bootstrap >= generations - 2
-        and recursive_generations >= generations - 2
-        and multi_parent_generations >= generations - 2
-        and all(row["accepted"] for row in last_three)
-        and final["retained_count"] >= generations - 1
-        and final["runtime_max_depth"] > initial_depth
+        len(generations_out) == generations
+        and every_generation_accepted
+        and lineage_closed
+        and every_closure_perfect
+        and every_probe_perfect
+        and strict_growth
+        and depth_growth_contract
+        and final["retained_count"] >= generations
         and final["target_depth"] > generations_out[0]["target_depth"]
-        and final["probe_success_rate"] > 0.75
-        and final["probe_success_rate"] > final["baseline_probe_success_rate"]
-        and final_probe_reuse_rate > 0.75
+        and final["probe_success_rate"] == 1.0
+        and final["probe_reuse_rate"] == 1.0
         and final["closure_pair_count"] >= 6
-        and final_closure_gain >= 0.20
-        and closure_capacity_ok
-        and closure_growth > 0
+        and final["closure_success_rate"] == 1.0
+        and final["closure_reuse_rate"] == 1.0
         and trap_free_ok
         and final["baseline_accepted"] is False
     )
@@ -636,6 +709,12 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         "final_closure_gain": final_closure_gain,
         "closure_growth": closure_growth,
         "closure_capacity_ok": closure_capacity_ok,
+        "every_generation_accepted": every_generation_accepted,
+        "every_closure_perfect": every_closure_perfect,
+        "every_probe_perfect": every_probe_perfect,
+        "lineage_closed": lineage_closed,
+        "strict_growth": strict_growth,
+        "depth_growth_contract": depth_growth_contract,
         "mean_probe_gain": probe_gain,
         "final_probe_success_rate": final["probe_success_rate"],
         "final_baseline_probe_success_rate": final["baseline_probe_success_rate"],
@@ -676,7 +755,7 @@ def main():
         "--seeds",
         default="2026100301,2026100302,2026100303,2026100304,2026100305",
     )
-    parser.add_argument("--generations", type=int, default=8)
+    parser.add_argument("--generations", type=int, default=12)
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
 
