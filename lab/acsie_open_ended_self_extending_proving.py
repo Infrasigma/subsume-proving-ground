@@ -31,6 +31,7 @@ class HiddenCapability:
     generation: int
     parent_hidden_id: str | None = None
     parent_hidden_ids: tuple[str, ...] = ()
+    primitive_id: str | None = None
 
 
 def stable_int(text: str) -> int:
@@ -238,6 +239,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                         generation=generation,
                         parent_hidden_id=target_parents[0].hidden_id if target_parents else None,
                         parent_hidden_ids=tuple(p.hidden_id for p in target_parents),
+                        primitive_id=primitive.primitive_id,
                     )
                 )
 
@@ -252,17 +254,33 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
 
         closure_rates = []
         baseline_closure_rates = []
+        closure_reuse_success_count = 0
+        closure_trap_count = 0
         if len(retained) >= 2:
-            pairs = [
+            all_pairs = [
                 (retained[i], retained[j])
                 for i in range(len(retained))
                 for j in range(i + 1, len(retained))
             ]
+            closure_pair_budget = min(
+                len(all_pairs),
+                max(6, 2 * len(retained)),
+            )
+            pairs = sorted(
+                all_pairs,
+                key=lambda pair: stable_int(
+                    f"{pair[0].primitive_id}|{pair[1].primitive_id}|{seed}|{generation}"
+                ),
+            )[:closure_pair_budget]
             for pair_idx, (left_parent, right_parent) in enumerate(pairs):
                 closure_expr = {
                     "op": "add",
                     "left": capability_macro(left_parent),
                     "right": capability_macro(right_parent),
+                }
+                required_parent_ids = {
+                    left_parent.primitive_id,
+                    right_parent.primitive_id,
                 }
                 closure_macros = hidden_library()
                 ctr = make_traces(
@@ -280,9 +298,16 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 cproc = learner.synthesize_process(ctr, cv, co)
                 if cproc is not None:
                     ceval = learner.evaluate(cproc, ctr, cv, cv, co, ())
-                    closure_rates.append(
-                        float(ceval.accepted and ceval.ood_error <= 1e-9)
+                    solved = bool(
+                        ceval.accepted and ceval.ood_error <= 1e-9
                     )
+                    closure_rates.append(float(solved))
+                    used_parent_ids = set(cproc.used_primitives)
+                    reused_all = required_parent_ids.issubset(used_parent_ids)
+                    if solved and reused_all:
+                        closure_reuse_success_count += 1
+                    elif solved and not reused_all:
+                        closure_trap_count += 1
                 else:
                     closure_rates.append(0.0)
                 bproc = baseline.synthesize_process(ctr, cv, co)
@@ -296,10 +321,16 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
 
         probe_rates = []
         baseline_probe_rates = []
-        for probe_idx in range(4):
+        probe_reuse_success_count = 0
+        probe_trap_count = 0
+        probe_attempt_count = min(8, max(4, 2 + len(retained)))
+        for probe_idx in range(probe_attempt_count):
             probe_parents = tuple(
                 rng.sample(retained, 2)
             ) if len(retained) >= 2 else tuple(retained[:1])
+            required_probe_parent_ids = {
+                parent.primitive_id for parent in probe_parents if parent.primitive_id
+            }
             probe_macros = hidden_library()
             if probe_parents:
                 if len(probe_parents) == 1:
@@ -337,9 +368,17 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 peval = learner.evaluate(
                     proc, ptrain, ptransfer, ptransfer, pood, ()
                 )
-                probe_rates.append(
-                    float(peval.accepted and peval.ood_error <= 1e-9)
+                solved = bool(
+                    peval.accepted and peval.ood_error <= 1e-9
                 )
+                probe_rates.append(float(solved))
+                reused_all = required_probe_parent_ids.issubset(
+                    set(proc.used_primitives)
+                )
+                if solved and reused_all:
+                    probe_reuse_success_count += 1
+                elif solved and required_probe_parent_ids and not reused_all:
+                    probe_trap_count += 1
             else:
                 probe_rates.append(0.0)
 
@@ -363,16 +402,32 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "parent_used": bool(parent_used),
                 "parent_ids": list(parent_used),
                 "multi_parent_used": len(target_parents) >= 2,
+                "bootstrap_hard": generation == 0 and accepted and target_depth >= 3,
+                "bootstrap_target_depth": target_depth if generation == 0 else None,
                 "closure_success_rate": statistics.fmean(closure_rates) if closure_rates else 0.0,
                 "baseline_closure_success_rate": statistics.fmean(baseline_closure_rates) if baseline_closure_rates else 0.0,
+                "closure_total_pair_count": len(all_pairs),
                 "closure_pair_count": len(closure_rates),
+                "closure_coverage_rate": (
+                    len(closure_rates) / len(all_pairs)
+                    if all_pairs else 0.0
+                ),
                 "closure_success_count": int(sum(closure_rates)),
+                "closure_reuse_success_count": closure_reuse_success_count,
+                "closure_trap_count": closure_trap_count,
                 "baseline_closure_success_count": int(sum(baseline_closure_rates)),
                 "retained_count": len(retained),
                 "runtime_max_depth": int(learner.meta_policy["max_depth"]),
                 "transfer_error": transfer_error,
                 "ood_error": ood_error,
+                "probe_attempt_count": probe_attempt_count,
                 "probe_success_rate": statistics.fmean(probe_rates),
+                "probe_reuse_success_count": probe_reuse_success_count,
+                "probe_reuse_success_rate": (
+                    probe_reuse_success_count / probe_attempt_count
+                    if probe_attempt_count else 0.0
+                ),
+                "probe_trap_count": probe_trap_count,
                 "baseline_probe_success_rate": statistics.fmean(baseline_probe_rates),
             }
         )
@@ -396,18 +451,24 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
     )
     early = generations_out[min(2, len(generations_out) - 1)]
     closure_growth = (
-        final["closure_success_count"] - early["closure_success_count"]
+        final["closure_reuse_success_rate"] - early["closure_reuse_success_rate"]
     )
     closure_capacity_ok = (
-        final["closure_pair_count"] > 0
-        and final["closure_success_count"] >= max(
-            1, final["closure_pair_count"] - 1
-        )
-        and final["closure_success_count"] > early["closure_success_count"]
+        final["closure_pair_count"] > early["closure_pair_count"]
+        and final["closure_coverage_rate"] >= 0.75
+        and final["closure_reuse_success_rate"] >= 0.75
+        and final["closure_reuse_success_count"] >= 6
+        and final["closure_reuse_success_rate"] > early["closure_reuse_success_rate"]
+    )
+    bootstrap_hard_ok = bool(generations_out and generations_out[0]["bootstrap_hard"])
+    trap_free = all(
+        row["closure_trap_count"] == 0 and row["probe_trap_count"] == 0
+        for row in generations_out[1:]
     )
 
     finite_gate = (
-        accepted_after_bootstrap >= generations - 2
+        bootstrap_hard_ok
+        and accepted_after_bootstrap >= generations - 2
         and recursive_generations >= generations - 2
         and multi_parent_generations >= generations - 2
         and all(row["accepted"] for row in last_three)
@@ -415,10 +476,14 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         and final["runtime_max_depth"] > initial_depth
         and final["target_depth"] > generations_out[0]["target_depth"]
         and final["probe_success_rate"] > 0.75
+        and final["probe_reuse_success_rate"] > 0.75
         and final["probe_success_rate"] > final["baseline_probe_success_rate"]
         and final["closure_pair_count"] >= 6
+        and final["closure_coverage_rate"] >= 0.75
+        and final["closure_reuse_success_count"] >= 6
         and final_closure_gain >= 0.20
         and closure_capacity_ok
+        and trap_free
         and final["baseline_accepted"] is False
     )
 
@@ -434,13 +499,23 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         "multi_parent_generations": multi_parent_generations,
         "final_closure_success_rate": final["closure_success_rate"],
         "final_baseline_closure_success_rate": final["baseline_closure_success_rate"],
+        "bootstrap_hard_ok": bootstrap_hard_ok,
+        "final_closure_total_pair_count": final["closure_total_pair_count"],
+        "final_closure_pair_count": final["closure_pair_count"],
+        "final_closure_coverage_rate": final["closure_coverage_rate"],
         "final_closure_success_count": final["closure_success_count"],
+        "final_closure_reuse_success_count": final["closure_reuse_success_count"],
+        "final_closure_trap_count": final["closure_trap_count"],
         "final_baseline_closure_success_count": final["baseline_closure_success_count"],
         "final_closure_gain": final_closure_gain,
         "closure_growth": closure_growth,
         "closure_capacity_ok": closure_capacity_ok,
+        "trap_free": trap_free,
         "mean_probe_gain": probe_gain,
+        "final_probe_attempt_count": final["probe_attempt_count"],
         "final_probe_success_rate": final["probe_success_rate"],
+        "final_probe_reuse_success_rate": final["probe_reuse_success_rate"],
+        "final_probe_trap_count": final["probe_trap_count"],
         "final_baseline_probe_success_rate": final["baseline_probe_success_rate"],
         "finite_open_ended_growth_gate": finite_gate,
         "external_model": False,
@@ -490,3 +565,11 @@ if __name__ == "__main__":
 # execution marker: fresh exact-SHA PR sync
 
 # execution marker: fixed-baseline scientific run
+
+# execution marker: trap-free bootstrap closure v2
+
+# execution marker: current-main trap closure run
+
+# execution marker: progressive process search optimized gate
+
+# execution marker: capability-scaled closure matrix
