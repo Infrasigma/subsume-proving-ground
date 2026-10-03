@@ -479,7 +479,9 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 closure_candidate_audit = {
                     "expected_lineage_candidate_count": 0,
                     "perfect_candidate_count": 0,
+                    "selection_qualified_candidate_count": 0,
                     "expected_lineage_expressions": [],
+                    "preselection_validation_used": False,
                 }
                 try:
                     expected_ids_for_audit = {left_parent.primitive_id, right_parent.primitive_id}
@@ -499,19 +501,8 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                                 ) / len(closure_discovery_rows)
                                 if trerr > 1e-9:
                                     continue
-                                terv = sum(
-                                    abs(eval_expr(expr, t.inputs, learner._pmap()) - t.target)
-                                    for t in cv
-                                ) / len(cv)
-                                if terv > 1e-9:
-                                    continue
-                                oerr = sum(
-                                    abs(eval_expr(expr, t.inputs, learner._pmap()) - t.target)
-                                    for t in co
-                                ) / len(co)
-                                if oerr > 1e-9:
-                                    continue
                                 closure_candidate_audit["perfect_candidate_count"] += 1
+                                closure_candidate_audit["selection_qualified_candidate_count"] += 1
                                 used = {
                                     str(x["id"])
                                     for x in learner._walk(expr)
@@ -677,11 +668,12 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                         "event": "PRIMARY_PROCESS_OOD_CANDIDATE_AUDIT",
                         "seed": seed,
                         "generation": generation,
-                        "candidate_ood_summary": getattr(
+                        "candidate_selection_summary": getattr(
                             learner,
-                            "last_process_candidate_ood_summary",
+                            "last_process_candidate_selection_summary",
                             {},
                         ),
+                        "selection_source": "discovery_and_selection_only",
                         "selected_process_id": getattr(proc, "process_id", None),
                         "selected_process_used_primitives": (
                             list(getattr(proc, "used_primitives", ())) if proc is not None else []
