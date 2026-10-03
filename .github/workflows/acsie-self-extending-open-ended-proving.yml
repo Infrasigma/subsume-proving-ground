@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - research/open-ended-self-extending-proving-20261003-resource-f557
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 concurrency:
   group: acsie-self-extending-open-ended-${{ github.ref }}
