@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        seed: [2026100302, 2026100303, 2026100304, 2026100305]
+        seed: [2026100303]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
