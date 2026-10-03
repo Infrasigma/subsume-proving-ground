@@ -179,12 +179,8 @@ def synthesize_discovery_only(
                 ) / len(rows)
                 if train_error > 1e-9:
                     continue
-                transfer_error = sum(
-                    abs(eval_expr(expr, trace.inputs, pmap) - trace.target)
-                    for trace in transfer
-                ) / len(transfer)
-                if transfer_error > 1e-9:
-                    continue
+                # Baseline candidate generation sees discovery rows only.
+                # Transfer/OOD remain post-selection evaluation evidence.
                 used = tuple(sorted({str(node['id']) for node in compiler._walk(expr) if node.get('op') == 'macro'}))
                 novelty = 1.0 / (1 + len(json.dumps(expr, sort_keys=True)))
                 candidates.append((len(used), novelty, -len(json.dumps(expr, sort_keys=True)), json.dumps(expr, sort_keys=True), expr, used, policy))
@@ -331,13 +327,14 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 }
                 closure_macros = hidden_library()
                 ctr = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_train', 8, 0.13, closure_macros)
+                ch = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_holdout', 5, 0.23, closure_macros)
                 cv = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_transfer', 5, -0.19, closure_macros)
                 co = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_ood', 5, 0.29, closure_macros)
                 cproc = learner.synthesize_process(ctr, cv, co)
                 competence = False
                 reuse_ok = False
                 if cproc is not None:
-                    ceval = learner.evaluate(cproc, ctr, cv, cv, co, ())
+                    ceval = learner.evaluate(cproc, ctr, ch, cv, co, ())
                     competence = bool(ceval.accepted and ceval.ood_error <= 1e-9)
                     expected = {left_parent.primitive_id, right_parent.primitive_id}
                     reuse_ok = competence and expected.issubset(set(cproc.used_primitives))
@@ -349,7 +346,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 bproc = synthesize_discovery_only(baseline, ctr, cv)
                 bcompetence = False
                 if bproc is not None:
-                    beval = baseline.evaluate(bproc, ctr, cv, cv, co, ())
+                    beval = baseline.evaluate(bproc, ctr, ch, cv, co, ())
                     bcompetence = bool(beval.accepted and beval.ood_error <= 1e-9)
                 baseline_closure_rates.append(float(bcompetence))
 
@@ -369,6 +366,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 probe = random_base_expr(random.Random(seed * 193 + generation * 17 + probe_idx), 3)
 
             ptrain = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_train', 8, 0.17, probe_macros)
+            pholdout = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_holdout', 5, 0.27, probe_macros)
             ptransfer = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_transfer', 5, -0.22, probe_macros)
             pood = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_ood', 5, 0.41, probe_macros)
             proc = learner.synthesize_process(ptrain, ptransfer, pood)
