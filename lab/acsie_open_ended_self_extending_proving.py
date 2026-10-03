@@ -284,7 +284,9 @@ def primitive_lineage_ids(
     primitive_ids: tuple[str, ...],
 ) -> set[str]:
     lineage: set[str] = set()
-    method = getattr(learner, "primitive_lineage", None)
+    method = getattr(learner, "executable_lineage", None)
+    if method is None:
+        method = getattr(learner, "primitive_lineage", None)
     for pid in primitive_ids:
         if method is None:
             lineage.add(str(pid))
