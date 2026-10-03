@@ -257,11 +257,21 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         closure_reuse_success_count = 0
         closure_trap_count = 0
         if len(retained) >= 2:
-            pairs = [
+            all_pairs = [
                 (retained[i], retained[j])
                 for i in range(len(retained))
                 for j in range(i + 1, len(retained))
             ]
+            closure_pair_budget = min(
+                len(all_pairs),
+                max(6, 2 * len(retained)),
+            )
+            pairs = sorted(
+                all_pairs,
+                key=lambda pair: stable_int(
+                    f"{pair[0].primitive_id}|{pair[1].primitive_id}|{seed}|{generation}"
+                ),
+            )[:closure_pair_budget]
             for pair_idx, (left_parent, right_parent) in enumerate(pairs):
                 closure_expr = {
                     "op": "add",
@@ -396,7 +406,12 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "bootstrap_target_depth": target_depth if generation == 0 else None,
                 "closure_success_rate": statistics.fmean(closure_rates) if closure_rates else 0.0,
                 "baseline_closure_success_rate": statistics.fmean(baseline_closure_rates) if baseline_closure_rates else 0.0,
+                "closure_total_pair_count": len(all_pairs),
                 "closure_pair_count": len(closure_rates),
+                "closure_coverage_rate": (
+                    len(closure_rates) / len(all_pairs)
+                    if all_pairs else 0.0
+                ),
                 "closure_success_count": int(sum(closure_rates)),
                 "closure_reuse_success_count": closure_reuse_success_count,
                 "closure_trap_count": closure_trap_count,
@@ -436,14 +451,14 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
     )
     early = generations_out[min(2, len(generations_out) - 1)]
     closure_growth = (
-        final["closure_reuse_success_count"] - early["closure_reuse_success_count"]
+        final["closure_reuse_success_rate"] - early["closure_reuse_success_rate"]
     )
     closure_capacity_ok = (
-        final["closure_pair_count"] > 0
-        and final["closure_reuse_success_count"] >= max(
-            1, final["closure_pair_count"] - 1
-        )
-        and final["closure_reuse_success_count"] > early["closure_reuse_success_count"]
+        final["closure_pair_count"] > early["closure_pair_count"]
+        and final["closure_coverage_rate"] >= 0.75
+        and final["closure_reuse_success_rate"] >= 0.75
+        and final["closure_reuse_success_count"] >= 6
+        and final["closure_reuse_success_rate"] > early["closure_reuse_success_rate"]
     )
     bootstrap_hard_ok = bool(generations_out and generations_out[0]["bootstrap_hard"])
     trap_free = all(
@@ -464,6 +479,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         and final["probe_reuse_success_rate"] > 0.75
         and final["probe_success_rate"] > final["baseline_probe_success_rate"]
         and final["closure_pair_count"] >= 6
+        and final["closure_coverage_rate"] >= 0.75
         and final["closure_reuse_success_count"] >= 6
         and final_closure_gain >= 0.20
         and closure_capacity_ok
@@ -484,6 +500,9 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         "final_closure_success_rate": final["closure_success_rate"],
         "final_baseline_closure_success_rate": final["baseline_closure_success_rate"],
         "bootstrap_hard_ok": bootstrap_hard_ok,
+        "final_closure_total_pair_count": final["closure_total_pair_count"],
+        "final_closure_pair_count": final["closure_pair_count"],
+        "final_closure_coverage_rate": final["closure_coverage_rate"],
         "final_closure_success_count": final["closure_success_count"],
         "final_closure_reuse_success_count": final["closure_reuse_success_count"],
         "final_closure_trap_count": final["closure_trap_count"],
