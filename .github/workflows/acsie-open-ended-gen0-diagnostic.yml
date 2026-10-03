@@ -4,6 +4,7 @@ on:
     branches:
       - research/open-ended-gen0-diagnostic-20261003
       - research/open-ended-direct-reuse-rank-diagnostic-20261003
+      - research/open-ended-minimal-transitive-lineage-diagnostic-20261003
   pull_request:
     branches:
       - main
@@ -23,7 +24,7 @@ jobs:
       - name: Clone exact ACSIE research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "3e1dbeb5bbf7adf7f91c3058184f4325f49c2b32"
+          ACSIE_REF: "a58dff68c81fdf85802f0fae2a3c8df9d3ae7adb"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
@@ -36,13 +37,13 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONPATH: /tmp/acsie-open-ended-diagnostic
-          ACSIE_REF: "3e1dbeb5bbf7adf7f91c3058184f4325f49c2b32"
+          ACSIE_REF: "a58dff68c81fdf85802f0fae2a3c8df9d3ae7adb"
         run: |
           python3 -u - <<'PY'
           import json, time
           import lab.acsie_open_ended_self_extending_proving as proving
           seed = int("${{ matrix.seed }}")
-          print(json.dumps({"event":"DIAGNOSTIC_START","seed":seed,"generations":12,"acsie_ref":"3e1dbeb5bbf7adf7f91c3058184f4325f49c2b32"}), flush=True)
+          print(json.dumps({"event":"DIAGNOSTIC_START","seed":seed,"generations":12,"acsie_ref":"a58dff68c81fdf85802f0fae2a3c8df9d3ae7adb"}), flush=True)
           t0 = time.time()
           result = proving.run_seed(seed, 12)
           print(json.dumps({"event":"DIAGNOSTIC_DONE","elapsed_seconds":time.time()-t0,"result":result}, sort_keys=True), flush=True)
