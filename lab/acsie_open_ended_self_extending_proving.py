@@ -31,6 +31,7 @@ class HiddenCapability:
     generation: int
     parent_hidden_id: str | None = None
     parent_hidden_ids: tuple[str, ...] = ()
+    primitive_id: str | None = None
 
 
 def stable_int(text: str) -> int:
@@ -238,6 +239,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                         generation=generation,
                         parent_hidden_id=target_parents[0].hidden_id if target_parents else None,
                         parent_hidden_ids=tuple(p.hidden_id for p in target_parents),
+                        primitive_id=primitive.primitive_id,
                     )
                 )
 
@@ -267,8 +269,8 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                     "right": capability_macro(right_parent),
                 }
                 required_parent_ids = {
-                    left_parent.hidden_id,
-                    right_parent.hidden_id,
+                    left_parent.primitive_id,
+                    right_parent.primitive_id,
                 }
                 closure_macros = hidden_library()
                 ctr = make_traces(
@@ -317,7 +319,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 rng.sample(retained, 2)
             ) if len(retained) >= 2 else tuple(retained[:1])
             required_probe_parent_ids = {
-                parent.hidden_id for parent in probe_parents
+                parent.primitive_id for parent in probe_parents if parent.primitive_id
             }
             probe_macros = hidden_library()
             if probe_parents:
