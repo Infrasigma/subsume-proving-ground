@@ -360,6 +360,29 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         )
 
         discovery_train = tuple(train) + tuple(selection)
+
+        parent_fidelity_audit = {}
+        for parent in target_parents:
+            parent_fidelity_audit[parent.primitive_id] = retained_representation_error(
+                learner,
+                parent,
+                tuple(train),
+                hidden_macros,
+            )
+        print(
+            json.dumps(
+                {
+                    "event": "TARGET_PARENT_FIDELITY_AUDIT",
+                    "seed": seed,
+                    "generation": generation,
+                    "target_parent_ids": [p.primitive_id for p in target_parents],
+                    "errors": parent_fidelity_audit,
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+
         primitive = learner.invent_primitive(discovery_train, hold, transfer)
         accepted = False
         transfer_error = float("inf")
