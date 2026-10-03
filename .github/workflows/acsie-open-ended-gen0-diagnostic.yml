@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - research/open-ended-gen0-diagnostic-20261003
+      - research/open-ended-direct-reuse-rank-diagnostic-20261003
   pull_request:
     branches:
       - main
