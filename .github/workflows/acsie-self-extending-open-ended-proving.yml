@@ -31,6 +31,7 @@ jobs:
           . /tmp/open-ended-venv/bin/activate
           python -m pip install --upgrade pip pytest
           PYTHONPATH=/tmp/acsie-open-ended-self-extending pytest -q /tmp/acsie-open-ended-self-extending/tests/test_open_ended_growth.py
+          PYTHONPATH=/tmp/acsie-open-ended-self-extending:. pytest -q lab/test_open_ended_bootstrap_language.py
       - name: Initialize scientific evidence file
         run: |
           : > open-ended-self-extending-result.txt
