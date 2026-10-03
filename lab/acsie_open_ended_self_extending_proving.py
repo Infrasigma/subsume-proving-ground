@@ -571,3 +571,5 @@ if __name__ == "__main__":
 # execution marker: current-main trap closure run
 
 # execution marker: progressive process search optimized gate
+
+# execution marker: capability-scaled closure matrix
