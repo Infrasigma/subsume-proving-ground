@@ -12,6 +12,7 @@ from typing import Any
 from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
 from cognitive_core.recursive_cognitive_compiler import (
     RecursiveCognitiveCompiler,
+    ProcessCandidate,
     Trace,
     eval_expr,
     ast_depth,
