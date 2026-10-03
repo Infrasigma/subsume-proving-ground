@@ -37,14 +37,14 @@ jobs:
           : > open-ended-self-extending-result.txt
           {
             echo "WORKFLOW_SHA=${{ github.sha }}"
-            echo "ACSIE_REF=01fc89e2f6ee801b9eed8712f9c4ddb691807042"
+            echo "ACSIE_REF=4824e9adcf66174de4db37a98bd8c66e0e5baa11"
             echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> open-ended-self-extending-result.txt
       - name: Run five-seed open-ended growth gate
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONPATH: /tmp/acsie-open-ended-self-extending
-          ACSIE_REF: "01fc89e2f6ee801b9eed8712f9c4ddb691807042"
+          ACSIE_REF: "4824e9adcf66174de4db37a98bd8c66e0e5baa11"
         run: |
           set +e
           . /tmp/open-ended-venv/bin/activate
