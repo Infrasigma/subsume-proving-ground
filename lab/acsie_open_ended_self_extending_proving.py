@@ -192,7 +192,10 @@ def synthesize_discovery_only(
                 continue
     if not candidates:
         return None
-    _, _, _, _, expr, used, policy = max(candidates)
+    _, _, _, _, expr, used, policy = max(
+        candidates,
+        key=lambda c: (c[0], c[1], c[2], c[3]),
+    )
     process_id = 'baseline-proc:' + sha256(json.dumps((expr, policy, compiler.generation), sort_keys=True).encode()).hexdigest()[:20]
     proc = ProcessCandidate(
         process_id, expr, used, compiler.generation, tuple(used), dict(policy),
