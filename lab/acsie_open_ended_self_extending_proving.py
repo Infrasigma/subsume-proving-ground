@@ -192,11 +192,13 @@ def exact_vector(expr, rows: tuple[Trace, ...], macros: dict[str, dict[str, Any]
     return tuple(float(eval_hidden(expr, row.inputs, macros)) for row in rows)
 
 
-def raw_baseline_exact(expr, rows: tuple[Trace, ...]) -> bool:
+def raw_baseline_exact(
+    expr, rows: tuple[Trace, ...], macros: dict[str, dict[str, Any]] | None = None
+) -> bool:
     """Reject targets representable by the actual fresh baseline grammar (depth <=3)."""
     keys = tuple(sorted(set().union(*(row.inputs.keys() for row in rows))))
     compiler = RecursiveCognitiveCompiler(max_depth=3, population=1, seed=0)
-    target = exact_vector(expr, rows, {})
+    target = exact_vector(expr, rows, macros or {})
     for candidate in compiler._exprs(keys, (), 3):
         try:
             vector = tuple(float(eval_expr(candidate, row.inputs, {})) for row in rows)
@@ -277,7 +279,7 @@ def closure_library_identifiable(
             if previous is not None and previous != pair_id:
                 return False
             pair_vectors[vector] = pair_id
-            if raw_baseline_exact(expr, rows):
+            if raw_baseline_exact(expr, rows, macros):
                 return False
     return True
 
@@ -291,7 +293,7 @@ def target_is_admissible(
 ) -> bool:
     rows = admission_rows(seed, generation)
     macros = {cap.hidden_id: cap.expression for cap in retained}
-    if raw_baseline_exact(target, rows):
+    if raw_baseline_exact(target, rows, macros):
         return False
     target_vec = exact_vector(target, rows, macros)
     if any(
