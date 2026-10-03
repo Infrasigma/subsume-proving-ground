@@ -323,10 +323,7 @@ def target_is_admissible(
             depth=expanded_depth(target, macros),
             generation=generation,
         )
-    prospective_macros = {
-        cap.hidden_id: cap.expression for cap in prospective
-    }
-    del prospective_macros  # only the hidden-library structure is tested below
+    )
     return closure_library_identifiable(tuple(prospective), rows)
 
 
