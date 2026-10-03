@@ -499,9 +499,11 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
             )
             semantic_probe_reuse_rates.append(
                 float(
-                    probe_parents
-                    and semantic_probe_matches == len(probe_parents)
-                    and competence
+                    competence
+                    and (
+                        not probe_parents
+                        or semantic_probe_matches == len(probe_parents)
+                    )
                 )
             )
             if probe_parents:
