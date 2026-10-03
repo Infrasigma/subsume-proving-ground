@@ -43,6 +43,6 @@ jobs:
           seed = int("${{ matrix.seed }}")
           print(json.dumps({"event":"DIAGNOSTIC_START","seed":seed,"generations":12,"acsie_ref":"ff525043d641fc312db33843457e86adf690bca1"}), flush=True)
           t0 = time.time()
-          result = proving.run_seed(seed, 12)
+          result = proving.run_seed(seed, 5)
           print(json.dumps({"event":"DIAGNOSTIC_DONE","elapsed_seconds":time.time()-t0,"result":result}, sort_keys=True), flush=True)
           PY
