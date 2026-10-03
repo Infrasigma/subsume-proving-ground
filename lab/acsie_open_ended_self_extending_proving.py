@@ -275,8 +275,8 @@ def closure_library_identifiable(
         for j in range(i + 1, len(retained)):
             expr = {
                 "op": "add",
-                "left": capability_macro(retained[i]),
-                "right": capability_macro(retained[j]),
+                "left": {"op": "macro", "id": retained[i].hidden_id},
+                "right": {"op": "macro", "id": retained[j].hidden_id},
             }
             vector = exact_vector(expr, rows, macros)
             pair_id = (retained[i].hidden_id, retained[j].hidden_id)
