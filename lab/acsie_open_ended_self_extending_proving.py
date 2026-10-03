@@ -166,6 +166,29 @@ def mae(expr, rows, macros):
     return statistics.fmean(vals)
 
 
+def retained_representation_error(
+    learner: RecursiveCognitiveCompiler,
+    cap: HiddenCapability,
+    rows: tuple[Trace, ...],
+    hidden_macros: dict[str, dict[str, Any]],
+) -> float:
+    primitive = learner.primitives.get(cap.primitive_id)
+    if primitive is None:
+        return float("inf")
+    pmap = learner._pmap()
+    if not rows:
+        return float("inf")
+    deltas = []
+    for row in rows:
+        try:
+            retained_value = float(eval_expr(primitive.expression, row.inputs, pmap))
+            hidden_value = float(eval_hidden(cap.expression, row.inputs, hidden_macros))
+        except Exception:
+            return float("inf")
+        deltas.append(abs(retained_value - hidden_value))
+    return statistics.fmean(deltas)
+
+
 def synthesize_discovery_only(
     compiler: RecursiveCognitiveCompiler,
     rows: tuple[Trace, ...],
@@ -322,6 +345,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         closure_rates = []
         baseline_closure_rates = []
         closure_reuse_rates = []
+        closure_parent_fidelity = []
         closure_trap_count = 0
         if len(retained) >= 2:
             pairs = [
@@ -336,6 +360,14 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                     "right": capability_macro(right_parent),
                 }
                 closure_macros = hidden_library()
+                parent_fidelities = {
+                    left_parent.primitive_id: retained_representation_error(
+                        learner, left_parent, tuple(ctr), closure_macros
+                    ),
+                    right_parent.primitive_id: retained_representation_error(
+                        learner, right_parent, tuple(ctr), closure_macros
+                    ),
+                }
                 ctr = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_train', 8, 0.13, closure_macros)
                 cs = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_selection', 6, 0.07, closure_macros)
                 ch = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_holdout', 5, 0.23, closure_macros)
@@ -351,6 +383,9 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                     reuse_ok = competence and expected.issubset(set(cproc.used_primitives))
                 closure_rates.append(float(competence))
                 closure_reuse_rates.append(float(reuse_ok))
+                closure_parent_fidelity.append(
+                    statistics.fmean(parent_fidelities.values())
+                )
                 if competence and not reuse_ok:
                     closure_trap_count += 1
 
@@ -364,6 +399,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         probe_rates = []
         baseline_probe_rates = []
         probe_reuse_rates = []
+        probe_parent_fidelity = []
         probe_trap_count = 0
         for probe_idx in range(4):
             probe_parents = tuple(rng.sample(retained, 2)) if len(retained) >= 2 else tuple(retained[:1])
@@ -391,6 +427,15 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 reuse_ok = competence and (not expected or expected.issubset(set(proc.used_primitives)))
             probe_rates.append(float(competence))
             probe_reuse_rates.append(float(reuse_ok))
+            if probe_parents:
+                probe_parent_fidelity.append(
+                    statistics.fmean(
+                        retained_representation_error(
+                            learner, p, tuple(ptrain), probe_macros
+                        )
+                        for p in probe_parents
+                    )
+                )
             if competence and not reuse_ok and probe_parents:
                 probe_trap_count += 1
 
@@ -426,6 +471,14 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "probe_success_rate": statistics.fmean(probe_rates),
                 "baseline_probe_success_rate": statistics.fmean(baseline_probe_rates),
                 "probe_reuse_rate": statistics.fmean(probe_reuse_rates),
+                "probe_parent_fidelity": (
+                    statistics.fmean(probe_parent_fidelity)
+                    if probe_parent_fidelity else 0.0
+                ),
+                "closure_parent_fidelity": (
+                    statistics.fmean(closure_parent_fidelity)
+                    if closure_parent_fidelity else 0.0
+                ),
                 "probe_trap_count": int(probe_trap_count),
                 "selection_rows": len(discovery_train),
                 "holdout_used_for_selection": False,
@@ -517,6 +570,8 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         "probe_trap_count": int(final["probe_trap_count"]),
         "final_closure_reuse_rate": final_closure_reuse_rate,
         "final_probe_reuse_rate": final_probe_reuse_rate,
+        "final_closure_parent_fidelity": final["closure_parent_fidelity"],
+        "final_probe_parent_fidelity": final["probe_parent_fidelity"],
         "max_generated_expressions": max(
             int(row["search_stats"].get("generated_expressions", 0))
             for row in generations_out
