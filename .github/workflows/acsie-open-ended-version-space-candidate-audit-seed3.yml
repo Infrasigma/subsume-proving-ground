@@ -25,7 +25,7 @@ jobs:
       - name: Clone exact ACSIE candidate-audit commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "f1f515d06053900a5518b605c95c0fa848d1cf13"
+          ACSIE_REF: "6788bccee5754a530c504a4101bc14ae0fd17608"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
@@ -81,7 +81,7 @@ jobs:
           set -o pipefail
           {
             echo "WORKFLOW_SHA=${{ github.sha }}"
-            echo "ACSIE_REF=f1f515d06053900a5518b605c95c0fa848d1cf13"
+            echo "ACSIE_REF=6788bccee5754a530c504a4101bc14ae0fd17608"
             echo "SEED=2026100303"
             echo "GENERATIONS=12"
             echo "TARGET_IDENTITY_AVAILABLE_TO_RUNTIME=false"
