@@ -7,6 +7,9 @@ on:
     paths:
       - ".github/workflows/acsie-open-ended-version-space-candidate-audit-seed3.yml"
       - "lab/acsie_open_ended_version_space_diagnostic_v4.py"
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
