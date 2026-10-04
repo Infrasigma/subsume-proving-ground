@@ -23,7 +23,7 @@ jobs:
       matrix:
         seed: [2026100301, 2026100302, 2026100303, 2026100304, 2026100305]
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
 
@@ -139,10 +139,25 @@ jobs:
               and all(not rows[s].get("ood_used_for_search_selection", True) for s in expected)
           )
 
-          scientific_ok = integrity_ok and all(bool(rows[s]["finite_open_ended_growth_gate"]) for s in expected)
+          complete_seed_evidence = set(rows) == expected
+          scientific_ok = complete_seed_evidence and integrity_ok and all(
+              bool(rows[s]["finite_open_ended_growth_gate"]) for s in expected
+          )
+
+          if not complete_seed_evidence:
+              gate_status = "INCONCLUSIVE"
+              status_classification = "INCOMPLETE_SEED_EVIDENCE"
+          elif scientific_ok:
+              gate_status = "PASS"
+              status_classification = "SCIENTIFIC_PASS"
+          else:
+              gate_status = "FAIL"
+              status_classification = "SCIENTIFIC_FAIL"
 
           report = {
-              "scientific_gate": "PASS" if scientific_ok else "FAIL",
+              "scientific_gate": gate_status,
+              "status_classification": status_classification,
+              "missing_seeds": sorted(expected - set(rows)),
               "integrity_ok": integrity_ok,
               "acsie_ref": "86feb0d009fa2394d83738ffb64f8e3016d3e2b1",
               "expected_seeds": sorted(expected),
