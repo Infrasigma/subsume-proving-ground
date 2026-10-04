@@ -1,4 +1,5 @@
 name: ACSIE self-extending open-ended proving
+# Experiment pin: bounded exact-target depth continuation; no scientific threshold changes.
 # Resource-stability experiment: release logically dominated states; scientific gate remains unchanged.
 on:
   push:
