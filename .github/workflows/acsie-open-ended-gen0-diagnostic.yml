@@ -26,7 +26,7 @@ jobs:
       - name: Clone exact ACSIE depth-continuation commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "6788bccee5754a530c504a4101bc14ae0fd17608"
+          ACSIE_REF: "f59a18665c664f7a0e787c183f0066e3ecbb5bdf"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
@@ -49,14 +49,14 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONPATH: /tmp/acsie-open-ended-candidate-search
-          ACSIE_REF: "6788bccee5754a530c504a4101bc14ae0fd17608"
+          ACSIE_REF: "f59a18665c664f7a0e787c183f0066e3ecbb5bdf"
         run: |
           set +e
           . /tmp/open-ended-venv/bin/activate
           set -o pipefail
           {
             echo "WORKFLOW_SHA=${{ github.sha }}"
-            echo "ACSIE_REF=6788bccee5754a530c504a4101bc14ae0fd17608"
+            echo "ACSIE_REF=f59a18665c664f7a0e787c183f0066e3ecbb5bdf"
             echo "SEED=${{ matrix.seed }}"
             echo "GENERATIONS=12"
             echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -140,7 +140,7 @@ jobs:
           report = {
               "scientific_gate": "PASS" if scientific_ok else "FAIL",
               "integrity_ok": integrity_ok,
-              "acsie_ref": "6788bccee5754a530c504a4101bc14ae0fd17608",
+              "acsie_ref": "f59a18665c664f7a0e787c183f0066e3ecbb5bdf",
               "expected_seeds": sorted(expected),
               "observed_seeds": sorted(rows),
               "seed_results": {
