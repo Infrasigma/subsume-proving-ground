@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: acsie-open-ended-candidate-search-${{ github.event.pull_request.number || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   seed:
     strategy:
@@ -26,7 +30,7 @@ jobs:
       - name: Clone exact ACSIE depth-continuation commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "ec578f4a3e2661c63cf9714f5e5462a2d235f324"
+          ACSIE_REF: "86feb0d009fa2394d83738ffb64f8e3016d3e2b1"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
@@ -49,14 +53,14 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONPATH: /tmp/acsie-open-ended-candidate-search
-          ACSIE_REF: "ec578f4a3e2661c63cf9714f5e5462a2d235f324"
+          ACSIE_REF: "86feb0d009fa2394d83738ffb64f8e3016d3e2b1"
         run: |
           set +e
           . /tmp/open-ended-venv/bin/activate
           set -o pipefail
           {
             echo "WORKFLOW_SHA=${{ github.sha }}"
-            echo "ACSIE_REF=ec578f4a3e2661c63cf9714f5e5462a2d235f324"
+            echo "ACSIE_REF=86feb0d009fa2394d83738ffb64f8e3016d3e2b1"
             echo "SEED=${{ matrix.seed }}"
             echo "GENERATIONS=12"
             echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -140,7 +144,7 @@ jobs:
           report = {
               "scientific_gate": "PASS" if scientific_ok else "FAIL",
               "integrity_ok": integrity_ok,
-              "acsie_ref": "ec578f4a3e2661c63cf9714f5e5462a2d235f324",
+              "acsie_ref": "86feb0d009fa2394d83738ffb64f8e3016d3e2b1",
               "expected_seeds": sorted(expected),
               "observed_seeds": sorted(rows),
               "seed_results": {
