@@ -293,6 +293,14 @@ def primitive_lineage_ids(
     return lineage
 
 
+def compact_search_stats(search_stats: dict[str, Any]) -> dict[str, Any]:
+    """Keep evidence useful without serializing tens of thousands of lineage strings."""
+    out = dict(search_stats)
+    signatures = tuple(str(x) for x in out.pop("target_candidate_lineage_signatures", ()))
+    out["target_candidate_lineage_signature_count"] = len(signatures)
+    out["target_candidate_lineage_signature_sample"] = list(signatures[:16])
+    return out
+
 def run_seed(seed: int, generations: int) -> dict[str, Any]:
     rng = random.Random(seed)
     learner = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed)
@@ -494,15 +502,16 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                     cprocs = (fallback,) if fallback is not None else ()
 
                 expected = {left_parent.primitive_id, right_parent.primitive_id}
-                search_stats = dict(getattr(learner, "last_search_stats", {}))
+                search_stats_full = dict(getattr(learner, "last_search_stats", {}))
                 lineage_signatures = tuple(
                     str(sig)
-                    for sig in search_stats.get("target_candidate_lineage_signatures", ())
+                    for sig in search_stats_full.get("target_candidate_lineage_signatures", ())
                 )
                 expected_signature_count = sum(
                     expected.issubset(set(sig.split("|")))
                     for sig in lineage_signatures
                 )
+                search_stats = compact_search_stats(search_stats_full)
                 print(
                     json.dumps(
                         {
@@ -590,7 +599,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                                 "used_primitives": list(cproc.used_primitives) if cproc is not None else [],
                                 "candidate_lineage": sorted(candidate_lineage),
                                 "expression": cproc.expression if cproc is not None else None,
-                                "search_stats": dict(getattr(learner, "last_search_stats", {})),
+                                "search_stats": compact_search_stats(dict(getattr(learner, "last_search_stats", {}))),
                                 "target_candidate_frontier": list(
                                     getattr(learner, "last_search_stats", {}).get(
                                         "target_candidate_frontier", []
@@ -765,7 +774,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "holdout_used_for_selection": False,
                 "transfer_used_for_selection": False,
                 "ood_used_for_selection": False,
-                "search_stats": dict(learner.last_search_stats),
+                "search_stats": compact_search_stats(dict(learner.last_search_stats)),
             }
         )
         print(
@@ -782,7 +791,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                     "probe_success_rate": generations_out[-1]["probe_success_rate"],
                     "probe_reuse_rate": generations_out[-1]["probe_reuse_rate"],
                     "target_depth": target_depth,
-                    "search_stats": dict(learner.last_search_stats),
+                    "search_stats": compact_search_stats(dict(learner.last_search_stats)),
                 },
                 sort_keys=True,
             ),
