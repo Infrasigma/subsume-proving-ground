@@ -399,56 +399,87 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         acceptance_reason = "NO_VALID_PRIMITIVE"
         novelty = 0.0
         resource_cost = 0
+        frontier_admission = None
+        frontier_validation = []
         primitive_candidate_count = len(getattr(learner, "last_primitive_candidate_frontier", ()))
         discovery_perfect_candidate_count = sum(
             1 for candidate in getattr(learner, "last_primitive_candidate_frontier", ())
             if float(candidate.train_error) <= 1e-9
         )
 
-        parent_used = primitive.parent_ids if primitive is not None else tuple()
         expected_parent_ids = {p.primitive_id for p in target_parents}
+        selected_primitive = primitive
+        if primitive is not None:
+            frontier = tuple(getattr(learner, "last_primitive_candidate_frontier", ()))
+            if frontier:
+                novelty = 1.0 / max(1, frontier[0].complexity)
+                resource_cost = max(1, frontier[0].complexity)
+                frontier_admission = learner.accept_primitive_frontier(
+                    transfer_rows=transfer,
+                    ood_rows=ood,
+                    novelty=novelty,
+                    resource_cost=resource_cost,
+                )
+                accepted = bool(frontier_admission.get("accepted", False))
+                frontier_validation = list(frontier_admission.get("validation", []))
+                admitted = frontier_admission.get("primary_primitive")
+                if admitted is not None:
+                    selected_primitive = admitted
+                    transfer_error = float(admitted.transfer_error)
+                    matching = next(
+                        (
+                            item for item in frontier_validation
+                            if item["primitive_id"] == admitted.primitive_id
+                        ),
+                        None,
+                    )
+                    ood_error = (
+                        float(matching["ood_error"])
+                        if matching is not None
+                        else float("inf")
+                    )
+                    novelty = 1.0 / max(1, admitted.complexity)
+                    resource_cost = max(1, admitted.complexity)
+                else:
+                    transfer_error = float(frontier[0].transfer_error)
+                    first_validation = frontier_validation[0] if frontier_validation else None
+                    ood_error = (
+                        float(first_validation["ood_error"])
+                        if first_validation is not None
+                        else float("inf")
+                    )
+                if accepted:
+                    acceptance_reason = "ACCEPTED_FRONTIER"
+                elif not frontier_validation:
+                    acceptance_reason = "NO_VALID_PRIMITIVE"
+                elif all(float(item["transfer_error"]) > 1e-9 for item in frontier_validation):
+                    acceptance_reason = "TRANSFER_FAILURE"
+                elif all(float(item["ood_error"]) > 1e-9 for item in frontier_validation):
+                    acceptance_reason = "OOD_FAILURE"
+                else:
+                    acceptance_reason = "FRONTIER_ALL_REJECTED"
+            else:
+                acceptance_reason = "EMPTY_FRONTIER"
+        parent_used = selected_primitive.parent_ids if selected_primitive is not None else tuple()
         candidate_lineage_ids = (
-            primitive_lineage_ids(learner, (primitive.primitive_id,))
-            if primitive is not None
+            primitive_lineage_ids(learner, (selected_primitive.primitive_id,))
+            if selected_primitive is not None and selected_primitive.primitive_id in learner.primitives
             else set()
         )
-        recursive_reuse_ok = False
-        if primitive is not None:
-            transfer_error = primitive.transfer_error
-            ood_error = mae(primitive.expression, ood, learner._pmap())
-            novelty = 1.0 / max(1, primitive.complexity)
-            resource_cost = max(1, primitive.complexity)
-            accepted = learner.accept_primitive(
-                primitive.primitive_id,
-                transfer_error=transfer_error,
-                ood_error=ood_error,
-                novelty=novelty,
-                resource_cost=resource_cost,
-            )
-            recursive_reuse_ok = expected_parent_ids.issubset(candidate_lineage_ids)
-            if accepted:
-                acceptance_reason = "ACCEPTED"
-            elif float(transfer_error) > 1e-9:
-                acceptance_reason = "TRANSFER_FAILURE"
-            elif float(ood_error) > 1e-9:
-                acceptance_reason = "OOD_FAILURE"
-            elif primitive.primitive_id not in learner.primitives:
-                acceptance_reason = "PRIMITIVE_NOT_RETAINED"
-            else:
-                acceptance_reason = "ADMISSION_REJECTION"
-            if accepted:
-                hidden_id = f"hidden:{generation}:{len(retained)}"
-                retained.append(
-                    HiddenCapability(
-                        hidden_id=hidden_id,
-                        primitive_id=primitive.primitive_id,
-                        expression=target,
-                        depth=target_depth,
-                        generation=generation,
-                        parent_hidden_id=target_parents[0].hidden_id if target_parents else None,
-                        parent_hidden_ids=tuple(p.hidden_id for p in target_parents),
-                    )
+        recursive_reuse_ok = expected_parent_ids.issubset(candidate_lineage_ids) if selected_primitive is not None else False
+        if accepted and selected_primitive is not None:
+            hidden_id = f"hidden:{generation}:{len(retained)}"
+            retained.append(
+                HiddenCapability(
+                    hidden_id=hidden_id,
+                    primitive_id=selected_primitive.primitive_id,
+                    expression=target,
+                    depth=target_depth,
+                    generation=generation,
+                    parent_hidden_id=target_parents[0].hidden_id if target_parents else None,
+                    parent_hidden_ids=tuple(p.hidden_id for p in target_parents),
                 )
+            )
 
         # Fresh direct-task control: it gets the same observations for this
         # generation but cannot carry prior archive state forward.
@@ -783,7 +814,12 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "primitive_candidate_count": primitive_candidate_count,
                 "discovery_perfect_candidate_count": discovery_perfect_candidate_count,
                 "selection_candidate_count": primitive_candidate_count,
-                "selected_candidate": primitive.primitive_id if primitive is not None else None,
+                "frontier_validated_candidate_count": (
+                    int(frontier_admission.get("validated_candidate_count", 0))
+                    if frontier_admission is not None
+                    else 0
+                ),
+                "selected_candidate": selected_primitive.primitive_id if selected_primitive is not None else None,
                 "novelty": novelty,
                 "resource_cost": resource_cost,
                 "lineage_ok": bool(recursive_reuse_ok),
@@ -826,6 +862,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                     "candidate_count": generations_out[-1]["primitive_candidate_count"],
                     "discovery_perfect_candidate_count": generations_out[-1]["discovery_perfect_candidate_count"],
                     "selection_candidate_count": generations_out[-1]["selection_candidate_count"],
+                    "frontier_validated_candidate_count": generations_out[-1]["frontier_validated_candidate_count"],
                     "selected_candidate": generations_out[-1]["selected_candidate"],
                     "transfer_error": generations_out[-1]["transfer_error"],
                     "ood_error": generations_out[-1]["ood_error"],
