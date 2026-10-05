@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: acsie-hfva-resilient-20261006
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   seed:
