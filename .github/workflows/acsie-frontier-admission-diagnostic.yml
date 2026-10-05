@@ -1,0 +1,86 @@
+name: ACSIE frontier-admission generation-8 diagnostic
+
+on:
+  push:
+    branches:
+      - research/acceptance-telemetry-frontier-admission-20261005
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seed-0302:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone exact ACSIE runtime
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          rm -rf /tmp/acsie-frontier-admission
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-frontier-admission
+          git -C /tmp/acsie-frontier-admission fetch --depth 1 origin "$ACSIE_REF"
+          git -C /tmp/acsie-frontier-admission checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie-frontier-admission rev-parse HEAD)" = "$ACSIE_REF"
+
+      - name: Run exact unit tests
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/acsie-frontier-admission-venv
+          . /tmp/acsie-frontier-admission-venv/bin/activate
+          python -m pip install --upgrade pip pytest
+          PYTHONPATH=/tmp/acsie-frontier-admission pytest -q /tmp/acsie-frontier-admission/tests/test_open_ended_growth.py
+          PYTHONPATH=/tmp/acsie-frontier-admission:. pytest -q lab/test_open_ended_bootstrap_language.py
+
+      - name: Run seed 0302 through generation 8 diagnostic point
+        env:
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: /tmp/acsie-frontier-admission
+        run: |
+          set +e
+          . /tmp/acsie-frontier-admission-venv/bin/activate
+          set -o pipefail
+          {
+            echo "WORKFLOW_SHA=${{ github.sha }}"
+            echo "ACSIE_REF=7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+            echo "SEED=2026100302"
+            echo "GENERATIONS=9"
+            python3 -u - <<'PY'
+          import json
+          import lab.acsie_open_ended_self_extending_proving as proving
+          result = proving.run_seed(2026100302, 9)
+          print(json.dumps(result, sort_keys=True), flush=True)
+          for row in result["generations_detail"]:
+              if row["generation"] in (7, 8):
+                  print(json.dumps({
+                      "generation": row["generation"],
+                      "accepted": row["accepted"],
+                      "acceptance_reason": row.get("acceptance_reason"),
+                      "primitive_found": row.get("primitive_found"),
+                      "candidate_count": row.get("primitive_candidate_count"),
+                      "frontier_validated_candidate_count": row.get("frontier_validated_candidate_count"),
+                      "selected_candidate": row.get("selected_candidate"),
+                      "transfer_error": row.get("transfer_error"),
+                      "ood_error": row.get("ood_error"),
+                      "lineage_ok": row.get("lineage_ok"),
+                      "probe_success_rate": row.get("probe_success_rate"),
+                      "probe_reuse_rate": row.get("probe_reuse_rate"),
+                  }, sort_keys=True), flush=True)
+          PY
+          } 2>&1 | tee diagnostic-result.txt
+          rc=${PIPESTATUS[0]}
+          echo "DIAGNOSTIC_RC=$rc" | tee -a diagnostic-result.txt
+          exit "$rc"
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-frontier-admission-seed0302-${{ github.sha }}
+          path: diagnostic-result.txt
