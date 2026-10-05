@@ -396,6 +396,14 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         transfer_error = float("inf")
         ood_error = float("inf")
         parent_used = tuple()
+        acceptance_reason = "NO_VALID_PRIMITIVE"
+        novelty = 0.0
+        resource_cost = 0
+        primitive_candidate_count = len(getattr(learner, "last_primitive_candidate_frontier", ()))
+        discovery_perfect_candidate_count = sum(
+            1 for candidate in getattr(learner, "last_primitive_candidate_frontier", ())
+            if float(candidate.train_error) <= 1e-9
+        )
 
         parent_used = primitive.parent_ids if primitive is not None else tuple()
         expected_parent_ids = {p.primitive_id for p in target_parents}
@@ -408,14 +416,26 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         if primitive is not None:
             transfer_error = primitive.transfer_error
             ood_error = mae(primitive.expression, ood, learner._pmap())
+            novelty = 1.0 / max(1, primitive.complexity)
+            resource_cost = max(1, primitive.complexity)
             accepted = learner.accept_primitive(
                 primitive.primitive_id,
                 transfer_error=transfer_error,
                 ood_error=ood_error,
-                novelty=1.0 / max(1, primitive.complexity),
-                resource_cost=max(1, primitive.complexity),
+                novelty=novelty,
+                resource_cost=resource_cost,
             )
             recursive_reuse_ok = expected_parent_ids.issubset(candidate_lineage_ids)
+            if accepted:
+                acceptance_reason = "ACCEPTED"
+            elif float(transfer_error) > 1e-9:
+                acceptance_reason = "TRANSFER_FAILURE"
+            elif float(ood_error) > 1e-9:
+                acceptance_reason = "OOD_FAILURE"
+            elif primitive.primitive_id not in learner.primitives:
+                acceptance_reason = "PRIMITIVE_NOT_RETAINED"
+            else:
+                acceptance_reason = "ADMISSION_REJECTION"
             if accepted:
                 hidden_id = f"hidden:{generation}:{len(retained)}"
                 retained.append(
@@ -757,6 +777,16 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 "growth_delta": int(learner.meta_policy["max_depth"]) - int(previous_runtime_depth),
                 "transfer_error": transfer_error,
                 "ood_error": ood_error,
+                "acceptance_reason": acceptance_reason,
+                "primitive_found": primitive is not None,
+                "primitive_id": primitive.primitive_id if primitive is not None else None,
+                "primitive_candidate_count": primitive_candidate_count,
+                "discovery_perfect_candidate_count": discovery_perfect_candidate_count,
+                "selection_candidate_count": primitive_candidate_count,
+                "selected_candidate": primitive.primitive_id if primitive is not None else None,
+                "novelty": novelty,
+                "resource_cost": resource_cost,
+                "lineage_ok": bool(recursive_reuse_ok),
                 "probe_success_rate": statistics.fmean(probe_rates),
                 "baseline_probe_success_rate": statistics.fmean(baseline_probe_rates),
                 "probe_reuse_rate": statistics.fmean(probe_reuse_rates),
@@ -790,6 +820,18 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                     "closure_reuse_rate": generations_out[-1]["closure_reuse_rate"],
                     "probe_success_rate": generations_out[-1]["probe_success_rate"],
                     "probe_reuse_rate": generations_out[-1]["probe_reuse_rate"],
+                    "acceptance_reason": generations_out[-1]["acceptance_reason"],
+                    "primitive_found": generations_out[-1]["primitive_found"],
+                    "primitive_id": generations_out[-1]["primitive_id"],
+                    "candidate_count": generations_out[-1]["primitive_candidate_count"],
+                    "discovery_perfect_candidate_count": generations_out[-1]["discovery_perfect_candidate_count"],
+                    "selection_candidate_count": generations_out[-1]["selection_candidate_count"],
+                    "selected_candidate": generations_out[-1]["selected_candidate"],
+                    "transfer_error": generations_out[-1]["transfer_error"],
+                    "ood_error": generations_out[-1]["ood_error"],
+                    "novelty": generations_out[-1]["novelty"],
+                    "resource_cost": generations_out[-1]["resource_cost"],
+                    "lineage_ok": generations_out[-1]["lineage_ok"],
                     "target_depth": target_depth,
                     "search_stats": compact_search_stats(dict(learner.last_search_stats)),
                 },
