@@ -1,0 +1,288 @@
+name: ACSIE resumable 12-generation single-seed cost profile
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acsie-resumable-12gen-single-seed
+  cancel-in-progress: false
+
+env:
+  ACSIE_REF: "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+  SEED: "2026100301"
+  GENERATIONS: "12"
+
+jobs:
+  segment-0-6:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone exact ACSIE runtime and tests
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie
+          git -C /tmp/acsie fetch --depth 1 origin "$ACSIE_REF"
+          git -C /tmp/acsie checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie rev-parse HEAD)" = "$ACSIE_REF"
+          python3 -m venv /tmp/venv
+          . /tmp/venv/bin/activate
+          python -m pip install --upgrade pip pytest
+          PYTHONPATH=/tmp/acsie pytest -q /tmp/acsie/tests/test_open_ended_growth.py
+          PYTHONPATH=/tmp/acsie:. pytest -q lab/test_exact_checkpoint_resume.py
+      - name: Run generations 0 through 6
+        env:
+          PYTHONPATH: /tmp/acsie
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          . /tmp/venv/bin/activate
+          python3 -u - <<'PY' 2>&1 | tee segment-result.txt
+          import json
+          import lab.acsie_open_ended_self_extending_proving as proving
+          result = proving.run_seed(
+              2026100301,
+              12,
+              checkpoint_path="/tmp/checkpoint.json",
+              stop_after=7,
+              checkpoint_metadata={
+                  "proving_sha": "${{ github.sha }}",
+                  "acsie_ref": "7e905d73c15ece4b8b5d7cb73218bac34c2e1314",
+              },
+          )
+          print(json.dumps(result, sort_keys=True))
+          PY
+          cp /tmp/checkpoint.json checkpoint.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acsie-resume-0301-gen7-${{ github.sha }}
+          path: checkpoint.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acsie-resume-evidence-0301-gen7-${{ github.sha }}
+          path: segment-result.txt
+
+  segment-7:
+    needs: segment-0-6
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: acsie-resume-0301-gen7-${{ github.sha }}
+          path: .
+      - name: Prepare exact ACSIE runtime
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie
+          git -C /tmp/acsie fetch --depth 1 origin "$ACSIE_REF"
+          git -C /tmp/acsie checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie rev-parse HEAD)" = "$ACSIE_REF"
+          python3 -m venv /tmp/venv
+          . /tmp/venv/bin/activate
+          python -m pip install --upgrade pip pytest
+      - name: Resume generation 7
+        env:
+          PYTHONPATH: /tmp/acsie
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          . /tmp/venv/bin/activate
+          python3 -u - <<'PY' 2>&1 | tee segment-result.txt
+          import json
+          import lab.acsie_open_ended_self_extending_proving as proving
+          result = proving.run_seed(
+              2026100301, 12,
+              checkpoint_path="/tmp/checkpoint.json",
+              resume_from="checkpoint.json",
+              stop_after=8,
+              checkpoint_metadata={
+                  "proving_sha": "${{ github.sha }}",
+                  "acsie_ref": "7e905d73c15ece4b8b5d7cb73218bac34c2e1314",
+              },
+          )
+          print(json.dumps(result, sort_keys=True))
+          PY
+          cp /tmp/checkpoint.json checkpoint.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acsie-resume-0301-gen8-${{ github.sha }}
+          path: checkpoint.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acsie-resume-evidence-0301-gen8-${{ github.sha }}
+          path: segment-result.txt
+
+  segment-8:
+    needs: segment-7
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: acsie-resume-0301-gen8-${{ github.sha }}
+          path: .
+      - name: Prepare exact ACSIE runtime
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie
+          git -C /tmp/acsie fetch --depth 1 origin "$ACSIE_REF"
+          git -C /tmp/acsie checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie rev-parse HEAD)" = "$ACSIE_REF"
+          python3 -m venv /tmp/venv
+          . /tmp/venv/bin/activate
+          python -m pip install --upgrade pip pytest
+      - name: Resume generation 8
+        env:
+          PYTHONPATH: /tmp/acsie
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          . /tmp/venv/bin/activate
+          python3 -u - <<'PY' 2>&1 | tee segment-result.txt
+          import json
+          import lab.acsie_open_ended_self_extending_proving as proving
+          result = proving.run_seed(
+              2026100301, 12,
+              checkpoint_path="/tmp/checkpoint.json",
+              resume_from="checkpoint.json",
+              stop_after=9,
+              checkpoint_metadata={
+                  "proving_sha": "${{ github.sha }}",
+                  "acsie_ref": "7e905d73c15ece4b8b5d7cb73218bac34c2e1314",
+              },
+          )
+          print(json.dumps(result, sort_keys=True))
+          PY
+          cp /tmp/checkpoint.json checkpoint.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acsie-resume-0301-gen9-${{ github.sha }}
+          path: checkpoint.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acsie-resume-evidence-0301-gen9-${{ github.sha }}
+          path: segment-result.txt
+
+  segment-9:
+    needs: segment-8
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: acsie-resume-0301-gen9-${{ github.sha }}
+          path: .
+      - name: Prepare exact ACSIE runtime
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie
+          git -C /tmp/acsie fetch --depth 1 origin "$ACSIE_REF"
+          git -C /tmp/acsie checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie rev-parse HEAD)" = "$ACSIE_REF"
+          python3 -m venv /tmp/venv
+          . /tmp/venv/bin/activate
+          python -m pip install --upgrade pip pytest
+      - name: Resume generation 9
+        env:
+          PYTHONPATH: /tmp/acsie
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          . /tmp/venv/bin/activate
+          python3 -u - <<'PY' 2>&1 | tee segment-result.txt
+          import json
+          import lab.acsie_open_ended_self_extending_proving as proving
+          result = proving.run_seed(
+              2026100301, 12,
+              checkpoint_path="/tmp/checkpoint.json",
+              resume_from="checkpoint.json",
+              stop_after=10,
+              checkpoint_metadata={
+                  "proving_sha": "${{ github.sha }}",
+                  "acsie_ref": "7e905d73c15ece4b8b5d7cb73218bac34c2e1314",
+              },
+          )
+          print(json.dumps(result, sort_keys=True))
+          PY
+          cp /tmp/checkpoint.json checkpoint.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acsie-resume-0301-gen10-${{ github.sha }}
+          path: checkpoint.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acsie-resume-evidence-0301-gen10-${{ github.sha }}
+          path: segment-result.txt
+
+  segment-10-11:
+    needs: segment-9
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: acsie-resume-0301-gen10-${{ github.sha }}
+          path: .
+      - name: Prepare exact ACSIE runtime
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie
+          git -C /tmp/acsie fetch --depth 1 origin "$ACSIE_REF"
+          git -C /tmp/acsie checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie rev-parse HEAD)" = "$ACSIE_REF"
+          python3 -m venv /tmp/venv
+          . /tmp/venv/bin/activate
+          python -m pip install --upgrade pip pytest
+      - name: Resume and finish generations 10 and 11
+        env:
+          PYTHONPATH: /tmp/acsie
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          . /tmp/venv/bin/activate
+          python3 -u - <<'PY' 2>&1 | tee segment-result.txt
+          import json
+          import lab.acsie_open_ended_self_extending_proving as proving
+          result = proving.run_seed(
+              2026100301, 12,
+              checkpoint_path="/tmp/checkpoint.json",
+              resume_from="checkpoint.json",
+              checkpoint_metadata={
+                  "proving_sha": "${{ github.sha }}",
+                  "acsie_ref": "7e905d73c15ece4b8b5d7cb73218bac34c2e1314",
+              },
+          )
+          print(json.dumps(result, sort_keys=True))
+          PY
+          cp /tmp/checkpoint.json checkpoint.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acsie-resumable-0301-final-${{ github.sha }}
+          path: checkpoint.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acsie-resumable-0301-final-evidence-${{ github.sha }}
+          path: segment-result.txt
