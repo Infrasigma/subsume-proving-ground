@@ -236,3 +236,5 @@ jobs:
         with:
           name: acsie-open-ended-frontier-admission-aggregate-${{ github.sha }}
           path: aggregate-scientific-gate.json
+
+# Force a subsequent push so the newly added workflow is evaluated by Actions.
