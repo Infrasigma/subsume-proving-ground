@@ -247,3 +247,5 @@ jobs:
         with:
           name: acsie-hfva-resilient-aggregate-${{ github.sha }}
           path: hfva-aggregate-scientific-gate.json
+
+# Follow-up trigger commit: protocol is otherwise unchanged.
