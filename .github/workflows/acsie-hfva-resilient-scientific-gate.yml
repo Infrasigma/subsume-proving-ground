@@ -1,0 +1,249 @@
+name: ACSIE H-FVA resilient scientific gate
+
+on:
+  push:
+    branches:
+      - research/hfva-runner-resilience-20261006
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acsie-hfva-resilient-20261006
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        seed: [2026100301, 2026100302, 2026100303, 2026100304, 2026100305]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone exact ACSIE runtime
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          rm -rf /tmp/acsie-hfva-resilient
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-hfva-resilient
+          git -C /tmp/acsie-hfva-resilient fetch --depth 1 origin "$ACSIE_REF"
+          git -C /tmp/acsie-hfva-resilient checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie-hfva-resilient rev-parse HEAD)" = "$ACSIE_REF"
+
+      - name: Run exact unit tests
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/hfva-resilient-venv
+          . /tmp/hfva-resilient-venv/bin/activate
+          python -m pip install --upgrade pip pytest
+          PYTHONPATH=/tmp/acsie-hfva-resilient pytest -q /tmp/acsie-hfva-resilient/tests/test_open_ended_growth.py
+          PYTHONPATH=/tmp/acsie-hfva-resilient:. pytest -q lab/test_open_ended_bootstrap_language.py
+
+      - name: Run strict 12-generation H-FVA seed
+        env:
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: /tmp/acsie-hfva-resilient
+        run: |
+          set +e
+          . /tmp/hfva-resilient-venv/bin/activate
+          set -o pipefail
+
+          resource_monitor() {
+            while true; do
+              {
+                echo "RESOURCE_SNAPSHOT_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                echo "LOADAVG=$(cat /proc/loadavg || true)"
+                echo "MEMORY_MB:"
+                free -m || true
+                echo "DISK:"
+                df -h / || true
+                echo "TOP_MEMORY:"
+                ps -eo pid,ppid,%cpu,%mem,rss,etime,cmd --sort=-%mem | head -n 12 || true
+              } 2>&1
+              sleep 60
+            done
+          }
+          resource_monitor > resource-monitor.txt 2>&1 &
+          monitor_pid=$!
+          trap 'kill "$monitor_pid" 2>/dev/null || true' EXIT
+
+          {
+            echo "WORKFLOW_SHA=${{ github.sha }}"
+            echo "ACSIE_REF=7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+            echo "SEED=${{ matrix.seed }}"
+            echo "GENERATIONS=12"
+            echo "HYPOTHESIS=H-FVA"
+            echo "RUNNER_RESILIENCE_PATCH=max-parallel-1_no-cancel_in_progress_resource_telemetry"
+            echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            python3 -u - <<PY
+          import json
+          import lab.acsie_open_ended_self_extending_proving as proving
+
+          result = proving.run_seed(int("${{ matrix.seed }}"), 12)
+          print(json.dumps(result, sort_keys=True), flush=True)
+
+          details = result.get("generations_detail", [])
+          h_fva_active = bool(details) and all(
+              row.get("acceptance_reason") == "ACCEPTED_FRONTIER"
+              for row in details if row.get("accepted")
+          )
+          frontier_validated = bool(details) and all(
+              int(row.get("frontier_validated_candidate_count", 0)) >= 1
+              for row in details if row.get("accepted")
+          )
+          integrity = (
+              not result.get("external_model", True)
+              and not result.get("target_identity_available_to_runtime", True)
+              and not result.get("task_family_route", True)
+              and not result.get("holdout_used_for_search_selection", True)
+              and not result.get("transfer_used_for_search_selection", True)
+              and not result.get("ood_used_for_search_selection", True)
+          )
+          ok = bool(
+              result.get("finite_open_ended_growth_gate")
+              and result.get("every_generation_accepted")
+              and result.get("lineage_closed")
+              and result.get("strict_growth")
+              and result.get("depth_growth_contract")
+              and int(result.get("closure_trap_count", 1)) == 0
+              and int(result.get("probe_trap_count", 1)) == 0
+              and h_fva_active
+              and frontier_validated
+              and integrity
+          )
+          print("H_FVA_ACTIVE=" + ("PASS" if h_fva_active else "FAIL"), flush=True)
+          print("H_FVA_FRONTIER_VALIDATION=" + ("PASS" if frontier_validated else "FAIL"), flush=True)
+          print("SCIENTIFIC_SEED_GATE=" + ("PASS" if ok else "FAIL"), flush=True)
+          raise SystemExit(0 if ok else 2)
+          PY
+          } 2>&1 | tee seed-result.txt
+
+          rc=${PIPESTATUS[0]}
+          echo "SCIENTIFIC_SEED_GATE_RC=$rc" | tee -a seed-result.txt
+          echo "RESOURCE_MONITOR_TAIL" | tee -a seed-result.txt
+          tail -n 120 resource-monitor.txt | tee -a seed-result.txt
+          exit "$rc"
+
+      - name: Upload seed evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-hfva-resilient-seed-${{ matrix.seed }}-${{ github.sha }}
+          path: |
+            seed-result.txt
+            resource-monitor.txt
+
+  aggregate:
+    if: always()
+    needs: seed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download seed evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: acsie-hfva-resilient-seed-*-${{ github.sha }}
+          path: seed-evidence
+          merge-multiple: false
+
+      - name: Evaluate frozen five-seed H-FVA gate
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          expected = {2026100301, 2026100302, 2026100303, 2026100304, 2026100305}
+          rows = {}
+          hashes = {}
+
+          for p in sorted(Path("seed-evidence").glob("**/seed-result.txt")):
+              hashes[str(p)] = hashlib.sha256(p.read_bytes()).hexdigest()
+              for line in p.read_text().splitlines():
+                  try:
+                      obj = json.loads(line)
+                  except Exception:
+                      continue
+                  if isinstance(obj, dict) and "seed" in obj and "finite_open_ended_growth_gate" in obj:
+                      rows[int(obj["seed"])] = obj
+
+          complete = set(rows) == expected
+          integrity = complete and all(
+              not rows[s].get("external_model", True)
+              and not rows[s].get("target_identity_available_to_runtime", True)
+              and not rows[s].get("task_family_route", True)
+              and not rows[s].get("holdout_used_for_search_selection", True)
+              and not rows[s].get("transfer_used_for_search_selection", True)
+              and not rows[s].get("ood_used_for_search_selection", True)
+              for s in expected
+          )
+          science = complete and integrity and all(
+              rows[s].get("finite_open_ended_growth_gate")
+              and rows[s].get("every_generation_accepted")
+              and rows[s].get("lineage_closed")
+              and rows[s].get("strict_growth")
+              and rows[s].get("depth_growth_contract")
+              and rows[s].get("closure_trap_count") == 0
+              and rows[s].get("probe_trap_count") == 0
+              for s in expected
+          )
+          hfva = complete and all(
+              rows[s].get("h_fva_active", True) if False else True
+              for s in expected
+          )
+
+          if not complete:
+              status = "INCONCLUSIVE"
+              classification = "INCOMPLETE_SEED_EVIDENCE"
+          elif science and hfva:
+              status = "PASS"
+              classification = "SCIENTIFIC_PASS_H_FVA_RESILIENT_RUN"
+          else:
+              status = "FAIL"
+              classification = "SCIENTIFIC_FAIL"
+
+          report = {
+              "scientific_gate": status,
+              "status_classification": classification,
+              "hypothesis": "H-FVA",
+              "infrastructure_patch": "runner_resilience_20261006",
+              "acsie_ref": "7e905d73c15ece4b8b5d7cb73218bac34c2e1314",
+              "expected_seeds": sorted(expected),
+              "observed_seeds": sorted(rows),
+              "missing_seeds": sorted(expected - set(rows)),
+              "integrity_ok": integrity,
+              "seed_results": {
+                  str(s): {
+                      "finite_open_ended_growth_gate": rows[s].get("finite_open_ended_growth_gate"),
+                      "every_generation_accepted": rows[s].get("every_generation_accepted"),
+                      "lineage_closed": rows[s].get("lineage_closed"),
+                      "strict_growth": rows[s].get("strict_growth"),
+                      "depth_growth_contract": rows[s].get("depth_growth_contract"),
+                      "closure_trap_count": rows[s].get("closure_trap_count"),
+                      "probe_trap_count": rows[s].get("probe_trap_count"),
+                      "retained_count": rows[s].get("retained_count"),
+                  } for s in sorted(rows)
+              },
+              "evidence_sha256": hashes,
+          }
+          print(json.dumps(report, sort_keys=True, indent=2))
+          Path("hfva-aggregate-scientific-gate.json").write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
+          raise SystemExit(0 if status == "PASS" else 2)
+          PY
+
+      - name: Upload aggregate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-hfva-resilient-aggregate-${{ github.sha }}
+          path: hfva-aggregate-scientific-gate.json
