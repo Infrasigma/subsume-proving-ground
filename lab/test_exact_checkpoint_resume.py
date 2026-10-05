@@ -44,3 +44,5 @@ def test_exact_checkpoint_roundtrip_preserves_future_trajectory():
         assert resumed["final_target_depth"] == uninterrupted["final_target_depth"]
         assert resumed["max_generated_expressions"] == uninterrupted["max_generated_expressions"]
         assert resumed["max_unique_search_states"] == uninterrupted["max_unique_search_states"]
+
+# trigger: exact-checkpoint-roundtrip validation
