@@ -5,11 +5,12 @@ import argparse
 import json
 import random
 import statistics
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from hashlib import sha256
 from typing import Any
 
 from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
+from lab.exact_checkpoint import load_checkpoint, restore_checkpoint, save_checkpoint
 from cognitive_core.recursive_cognitive_compiler import (
     RecursiveCognitiveCompiler,
     ProcessCandidate,
@@ -301,24 +302,76 @@ def compact_search_stats(search_stats: dict[str, Any]) -> dict[str, Any]:
     out["target_candidate_lineage_signature_sample"] = list(signatures[:16])
     return out
 
-def run_seed(seed: int, generations: int) -> dict[str, Any]:
-    rng = random.Random(seed)
-    learner = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed)
-    print(
-        json.dumps(
-            {
-                "event": "SEED_START",
-                "seed": seed,
-                "generations": generations,
-            },
-            sort_keys=True,
-        ),
-        flush=True,
-    )
+def run_seed(
+    seed: int,
+    generations: int,
+    *,
+    checkpoint_path: str | None = None,
+    resume_from: str | None = None,
+    stop_after: int | None = None,
+    checkpoint_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if generations <= 0:
+        raise ValueError("generations must be positive")
+    if stop_after is not None and not 0 < stop_after <= generations:
+        raise ValueError("stop_after must be in the range 1..generations")
+    if resume_from and checkpoint_path and resume_from != checkpoint_path:
+        raise ValueError("resume_from and checkpoint_path must match when both are supplied")
 
-    retained: list[HiddenCapability] = []
-    generations_out = []
-    initial_depth = learner.meta_policy["max_depth"]
+    resumed = bool(resume_from)
+    last_checkpoint_digest = None
+    if resume_from:
+        envelope = load_checkpoint(
+            resume_from,
+            expected_seed=seed,
+            expected_metadata=checkpoint_metadata,
+        )
+        restored = restore_checkpoint(
+            envelope,
+            expected_metadata=checkpoint_metadata,
+        )
+        rng = restored["local_rng"]
+        learner = restored["learner"]
+        retained = list(restored["retained"])
+        generations_out = list(restored["generations_out"])
+        initial_depth = restored["initial_depth"]
+        start_generation = restored["generation_next"]
+        last_checkpoint_digest = restored["state_digest"]
+        if start_generation > generations:
+            raise ValueError(
+                f"checkpoint resumes at generation {start_generation}, beyond requested {generations}"
+            )
+        print(
+            json.dumps(
+                {
+                    "event": "SEED_RESUME",
+                    "seed": seed,
+                    "generations": generations,
+                    "generation_next": start_generation,
+                    "checkpoint_digest": last_checkpoint_digest,
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+    else:
+        rng = random.Random(seed)
+        learner = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed)
+        retained = []
+        generations_out = []
+        initial_depth = learner.meta_policy["max_depth"]
+        start_generation = 0
+        print(
+            json.dumps(
+                {
+                    "event": "SEED_START",
+                    "seed": seed,
+                    "generations": generations,
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
 
     def hidden_library() -> dict[str, dict[str, Any]]:
         return {cap.hidden_id: cap.expression for cap in retained}
@@ -326,7 +379,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
     def capability_macro(cap: HiddenCapability) -> dict[str, Any]:
         return {"op": "macro", "id": cap.hidden_id}
 
-    for generation in range(generations):
+    for generation in range(start_generation, generations):
         learner.generation = generation
         hidden_macros = hidden_library()
 
@@ -877,6 +930,48 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
             flush=True,
         )
 
+        if checkpoint_path:
+            last_checkpoint_digest = save_checkpoint(
+                checkpoint_path,
+                seed=seed,
+                generation_next=generation + 1,
+                initial_depth=initial_depth,
+                local_rng=rng,
+                learner=learner,
+                retained=[asdict(cap) for cap in retained],
+                generations_out=generations_out,
+                metadata=checkpoint_metadata,
+            )
+            print(
+                json.dumps(
+                    {
+                        "event": "CHECKPOINT_SAVED",
+                        "seed": seed,
+                        "generation_completed": generation,
+                        "generation_next": generation + 1,
+                        "checkpoint_path": checkpoint_path,
+                        "checkpoint_digest": last_checkpoint_digest,
+                    },
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
+
+        if stop_after is not None and generation + 1 >= stop_after and generation + 1 < generations:
+            print(
+                json.dumps(
+                    {
+                        "event": "SEGMENT_STOP",
+                        "seed": seed,
+                        "generation_next": generation + 1,
+                        "reason": "REQUESTED_CHECKPOINT_BOUNDARY",
+                    },
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
+            break
+
     probe_gain = statistics.fmean(
         row["probe_success_rate"] - row["baseline_probe_success_rate"]
         for row in generations_out
@@ -1010,6 +1105,10 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
             for row in generations_out
         ),
         "generations_detail": generations_out,
+        "completed_generations": len(generations_out),
+        "resumed_from_checkpoint": resumed,
+        "checkpoint_path": checkpoint_path,
+        "last_checkpoint_digest": last_checkpoint_digest,
     }
 
 def main():
