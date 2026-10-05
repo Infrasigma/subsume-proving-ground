@@ -476,70 +476,10 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 cv = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_transfer', 5, -0.19, closure_macros)
                 co = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_ood', 5, 0.29, closure_macros)
                 closure_discovery_rows = tuple(ctr) + tuple(cs)
-                closure_candidate_audit = {
-                    "expected_lineage_candidate_count": 0,
-                    "perfect_candidate_count": 0,
-                    "selection_qualified_candidate_count": 0,
-                    "expected_lineage_expressions": [],
-                    "preselection_validation_used": False,
-                }
-                try:
-                    expected_ids_for_audit = {left_parent.primitive_id, right_parent.primitive_id}
-                    keys_for_audit = sorted(
-                        set().union(*(t.inputs.keys() for t in closure_discovery_rows))
-                    )
-                    for policy in learner.propose_search_policies():
-                        for expr in learner._exprs(
-                            keys_for_audit,
-                            tuple(learner.primitives),
-                            min(3, int(policy["max_depth"])),
-                        ):
-                            try:
-                                trerr = sum(
-                                    abs(eval_expr(expr, t.inputs, learner._pmap()) - t.target)
-                                    for t in closure_discovery_rows
-                                ) / len(closure_discovery_rows)
-                                if trerr > 1e-9:
-                                    continue
-                                closure_candidate_audit["perfect_candidate_count"] += 1
-                                closure_candidate_audit["selection_qualified_candidate_count"] += 1
-                                used = {
-                                    str(x["id"])
-                                    for x in learner._walk(expr)
-                                    if x.get("op") == "macro"
-                                }
-                                lineage = primitive_lineage_ids(
-                                    learner, tuple(sorted(used))
-                                )
-                                if expected_ids_for_audit.issubset(lineage):
-                                    closure_candidate_audit[
-                                        "expected_lineage_candidate_count"
-                                    ] += 1
-                                    if len(
-                                        closure_candidate_audit["expected_lineage_expressions"]
-                                    ) < 8:
-                                        closure_candidate_audit[
-                                            "expected_lineage_expressions"
-                                        ].append(dict(expr))
-                            except Exception:
-                                continue
-                except Exception:
-                    pass
-
-                print(
-                    json.dumps(
-                        {
-                            "event": "CLOSURE_CANDIDATE_AUDIT",
-                            "seed": seed,
-                            "generation": generation,
-                            "expected_parent_ids": sorted(expected_ids_for_audit),
-                            "audit": closure_candidate_audit,
-                        },
-                        sort_keys=True,
-                    ),
-                    flush=True,
-                )
-
+                # Do not re-run an exhaustive generic expression enumeration here.
+                # This block is diagnostic-only; the scientific closure gate below
+                # performs the real discovery/selection search. The prior audit
+                # duplicated that work for every retained pair and dominated wall time.
                 if hasattr(learner, "synthesize_process_frontier"):
                     cprocs = tuple(
                         learner.synthesize_process_frontier(
@@ -552,6 +492,37 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                 else:
                     fallback = learner.synthesize_process(closure_discovery_rows, cv, co)
                     cprocs = (fallback,) if fallback is not None else ()
+
+                expected = {left_parent.primitive_id, right_parent.primitive_id}
+                search_stats = dict(getattr(learner, "last_search_stats", {}))
+                lineage_signatures = tuple(
+                    str(sig)
+                    for sig in search_stats.get("target_candidate_lineage_signatures", ())
+                )
+                expected_signature_count = sum(
+                    expected.issubset(set(sig.split("|")))
+                    for sig in lineage_signatures
+                )
+                print(
+                    json.dumps(
+                        {
+                            "event": "CLOSURE_CANDIDATE_AUDIT",
+                            "seed": seed,
+                            "generation": generation,
+                            "expected_parent_ids": sorted(expected),
+                            "audit": {
+                                "expected_lineage_candidate_count": int(expected_signature_count),
+                                "perfect_candidate_count": int(search_stats.get("target_candidate_count", 0)),
+                                "selection_qualified_candidate_count": int(search_stats.get("target_candidate_count", 0)),
+                                "expected_lineage_expressions": [],
+                                "preselection_validation_used": False,
+                                "source": "post_search_telemetry",
+                            },
+                        },
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
 
                 competence = False
                 reuse_ok = False
