@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - research/exact-resumable-12gen-20261006
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
