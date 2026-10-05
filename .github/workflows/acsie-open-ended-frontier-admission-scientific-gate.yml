@@ -1,0 +1,238 @@
+name: ACSIE open-ended frontier-wide admission scientific gate
+
+on:
+  push:
+    branches:
+      - research/acceptance-telemetry-frontier-admission-20261005
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acsie-open-ended-frontier-admission-${{ github.event.pull_request.number || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  seed:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        seed: [2026100301, 2026100302, 2026100303, 2026100304, 2026100305]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone exact ACSIE runtime
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          rm -rf /tmp/acsie-open-ended-frontier-admission
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-open-ended-frontier-admission
+          git -C /tmp/acsie-open-ended-frontier-admission fetch --depth 1 origin "$ACSIE_REF"
+          git -C /tmp/acsie-open-ended-frontier-admission checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie-open-ended-frontier-admission rev-parse HEAD)" = "$ACSIE_REF"
+
+      - name: Run exact unit tests
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/open-ended-frontier-admission-venv
+          . /tmp/open-ended-frontier-admission-venv/bin/activate
+          python -m pip install --upgrade pip pytest
+          PYTHONPATH=/tmp/acsie-open-ended-frontier-admission pytest -q /tmp/acsie-open-ended-frontier-admission/tests/test_open_ended_growth.py
+          PYTHONPATH=/tmp/acsie-open-ended-frontier-admission:. pytest -q lab/test_open_ended_bootstrap_language.py
+
+      - name: Run strict 12-generation seed
+        env:
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: /tmp/acsie-open-ended-frontier-admission
+          ACSIE_REF: "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+        run: |
+          set +e
+          . /tmp/open-ended-frontier-admission-venv/bin/activate
+          set -o pipefail
+          {
+            echo "WORKFLOW_SHA=${{ github.sha }}"
+            echo "ACSIE_REF=7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+            echo "SEED=${{ matrix.seed }}"
+            echo "GENERATIONS=12"
+            echo "HYPOTHESIS=H-FVA"
+            echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            python3 -u - <<PY
+          import json
+          import lab.acsie_open_ended_self_extending_proving as proving
+          seed = int("${{ matrix.seed }}")
+          result = proving.run_seed(seed, 12)
+          print(json.dumps(result, sort_keys=True), flush=True)
+
+          details = result.get("generations_detail", [])
+          h_fva_active = bool(details) and all(
+              row.get("acceptance_reason") == "ACCEPTED_FRONTIER"
+              for row in details
+              if row.get("accepted")
+          )
+          every_generation_frontier_validated = bool(details) and all(
+              int(row.get("frontier_validated_candidate_count", 0)) >= 1
+              for row in details
+              if row.get("accepted")
+          )
+          integrity = (
+              not result.get("external_model", True)
+              and not result.get("target_identity_available_to_runtime", True)
+              and not result.get("task_family_route", True)
+              and not result.get("holdout_used_for_search_selection", True)
+              and not result.get("transfer_used_for_search_selection", True)
+              and not result.get("ood_used_for_search_selection", True)
+          )
+          ok = bool(
+              result.get("finite_open_ended_growth_gate")
+              and integrity
+              and h_fva_active
+              and every_generation_frontier_validated
+              and result.get("every_generation_accepted")
+          )
+          print("H_FVA_ACTIVE=" + ("PASS" if h_fva_active else "FAIL"), flush=True)
+          print("H_FVA_FRONTIER_VALIDATION=" + ("PASS" if every_generation_frontier_validated else "FAIL"), flush=True)
+          print("SCIENTIFIC_SEED_GATE=" + ("PASS" if ok else "FAIL"), flush=True)
+          raise SystemExit(0 if ok else 2)
+          PY
+          } 2>&1 | tee seed-result.txt
+          rc=${PIPESTATUS[0]}
+          echo "SCIENTIFIC_SEED_GATE_RC=$rc" | tee -a seed-result.txt
+          exit "$rc"
+
+      - name: Upload seed evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-open-ended-frontier-admission-seed-${{ matrix.seed }}-${{ github.sha }}
+          path: seed-result.txt
+
+  aggregate:
+    if: always()
+    needs: seed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download seed evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: acsie-open-ended-frontier-admission-seed-*-${{ github.sha }}
+          path: seed-evidence
+          merge-multiple: false
+
+      - name: Evaluate frozen aggregate gate
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          expected = {2026100301, 2026100302, 2026100303, 2026100304, 2026100305}
+          rows = {}
+          hashes = {}
+          for p in sorted(Path("seed-evidence").glob("**/seed-result.txt")):
+              hashes[str(p)] = hashlib.sha256(p.read_bytes()).hexdigest()
+              for line in p.read_text().splitlines():
+                  try:
+                      obj = json.loads(line)
+                  except Exception:
+                      continue
+                  if isinstance(obj, dict) and "seed" in obj and "finite_open_ended_growth_gate" in obj:
+                      rows[int(obj["seed"])] = obj
+
+          complete = set(rows) == expected
+          integrity_ok = complete and all(
+              not rows[s].get("external_model", True)
+              and not rows[s].get("target_identity_available_to_runtime", True)
+              and not rows[s].get("task_family_route", True)
+              and not rows[s].get("holdout_used_for_search_selection", True)
+              and not rows[s].get("transfer_used_for_search_selection", True)
+              and not rows[s].get("ood_used_for_search_selection", True)
+              for s in expected
+          )
+          science_ok = complete and integrity_ok and all(
+              bool(rows[s].get("finite_open_ended_growth_gate"))
+              and bool(rows[s].get("every_generation_accepted"))
+              and bool(rows[s].get("lineage_closed"))
+              and bool(rows[s].get("strict_growth"))
+              and bool(rows[s].get("depth_growth_contract"))
+              and int(rows[s].get("closure_trap_count", 1)) == 0
+              and int(rows[s].get("probe_trap_count", 1)) == 0
+              for s in expected
+          )
+          hfva_ok = complete and all(
+              any(
+                  line.startswith("H_FVA_ACTIVE=PASS")
+                  for line in Path(p).read_text().splitlines()
+              )
+              and any(
+                  line.startswith("H_FVA_FRONTIER_VALIDATION=PASS")
+                  for line in Path(p).read_text().splitlines()
+              )
+              for p in hashes
+          )
+
+          if not complete:
+              status = "INCONCLUSIVE"
+              classification = "INCOMPLETE_SEED_EVIDENCE"
+          elif science_ok and hfva_ok:
+              status = "PASS"
+              classification = "SCIENTIFIC_PASS_H_FVA"
+          elif science_ok:
+              status = "FAIL"
+              classification = "SCIENTIFIC_PASS_BASE_GATE_BUT_H_FVA_INVARIANT_FAILED"
+          else:
+              status = "FAIL"
+              classification = "SCIENTIFIC_FAIL"
+
+          report = {
+              "scientific_gate": status,
+              "status_classification": classification,
+              "hypothesis": "H-FVA",
+              "acsie_ref": "7e905d73c15ece4b8b5d7cb73218bac34c2e1314",
+              "expected_seeds": sorted(expected),
+              "observed_seeds": sorted(rows),
+              "missing_seeds": sorted(expected - set(rows)),
+              "integrity_ok": integrity_ok,
+              "h_fva_invariant_ok": hfva_ok,
+              "seed_results": {
+                  str(s): {
+                      "finite_open_ended_growth_gate": rows[s].get("finite_open_ended_growth_gate"),
+                      "every_generation_accepted": rows[s].get("every_generation_accepted"),
+                      "every_closure_perfect": rows[s].get("every_closure_perfect"),
+                      "every_probe_perfect": rows[s].get("every_probe_perfect"),
+                      "lineage_closed": rows[s].get("lineage_closed"),
+                      "strict_growth": rows[s].get("strict_growth"),
+                      "depth_growth_contract": rows[s].get("depth_growth_contract"),
+                      "closure_trap_count": rows[s].get("closure_trap_count"),
+                      "probe_trap_count": rows[s].get("probe_trap_count"),
+                      "final_closure_reuse_rate": rows[s].get("final_closure_reuse_rate"),
+                      "final_probe_reuse_rate": rows[s].get("final_probe_reuse_rate"),
+                      "retained_count": rows[s].get("retained_count"),
+                  }
+                  for s in sorted(rows)
+              },
+              "evidence_sha256": hashes,
+          }
+          print(json.dumps(report, sort_keys=True, indent=2))
+          Path("aggregate-scientific-gate.json").write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
+          raise SystemExit(0 if status == "PASS" else 2)
+          PY
+
+      - name: Upload aggregate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-open-ended-frontier-admission-aggregate-${{ github.sha }}
+          path: aggregate-scientific-gate.json
