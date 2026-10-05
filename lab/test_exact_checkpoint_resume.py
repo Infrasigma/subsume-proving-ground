@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
+
+import pytest
 
 from lab.acsie_open_ended_self_extending_proving import run_seed
 
@@ -46,3 +49,49 @@ def test_exact_checkpoint_roundtrip_preserves_future_trajectory():
         assert resumed["max_unique_search_states"] == uninterrupted["max_unique_search_states"]
 
 # trigger: exact-checkpoint-roundtrip validation
+
+
+
+def test_checkpoint_digest_rejects_tampering():
+    metadata = {"proving_sha": "checkpoint-test", "acsie_ref": "checkpoint-test"}
+    with tempfile.TemporaryDirectory() as tmp:
+        checkpoint = Path(tmp) / "state.json"
+        run_seed(
+            102,
+            3,
+            checkpoint_path=str(checkpoint),
+            checkpoint_metadata=metadata,
+        )
+        envelope = json.loads(checkpoint.read_text(encoding="utf-8"))
+        envelope["generation_next"] = 99
+        checkpoint.write_text(json.dumps(envelope), encoding="utf-8")
+        with pytest.raises(ValueError, match="checkpoint digest mismatch"):
+            run_seed(
+                102,
+                3,
+                resume_from=str(checkpoint),
+                checkpoint_metadata=metadata,
+            )
+
+
+def test_checkpoint_runtime_identity_rejects_cross_revision_resume():
+    metadata = {"proving_sha": "checkpoint-test-a", "acsie_ref": "runtime-a"}
+    with tempfile.TemporaryDirectory() as tmp:
+        checkpoint = Path(tmp) / "state.json"
+        run_seed(
+            103,
+            3,
+            checkpoint_path=str(checkpoint),
+            stop_after=2,
+            checkpoint_metadata=metadata,
+        )
+        with pytest.raises(ValueError, match="runtime identity mismatch"):
+            run_seed(
+                103,
+                3,
+                resume_from=str(checkpoint),
+                checkpoint_metadata={
+                    "proving_sha": "checkpoint-test-b",
+                    "acsie_ref": "runtime-a",
+                },
+            )
