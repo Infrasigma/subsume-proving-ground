@@ -48,45 +48,121 @@ jobs:
             test "$(git -C /tmp/acsie-checkpoint rev-parse HEAD)" = "$ACSIE_REF"
           fi
 
+      - name: Run PR110 snapshot unit tests
+        if: env.SNAPSHOT_MODE == '1'
+        run: |
+          set -euo pipefail
+          . /tmp/checkpoint-venv/bin/activate
+          PYTHONPATH=/tmp/acsie-A:${{ github.workspace }} pytest -q tests/test_open_ended_growth.py
+          PYTHONPATH=/tmp/acsie-B:${{ github.workspace }} pytest -q tests/test_open_ended_growth.py
+
       - name: Run PR110 snapshot A/B diagnostic
         if: env.SNAPSHOT_MODE == '1'
-        env:
-          PYTHONUNBUFFERED: "1"
-          PYTHONPATH: /tmp/acsie-B:${{ github.workspace }}
         run: |
           set -euo pipefail
           mkdir -p pr110-snapshot-evidence
-          python -u - <<'PY' 2>&1 | tee pr110-snapshot-evidence/paired-raw.txt
+
+          run_one() {
+            label="$1"
+            root="$2"
+            sha="$3"
+            PYTHONPATH="$root:${{ github.workspace }}"               SNAPSHOT_LABEL="$label"               SNAPSHOT_ROOT="$root"               SNAPSHOT_SHA="$sha"               python -u - <<'PY' > "pr110-snapshot-evidence/$label-raw.txt" 2>&1
           import json, os, time
           from lab.acsie_open_ended_self_extending_proving import run_seed
+
+          label=os.environ["SNAPSHOT_LABEL"]
+          root=os.environ["SNAPSHOT_ROOT"]
+          sha=os.environ["SNAPSHOT_SHA"]
+          seed=2026100305
+          generations=12
           selected={5,6,9,10,11}
-          payload={}
-          for label, root, sha in (
-              ("A","/tmp/acsie-A","7e905d73c15ece4b8b5d7cb73218bac34c2e1314"),
-              ("B","/tmp/acsie-B","af0c7ef503c51a5bc7872717b263a01f495c855f"),
-          ):
-              start_wall=time.perf_counter()
-              start_cpu=time.process_time()
-              old_path=os.environ.get("PYTHONPATH","")
-              os.environ["PYTHONPATH"]=root+":"+old_path
-              result=run_seed(2026100305,12)
-              wall=time.perf_counter()-start_wall
-              cpu=time.process_time()-start_cpu
-              payload[label]={
-                  "runtime_sha":sha,
-                  "proving_sha":"33259fc5c69d87b99c604f0050508c433a279daf",
-                  "seed":2026100305,
-                  "generations":12,
-                  "selected":[r for r in result["generations_detail"] if int(r["generation"]) in selected],
-                  "wall_time_seconds":wall,
-                  "cpu_time_seconds":cpu,
-                  "max_generated_expressions":result["max_generated_expressions"],
-                  "max_unique_search_states":result["max_unique_search_states"],
-                  "max_search_states_in_depth":result["max_search_states_in_depth"],
-                  "finite_open_ended_growth_gate":result["finite_open_ended_growth_gate"],
-              }
-          print("PR110_SNAPSHOT_AB="+json.dumps(payload,sort_keys=True))
+
+          start_wall=time.perf_counter()
+          start_cpu=time.process_time()
+          result=run_seed(seed,generations)
+          wall=time.perf_counter()-start_wall
+          cpu=time.process_time()-start_cpu
+
+          payload={
+              "label":label,
+              "runtime_sha":sha,
+              "proving_sha":"33259fc5c69d87b99c604f0050508c433a279daf",
+              "snapshot_root":root,
+              "seed":seed,
+              "generations":generations,
+              "selected":[r for r in result["generations_detail"] if int(r["generation"]) in selected],
+              "wall_time_seconds":wall,
+              "cpu_time_seconds":cpu,
+              "max_generated_expressions":result["max_generated_expressions"],
+              "max_unique_search_states":result["max_unique_search_states"],
+              "max_search_states_in_depth":result["max_search_states_in_depth"],
+              "finite_open_ended_growth_gate":result["finite_open_ended_growth_gate"],
+          }
+          print("PR110_SNAPSHOT_RESULT="+json.dumps(payload,sort_keys=True))
           PY
+          }
+
+          run_one A /tmp/acsie-A 7e905d73c15ece4b8b5d7cb73218bac34c2e1314
+          run_one B /tmp/acsie-B af0c7ef503c51a5bc7872717b263a01f495c855f
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          def read(label):
+              text=Path(f"pr110-snapshot-evidence/{label}-raw.txt").read_text()
+              prefix="PR110_SNAPSHOT_RESULT="
+              line=next(x for x in text.splitlines() if x.startswith(prefix))
+              return json.loads(line[len(prefix):])
+          a,b=read("A"),read("B")
+          selected=[5,6,9,10,11]
+          ar={int(r["generation"]):r for r in a["selected"]}
+          br={int(r["generation"]):r for r in b["selected"]}
+          rows=[]
+          target_identical=True
+          for g in selected:
+              aa,bb=ar[g],br[g]
+              same=aa.get("target_digest")==bb.get("target_digest")
+              target_identical &= same
+              rows.append({
+                  "generation":g,
+                  "same_target_digest":same,
+                  "A_target_digest":aa.get("target_digest"),
+                  "B_target_digest":bb.get("target_digest"),
+                  "A_expected_parent_ids":aa.get("expected_parent_ids"),
+                  "B_expected_parent_ids":bb.get("expected_parent_ids"),
+                  "A_recursive_reuse_ok":aa.get("recursive_reuse_ok"),
+                  "B_recursive_reuse_ok":bb.get("recursive_reuse_ok"),
+                  "A_closure_reuse_rate":aa.get("closure_reuse_rate"),
+                  "B_closure_reuse_rate":bb.get("closure_reuse_rate"),
+                  "A_probe_reuse_rate":aa.get("probe_reuse_rate"),
+                  "B_probe_reuse_rate":bb.get("probe_reuse_rate"),
+                  "A_closure_trap_count":aa.get("closure_trap_count"),
+                  "B_closure_trap_count":bb.get("closure_trap_count"),
+                  "A_probe_trap_count":aa.get("probe_trap_count"),
+                  "B_probe_trap_count":bb.get("probe_trap_count"),
+              })
+          report={
+              "protocol":"ACSIE.PR110.snapshot-replay.v2",
+              "A":a,
+              "B":b,
+              "target_digests_identical":target_identical,
+              "selected_generations":rows,
+              "scientific_status":"INCONCLUSIVE_UNTIL_REVIEWED",
+              "promotion_status":"DO_NOT_PROMOTE",
+              "frozen_5x12_budget":"UNTOUCHED",
+          }
+          Path("pr110-snapshot-evidence/paired-comparison.json").write_text(
+              json.dumps(report,indent=2,sort_keys=True)+"\n"
+          )
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+
+      - name: Upload PR110 snapshot evidence
+        if: env.SNAPSHOT_MODE == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-snapshot-evidence
+          path: pr110-snapshot-evidence/
 
       - name: Run normal exact checkpoint tests
         if: env.SNAPSHOT_MODE != '1'
