@@ -58,7 +58,7 @@ jobs:
             label="$1"
             root="$2"
             PYTHONPATH="$root:${{ github.workspace }}"               SNAPSHOT_LABEL="$label"               python -u - <<'PY'
-          import os
+          import json, os
           from cognitive_core.behavioral_search import find_exact_expression
           from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
           from cognitive_core.recursive_cognitive_compiler import ArchiveRecord, CognitivePrimitive, Trace
@@ -83,17 +83,36 @@ jobs:
           c.archive={pid:ArchiveRecord(p) for pid,p in c.primitives.items()}
 
           assert c.primitive_lineage("prim:alias")==("prim:a","prim:b","prim:alias"), label
-          assert c.executable_lineage("prim:alias")==("prim:alias",), label
 
           rows=tuple(
               Trace({"x":float(i),"y":float(i+1)},float(2*i+1),"opaque",{},f"u-{i}")
               for i in range(8)
           )
           result=find_exact_expression(c,rows,max_depth=2,require_macro=True)
-          assert result is not None, label
-          assert set(result.used_primitives)=={"prim:a","prim:b"}, label
-          assert set(result.stats["selected_executable_lineage_ids"])=={"prim:a","prim:b"}, label
-          print(f"PR110_UNIT_{label}=PASS")
+          multi_parent_found=bool(
+              result is not None and set(getattr(result,"used_primitives",()))=={"prim:a","prim:b"}
+          )
+
+          if label=="A":
+              # Legacy baseline is allowed to fail the repair-specific
+              # multi-parent preservation condition; this is the control.
+              print(json.dumps({
+                  "runtime":"A",
+                  "multi_parent_found":multi_parent_found,
+                  "has_executable_lineage_api":hasattr(c,"executable_lineage"),
+                  "status":"CONTROL_RECORDED",
+              },sort_keys=True))
+          else:
+              assert hasattr(c,"executable_lineage"), label
+              assert c.executable_lineage("prim:alias")==("prim:alias",), label
+              assert multi_parent_found, label
+              assert set(result.stats["selected_executable_lineage_ids"])=={"prim:a","prim:b"}, label
+              print(json.dumps({
+                  "runtime":"B",
+                  "multi_parent_found":True,
+                  "executable_lineage_api":True,
+                  "status":"REPAIR_INVARIANTS_PASS",
+              },sort_keys=True))
           PY
           }
 
