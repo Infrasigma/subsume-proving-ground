@@ -1,0 +1,47 @@
+name: ACSIE exact checkpoint roundtrip
+
+on:
+  push:
+    branches:
+      - research/exact-resumable-12gen-20261006
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checkpoint-roundtrip:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install test dependencies
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/checkpoint-venv
+          . /tmp/checkpoint-venv/bin/activate
+          python -m pip install --upgrade pip pytest
+      - name: Clone exact ACSIE runtime
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          rm -rf /tmp/acsie-checkpoint
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-checkpoint
+          git -C /tmp/acsie-checkpoint fetch --depth 1 origin "$ACSIE_REF"
+          git -C /tmp/acsie-checkpoint checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie-checkpoint rev-parse HEAD)" = "$ACSIE_REF"
+      - name: Run exact checkpoint tests
+        env:
+          PYTHONPATH: /tmp/acsie-checkpoint
+          ACSIE_REF: "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+        run: |
+          set -euo pipefail
+          . /tmp/checkpoint-venv/bin/activate
+          pytest -q /tmp/acsie-checkpoint/tests/test_open_ended_growth.py
+          PYTHONPATH=/tmp/acsie-checkpoint:. pytest -q lab/test_exact_checkpoint_resume.py
