@@ -31,7 +31,7 @@ jobs:
       - name: Clone exact ACSIE bounded-continuation commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "91475b37aff5b841709febedd0b465528eda4a0a"
+          ACSIE_REF: "f41ac2fb977d4a73c6026084ced5bb25d8fd9f63"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
@@ -54,14 +54,14 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONPATH: /tmp/acsie-open-ended-bounded-v2
-          ACSIE_REF: "91475b37aff5b841709febedd0b465528eda4a0a"
+          ACSIE_REF: "f41ac2fb977d4a73c6026084ced5bb25d8fd9f63"
         run: |
           set +e
           . /tmp/open-ended-bounded-v2-venv/bin/activate
           set -o pipefail
           {
             echo "WORKFLOW_SHA=${{ github.sha }}"
-            echo "ACSIE_REF=91475b37aff5b841709febedd0b465528eda4a0a"
+            echo "ACSIE_REF=f41ac2fb977d4a73c6026084ced5bb25d8fd9f63"
             echo "SEED=${{ matrix.seed }}"
             echo "GENERATIONS=12"
             echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -160,7 +160,7 @@ jobs:
               "status_classification": status_classification,
               "missing_seeds": sorted(expected - set(rows)),
               "integrity_ok": integrity_ok,
-              "acsie_ref": "91475b37aff5b841709febedd0b465528eda4a0a",
+              "acsie_ref": "f41ac2fb977d4a73c6026084ced5bb25d8fd9f63",
               "expected_seeds": sorted(expected),
               "observed_seeds": sorted(rows),
               "seed_results": {
