@@ -298,13 +298,28 @@ def executable_lineage_ids(
     learner: RecursiveCognitiveCompiler,
     primitive_ids: tuple[str, ...],
 ) -> set[str]:
+    """Runtime-independent executable lineage evaluator.
+
+    This deliberately does not call a runtime lineage helper. The evaluator
+    follows only actual executable macro references in primitive expressions,
+    so pre-PR110 and PR110 runtimes are judged by exactly the same semantics.
+    """
     lineage: set[str] = set()
-    method = getattr(learner, "executable_lineage", None)
-    for pid in primitive_ids:
-        if method is None:
-            lineage.add(str(pid))
-        else:
-            lineage.update(str(x) for x in method(str(pid)))
+    stack = [str(pid) for pid in primitive_ids]
+    seen: set[str] = set()
+
+    while stack:
+        pid = stack.pop()
+        if pid in seen:
+            continue
+        seen.add(pid)
+        lineage.add(pid)
+        primitive = learner.primitives.get(pid)
+        if primitive is None:
+            continue
+        for node in learner._walk(primitive.expression):
+            if node.get("op") == "macro":
+                stack.append(str(node["id"]))
     return lineage
 
 
@@ -1104,7 +1119,7 @@ def run_seed(
         "final_probe_reuse_rate": final_probe_reuse_rate,
         "final_closure_parent_fidelity": final["closure_parent_fidelity"],
         "final_probe_parent_fidelity": final["probe_parent_fidelity"],
-        "reuse_lineage_semantics": "executable_lineage",
+        "reuse_lineage_semantics": "external_executable_macro_reachability_v1",
         "final_semantic_closure_reuse_rate": final["semantic_closure_reuse_rate"],
         "final_semantic_probe_reuse_rate": final["semantic_probe_reuse_rate"],
         "max_generated_expressions": max(
