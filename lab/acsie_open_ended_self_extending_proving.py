@@ -787,7 +787,7 @@ def run_seed(
                 peval = learner.evaluate(proc, ptrain, pholdout, ptransfer, pood, ())
                 competence = bool(peval.accepted and peval.ood_error <= 1e-9)
                 expected = {p.primitive_id for p in probe_parents}
-                candidate_lineage = primitive_lineage_ids(
+                candidate_lineage = executable_lineage_ids(
                     learner,
                     tuple(proc.used_primitives),
                 )
