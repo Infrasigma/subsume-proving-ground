@@ -280,12 +280,26 @@ def synthesize_discovery_only(
     compiler.processes[proc.process_id] = proc
     return proc
 
-def primitive_lineage_ids(
+def provenance_lineage_ids(
     learner: RecursiveCognitiveCompiler,
     primitive_ids: tuple[str, ...],
 ) -> set[str]:
     lineage: set[str] = set()
     method = getattr(learner, "primitive_lineage", None)
+    for pid in primitive_ids:
+        if method is None:
+            lineage.add(str(pid))
+        else:
+            lineage.update(str(x) for x in method(str(pid)))
+    return lineage
+
+
+def executable_lineage_ids(
+    learner: RecursiveCognitiveCompiler,
+    primitive_ids: tuple[str, ...],
+) -> set[str]:
+    lineage: set[str] = set()
+    method = getattr(learner, "executable_lineage", None)
     for pid in primitive_ids:
         if method is None:
             lineage.add(str(pid))
@@ -515,7 +529,7 @@ def run_seed(
                 acceptance_reason = "EMPTY_FRONTIER"
         parent_used = selected_primitive.parent_ids if selected_primitive is not None else tuple()
         candidate_lineage_ids = (
-            primitive_lineage_ids(learner, (selected_primitive.primitive_id,))
+            executable_lineage_ids(learner, (selected_primitive.primitive_id,))
             if selected_primitive is not None and selected_primitive.primitive_id in learner.primitives
             else set()
         )
@@ -647,7 +661,7 @@ def run_seed(
                     candidate_competence = bool(
                         ceval.accepted and ceval.ood_error <= 1e-9
                     )
-                    candidate_lineage = primitive_lineage_ids(
+                    candidate_lineage = executable_lineage_ids(
                         learner,
                         tuple(candidate_proc.used_primitives),
                     )
@@ -1090,6 +1104,7 @@ def run_seed(
         "final_probe_reuse_rate": final_probe_reuse_rate,
         "final_closure_parent_fidelity": final["closure_parent_fidelity"],
         "final_probe_parent_fidelity": final["probe_parent_fidelity"],
+        "reuse_lineage_semantics": "executable_lineage",
         "final_semantic_closure_reuse_rate": final["semantic_closure_reuse_rate"],
         "final_semantic_probe_reuse_rate": final["semantic_probe_reuse_rate"],
         "max_generated_expressions": max(
