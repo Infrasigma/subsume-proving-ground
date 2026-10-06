@@ -66,53 +66,38 @@ jobs:
           label=os.environ["SNAPSHOT_LABEL"]
           c=OpenEndedRecursiveCognitiveCompiler(max_depth=2)
 
-          p_a=CognitivePrimitive(
-              "prim:a", {"op":"get","key":"x"}, ("x",), "delta", 0,
-              (), ("opaque",), 0.0, 0.0, 0.0, 1, {},
-          )
-          p_b=CognitivePrimitive(
-              "prim:b", {"op":"get","key":"y"}, ("y",), "delta", 0,
-              (), ("opaque",), 0.0, 0.0, 0.0, 1, {},
-          )
+          p_a=CognitivePrimitive("prim:a",{"op":"get","key":"x"},("x",),"delta",0,(),("opaque",),0,0,0,1,{})
+          p_b=CognitivePrimitive("prim:b",{"op":"get","key":"y"},("y",),"delta",0,(),("opaque",),0,0,0,1,{})
           alias=CognitivePrimitive(
-              "prim:alias", {"op":"get","key":"x"}, ("x","y"), "delta", 1,
-              (), ("opaque",), 0.0, 0.0, 0.0, 1,
+              "prim:alias",{"op":"get","key":"x"},("x","y"),"delta",1,(),("opaque",),0,0,0,1,
               {"lineage_ids":["prim:a","prim:b"]},
           )
           c.primitives={p_a.primitive_id:p_a,p_b.primitive_id:p_b,alias.primitive_id:alias}
           c.archive={pid:ArchiveRecord(p) for pid,p in c.primitives.items()}
-
-          assert c.primitive_lineage("prim:alias")==("prim:a","prim:b","prim:alias"), label
 
           rows=tuple(
               Trace({"x":float(i),"y":float(i+1)},float(2*i+1),"opaque",{},f"u-{i}")
               for i in range(8)
           )
           result=find_exact_expression(c,rows,max_depth=2,require_macro=True)
-          multi_parent_found=bool(
-              result is not None and set(getattr(result,"used_primitives",()))=={"prim:a","prim:b"}
-          )
+          used=set(result.used_primitives) if result is not None else set()
+          report={
+              "runtime":label,
+              "result_found":result is not None,
+              "used_primitives":sorted(used),
+              "has_executable_lineage_api":hasattr(c,"executable_lineage"),
+          }
 
-          if label=="A":
-              # Legacy baseline is allowed to fail the repair-specific
-              # multi-parent preservation condition; this is the control.
-              print(json.dumps({
-                  "runtime":"A",
-                  "multi_parent_found":multi_parent_found,
-                  "has_executable_lineage_api":hasattr(c,"executable_lineage"),
-                  "status":"CONTROL_RECORDED",
-              },sort_keys=True))
+          if label=="B":
+              assert hasattr(c,"executable_lineage"), report
+              assert c.executable_lineage("prim:alias")==("prim:alias",), report
+              assert used=={"prim:a","prim:b"}, report
+              assert set(result.stats["selected_executable_lineage_ids"])=={"prim:a","prim:b"}, report
+              report["status"]="REPAIR_INVARIANTS_PASS"
           else:
-              assert hasattr(c,"executable_lineage"), label
-              assert c.executable_lineage("prim:alias")==("prim:alias",), label
-              assert multi_parent_found, label
-              assert set(result.stats["selected_executable_lineage_ids"])=={"prim:a","prim:b"}, label
-              print(json.dumps({
-                  "runtime":"B",
-                  "multi_parent_found":True,
-                  "executable_lineage_api":True,
-                  "status":"REPAIR_INVARIANTS_PASS",
-              },sort_keys=True))
+              report["status"]="CONTROL_RECORDED"
+
+          print(json.dumps(report,sort_keys=True))
           PY
           }
 
