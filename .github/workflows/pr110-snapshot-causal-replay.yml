@@ -1,0 +1,193 @@
+name: PR110 paired causal replay from pinned ACSIE snapshots
+
+# Temporary laboratory execution only.
+# Canonical intelligence architecture remains Infrasigma/ACSIE.
+on:
+  push:
+    branches:
+      - research/pr110-acsie-snapshot-replay-20261007
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paired-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      SNAPSHOT_A: research/pr110_acsie_snapshot/A
+      SNAPSHOT_B: research/pr110_acsie_snapshot/B
+      SEED: "2026100305"
+      GENERATIONS: "12"
+      PROVING_SHA: "33259fc5c69d87b99c604f0050508c433a279daf"
+      A_SHA: "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+      B_SHA: "af0c7ef503c51a5bc7872717b263a01f495c855f"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify pinned snapshot provenance
+        run: |
+          set -euo pipefail
+          test -f research/pr110_acsie_snapshot/manifest.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
+          assert m["fixed_seed"] == 2026100305
+          assert m["generations"] == 12
+          assert m["selected_generations"] == [5,6,9,10,11]
+          assert m["proving_harness_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
+          assert m["A"]["runtime_sha"] == "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+          assert m["B"]["runtime_sha"] == "af0c7ef503c51a5bc7872717b263a01f495c855f"
+          print("SNAPSHOT_PROVENANCE=PASS")
+          PY
+
+      - name: Python syntax smoke
+        run: |
+          set -euo pipefail
+          python3 --version
+          python3 -m py_compile             research/pr110_acsie_snapshot/A/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/A/cognitive_core/recursive_cognitive_compiler.py             research/pr110_acsie_snapshot/A/cognitive_core/open_ended_growth.py             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py
+
+      - name: Prepare environment
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/pr110-snapshot-venv
+          . /tmp/pr110-snapshot-venv/bin/activate
+          python -m pip install --upgrade pip
+          python - <<'PY'
+          import sys
+          print(sys.version)
+          PY
+
+      - name: Run A/B trajectories
+        run: |
+          set -euo pipefail
+          . /tmp/pr110-snapshot-venv/bin/activate
+          mkdir -p evidence
+
+          run_one() {
+            label="$1"
+            root="$2"
+            runtime_sha="$3"
+            out="evidence/${label}-raw.txt"
+            summary="evidence/${label}-selected.json"
+
+            PYTHONPATH="$GITHUB_WORKSPACE/$root:$GITHUB_WORKSPACE"               SNAPSHOT_LABEL="$label"               SNAPSHOT_ROOT="$root"               RUNTIME_SHA="$runtime_sha"               python -u - <<'PY' > "$out" 2>&1
+          import json, os, time
+          from lab.acsie_open_ended_self_extending_proving import run_seed
+
+          label=os.environ["SNAPSHOT_LABEL"]
+          root=os.environ["SNAPSHOT_ROOT"]
+          runtime_sha=os.environ["RUNTIME_SHA"]
+          seed=int(os.environ["SEED"])
+          generations=int(os.environ["GENERATIONS"])
+
+          start_wall=time.perf_counter()
+          start_cpu=time.process_time()
+          result=run_seed(seed, generations)
+          wall=time.perf_counter()-start_wall
+          cpu=time.process_time()-start_cpu
+
+          selected={5,6,9,10,11}
+          rows=[r for r in result["generations_detail"] if int(r["generation"]) in selected]
+          payload={
+            "label":label,
+            "snapshot_root":root,
+            "runtime_sha":runtime_sha,
+            "proving_sha":os.environ["PROVING_SHA"],
+            "seed":seed,
+            "generations":generations,
+            "selected_generations":sorted(selected),
+            "wall_time_seconds":wall,
+            "cpu_time_seconds":cpu,
+            "max_generated_expressions":result["max_generated_expressions"],
+            "max_unique_search_states":result["max_unique_search_states"],
+            "max_search_states_in_depth":result["max_search_states_in_depth"],
+            "selected":rows,
+            "final_gate":result["finite_open_ended_growth_gate"],
+          }
+          print("PAIRED_REPLAY_RESULT="+json.dumps(payload,sort_keys=True))
+          PY
+
+            python - "$out" "$summary" <<'PY'
+          import json, pathlib, sys
+          p="PAIRED_REPLAY_RESULT="
+          text=pathlib.Path(sys.argv[1]).read_text()
+          line=next(x for x in text.splitlines() if x.startswith(p))
+          pathlib.Path(sys.argv[2]).write_text(
+            json.dumps(json.loads(line[len(p):]),indent=2,sort_keys=True)+"
+"
+          )
+          PY
+          }
+
+          run_one A "$SNAPSHOT_A" "$A_SHA"
+          run_one B "$SNAPSHOT_B" "$B_SHA"
+
+      - name: Compare causal generations
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          a=json.loads(Path("evidence/A-selected.json").read_text())
+          b=json.loads(Path("evidence/B-selected.json").read_text())
+          selected=[5,6,9,10,11]
+          ar={int(x["generation"]):x for x in a["selected"]}
+          br={int(x["generation"]):x for x in b["selected"]}
+          rows=[]
+          identical=True
+          for g in selected:
+              aa,bb=ar[g],br[g]
+              same=aa.get("target_digest")==bb.get("target_digest")
+              identical &= same
+              rows.append({
+                "generation":g,
+                "same_target_digest":same,
+                "A_target_digest":aa.get("target_digest"),
+                "B_target_digest":bb.get("target_digest"),
+                "A_expected_parent_ids":aa.get("expected_parent_ids"),
+                "B_expected_parent_ids":bb.get("expected_parent_ids"),
+                "A_recursive_reuse_ok":aa.get("recursive_reuse_ok"),
+                "B_recursive_reuse_ok":bb.get("recursive_reuse_ok"),
+                "A_closure_reuse_rate":aa.get("closure_reuse_rate"),
+                "B_closure_reuse_rate":bb.get("closure_reuse_rate"),
+                "A_probe_reuse_rate":aa.get("probe_reuse_rate"),
+                "B_probe_reuse_rate":bb.get("probe_reuse_rate"),
+                "A_closure_trap_count":aa.get("closure_trap_count"),
+                "B_closure_trap_count":bb.get("closure_trap_count"),
+                "A_probe_trap_count":aa.get("probe_trap_count"),
+                "B_probe_trap_count":bb.get("probe_trap_count"),
+              })
+          report={
+            "protocol":"ACSIE.PR110.snapshot-replay.v1",
+            "canonical_system":"Infrasigma/ACSIE",
+            "laboratory":"Infrasigma/subsume-proving-ground",
+            "A_sha":a["runtime_sha"],
+            "B_sha":b["runtime_sha"],
+            "proving_sha":a["proving_sha"],
+            "seed":a["seed"],
+            "generations":a["generations"],
+            "target_digests_identical":identical,
+            "A_cost":{k:a[k] for k in ["wall_time_seconds","cpu_time_seconds","max_generated_expressions","max_unique_search_states","max_search_states_in_depth","final_gate"]},
+            "B_cost":{k:b[k] for k in ["wall_time_seconds","cpu_time_seconds","max_generated_expressions","max_unique_search_states","max_search_states_in_depth","final_gate"]},
+            "selected_generations":rows,
+            "scientific_status":"INCONCLUSIVE_UNTIL_REVIEWED",
+            "promotion_status":"DO_NOT_PROMOTE",
+            "frozen_5x12_budget":"UNTOUCHED",
+          }
+          Path("evidence/paired-comparison.json").write_text(json.dumps(report,indent=2,sort_keys=True)+"
+")
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-snapshot-causal-replay
+          path: evidence/
