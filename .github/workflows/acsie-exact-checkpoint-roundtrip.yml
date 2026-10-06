@@ -53,8 +53,52 @@ jobs:
         run: |
           set -euo pipefail
           . /tmp/checkpoint-venv/bin/activate
-          PYTHONPATH=/tmp/acsie-A:${{ github.workspace }} pytest -q tests/test_open_ended_growth.py
-          PYTHONPATH=/tmp/acsie-B:${{ github.workspace }} pytest -q tests/test_open_ended_growth.py
+
+          unit_one() {
+            label="$1"
+            root="$2"
+            PYTHONPATH="$root:${{ github.workspace }}"               SNAPSHOT_LABEL="$label"               python -u - <<'PY'
+          import os
+          from cognitive_core.behavioral_search import find_exact_expression
+          from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
+          from cognitive_core.recursive_cognitive_compiler import ArchiveRecord, CognitivePrimitive, Trace
+
+          label=os.environ["SNAPSHOT_LABEL"]
+          c=OpenEndedRecursiveCognitiveCompiler(max_depth=2)
+
+          p_a=CognitivePrimitive(
+              "prim:a", {"op":"get","key":"x"}, ("x",), "delta", 0,
+              (), ("opaque",), 0.0, 0.0, 0.0, 1, {},
+          )
+          p_b=CognitivePrimitive(
+              "prim:b", {"op":"get","key":"y"}, ("y",), "delta", 0,
+              (), ("opaque",), 0.0, 0.0, 0.0, 1, {},
+          )
+          alias=CognitivePrimitive(
+              "prim:alias", {"op":"get","key":"x"}, ("x","y"), "delta", 1,
+              (), ("opaque",), 0.0, 0.0, 0.0, 1,
+              {"lineage_ids":["prim:a","prim:b"]},
+          )
+          c.primitives={p_a.primitive_id:p_a,p_b.primitive_id:p_b,alias.primitive_id:alias}
+          c.archive={pid:ArchiveRecord(p) for pid,p in c.primitives.items()}
+
+          assert c.primitive_lineage("prim:alias")==("prim:a","prim:b","prim:alias"), label
+          assert c.executable_lineage("prim:alias")==("prim:alias",), label
+
+          rows=tuple(
+              Trace({"x":float(i),"y":float(i+1)},float(2*i+1),"opaque",{},f"u-{i}")
+              for i in range(8)
+          )
+          result=find_exact_expression(c,rows,max_depth=2,require_macro=True)
+          assert result is not None, label
+          assert set(result.used_primitives)=={"prim:a","prim:b"}, label
+          assert set(result.stats["selected_executable_lineage_ids"])=={"prim:a","prim:b"}, label
+          print(f"PR110_UNIT_{label}=PASS")
+          PY
+          }
+
+          unit_one A /tmp/acsie-A
+          unit_one B /tmp/acsie-B
 
       - name: Run PR110 snapshot A/B diagnostic
         if: env.SNAPSHOT_MODE == '1'
