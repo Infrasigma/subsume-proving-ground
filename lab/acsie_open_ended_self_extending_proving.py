@@ -869,6 +869,7 @@ def run_seed(
             {
                 "generation": generation,
                 "target_depth": target_depth,
+                "target_digest": sha256(json.dumps(target, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest(),
                 "accepted": accepted,
                 "baseline_accepted": baseline_accepted,
                 "parent_used": bool(recursive_reuse_ok),
