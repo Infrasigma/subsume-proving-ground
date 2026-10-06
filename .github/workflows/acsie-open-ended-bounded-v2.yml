@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - research/open-ended-depth-continuation-bounded-v2-20261004
+      - research/retain-executable-macro-atoms-proving-20261006
   pull_request:
     branches:
       - main
