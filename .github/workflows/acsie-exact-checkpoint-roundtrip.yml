@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - research/exact-resumable-12gen-20261006
+      - research/pr110-acsie-snapshot-replay-20261007
   pull_request:
     branches:
       - main
@@ -24,19 +25,71 @@ jobs:
           python3 -m venv /tmp/checkpoint-venv
           . /tmp/checkpoint-venv/bin/activate
           python -m pip install --upgrade pip pytest
-      - name: Clone exact ACSIE runtime
-        env:
-          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+      - name: Prepare runtime
         run: |
           set -euo pipefail
-          test -n "$ACSIE_READ_TOKEN"
-          rm -rf /tmp/acsie-checkpoint
-          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-checkpoint
-          git -C /tmp/acsie-checkpoint fetch --depth 1 origin "$ACSIE_REF"
-          git -C /tmp/acsie-checkpoint checkout --detach FETCH_HEAD
-          test "$(git -C /tmp/acsie-checkpoint rev-parse HEAD)" = "$ACSIE_REF"
-      - name: Run exact checkpoint tests
+          if test -f research/pr110_acsie_snapshot/manifest.json; then
+            echo "SNAPSHOT_MODE=1" >> "$GITHUB_ENV"
+            rm -rf /tmp/acsie-A /tmp/acsie-B
+            mkdir -p /tmp/acsie-A/cognitive_core /tmp/acsie-B/cognitive_core
+            cp -a research/pr110_acsie_snapshot/A/cognitive_core/. /tmp/acsie-A/cognitive_core/
+            cp -a research/pr110_acsie_snapshot/B/cognitive_core/. /tmp/acsie-B/cognitive_core/
+            test -f /tmp/acsie-A/cognitive_core/open_ended_growth.py
+            test -f /tmp/acsie-B/cognitive_core/open_ended_growth.py
+          else
+            echo "SNAPSHOT_MODE=0" >> "$GITHUB_ENV"
+            export ACSIE_READ_TOKEN="${{ secrets.ACSIE_READ_TOKEN }}"
+            export ACSIE_REF="7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+            test -n "$ACSIE_READ_TOKEN"
+            rm -rf /tmp/acsie-checkpoint
+            git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-checkpoint
+            git -C /tmp/acsie-checkpoint fetch --depth 1 origin "$ACSIE_REF"
+            git -C /tmp/acsie-checkpoint checkout --detach FETCH_HEAD
+            test "$(git -C /tmp/acsie-checkpoint rev-parse HEAD)" = "$ACSIE_REF"
+          fi
+
+      - name: Run PR110 snapshot A/B diagnostic
+        if: env.SNAPSHOT_MODE == '1'
+        env:
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: /tmp/acsie-B:${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mkdir -p pr110-snapshot-evidence
+          python -u - <<'PY' 2>&1 | tee pr110-snapshot-evidence/paired-raw.txt
+          import json, os, time
+          from lab.acsie_open_ended_self_extending_proving import run_seed
+          selected={5,6,9,10,11}
+          payload={}
+          for label, root, sha in (
+              ("A","/tmp/acsie-A","7e905d73c15ece4b8b5d7cb73218bac34c2e1314"),
+              ("B","/tmp/acsie-B","af0c7ef503c51a5bc7872717b263a01f495c855f"),
+          ):
+              start_wall=time.perf_counter()
+              start_cpu=time.process_time()
+              old_path=os.environ.get("PYTHONPATH","")
+              os.environ["PYTHONPATH"]=root+":"+old_path
+              result=run_seed(2026100305,12)
+              wall=time.perf_counter()-start_wall
+              cpu=time.process_time()-start_cpu
+              payload[label]={
+                  "runtime_sha":sha,
+                  "proving_sha":"33259fc5c69d87b99c604f0050508c433a279daf",
+                  "seed":2026100305,
+                  "generations":12,
+                  "selected":[r for r in result["generations_detail"] if int(r["generation"]) in selected],
+                  "wall_time_seconds":wall,
+                  "cpu_time_seconds":cpu,
+                  "max_generated_expressions":result["max_generated_expressions"],
+                  "max_unique_search_states":result["max_unique_search_states"],
+                  "max_search_states_in_depth":result["max_search_states_in_depth"],
+                  "finite_open_ended_growth_gate":result["finite_open_ended_growth_gate"],
+              }
+          print("PR110_SNAPSHOT_AB="+json.dumps(payload,sort_keys=True))
+          PY
+
+      - name: Run normal exact checkpoint tests
+        if: env.SNAPSHOT_MODE != '1'
         env:
           PYTHONPATH: /tmp/acsie-checkpoint
           ACSIE_REF: "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
@@ -45,3 +98,10 @@ jobs:
           . /tmp/checkpoint-venv/bin/activate
           pytest -q /tmp/acsie-checkpoint/tests/test_open_ended_growth.py
           PYTHONPATH=/tmp/acsie-checkpoint:. pytest -q lab/test_exact_checkpoint_resume.py
+
+      - name: Upload PR110 snapshot evidence
+        if: env.SNAPSHOT_MODE == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-snapshot-evidence
+          path: pr110-snapshot-evidence/
