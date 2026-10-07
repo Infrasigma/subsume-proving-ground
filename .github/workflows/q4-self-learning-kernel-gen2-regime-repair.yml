@@ -84,3 +84,31 @@ jobs:
           name: acsie-gen2-regime-memory-repair
           path: gen2-evidence/
           if-no-files-found: warn
+
+  pr110-phase4-neutrality:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout lab branch with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify Phase4 provenance
+        run: |
+          set -euo pipefail
+          test -f lab/pr110_phase4_neutrality.py
+          python3 -m py_compile lab/pr110_phase4_neutrality.py
+          git rev-parse 75d101eabd4be80ce0d7aed2d3cc04e0912925b8 >/dev/null
+      - name: Run PR110 Phase4 scientific-neutrality forensic
+        run: |
+          set -euo pipefail
+          python3 -u lab/pr110_phase4_neutrality.py | tee phase4-neutrality.stdout.txt
+      - name: Upload Phase4 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-phase4-neutrality-q4
+          path: |
+            phase4-neutrality.stdout.txt
+            evidence/phase4-neutrality/
