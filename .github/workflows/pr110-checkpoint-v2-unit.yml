@@ -1,0 +1,26 @@
+name: PR110 checkpoint v2 unit validation
+
+on:
+  push:
+    branches:
+      - research/pr110-checkpoint-v2-20261007
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checkpoint-v2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python smoke
+        run: |
+          set -euo pipefail
+          python3 --version
+          python3 -m py_compile lab/exact_checkpoint.py lab/test_exact_checkpoint_resume.py
+      - name: Run checkpoint tests
+        run: |
+          set -euo pipefail
+          python3 -m pytest -q lab/test_exact_checkpoint_resume.py
