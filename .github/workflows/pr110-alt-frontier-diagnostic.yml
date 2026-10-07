@@ -1,0 +1,35 @@
+name: PR110 alternative frontier diagnostic
+
+on:
+  push:
+    branches:
+      - research/pr110-alt-frontier-diagnostic-20261007
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Python smoke
+        run: python3 --version
+
+      - name: Run H3 cap sweep
+        run: |
+          set -euo pipefail
+          python3 lab/pr110_alt_frontier_diagnostic.py > pr110-h3-diagnostic.json
+          cat pr110-h3-diagnostic.json
+
+      - name: Upload H3 diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-alt-frontier-diagnostic
+          path: pr110-h3-diagnostic.json
