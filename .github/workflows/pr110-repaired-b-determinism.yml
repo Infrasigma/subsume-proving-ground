@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - research/pr110-determinism-repair-proving-20261007
+  pull_request:
+    paths:
+      - research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py
+      - lab/pr110_repaired_b_determinism_test.py
+      - .github/workflows/pr110-repaired-b-determinism.yml
   workflow_dispatch:
 
 jobs:
