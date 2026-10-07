@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import json
 
-from research.pr110_acsie_snapshot.B.cognitive_core.behavioral_search import find_exact_expression
-from research.pr110_acsie_snapshot.B.cognitive_core.recursive_cognitive_compiler import (
-    ArchiveRecord,
-    CognitivePrimitive,
-    OpenEndedRecursiveCognitiveCompiler,
-    Trace,
-)
+import sys
+from pathlib import Path
+
+SNAPSHOT = Path(__file__).resolve().parents[1] / "research" / "pr110_acsie_snapshot" / "B"
+sys.path.insert(0, str(SNAPSHOT))
+
+from cognitive_core.behavioral_search import find_exact_expression
+from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
+from cognitive_core.recursive_cognitive_compiler import ArchiveRecord, CognitivePrimitive, Trace
 
 
 def build_compiler() -> OpenEndedRecursiveCognitiveCompiler:
