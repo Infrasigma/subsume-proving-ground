@@ -903,7 +903,8 @@ def find_exact_expression(
                     continue
                 target_states.append(state)
         target_frontier = lineage_frontier(target_states)
-        target_frontier = target_frontier[: max(1, int(max_alternatives))]
+        if max_alternatives is not None:
+            target_frontier = target_frontier[: max(1, int(max_alternatives))]
         alternatives = tuple((state[0], state[2]) for state in target_frontier)
         stats["alternative_candidate_count"] = len(alternatives)
         return BehavioralSearchResult(
