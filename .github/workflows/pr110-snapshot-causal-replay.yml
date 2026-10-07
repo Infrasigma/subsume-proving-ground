@@ -85,12 +85,12 @@ jobs:
             label="$1"
             root="$2"
             runtime_sha="$3"
-            out="evidence/\${label}-raw.txt"
-            checkpoint="evidence/\${label}-checkpoint-current.json"
-            manifest="evidence/\${label}-checkpoint-manifest.json"
-            summary="evidence/\${label}-selected.json"
+            out="evidence/${label}-raw.txt"
+            checkpoint="evidence/${label}-checkpoint-current.json"
+            manifest="evidence/${label}-checkpoint-manifest.json"
+            summary="evidence/${label}-selected.json"
 
-            mkdir -p "evidence/\${label}-state"
+            mkdir -p "evidence/${label}-state"
 
             set +e
             timeout --signal=TERM --kill-after=60s 85m \
@@ -124,7 +124,7 @@ jobs:
           )
           wall=time.perf_counter()-start_wall
           cpu=time.process_time()-start_cpu
-          Path(f"evidence/\${label}-state/completed-result.json").write_text(
+          Path(f"evidence/${label}-state/completed-result.json").write_text(
               json.dumps(
                   {
                       "label":label,
@@ -142,13 +142,13 @@ jobs:
                   },
                   indent=2,
                   sort_keys=True,
-              )+"\\n"
+              )+"\n"
           )
           PY
             rc=$?
             set -e
 
-            echo "$rc" > "evidence/\${label}-state/trajectory_exit_code.txt"
+            echo "$rc" > "evidence/${label}-state/trajectory_exit_code.txt"
 
             python3 - "$checkpoint" "$manifest" "$summary" "$label" "$runtime_sha" "$rc" <<'PY'
           import hashlib, json, sys
@@ -202,12 +202,12 @@ jobs:
                   "generation_next":envelope.get("generation_next"),
               })
 
-          result_path=Path(f"evidence/\${label}-state/completed-result.json")
+          result_path=Path(f"evidence/${label}-state/completed-result.json")
           if result_path.exists():
               summary.update(json.loads(result_path.read_text()))
 
-          manifest_path.write_text(json.dumps(manifest,indent=2,sort_keys=True)+"\\n")
-          summary_path.write_text(json.dumps(summary,indent=2,sort_keys=True)+"\\n")
+          manifest_path.write_text(json.dumps(manifest,indent=2,sort_keys=True)+"\n")
+          summary_path.write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n")
           print(json.dumps(manifest,indent=2,sort_keys=True))
           print(json.dumps(summary,indent=2,sort_keys=True))
           PY
@@ -315,7 +315,7 @@ jobs:
               "note":"This run repairs checkpoint persistence only. A reconstructed checkpoint is never substituted for a missing original."
           }
           Path("evidence/paired-comparison.json").write_text(
-              json.dumps(report,indent=2,sort_keys=True)+"\\n"
+              json.dumps(report,indent=2,sort_keys=True)+"\n"
           )
           print(json.dumps(report,indent=2,sort_keys=True))
           PY
@@ -325,9 +325,23 @@ jobs:
         run: |
           set -euo pipefail
           . /tmp/pr110-snapshot-venv/bin/activate
-          pytest -q lab/test_exact_checkpoint_resume.py -k 'bit_identical_for_repeated_same_boundary_runs'
+          rm -rf evidence/twin
+          mkdir -p evidence/twin
+          python3 -u - <<'PY'
+          from pathlib import Path
+          from lab.acsie_open_ended_self_extending_proving import run_seed
 
-      - name: Upload evidence
+          metadata={"proving_sha":"checkpoint-test","acsie_ref":"checkpoint-test"}
+          first=Path("evidence/twin/first.json")
+          second=Path("evidence/twin/second.json")
+
+          run_seed(2026100304, 2, checkpoint_path=str(first), stop_after=2, checkpoint_metadata=metadata)
+          run_seed(2026100304, 2, checkpoint_path=str(second), stop_after=2, checkpoint_metadata=metadata)
+
+          assert first.read_bytes() == second.read_bytes(), "identical-boundary checkpoint bytes differ"
+          print("CHECKPOINT_TWIN=PASS")
+          PY
+                - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
