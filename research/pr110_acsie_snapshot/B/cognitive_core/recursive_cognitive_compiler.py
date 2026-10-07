@@ -117,6 +117,7 @@ class RecursiveCognitiveCompiler:
         self.events: List[Dict[str,Any]]=[]
         self.active: Optional[str]=None
         self._expr_cache: Dict[Tuple[Tuple[str,...],Tuple[str,...],int],List[Mapping[str,Any]]] = {}
+        self._executable_lineage_cache: Dict[str, Tuple[str, ...]] = {}
 
     def _expr_atoms(self, keys:Sequence[str], primitive_ids:Sequence[str])->List[Mapping[str,Any]]:
         return [
@@ -273,12 +274,24 @@ class RecursiveCognitiveCompiler:
         """Return lineage reached through actual executable macro references.
 
         Provenance-only alias metadata is excluded from executable lineage.
+        The closure is memoized because primitive expressions are immutable
+        after insertion, so this optimization preserves the exact lineage
+        semantics while avoiding repeated graph walks during dominance tests.
         """
+        root = str(primitive_id)
+        cached = self._executable_lineage_cache.get(root)
+        if cached is not None:
+            return cached
+
         seen: set[str] = set()
-        stack = [str(primitive_id)]
+        stack = [root]
         while stack:
             pid = str(stack.pop())
             if pid in seen:
+                continue
+            cached_child = self._executable_lineage_cache.get(pid)
+            if cached_child is not None:
+                seen.update(cached_child)
                 continue
             seen.add(pid)
             primitive = self.primitives.get(pid)
@@ -287,7 +300,13 @@ class RecursiveCognitiveCompiler:
             for node in self._walk(primitive.expression):
                 if node.get("op") == "macro":
                     stack.append(str(node["id"]))
-        return tuple(sorted(seen))
+
+        result = tuple(sorted(seen))
+        # Cache every root requested. Newly inserted primitives cannot alter the
+        # executable lineage of existing primitives because primitive expressions
+        # are immutable and only reference primitives that already existed.
+        self._executable_lineage_cache[root] = result
+        return result
 
     def invent_primitive(self, train:Sequence[Trace], holdout:Sequence[Trace], transfer:Sequence[Trace], semantics:str="delta") -> Optional[CognitivePrimitive]:
         if len(train)<6: return None
