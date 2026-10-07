@@ -1,0 +1,366 @@
+name: ACSIE PR110 paired A/B snapshot replay
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SEED: "2026100305"
+  GENERATIONS: "12"
+  EVALUATOR_SHA: "33259fc5c69d87b99c604f0050508c433a279daf"
+  EVALUATOR_FILE_BLOB_SHA: "b1e0e42e6dd136de882a0b325bde16ac8c6b63e1"
+  FROZEN_BUDGET: "frozen-5x12-untouched"
+
+jobs:
+  pr110-ab:
+    name: "PR110 ${{ matrix.label }} — 12-generation replay"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - label: A
+            runtime_sha: "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+            snapshot_root: "research/pr110_acsie_snapshot/A"
+            expected_open_ended_growth_sha: "ec94fc545badde972510f2db9cbf008cc214e705"
+            expected_recursive_compiler_sha: "ccfb096e0fa2ae5a39f95aa54017c6a223a5b8fd"
+            expected_behavioral_search_sha: "e1c461571d775e510ee1d02762909e683468be5e"
+          - label: B
+            runtime_sha: "af0c7ef503c51a5bc7872717b263a01f495c855f"
+            snapshot_root: "research/pr110_acsie_snapshot/B"
+            expected_open_ended_growth_sha: "ec94fc545badde972510f2db9cbf008cc214e705"
+            expected_recursive_compiler_sha: "284d4abd5ab467d465be21973090bc24cee26e69"
+            expected_behavioral_search_sha: "fdd75290600458976e63c2c58771ed7a254da5a0"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare exact snapshot and verify evaluator
+        shell: bash
+        run: |
+          set -euo pipefail
+          label='${{ matrix.label }}'
+          src='${{ matrix.snapshot_root }}'
+          root="/tmp/acsie-$label"
+          rm -rf "$root"
+          mkdir -p "$root/cognitive_core"
+
+          test -f research/pr110_acsie_snapshot/manifest.json
+          test -f "$src/cognitive_core/open_ended_growth.py"
+          test -f "$src/cognitive_core/recursive_cognitive_compiler.py"
+          test -f "$src/cognitive_core/behavioral_search.py"
+
+          cp -a "$src/cognitive_core/." "$root/cognitive_core/"
+          test "$(git hash-object "$root/cognitive_core/open_ended_growth.py")" = '${{ matrix.expected_open_ended_growth_sha }}'
+          test "$(git hash-object "$root/cognitive_core/recursive_cognitive_compiler.py")" = '${{ matrix.expected_recursive_compiler_sha }}'
+          test "$(git hash-object "$root/cognitive_core/behavioral_search.py")" = '${{ matrix.expected_behavioral_search_sha }}'
+
+          git cat-file -e "$EVALUATOR_SHA^{commit}"
+          test "$(git hash-object lab/acsie_open_ended_self_extending_proving.py)" = "$EVALUATOR_FILE_BLOB_SHA"
+
+          mkdir -p "pr110-ab-evidence/$label"
+          cat > "pr110-ab-evidence/$label/run_manifest.json" <<EOF
+          {
+            "schema": "ACSIE.PR110.snapshot-replay.v3",
+            "label": "$label",
+            "runtime_sha": "${{ matrix.runtime_sha }}",
+            "snapshot_root": "$src",
+            "proving_harness_sha": "$EVALUATOR_SHA",
+            "proving_harness_file_blob_sha": "$EVALUATOR_FILE_BLOB_SHA",
+            "seed": $SEED,
+            "generations": $GENERATIONS,
+            "scientific_budget": "$FROZEN_BUDGET",
+            "causal_generation_indices": [5, 6, 9, 10, 11],
+            "final_human_generation": 12
+          }
+          EOF
+
+      - name: Run targeted PR110 diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          label='${{ matrix.label }}'
+          root="/tmp/acsie-$label"
+          PYTHONPATH="$root:$GITHUB_WORKSPACE"           SNAPSHOT_LABEL="$label"           python -u - <<'PY'
+          import os
+          from cognitive_core.behavioral_search import find_exact_expression
+          from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
+          from cognitive_core.recursive_cognitive_compiler import ArchiveRecord, CognitivePrimitive, Trace
+
+          label = os.environ["SNAPSHOT_LABEL"]
+          c = OpenEndedRecursiveCognitiveCompiler(max_depth=2)
+
+          p_a = CognitivePrimitive("prim:a", {"op":"get","key":"x"}, ("x",), "delta", 0, (), ("opaque",), 0, 0, 0, 1, {})
+          p_b = CognitivePrimitive("prim:b", {"op":"get","key":"y"}, ("y",), "delta", 0, (), ("opaque",), 0, 0, 0, 1, {})
+          alias = CognitivePrimitive(
+              "prim:alias", {"op":"get","key":"x"}, ("x","y"), "delta", 1, (), ("opaque",), 0, 0, 0, 1,
+              {"lineage_ids":["prim:a","prim:b"]},
+          )
+          c.primitives = {p_a.primitive_id:p_a, p_b.primitive_id:p_b, alias.primitive_id:alias}
+          c.archive = {pid:ArchiveRecord(p) for pid,p in c.primitives.items()}
+
+          rows = tuple(
+              Trace({"x":float(i),"y":float(i+1)}, float(2*i+1), "opaque", {}, f"u-{i}")
+              for i in range(8)
+          )
+          result = find_exact_expression(c, rows, max_depth=2, require_macro=True)
+          used = set(result.used_primitives) if result is not None else set()
+
+          if label == "B":
+              assert hasattr(c, "executable_lineage")
+              assert c.executable_lineage("prim:alias") == ("prim:alias",)
+              assert used == {"prim:a","prim:b"}
+              assert set(result.stats["selected_executable_lineage_ids"]) == {"prim:a","prim:b"}
+          print({"runtime": label, "diagnostic": "PASS", "used_primitives": sorted(used)})
+          PY
+
+      - name: Run PR110 trajectory with exact generation checkpoints
+        id: trajectory
+        continue-on-error: true
+        timeout-minutes: 28
+        shell: bash
+        run: |
+          set +e
+          label='${{ matrix.label }}'
+          root="/tmp/acsie-$label"
+          evidence="pr110-ab-evidence/$label"
+          checkpoint="/tmp/pr110-$label-seed-$SEED.checkpoint.json"
+
+          PYTHONPATH="$root:$GITHUB_WORKSPACE"           SNAPSHOT_LABEL="$label"           SNAPSHOT_ROOT="$root"           SNAPSHOT_SHA='${{ matrix.runtime_sha }}'           CHECKPOINT="$checkpoint"           python -u - <<'PY' > "$evidence/trajectory.log" 2>&1
+          import json, os, time
+          from pathlib import Path
+          from lab.acsie_open_ended_self_extending_proving import run_seed
+
+          label = os.environ["SNAPSHOT_LABEL"]
+          root = os.environ["SNAPSHOT_ROOT"]
+          runtime_sha = os.environ["SNAPSHOT_SHA"]
+          checkpoint = os.environ["CHECKPOINT"]
+          seed = int(os.environ["SEED"])
+          generations = int(os.environ["GENERATIONS"])
+          metadata = {"proving_sha": os.environ["EVALUATOR_SHA"], "acsie_ref": runtime_sha}
+
+          started_wall = time.perf_counter()
+          started_cpu = time.process_time()
+          result = run_seed(
+              seed,
+              generations,
+              checkpoint_path=checkpoint,
+              checkpoint_metadata=metadata,
+          )
+          wall = time.perf_counter() - started_wall
+          cpu = time.process_time() - started_cpu
+
+          payload = {
+              "status": "COMPLETE",
+              "label": label,
+              "runtime_sha": runtime_sha,
+              "proving_sha": os.environ["EVALUATOR_SHA"],
+              "snapshot_root": root,
+              "seed": seed,
+              "generations": generations,
+              "completed_generations": result["completed_generations"],
+              "generations_detail": result["generations_detail"],
+              "causal_generation_indices": [5,6,9,10,11],
+              "wall_time_seconds": wall,
+              "cpu_time_seconds": cpu,
+              "max_generated_expressions": result["max_generated_expressions"],
+              "max_unique_search_states": result["max_unique_search_states"],
+              "max_search_states_in_depth": result["max_search_states_in_depth"],
+              "finite_open_ended_growth_gate": result["finite_open_ended_growth_gate"],
+              "checkpoint_digest": result["last_checkpoint_digest"],
+          }
+          Path(f"pr110-ab-evidence/{label}/final_result.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n"
+          )
+          print("PR110_SNAPSHOT_RESULT=" + json.dumps(payload, sort_keys=True))
+          PY
+
+          rc=$?
+          printf '%s\n' "$rc" > "$evidence/trajectory_exit_code.txt"
+          if test -f "$checkpoint"; then
+            cp "$checkpoint" "$evidence/latest_checkpoint.json"
+          fi
+          exit 0
+
+      - name: Materialize checkpoint evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          label='${{ matrix.label }}'
+          root="/tmp/acsie-$label"
+          checkpoint="/tmp/pr110-$label-seed-$SEED.checkpoint.json"
+          evidence="pr110-ab-evidence/$label"
+
+          if test -f "$checkpoint"; then
+            PYTHONPATH="$root:$GITHUB_WORKSPACE"             CHECKPOINT="$checkpoint"             SNAPSHOT_SHA='${{ matrix.runtime_sha }}'             python -u - <<'PY' > "$evidence/partial_checkpoint_report.json"
+          import json, os
+          from lab.exact_checkpoint import load_checkpoint
+
+          metadata = {"proving_sha": os.environ["EVALUATOR_SHA"], "acsie_ref": os.environ["SNAPSHOT_SHA"]}
+          envelope = load_checkpoint(
+              os.environ["CHECKPOINT"],
+              expected_seed=int(os.environ["SEED"]),
+              expected_metadata=metadata,
+          )
+          generations = list(envelope.get("generations_out", []))
+          selected_indices = [5,6,9,10,11]
+          selected = [
+              {
+                  "generation_index": int(row["generation"]),
+                  "human_generation": int(row["generation"]) + 1,
+                  "target_digest": row.get("target_digest"),
+                  "expected_parent_ids": row.get("expected_parent_ids"),
+                  "parent_ids": row.get("parent_ids"),
+                  "recursive_reuse_ok": row.get("recursive_reuse_ok"),
+                  "closure_reuse_rate": row.get("closure_reuse_rate"),
+                  "probe_reuse_rate": row.get("probe_reuse_rate"),
+                  "closure_trap_count": row.get("closure_trap_count"),
+                  "probe_trap_count": row.get("probe_trap_count"),
+                  "retained_count": row.get("retained_count"),
+                  "runtime_max_depth": row.get("runtime_max_depth"),
+                  "primitive_candidate_count": row.get("primitive_candidate_count"),
+                  "max_generated_expressions": row.get("search_stats", {}).get("generated_expressions"),
+                  "max_unique_search_states": row.get("search_stats", {}).get("unique_states"),
+                  "max_search_states_in_depth": row.get("search_stats", {}).get("max_states_in_depth")
+              }
+              for row in generations
+              if int(row["generation"]) in selected_indices
+          ]
+          report = {
+              "status": "COMPLETE" if len(generations) == int(os.environ["GENERATIONS"]) else "INCOMPLETE",
+              "completed_generations": len(generations),
+              "generation_indices_present": [int(row["generation"]) for row in generations],
+              "selected_checkpoints": selected,
+              "human_generation_12_present": any(int(row["generation"]) == 11 for row in generations),
+              "checkpoint_digest": envelope["state_digest"],
+              "seed": int(os.environ["SEED"]),
+              "runtime_sha": os.environ["SNAPSHOT_SHA"],
+              "proving_sha": os.environ["EVALUATOR_SHA"],
+              "scientific_interpretation": (
+                  "complete trajectory available"
+                  if len(generations) == int(os.environ["GENERATIONS"])
+                  else "partial trajectory only; do not treat as scientific verdict"
+              )
+          }
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
+          else
+            printf '%s\n' '{"status":"NO_CHECKPOINT","scientific_interpretation":"no completed generation checkpoint was produced"}' > "$evidence/partial_checkpoint_report.json"
+          fi
+
+      - name: Upload PR110 A/B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: "pr110-ab-${{ matrix.label }}"
+          path: "pr110-ab-evidence/${{ matrix.label }}/"
+          if-no-files-found: error
+          retention-days: 7
+
+  paired-comparison:
+    name: "PR110 paired comparison"
+    if: ${{ always() }}
+    needs: pr110-ab
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download A/B evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pr110-ab-*
+          path: paired-evidence
+          merge-multiple: false
+
+      - name: Build paired comparison report
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          base = Path("paired-evidence")
+          rows = {}
+          for label in ("A", "B"):
+              candidates = sorted(base.glob(f"pr110-ab-{label}/**/*"))
+              final = next((p for p in candidates if p.name == "final_result.json"), None)
+              partial = next((p for p in candidates if p.name == "partial_checkpoint_report.json"), None)
+              rows[label] = json.loads((final or partial).read_text()) if (final or partial) else {"status":"MISSING"}
+
+          selected_indices = [5,6,9,10,11]
+          def generation_map(label):
+              raw = rows.get(label, {})
+              detail = raw.get("generations_detail", [])
+              if detail:
+                  return {int(r["generation"]): r for r in detail}
+              return {int(r["generation_index"]): r for r in raw.get("selected_checkpoints", [])}
+
+          a_rows = generation_map("A")
+          b_rows = generation_map("B")
+          comparison = []
+
+          for generation in selected_indices:
+              a = a_rows.get(generation, {})
+              b = b_rows.get(generation, {})
+              comparison.append({
+                  "generation_index": generation,
+                  "human_generation": generation + 1,
+                  "both_present": bool(a and b),
+                  "target_digest_match": (
+                      a.get("target_digest") == b.get("target_digest")
+                      if a.get("target_digest") is not None and b.get("target_digest") is not None
+                      else None
+                  ),
+                  "A_target_digest": a.get("target_digest"),
+                  "B_target_digest": b.get("target_digest"),
+                  "A_expected_parent_ids": a.get("expected_parent_ids"),
+                  "B_expected_parent_ids": b.get("expected_parent_ids"),
+                  "A_recursive_reuse_ok": a.get("recursive_reuse_ok"),
+                  "B_recursive_reuse_ok": b.get("recursive_reuse_ok"),
+                  "A_closure_reuse_rate": a.get("closure_reuse_rate"),
+                  "B_closure_reuse_rate": b.get("closure_reuse_rate"),
+                  "A_probe_reuse_rate": a.get("probe_reuse_rate"),
+                  "B_probe_reuse_rate": b.get("probe_reuse_rate"),
+                  "A_closure_trap_count": a.get("closure_trap_count"),
+                  "B_closure_trap_count": b.get("closure_trap_count"),
+                  "A_probe_trap_count": a.get("probe_trap_count"),
+                  "B_probe_trap_count": b.get("probe_trap_count"),
+                  "A_retained_count": a.get("retained_count"),
+                  "B_retained_count": b.get("retained_count"),
+                  "A_runtime_max_depth": a.get("runtime_max_depth"),
+                  "B_runtime_max_depth": b.get("runtime_max_depth")
+              })
+
+          complete = all(rows.get(label, {}).get("completed_generations") == 12 for label in ("A","B"))
+          report = {
+              "schema": "ACSIE.PR110.snapshot-replay.v3.paired",
+              "A": rows.get("A", {}),
+              "B": rows.get("B", {}),
+              "selected_generation_comparison": comparison,
+              "complete_A_and_B": complete,
+              "scientific_status": "READY_FOR_SCIENTIFIC_REVIEW" if complete else "INCONCLUSIVE_UNTIL_REVIEWED",
+              "promotion_status": "DO_NOT_PROMOTE",
+              "frozen_5x12_budget": "UNTOUCHED",
+              "runtime_difference": "A baseline vs B executable-lineage repair only",
+              "evaluator_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+              "seed": 2026100305,
+              "generations": 12
+          }
+          Path("pr110-paired-comparison.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload paired comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-paired-comparison
+          path: pr110-paired-comparison.json
+          retention-days: 7
