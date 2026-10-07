@@ -63,26 +63,59 @@ jobs:
       - name: Run controlled old/repaired boundary replays
         run: |
           set -euo pipefail
-          for generation in 0 1 3 5 6; do
-            for label in old repaired; do
-              case "$label" in
-                old)
-                  root="$GITHUB_WORKSPACE/evidence/old-snapshot"
-                  runtime_sha="$OLD_B_RUNTIME"
-                  ;;
-                repaired)
-                  root="$GITHUB_WORKSPACE/evidence/repaired-snapshot"
-                  runtime_sha="$REPAIRED_B_RUNTIME"
-                  ;;
-              esac
-              out="evidence/${label}-gen${generation}.stdout.txt"
-              ck="evidence/${label}-gen${generation}.checkpoint.json"
-              PYTHONHASHSEED="$PYTHONHASHSEED" \
-              PYTHONPATH="$root:$GITHUB_WORKSPACE" \
-              SNAPSHOT_ROOT="$root" \
-              RUNTIME_SHA="$runtime_sha" \
-              CHECKPOINT_PATH="$GITHUB_WORKSPACE/$ck" \
-              python3 -u - "$generation" >"$out" 2>&1 <<'PY'
+
+          for label in old repaired; do
+            case "$label" in
+              old)
+                root="$GITHUB_WORKSPACE/evidence/old-snapshot"
+                runtime_sha="$OLD_B_RUNTIME"
+                ;;
+              repaired)
+                root="$GITHUB_WORKSPACE/evidence/repaired-snapshot"
+                runtime_sha="$REPAIRED_B_RUNTIME"
+                ;;
+            esac
+
+            ck0="$GITHUB_WORKSPACE/evidence/$label-gen0.checkpoint.json"
+            PYTHONHASHSEED="$PYTHONHASHSEED"             PYTHONPATH="$root:$GITHUB_WORKSPACE"             SNAPSHOT_ROOT="$root"             RUNTIME_SHA="$runtime_sha"             CHECKPOINT_PATH="$ck0"             python3 -u >"evidence/$label-gen0.stdout.txt" 2>&1 <<'PY'
+          import os
+          import random
+          from pathlib import Path
+          from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
+          from lab.exact_checkpoint import save_checkpoint
+
+          seed=int(os.environ["SEED"])
+          runtime=os.environ["RUNTIME_SHA"]
+          path=Path(os.environ["CHECKPOINT_PATH"])
+
+          learner=OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed)
+          save_checkpoint(
+              path,
+              seed=seed,
+              generation_next=0,
+              initial_depth=2,
+              local_rng=random.Random(seed),
+              learner=learner,
+              retained=[],
+              generations_out=[],
+              metadata={
+                  "proving_sha": os.environ["PROVING_SHA"],
+                  "acsie_ref": runtime,
+              },
+          )
+          print("GEN0_CHECKPOINT_WRITTEN", path)
+          PY
+
+            test -f "$ck0"
+            previous="$ck0"
+
+            for generation in 1 3 5 6; do
+              current="$GITHUB_WORKSPACE/evidence/$label-gen$generation.checkpoint.json"
+              if [ "$generation" -ne 1 ]; then
+                cp "$previous" "$current"
+              fi
+
+              PYTHONHASHSEED="$PYTHONHASHSEED"               PYTHONPATH="$root:$GITHUB_WORKSPACE"               SNAPSHOT_ROOT="$root"               RUNTIME_SHA="$runtime_sha"               CHECKPOINT_PATH="$current"               python3 -u - "$generation" >"evidence/$label-gen$generation.stdout.txt" 2>&1 <<'PY'
           import json
           import os
           import sys
@@ -90,40 +123,43 @@ jobs:
           from lab.acsie_open_ended_self_extending_proving import run_seed
 
           seed=int(os.environ["SEED"])
-          generations=int(sys.argv[1])
-          ck=Path(os.environ["CHECKPOINT_PATH"])
-          root=os.environ["SNAPSHOT_ROOT"]
+          stop_after=int(sys.argv[1])
+          path=Path(os.environ["CHECKPOINT_PATH"])
           runtime=os.environ["RUNTIME_SHA"]
+
           result=run_seed(
               seed,
-              generations,
-              checkpoint_path=ck,
+              6,
+              checkpoint_path=str(path),
+              resume_from=None if stop_after == 1 else str(path),
+              stop_after=stop_after,
               checkpoint_metadata={
                   "proving_sha": os.environ["PROVING_SHA"],
                   "acsie_ref": runtime,
               },
           )
+
+          envelope=json.loads(path.read_text())
           print(json.dumps({
-              "seed": seed,
-              "generations": generations,
+              "stop_after": stop_after,
               "completed_generations": result.get("completed_generations"),
+              "generation_next": envelope.get("generation_next"),
+              "state_digest": envelope.get("state_digest"),
               "runtime_sha": runtime,
-              "snapshot_root": root,
-              "checkpoint_exists": ck.exists(),
           }, sort_keys=True))
-          if not ck.exists():
-              raise SystemExit("CHECKPOINT_MISSING")
-          envelope=json.loads(ck.read_text())
-          if envelope.get("generation_next") != generations:
+
+          if envelope.get("generation_next") != stop_after:
               raise SystemExit(
                   "GENERATION_BOUNDARY_MISMATCH:" +
-                  str(envelope.get("generation_next")) + "!=" + str(generations)
+                  str(envelope.get("generation_next")) +
+                  "!=" + str(stop_after)
               )
           PY
-              cp "$ck" "evidence/${label}-gen${generation}.json"
+
+              test -f "$current"
+              previous="$current"
             done
           done
-
       - name: Semantic neutrality comparison
         run: |
           set -euo pipefail
@@ -163,24 +199,52 @@ jobs:
                   rid.pop("acsie_ref",None)
               return x
 
-          def sem_signature(v):
+          UNORDERED_LINEAGE_KEYS={"selected_structural_lineage_ids","selected_executable_lineage_ids"}
+
+          def sem_signature(v, key=None):
               if isinstance(v,dict):
-                  return {k:sem_signature(x) for k,x in sorted(v.items()) if k not in {
-                      "process_id","state_digest","acsie_ref"
-                  }}
+                  out={}
+                  for k,x in sorted(v.items()):
+                      if k in {"state_digest","acsie_ref"}:
+                          continue
+                      out[k]=sem_signature(x,k)
+                  return out
               if isinstance(v,list):
-                  return [sem_signature(x) for x in v]
+                  vals=[sem_signature(x,None) for x in v]
+                  if key in UNORDERED_LINEAGE_KEYS:
+                      return sorted(
+                          vals,
+                          key=lambda x: json.dumps(x,sort_keys=True,separators=(",",":")),
+                      )
+                  return vals
               return v
 
-          def process_multiset(d):
+          def process_identity_multiset(d):
               ps=d["learner_state"]["processes"]
-              return Counter(json.dumps(sem_signature(v),sort_keys=True,separators=(",",":"))
-                             for v in ps.values())
+              return Counter(
+                  json.dumps(sem_signature(v),sort_keys=True,separators=(",",":"))
+                  for v in ps.values()
+              )
 
-          def frontier_semantics(d):
+          def process_content_multiset(d):
               ps=d["learner_state"]["processes"]
-              return Counter(json.dumps(sem_signature(ps[k]),sort_keys=True,separators=(",",":"))
-                             for k in d["learner_state"]["process_frontier"] if k in ps)
+              return Counter(
+                  json.dumps(
+                      {k:x for k,x in sem_signature(v).items() if k not in {"process_id","state_digest"}},
+                      sort_keys=True,separators=(",",":")
+                  )
+                  for v in ps.values()
+              )
+
+          def frontier_ids(d):
+              return list(d["learner_state"]["process_frontier"])
+
+          def frontier_content_multiset(d):
+              ps=d["learner_state"]["processes"]
+              return Counter(
+                  json.dumps(sem_signature(ps[k]),sort_keys=True,separators=(",",":"))
+                  for k in d["learner_state"]["process_frontier"] if k in ps
+              )
 
           def first_diff(a,b,p=""):
               if type(a) is not type(b):
@@ -209,21 +273,26 @@ jobs:
               new_sem=strip_runtime(new)
 
               direct_equal = old_sem == new_sem
-              proc_equal = process_multiset(old)==process_multiset(new)
-              frontier_equal = frontier_semantics(old)==frontier_semantics(new)
+              process_identity_equal = process_identity_multiset(old)==process_identity_multiset(new)
+              process_content_equal = process_content_multiset(old)==process_content_multiset(new)
+              frontier_ids_equal = frontier_ids(old)==frontier_ids(new)
+              frontier_content_equal = frontier_content_multiset(old)==frontier_content_multiset(new)
               retained_equal = sem_signature(old["retained"]) == sem_signature(new["retained"])
               primitives_equal = sem_signature(old["learner_state"]["primitives"]) == sem_signature(new["learner_state"]["primitives"])
               generations_equal = sem_signature(old["generations_out"]) == sem_signature(new["generations_out"])
               events_equal = sem_signature(old["learner_state"]["events"]) == sem_signature(new["learner_state"]["events"])
               policies_equal = sem_signature(old["learner_state"]["search_policy"]) == sem_signature(new["learner_state"]["search_policy"])
+              rng_equal = old["local_rng_state"] == new["local_rng_state"]
 
               row={
                   "generation":g,
                   "old_checkpoint_sha256":hashlib.sha256(Path(f"evidence/old-gen{g}.checkpoint.json").read_bytes()).hexdigest(),
                   "repaired_checkpoint_sha256":hashlib.sha256(Path(f"evidence/repaired-gen{g}.checkpoint.json").read_bytes()).hexdigest(),
                   "direct_semantic_json_equal":direct_equal,
-                  "candidate_semantic_multiset_equal":proc_equal,
-                  "frontier_semantic_multiset_equal":frontier_equal,
+                  "candidate_identity_multiset_equal":process_identity_equal,
+                  "candidate_content_multiset_equal":process_content_equal,
+                  "frontier_ids_equal":frontier_ids_equal,
+                  "frontier_content_multiset_equal":frontier_content_equal,
                   "retained_equal":retained_equal,
                   "primitives_equal":primitives_equal,
                   "generation_results_equal":generations_equal,
@@ -236,8 +305,16 @@ jobs:
                   "generation_next_repaired":new.get("generation_next"),
               }
               row["scientifically_neutral_at_boundary"] = all([
-                  proc_equal, frontier_equal, retained_equal, primitives_equal,
-                  generations_equal, events_equal, policies_equal
+                  process_identity_equal,
+                  process_content_equal,
+                  frontier_ids_equal,
+                  frontier_content_equal,
+                  retained_equal,
+                  primitives_equal,
+                  generations_equal,
+                  events_equal,
+                  policies_equal,
+                  rng_equal,
               ])
               REPORT["boundaries"].append(row)
 
@@ -260,4 +337,4 @@ jobs:
           name: pr110-phase4-neutrality
           path: evidence/
 
-# phase4 trigger nonce: 2026-10-07T12:52Z
+# phase4 trigger nonce: 2026-10-07T12:56Z
