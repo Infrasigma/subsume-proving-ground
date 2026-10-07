@@ -1,0 +1,295 @@
+name: PR110 checkpointed paired causal replay
+
+# Laboratory-only infrastructure repair.
+# Canonical ACSIE architecture remains Infrasigma/ACSIE.
+on:
+  push:
+    branches:
+      - research/pr110-acsie-snapshot-replay-20261007
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SEED: "2026100305"
+  GENERATIONS: "12"
+  PROVING_SHA: "33259fc5c69d87b99c604f0050508c433a279daf"
+  A_SHA: "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+  B_SHA: "af0c7ef503c51a5bc7872717b263a01f495c855f"
+
+jobs:
+  replay-A:
+    name: "A baseline checkpointed trajectory"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 115
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify A snapshot provenance
+        run: |
+          set -euo pipefail
+          test -f research/pr110_acsie_snapshot/manifest.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
+          assert m["fixed_seed"] == 2026100305
+          assert m["generations"] == 12
+          assert m["proving_harness_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
+          assert m["A"]["runtime_sha"] == "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+          print("A_SNAPSHOT_PROVENANCE=PASS")
+          PY
+          test "$(git hash-object research/pr110_acsie_snapshot/A/cognitive_core/open_ended_growth.py)" = "ec94fc545badde972510f2db9cbf008cc214e705"
+          test "$(git hash-object research/pr110_acsie_snapshot/A/cognitive_core/recursive_cognitive_compiler.py)" = "ccfb096e0fa2ae5a39f95aa54017c6a223a5b8fd"
+          test "$(git hash-object research/pr110_acsie_snapshot/A/cognitive_core/behavioral_search.py)" = "e1c461571d775e510ee1d02762909e683468be5e"
+
+      - name: Run A trajectory with durable checkpoint
+        id: run_a
+        timeout-minutes: 105
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          mkdir -p evidence-A
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/A:$GITHUB_WORKSPACE" \
+          python3 -u - <<'PY' 2>&1 | tee evidence-A/raw.log
+          import os
+          from lab.acsie_open_ended_self_extending_proving import run_seed
+
+          result=run_seed(
+              int(os.environ["SEED"]),
+              int(os.environ["GENERATIONS"]),
+              checkpoint_path="evidence-A/checkpoint-current.json",
+              checkpoint_metadata={
+                  "proving_sha": os.environ["PROVING_SHA"],
+                  "acsie_ref": os.environ["A_SHA"],
+              },
+          )
+          print(
+              "TRAJECTORY_RESULT=",
+              {
+                  "completed_generations": result["completed_generations"],
+                  "finite_open_ended_growth_gate": result["finite_open_ended_growth_gate"],
+                  "last_checkpoint_digest": result["last_checkpoint_digest"],
+              },
+              flush=True,
+          )
+          PY
+
+      - name: Capture A checkpoint provenance
+        if: always()
+        env:
+          RUN_OUTCOME: ${{ steps.run_a.outcome }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+
+          root=Path("evidence-A")
+          cp=root/"checkpoint-current.json"
+          manifest={
+              "label":"A",
+              "seed":2026100305,
+              "runtime_sha":"7e905d73c15ece4b8b5d7cb73218bac34c2e1314",
+              "proving_sha":"33259fc5c69d87b99c604f0050508c433a279daf",
+              "trajectory_step_outcome": os.environ["RUN_OUTCOME"],
+              "checkpoint_present": cp.exists(),
+          }
+          if cp.exists():
+              blob=cp.read_bytes()
+              env=json.loads(blob)
+              manifest.update({
+                  "checkpoint_schema": env.get("schema"),
+                  "generation_next": env.get("generation_next"),
+                  "state_digest": env.get("state_digest"),
+                  "full_blob_digest":"sha256:"+hashlib.sha256(blob).hexdigest(),
+              })
+          (root/"checkpoint-manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True)+"\n"
+          )
+          print(json.dumps(manifest, indent=2, sort_keys=True))
+          PY
+          test -f evidence-A/raw.log
+
+      - name: Upload A evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-checkpointed-A
+          path: evidence-A/
+          retention-days: 30
+
+  replay-B:
+    name: "B PR110 checkpointed trajectory"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 115
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify B snapshot provenance
+        run: |
+          set -euo pipefail
+          test -f research/pr110_acsie_snapshot/manifest.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
+          assert m["fixed_seed"] == 2026100305
+          assert m["generations"] == 12
+          assert m["proving_harness_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
+          assert m["B"]["runtime_sha"] == "af0c7ef503c51a5bc7872717b263a01f495c855f"
+          print("B_SNAPSHOT_PROVENANCE=PASS")
+          PY
+          test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py)" = "ec94fc545badde972510f2db9cbf008cc214e705"
+          test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py)" = "284d4abd5ab467d465be21973090bc24cee26e69"
+          test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py)" = "fdd75290600458976e63c2c58771ed7a254da5a0"
+
+      - name: Run B trajectory with durable checkpoint
+        id: run_b
+        timeout-minutes: 105
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          mkdir -p evidence-B
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
+          python3 -u - <<'PY' 2>&1 | tee evidence-B/raw.log
+          import os
+          from lab.acsie_open_ended_self_extending_proving import run_seed
+
+          result=run_seed(
+              int(os.environ["SEED"]),
+              int(os.environ["GENERATIONS"]),
+              checkpoint_path="evidence-B/checkpoint-current.json",
+              checkpoint_metadata={
+                  "proving_sha": os.environ["PROVING_SHA"],
+                  "acsie_ref": os.environ["B_SHA"],
+              },
+          )
+          print(
+              "TRAJECTORY_RESULT=",
+              {
+                  "completed_generations": result["completed_generations"],
+                  "finite_open_ended_growth_gate": result["finite_open_ended_growth_gate"],
+                  "last_checkpoint_digest": result["last_checkpoint_digest"],
+              },
+              flush=True,
+          )
+          PY
+
+      - name: Capture B checkpoint provenance
+        if: always()
+        env:
+          RUN_OUTCOME: ${{ steps.run_b.outcome }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+
+          root=Path("evidence-B")
+          cp=root/"checkpoint-current.json"
+          manifest={
+              "label":"B",
+              "seed":2026100305,
+              "runtime_sha":"af0c7ef503c51a5bc7872717b263a01f495c855f",
+              "proving_sha":"33259fc5c69d87b99c604f0050508c433a279daf",
+              "trajectory_step_outcome": os.environ["RUN_OUTCOME"],
+              "checkpoint_present": cp.exists(),
+          }
+          if cp.exists():
+              blob=cp.read_bytes()
+              env=json.loads(blob)
+              manifest.update({
+                  "checkpoint_schema": env.get("schema"),
+                  "generation_next": env.get("generation_next"),
+                  "state_digest": env.get("state_digest"),
+                  "full_blob_digest":"sha256:"+hashlib.sha256(blob).hexdigest(),
+              })
+          (root/"checkpoint-manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True)+"\n"
+          )
+          print(json.dumps(manifest, indent=2, sort_keys=True))
+          PY
+          test -f evidence-B/raw.log
+
+      - name: Upload B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-checkpointed-B
+          path: evidence-B/
+          retention-days: 30
+
+  paired-report:
+    name: "PR110 checkpointed paired report"
+    if: always()
+    needs: [replay-A, replay-B]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pr110-checkpointed-*
+          path: paired
+          merge-multiple: false
+
+      - name: Build laboratory report
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          def read_json(path):
+              return json.loads(Path(path).read_text()) if Path(path).exists() else None
+
+          def load(label):
+              root=Path("paired")/f"pr110-checkpointed-{label}"
+              manifest=read_json(root/"checkpoint-manifest.json") or {}
+              cp=read_json(root/"checkpoint-current.json") if (root/"checkpoint-current.json").exists() else None
+              return {"manifest":manifest,"checkpoint":cp}
+
+          A=load("A")
+          B=load("B")
+          ac=(A["checkpoint"] or {}).get("generation_next")
+          bc=(B["checkpoint"] or {}).get("generation_next")
+          complete=(ac==12 and bc==12)
+
+          report={
+              "schema":"ACSIE.PR110.checkpointed-replay.v1",
+              "canonical_repository":"Infrasigma/ACSIE",
+              "laboratory_repository":"Infrasigma/subsume-proving-ground",
+              "seed":2026100305,
+              "generations":12,
+              "A":A["manifest"],
+              "B":B["manifest"],
+              "A_checkpoint_generation_next":ac,
+              "B_checkpoint_generation_next":bc,
+              "checkpoint_bytes_preserved":bool(A["checkpoint"] and B["checkpoint"]),
+              "scientific_status":"READY_FOR_CAUSAL_REVIEW" if complete else "INCONCLUSIVE",
+              "promotion_status":"DO_NOT_PROMOTE",
+              "frozen_5x12_budget":"UNTOUCHED",
+              "causal_comparison":{
+                  "selected_generations":[5,6,9,10,11],
+                  "note":"This workflow establishes durable checkpoint provenance. It does not substitute a reconstructed checkpoint for a missing original and does not itself constitute the 5-seed scientific gate."
+              }
+          }
+          Path("pr110-checkpointed-paired-report.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True)+"\n"
+          )
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload paired laboratory report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-checkpointed-paired-report
+          path: pr110-checkpointed-paired-report.json
+          retention-days: 30
