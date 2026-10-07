@@ -1,0 +1,22 @@
+name: PR110 repaired-B uninterrupted neutrality replay
+
+on:
+  push:
+    branches:
+      - research/pr110-repaired-b-neutrality-20261007
+
+jobs:
+  B:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run repaired B uninterrupted
+        run: |
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
+            python3 lab/pr110_repaired_b_neutrality.py > evidence/B-raw.txt 2>&1
+      - name: Upload B evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-repaired-b-neutrality
+          path: evidence
