@@ -1,0 +1,25 @@
+name: PR110 lineage cache unit validation
+
+on:
+  push:
+    branches:
+      - research/pr110-lineage-cache-20261007
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lineage-cache:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python smoke
+        run: |
+          set -euo pipefail
+          python3 -m py_compile research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py lab/test_pr110_lineage_cache.py
+      - name: Run regression
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" python3 -m pytest -q lab/test_pr110_lineage_cache.py
