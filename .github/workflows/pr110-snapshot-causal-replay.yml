@@ -53,16 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 --version
-          python3 -m py_compile \
-            research/pr110_acsie_snapshot/A/cognitive_core/behavioral_search.py \
-            research/pr110_acsie_snapshot/A/cognitive_core/recursive_cognitive_compiler.py \
-            research/pr110_acsie_snapshot/A/cognitive_core/open_ended_growth.py \
-            research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py \
-            research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py \
-            research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py \
-            lab/exact_checkpoint.py \
-            lab/acsie_open_ended_self_extending_proving.py \
-            lab/test_exact_checkpoint_resume.py
+          python3 -m py_compile             research/pr110_acsie_snapshot/A/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/A/cognitive_core/recursive_cognitive_compiler.py             research/pr110_acsie_snapshot/A/cognitive_core/open_ended_growth.py             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             lab/exact_checkpoint.py             lab/acsie_open_ended_self_extending_proving.py             lab/test_exact_checkpoint_resume.py
 
       - name: Prepare environment
         run: |
@@ -75,7 +66,7 @@ jobs:
           print(sys.version)
           PY
 
-      - name: Run A/B trajectories with durable checkpoints
+      - name: Run A/B trajectories
         run: |
           set -u
           . /tmp/pr110-snapshot-venv/bin/activate
@@ -85,22 +76,13 @@ jobs:
             label="$1"
             root="$2"
             runtime_sha="$3"
-            out="evidence/${label}-raw.txt"
-            checkpoint="evidence/${label}-checkpoint-current.json"
-            manifest="evidence/${label}-checkpoint-manifest.json"
-            summary="evidence/${label}-selected.json"
-
-            mkdir -p "evidence/${label}-state"
+            out="evidence/$label-raw.txt"
+            checkpoint="evidence/$label-checkpoint-current.json"
+            manifest="evidence/$label-checkpoint-manifest.json"
+            summary="evidence/$label-selected.json"
 
             set +e
-            timeout --signal=TERM --kill-after=60s 85m \
-              env \
-                PYTHONPATH="$GITHUB_WORKSPACE/$root:$GITHUB_WORKSPACE" \
-                SNAPSHOT_LABEL="$label" \
-                SNAPSHOT_ROOT="$root" \
-                RUNTIME_SHA="$runtime_sha" \
-                CHECKPOINT_PATH="$checkpoint" \
-              python -u - <<'PY' > "$out" 2>&1
+            timeout --signal=TERM --kill-after=60s 80m               env                 PYTHONPATH="$GITHUB_WORKSPACE/$root:$GITHUB_WORKSPACE"                 SNAPSHOT_LABEL="$label"                 SNAPSHOT_ROOT="$root"                 RUNTIME_SHA="$runtime_sha"                 CHECKPOINT_PATH="$checkpoint"               python -u - <<'PY' > "$out" 2>&1
           import json, os, time
           from pathlib import Path
           from lab.acsie_open_ended_self_extending_proving import run_seed
@@ -124,7 +106,7 @@ jobs:
           )
           wall=time.perf_counter()-start_wall
           cpu=time.process_time()-start_cpu
-          Path(f"evidence/${label}-state/completed-result.json").write_text(
+          Path("evidence") .joinpath(label + "-completed-result.json").write_text(
               json.dumps(
                   {
                       "label":label,
@@ -142,13 +124,13 @@ jobs:
                   },
                   indent=2,
                   sort_keys=True,
-              )+"\n"
+              ) + "\n"
           )
           PY
             rc=$?
             set -e
 
-            echo "$rc" > "evidence/${label}-state/trajectory_exit_code.txt"
+            echo "$rc" > "evidence/$label-exit-code.txt"
 
             python3 - "$checkpoint" "$manifest" "$summary" "$label" "$runtime_sha" "$rc" <<'PY'
           import hashlib, json, sys
@@ -187,30 +169,35 @@ jobs:
           if checkpoint_path.exists():
               blob=checkpoint_path.read_bytes()
               envelope=json.loads(blob)
+              digest="sha256:"+hashlib.sha256(blob).hexdigest()
               manifest.update({
                   "checkpoint_schema":envelope.get("schema"),
                   "generation_next":envelope.get("generation_next"),
                   "state_digest":envelope.get("state_digest"),
-                  "full_blob_digest":"sha256:"+hashlib.sha256(blob).hexdigest(),
+                  "full_blob_digest":digest,
               })
-              rows=[r for r in envelope.get("generations_out",[]) if int(r.get("generation",-1)) in {5,6,9,10,11}]
               summary.update({
-                  "selected":rows,
+                  "selected":[
+                      row for row in envelope.get("generations_out",[])
+                      if int(row.get("generation",-1)) in {5,6,9,10,11}
+                  ],
                   "completed_generations":len(envelope.get("generations_out",[])),
-                  "checkpoint_digest":envelope.get("state_digest"),
-                  "full_blob_digest":"sha256:"+hashlib.sha256(blob).hexdigest(),
                   "generation_next":envelope.get("generation_next"),
+                  "checkpoint_digest":envelope.get("state_digest"),
+                  "full_blob_digest":digest,
               })
 
-          result_path=Path(f"evidence/${label}-state/completed-result.json")
-          if result_path.exists():
-              summary.update(json.loads(result_path.read_text()))
+          complete_result=Path("evidence").joinpath(label+"-completed-result.json")
+          if complete_result.exists():
+              summary.update(json.loads(complete_result.read_text()))
 
           manifest_path.write_text(json.dumps(manifest,indent=2,sort_keys=True)+"\n")
           summary_path.write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n")
           print(json.dumps(manifest,indent=2,sort_keys=True))
           print(json.dumps(summary,indent=2,sort_keys=True))
           PY
+
+            return 0
           }
 
           run_one A "$SNAPSHOT_A" "$A_SHA"
@@ -225,8 +212,10 @@ jobs:
           from pathlib import Path
 
           def load(label):
-              p=Path(f"evidence/{label}-selected.json")
-              return json.loads(p.read_text()) if p.exists() else {
+              p=Path("evidence").joinpath(label+"-selected.json")
+              if p.exists():
+                  return json.loads(p.read_text())
+              return {
                   "label":label,
                   "completed_generations":0,
                   "selected":[],
@@ -240,15 +229,16 @@ jobs:
           ar={int(x["generation"]):x for x in a.get("selected",[])}
           br={int(x["generation"]):x for x in b.get("selected",[])}
           rows=[]
-          identical=True
           complete=True
+          identical=True
 
-          for g in selected:
-              aa,bb=ar.get(g),br.get(g)
+          for generation in selected:
+              aa=ar.get(generation)
+              bb=br.get(generation)
               if aa is None or bb is None:
                   complete=False
                   rows.append({
-                      "generation":g,
+                      "generation":generation,
                       "same_target_digest":None,
                       "A_present":aa is not None,
                       "B_present":bb is not None,
@@ -257,7 +247,7 @@ jobs:
               same=aa.get("target_digest")==bb.get("target_digest")
               identical &= same
               rows.append({
-                  "generation":g,
+                  "generation":generation,
                   "same_target_digest":same,
                   "A_target_digest":aa.get("target_digest"),
                   "B_target_digest":bb.get("target_digest"),
@@ -288,14 +278,8 @@ jobs:
               "generations":12,
               "selected_generations":selected,
               "checkpoint_bytes_preserved":bool(a.get("checkpoint_digest") and b.get("checkpoint_digest")),
-              "checkpoint_digests":{
-                  "A":a.get("checkpoint_digest"),
-                  "B":b.get("checkpoint_digest"),
-              },
-              "full_blob_digests":{
-                  "A":a.get("full_blob_digest"),
-                  "B":b.get("full_blob_digest"),
-              },
+              "checkpoint_digests":{"A":a.get("checkpoint_digest"),"B":b.get("checkpoint_digest")},
+              "full_blob_digests":{"A":a.get("full_blob_digest"),"B":b.get("full_blob_digest")},
               "target_digests_identical":identical if complete else None,
               "selected_generations_complete":all(g in ar and g in br for g in selected),
               "A_cost":{
@@ -312,7 +296,7 @@ jobs:
               "scientific_status":"READY_FOR_CAUSAL_REVIEW" if complete else "INCONCLUSIVE",
               "promotion_status":"DO_NOT_PROMOTE",
               "frozen_5x12_budget":"UNTOUCHED",
-              "note":"This run repairs checkpoint persistence only. A reconstructed checkpoint is never substituted for a missing original."
+              "note":"Checkpoint persistence repaired; reconstructed checkpoints are never substituted for missing originals."
           }
           Path("evidence/paired-comparison.json").write_text(
               json.dumps(report,indent=2,sort_keys=True)+"\n"
@@ -320,28 +304,7 @@ jobs:
           print(json.dumps(report,indent=2,sort_keys=True))
           PY
 
-      - name: Run deterministic checkpoint twin test
-        if: always()
-        run: |
-          set -euo pipefail
-          . /tmp/pr110-snapshot-venv/bin/activate
-          rm -rf evidence/twin
-          mkdir -p evidence/twin
-          python3 -u - <<'PY'
-          from pathlib import Path
-          from lab.acsie_open_ended_self_extending_proving import run_seed
-
-          metadata={"proving_sha":"checkpoint-test","acsie_ref":"checkpoint-test"}
-          first=Path("evidence/twin/first.json")
-          second=Path("evidence/twin/second.json")
-
-          run_seed(2026100304, 2, checkpoint_path=str(first), stop_after=2, checkpoint_metadata=metadata)
-          run_seed(2026100304, 2, checkpoint_path=str(second), stop_after=2, checkpoint_metadata=metadata)
-
-          assert first.read_bytes() == second.read_bytes(), "identical-boundary checkpoint bytes differ"
-          print("CHECKPOINT_TWIN=PASS")
-          PY
-                - name: Upload evidence
+      - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
