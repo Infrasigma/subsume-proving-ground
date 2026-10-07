@@ -62,7 +62,7 @@ def test_checkpoint_digest_rejects_tampering():
         envelope = json.loads(checkpoint.read_text(encoding="utf-8"))
         envelope["generation_next"] = 99
         checkpoint.write_text(json.dumps(envelope), encoding="utf-8")
-        with pytest.raises(ValueError, match="checkpoint digest mismatch"):
+        with pytest.raises(ValueError, match="checkpoint full blob digest mismatch"):
             run_seed(
                 102,
                 3,
@@ -94,7 +94,7 @@ def test_checkpoint_runtime_identity_rejects_cross_revision_resume():
             )
 
 
-def test_checkpoint_is_bit_identical_for_repeated_same_boundary_runs():
+def test_checkpoint_semantic_digest_is_deterministic_at_same_boundary():
     metadata = {"proving_sha": "checkpoint-test", "acsie_ref": "checkpoint-test"}
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -116,4 +116,47 @@ def test_checkpoint_is_bit_identical_for_repeated_same_boundary_runs():
             checkpoint_metadata=metadata,
         )
 
-        assert first.read_bytes() == second.read_bytes()
+        first_envelope = json.loads(first.read_text(encoding="utf-8"))
+        second_envelope = json.loads(second.read_text(encoding="utf-8"))
+
+        assert first_envelope["semantic_state_digest"] == second_envelope["semantic_state_digest"]
+        assert first_envelope["state_digest"] == second_envelope["state_digest"]
+        assert first_envelope["full_blob_digest"]
+        assert second_envelope["full_blob_digest"]
+
+
+def test_checkpoint_semantic_digest_ignores_forensic_event_order():
+    metadata = {"proving_sha": "checkpoint-test", "acsie_ref": "checkpoint-test"}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        checkpoint = Path(tmp) / "state.json"
+        run_seed(
+            105,
+            3,
+            checkpoint_path=str(checkpoint),
+            checkpoint_metadata=metadata,
+        )
+
+        envelope = json.loads(checkpoint.read_text(encoding="utf-8"))
+        original_semantic = envelope["semantic_state_digest"]
+        original_events = list(envelope["learner_state"].get("events", []))
+        envelope["learner_state"]["events"] = list(reversed(original_events))
+
+        from lab.exact_checkpoint import _canonical_digest, _payload_without_digests
+
+        payload = _payload_without_digests(envelope)
+        envelope["full_blob_digest"] = _canonical_digest(payload)
+        checkpoint.write_text(
+            json.dumps(envelope, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        resumed = run_seed(
+            105,
+            3,
+            resume_from=str(checkpoint),
+            checkpoint_metadata=metadata,
+        )
+        assert resumed["resumed_from_checkpoint"] is True
+        assert resumed["last_checkpoint_digest"] == original_semantic
+
