@@ -311,3 +311,5 @@ jobs:
           name: pr110-snapshot-causal-replay
           path: evidence/
           retention-days: 30
+
+# phase5 trigger nonce: 2026-10-07T18:29Z
