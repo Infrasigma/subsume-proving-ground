@@ -537,7 +537,7 @@ def find_exact_expression(
             return None
         stats["target_matches"] += len(candidates)
         chosen = min(candidates, key=rank)
-        stats["selected_structural_lineage_ids"] = list(
+        stats["selected_structural_lineage_ids"] = sorted(
             set(structural_lineage_by_key.get(chosen[4], set()))
             | set(provenance_lineage_ids(chosen[2]))
         )
@@ -885,7 +885,7 @@ def find_exact_expression(
     if best_target is not None:
         stats["status"] = "TARGET_FOUND"
         stats["depths_completed"] = completed
-        stats["selected_structural_lineage_ids"] = list(
+        stats["selected_structural_lineage_ids"] = sorted(
             set(structural_lineage_by_key.get(best_target[4], set()))
             | set(provenance_lineage_ids(best_target[2]))
         )
