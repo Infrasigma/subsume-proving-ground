@@ -82,4 +82,33 @@ jobs:
           name: acex-forensic-result
           path: acex-result.txt
 
+  pr110-phase4-neutrality:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout lab branch with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify exact PR110 Phase4 provenance
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "e8704aa33029aa89dcffc28a10f3c7deaf3bdefd"
+          git rev-parse 75d101eabd4be80ce0d7aed2d3cc04e0912925b8 >/dev/null
+          test -f research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py
+          python3 -m py_compile lab/pr110_phase4_neutrality.py
+      - name: Run PR110 scientific-neutrality forensic
+        run: |
+          set -euo pipefail
+          python3 -u lab/pr110_phase4_neutrality.py | tee phase4-neutrality.stdout.txt
+      - name: Upload PR110 Phase4 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-phase4-neutrality-run
+          path: |
+            phase4-neutrality.stdout.txt
+            evidence/phase4-neutrality/
+
 # ACE-X forensic trigger revision.
