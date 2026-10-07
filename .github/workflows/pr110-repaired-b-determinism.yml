@@ -1,0 +1,15 @@
+name: PR110 repaired-B determinism unit
+
+on:
+  push:
+    branches:
+      - research/pr110-determinism-repair-proving-20261007
+  workflow_dispatch:
+
+jobs:
+  determinism:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run paired hash-seed regression
+        run: python3 lab/pr110_repaired_b_determinism_test.py
