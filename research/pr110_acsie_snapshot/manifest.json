@@ -12,11 +12,11 @@
     }
   },
   "B": {
-    "runtime_sha": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+    "runtime_sha": "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be",
     "files": {
       "cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
       "cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
-      "cognitive_core/behavioral_search.py": "fdd75290600458976e63c2c58771ed7a254da5a0"
+      "cognitive_core/behavioral_search.py": "c126aa723b5c5f6013ac7ee53a9401875c2395ee"
     }
   },
   "fixed_seed": 2026100305,

@@ -5,7 +5,7 @@ name: PR110 paired causal replay from pinned ACSIE snapshots
 on:
   push:
     branches:
-      - research/pr110-acsie-snapshot-replay-20261007
+      - research/pr110-phase5-causal-20261007
   pull_request:
     branches:
       - main
@@ -25,7 +25,7 @@ jobs:
       GENERATIONS: "12"
       PROVING_SHA: "33259fc5c69d87b99c604f0050508c433a279daf"
       A_SHA: "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
-      B_SHA: "af0c7ef503c51a5bc7872717b263a01f495c855f"
+      B_SHA: "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
 
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +45,7 @@ jobs:
           assert m["selected_generations"] == [5,6,9,10,11]
           assert m["proving_harness_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
           assert m["A"]["runtime_sha"] == "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
-          assert m["B"]["runtime_sha"] == "af0c7ef503c51a5bc7872717b263a01f495c855f"
+          assert m["B"]["runtime_sha"] == "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
           print("SNAPSHOT_PROVENANCE=PASS")
           PY
 
