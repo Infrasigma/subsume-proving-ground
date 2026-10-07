@@ -11,7 +11,7 @@ from typing import Any, Mapping
 
 from cognitive_core.open_ended_growth import GrowthEvidence, OpenEndedRecursiveCognitiveCompiler
 
-CHECKPOINT_SCHEMA = "ACSIE.open-ended.exact-checkpoint.v1"
+CHECKPOINT_SCHEMA = "ACSIE.open-ended.exact-checkpoint.v2"
 
 
 def _to_jsonable_state(value: Any) -> Any:
@@ -99,6 +99,40 @@ def restore_learner_state(
     return learner
 
 
+def _semantic_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Project the restart-causal state out of forensic telemetry.
+
+    The semantic digest must ignore diagnostics whose ordering can vary without
+    changing future computation. The full checkpoint digest still binds every
+    stored byte for forensic integrity.
+    """
+    projected = json.loads(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    )
+    learner_state = dict(projected.get("learner_state", {}))
+    learner_state.pop("events", None)
+    open_ended = dict(learner_state.get("open_ended", {}))
+    open_ended.pop("last_search_stats", None)
+    open_ended.pop("growth_history", None)
+    learner_state["open_ended"] = open_ended
+    projected["learner_state"] = learner_state
+    projected.pop("generations_out", None)
+    return projected
+
+
+def _canonical_digest(value: Mapping[str, Any]) -> str:
+    canonical = json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _payload_without_digests(envelope: Mapping[str, Any]) -> dict[str, Any]:
+    payload = dict(envelope)
+    payload.pop("state_digest", None)
+    payload.pop("semantic_state_digest", None)
+    payload.pop("full_blob_digest", None)
+    return payload
+
+
 def save_checkpoint(
     path: str | Path,
     *,
@@ -121,10 +155,14 @@ def save_checkpoint(
         "retained": [dict(item) for item in retained],
         "generations_out": [dict(item) for item in generations_out],
     }
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    state_digest = sha256(canonical.encode("utf-8")).hexdigest()
+
+    semantic_state_digest = _canonical_digest(_semantic_payload(payload))
+    full_blob_digest = _canonical_digest(payload)
+
     envelope = dict(payload)
-    envelope["state_digest"] = state_digest
+    envelope["state_digest"] = semantic_state_digest
+    envelope["semantic_state_digest"] = semantic_state_digest
+    envelope["full_blob_digest"] = full_blob_digest
     serialized = json.dumps(envelope, sort_keys=True, indent=2) + "\n"
 
     target = Path(path)
@@ -139,8 +177,7 @@ def save_checkpoint(
         handle.write(serialized)
         temporary = Path(handle.name)
     temporary.replace(target)
-    return state_digest
-
+    return semantic_state_digest
 
 def load_checkpoint(
     path: str | Path,
@@ -159,14 +196,30 @@ def load_checkpoint(
             f"checkpoint seed mismatch: saved={envelope.get('seed')} expected={expected_seed}"
         )
 
-    state_digest = str(envelope.get("state_digest", ""))
-    payload = dict(envelope)
-    payload.pop("state_digest", None)
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    actual = sha256(canonical.encode("utf-8")).hexdigest()
-    if state_digest != actual:
+    semantic_state_digest = str(
+        envelope.get("semantic_state_digest", envelope.get("state_digest", ""))
+    )
+    saved_state_digest = str(envelope.get("state_digest", semantic_state_digest))
+    if saved_state_digest != semantic_state_digest:
         raise ValueError(
-            f"checkpoint digest mismatch: saved={state_digest} actual={actual}"
+            "checkpoint semantic digest alias mismatch: "
+            f"state_digest={saved_state_digest} semantic_state_digest={semantic_state_digest}"
+        )
+
+    payload = _payload_without_digests(envelope)
+    actual_full_blob_digest = _canonical_digest(payload)
+    saved_full_blob_digest = str(envelope.get("full_blob_digest", ""))
+    if saved_full_blob_digest != actual_full_blob_digest:
+        raise ValueError(
+            "checkpoint full blob digest mismatch: "
+            f"saved={saved_full_blob_digest} actual={actual_full_blob_digest}"
+        )
+
+    actual_semantic_state_digest = _canonical_digest(_semantic_payload(payload))
+    if semantic_state_digest != actual_semantic_state_digest:
+        raise ValueError(
+            "checkpoint semantic digest mismatch: "
+            f"saved={semantic_state_digest} actual={actual_semantic_state_digest}"
         )
 
     identity = runtime_identity(expected_metadata)
@@ -182,7 +235,6 @@ def load_checkpoint(
             )
 
     return envelope
-
 
 def restore_checkpoint(
     envelope: Mapping[str, Any],
@@ -218,5 +270,11 @@ def restore_checkpoint(
         "learner": learner,
         "retained": retained,
         "generations_out": generations_out,
-        "state_digest": str(envelope["state_digest"]),
+        "state_digest": str(
+            envelope.get("semantic_state_digest", envelope["state_digest"])
+        ),
+        "semantic_state_digest": str(
+            envelope.get("semantic_state_digest", envelope["state_digest"])
+        ),
+        "full_blob_digest": str(envelope["full_blob_digest"]),
     }
