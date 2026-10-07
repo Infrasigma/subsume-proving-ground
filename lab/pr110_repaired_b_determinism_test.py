@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""PR110 repaired-B determinism regression.
-
-The child process runs the exact repaired B snapshot under two different
-PYTHONHASHSEED values. Identical initial state, seed, target, evaluator
-identity, and checkpoint metadata must produce byte-identical checkpoint
-artifacts and identical target/state digests.
-"""
+"""PR110 repaired-B determinism regression."""
 
 from __future__ import annotations
 
@@ -16,7 +10,7 @@ import sys
 from pathlib import Path
 
 
-CHILD = r'''
+CHILD = """
 import hashlib
 import json
 import random
@@ -32,13 +26,11 @@ from cognitive_core.recursive_cognitive_compiler import (
 )
 from lab.exact_checkpoint import save_checkpoint
 
-
 SEED = 2026100305
 PROVING_SHA = "33259fc5c69d87b99c604f0050508c433a279daf"
-ACSIE_REF = "9b0c42eb439a4ee457f8b7adecc45a3f4ea7c4be"
+ACSIE_REF = "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
 
 learner = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=SEED)
-
 primitives = (
     CognitivePrimitive(
         "prim:a",
@@ -48,7 +40,10 @@ primitives = (
         0,
         (),
         ("synthetic-determinism",),
-        0.0, 0.0, 0.0, 1,
+        0.0,
+        0.0,
+        0.0,
+        1,
         {"lineage_ids": (), "external_model": False},
     ),
     CognitivePrimitive(
@@ -59,7 +54,10 @@ primitives = (
         0,
         (),
         ("synthetic-determinism",),
-        0.0, 0.0, 0.0, 1,
+        0.0,
+        0.0,
+        0.0,
+        1,
         {"lineage_ids": (), "external_model": False},
     ),
 )
@@ -113,14 +111,17 @@ print(json.dumps({
     "checkpoint_sha256": hashlib.sha256(checkpoint_bytes).hexdigest(),
     "checkpoint_bytes_hex": checkpoint_bytes.hex(),
 }, sort_keys=True))
+"""
+
 
 def run_child(hash_seed: str) -> dict:
     env = dict(os.environ)
     env["PYTHONHASHSEED"] = hash_seed
+    root = Path(__file__).resolve().parents[1]
     env["PYTHONPATH"] = (
-        str(Path(__file__).resolve().parents[1] / "research" / "pr110_acsie_snapshot" / "B")
+        str(root / "research" / "pr110_acsie_snapshot" / "B")
         + os.pathsep
-        + str(Path(__file__).resolve().parents[1])
+        + str(root)
     )
     raw = subprocess.check_output(
         [sys.executable, "-c", CHILD],
@@ -141,18 +142,25 @@ def main() -> None:
         "checkpoint_sha256",
         "checkpoint_bytes_hex",
     ):
-        assert first[key] == second[key], (key, first[key], second[key])
+        assert first[key] == second[key], (
+            key,
+            first[key],
+            second[key],
+        )
 
     assert first["lineage_members"] == sorted(first["lineage_members"])
     assert set(first["lineage_members"]) == {"prim:a", "prim:b"}
 
     print("PASS: repaired PR110 B is hash-seed deterministic")
-    print(json.dumps({
-        "lineage_members": first["lineage_members"],
-        "semantic_state_digest": first["semantic_state_digest"],
-        "target_digest": first["target_digest"],
-        "checkpoint_sha256": first["checkpoint_sha256"],
-    }, sort_keys=True))
+    print(json.dumps(
+        {
+            "lineage_members": first["lineage_members"],
+            "semantic_state_digest": first["semantic_state_digest"],
+            "target_digest": first["target_digest"],
+            "checkpoint_sha256": first["checkpoint_sha256"],
+        },
+        sort_keys=True,
+    ))
 
 
 if __name__ == "__main__":
