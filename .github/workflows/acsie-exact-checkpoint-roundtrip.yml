@@ -1,12 +1,6 @@
 name: ACSIE PR110 paired A/B snapshot replay
 
 on:
-  push:
-    branches:
-      - research/pr110-acsie-snapshot-replay-20261007
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
