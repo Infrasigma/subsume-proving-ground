@@ -281,7 +281,7 @@ jobs:
               primitives_equal = sem_signature(old["learner_state"]["primitives"]) == sem_signature(new["learner_state"]["primitives"])
               generations_equal = sem_signature(old["generations_out"]) == sem_signature(new["generations_out"])
               events_equal = sem_signature(old["learner_state"]["events"]) == sem_signature(new["learner_state"]["events"])
-              policies_equal = sem_signature(old["learner_state"]["search_policy"]) == sem_signature(new["learner_state"]["search_policy"])
+              policies_equal = sem_signature(old["learner_state"]["meta_policy"]) == sem_signature(new["learner_state"]["meta_policy"])
               rng_equal = old["local_rng_state"] == new["local_rng_state"]
 
               row={
@@ -297,7 +297,7 @@ jobs:
                   "primitives_equal":primitives_equal,
                   "generation_results_equal":generations_equal,
                   "events_equal":events_equal,
-                  "search_policy_equal":policies_equal,
+                  "meta_policy_equal":policies_equal,
                   "first_direct_difference":None if direct_equal else first_diff(old_sem,new_sem),
                   "old_state_digest":old.get("state_digest"),
                   "repaired_state_digest":new.get("state_digest"),
