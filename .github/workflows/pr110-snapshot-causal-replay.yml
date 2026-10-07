@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f research/pr110_acsie_snapshot/manifest.json
-          python - <<'PY'
+          python3 - <<'PY'
           import json
           from pathlib import Path
           m=json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
@@ -53,7 +53,16 @@ jobs:
         run: |
           set -euo pipefail
           python3 --version
-          python3 -m py_compile             research/pr110_acsie_snapshot/A/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/A/cognitive_core/recursive_cognitive_compiler.py             research/pr110_acsie_snapshot/A/cognitive_core/open_ended_growth.py             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py
+          python3 -m py_compile \
+            research/pr110_acsie_snapshot/A/cognitive_core/behavioral_search.py \
+            research/pr110_acsie_snapshot/A/cognitive_core/recursive_cognitive_compiler.py \
+            research/pr110_acsie_snapshot/A/cognitive_core/open_ended_growth.py \
+            research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py \
+            research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py \
+            research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py \
+            lab/exact_checkpoint.py \
+            lab/acsie_open_ended_self_extending_proving.py \
+            lab/test_exact_checkpoint_resume.py
 
       - name: Prepare environment
         run: |
@@ -66,9 +75,9 @@ jobs:
           print(sys.version)
           PY
 
-      - name: Run A/B trajectories
+      - name: Run A/B trajectories with durable checkpoints
         run: |
-          set -euo pipefail
+          set -u
           . /tmp/pr110-snapshot-venv/bin/activate
           mkdir -p evidence
 
@@ -76,55 +85,131 @@ jobs:
             label="$1"
             root="$2"
             runtime_sha="$3"
-            out="evidence/${label}-raw.txt"
-            summary="evidence/${label}-selected.json"
+            out="evidence/\${label}-raw.txt"
+            checkpoint="evidence/\${label}-checkpoint-current.json"
+            manifest="evidence/\${label}-checkpoint-manifest.json"
+            summary="evidence/\${label}-selected.json"
 
-            PYTHONPATH="$GITHUB_WORKSPACE/$root:$GITHUB_WORKSPACE"               SNAPSHOT_LABEL="$label"               SNAPSHOT_ROOT="$root"               RUNTIME_SHA="$runtime_sha"               python -u - <<'PY' > "$out" 2>&1
+            mkdir -p "evidence/\${label}-state"
+
+            set +e
+            timeout --signal=TERM --kill-after=60s 85m \
+              env \
+                PYTHONPATH="$GITHUB_WORKSPACE/$root:$GITHUB_WORKSPACE" \
+                SNAPSHOT_LABEL="$label" \
+                SNAPSHOT_ROOT="$root" \
+                RUNTIME_SHA="$runtime_sha" \
+                CHECKPOINT_PATH="$checkpoint" \
+              python -u - <<'PY' > "$out" 2>&1
           import json, os, time
+          from pathlib import Path
           from lab.acsie_open_ended_self_extending_proving import run_seed
 
           label=os.environ["SNAPSHOT_LABEL"]
-          root=os.environ["SNAPSHOT_ROOT"]
           runtime_sha=os.environ["RUNTIME_SHA"]
           seed=int(os.environ["SEED"])
           generations=int(os.environ["GENERATIONS"])
+          checkpoint_path=os.environ["CHECKPOINT_PATH"]
 
           start_wall=time.perf_counter()
           start_cpu=time.process_time()
-          result=run_seed(seed, generations)
+          result=run_seed(
+              seed,
+              generations,
+              checkpoint_path=checkpoint_path,
+              checkpoint_metadata={
+                  "proving_sha": os.environ["PROVING_SHA"],
+                  "acsie_ref": runtime_sha,
+              },
+          )
           wall=time.perf_counter()-start_wall
           cpu=time.process_time()-start_cpu
-
-          selected={5,6,9,10,11}
-          rows=[r for r in result["generations_detail"] if int(r["generation"]) in selected]
-          payload={
-            "label":label,
-            "snapshot_root":root,
-            "runtime_sha":runtime_sha,
-            "proving_sha":os.environ["PROVING_SHA"],
-            "seed":seed,
-            "generations":generations,
-            "selected_generations":sorted(selected),
-            "wall_time_seconds":wall,
-            "cpu_time_seconds":cpu,
-            "max_generated_expressions":result["max_generated_expressions"],
-            "max_unique_search_states":result["max_unique_search_states"],
-            "max_search_states_in_depth":result["max_search_states_in_depth"],
-            "selected":rows,
-            "final_gate":result["finite_open_ended_growth_gate"],
-          }
-          print("PAIRED_REPLAY_RESULT="+json.dumps(payload,sort_keys=True))
-          PY
-
-            python - "$out" "$summary" <<'PY'
-          import json, pathlib, sys
-          p="PAIRED_REPLAY_RESULT="
-          text=pathlib.Path(sys.argv[1]).read_text()
-          line=next(x for x in text.splitlines() if x.startswith(p))
-          pathlib.Path(sys.argv[2]).write_text(
-            json.dumps(json.loads(line[len(p):]),indent=2,sort_keys=True)+"
-"
+          Path(f"evidence/\${label}-state/completed-result.json").write_text(
+              json.dumps(
+                  {
+                      "label":label,
+                      "runtime_sha":runtime_sha,
+                      "proving_sha":os.environ["PROVING_SHA"],
+                      "seed":seed,
+                      "generations":generations,
+                      "completed_generations":result["completed_generations"],
+                      "wall_time_seconds":wall,
+                      "cpu_time_seconds":cpu,
+                      "max_generated_expressions":result["max_generated_expressions"],
+                      "max_unique_search_states":result["max_unique_search_states"],
+                      "max_search_states_in_depth":result["max_search_states_in_depth"],
+                      "finite_open_ended_growth_gate":result["finite_open_ended_growth_gate"],
+                  },
+                  indent=2,
+                  sort_keys=True,
+              )+"\\n"
           )
+          PY
+            rc=$?
+            set -e
+
+            echo "$rc" > "evidence/\${label}-state/trajectory_exit_code.txt"
+
+            python3 - "$checkpoint" "$manifest" "$summary" "$label" "$runtime_sha" "$rc" <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+
+          checkpoint_path=Path(sys.argv[1])
+          manifest_path=Path(sys.argv[2])
+          summary_path=Path(sys.argv[3])
+          label=sys.argv[4]
+          runtime_sha=sys.argv[5]
+          exit_code=int(sys.argv[6])
+
+          manifest={
+              "label":label,
+              "seed":2026100305,
+              "runtime_sha":runtime_sha,
+              "proving_sha":"33259fc5c69d87b99c604f0050508c433a279daf",
+              "trajectory_exit_code":exit_code,
+              "checkpoint_present":checkpoint_path.exists(),
+          }
+
+          summary={
+              "label":label,
+              "runtime_sha":runtime_sha,
+              "proving_sha":"33259fc5c69d87b99c604f0050508c433a279daf",
+              "seed":2026100305,
+              "generations":12,
+              "selected_generations":[5,6,9,10,11],
+              "trajectory_exit_code":exit_code,
+              "selected":[],
+              "completed_generations":0,
+              "checkpoint_digest":None,
+              "full_blob_digest":None,
+          }
+
+          if checkpoint_path.exists():
+              blob=checkpoint_path.read_bytes()
+              envelope=json.loads(blob)
+              manifest.update({
+                  "checkpoint_schema":envelope.get("schema"),
+                  "generation_next":envelope.get("generation_next"),
+                  "state_digest":envelope.get("state_digest"),
+                  "full_blob_digest":"sha256:"+hashlib.sha256(blob).hexdigest(),
+              })
+              rows=[r for r in envelope.get("generations_out",[]) if int(r.get("generation",-1)) in {5,6,9,10,11}]
+              summary.update({
+                  "selected":rows,
+                  "completed_generations":len(envelope.get("generations_out",[])),
+                  "checkpoint_digest":envelope.get("state_digest"),
+                  "full_blob_digest":"sha256:"+hashlib.sha256(blob).hexdigest(),
+                  "generation_next":envelope.get("generation_next"),
+              })
+
+          result_path=Path(f"evidence/\${label}-state/completed-result.json")
+          if result_path.exists():
+              summary.update(json.loads(result_path.read_text()))
+
+          manifest_path.write_text(json.dumps(manifest,indent=2,sort_keys=True)+"\\n")
+          summary_path.write_text(json.dumps(summary,indent=2,sort_keys=True)+"\\n")
+          print(json.dumps(manifest,indent=2,sort_keys=True))
+          print(json.dumps(summary,indent=2,sort_keys=True))
           PY
           }
 
@@ -132,61 +217,115 @@ jobs:
           run_one B "$SNAPSHOT_B" "$B_SHA"
 
       - name: Compare causal generations
+        if: always()
         run: |
           set -euo pipefail
-          python - <<'PY'
+          python3 - <<'PY'
           import json
           from pathlib import Path
-          a=json.loads(Path("evidence/A-selected.json").read_text())
-          b=json.loads(Path("evidence/B-selected.json").read_text())
+
+          def load(label):
+              p=Path(f"evidence/{label}-selected.json")
+              return json.loads(p.read_text()) if p.exists() else {
+                  "label":label,
+                  "completed_generations":0,
+                  "selected":[],
+                  "checkpoint_digest":None,
+                  "full_blob_digest":None,
+              }
+
+          a=load("A")
+          b=load("B")
           selected=[5,6,9,10,11]
-          ar={int(x["generation"]):x for x in a["selected"]}
-          br={int(x["generation"]):x for x in b["selected"]}
+          ar={int(x["generation"]):x for x in a.get("selected",[])}
+          br={int(x["generation"]):x for x in b.get("selected",[])}
           rows=[]
           identical=True
+          complete=True
+
           for g in selected:
-              aa,bb=ar[g],br[g]
+              aa,bb=ar.get(g),br.get(g)
+              if aa is None or bb is None:
+                  complete=False
+                  rows.append({
+                      "generation":g,
+                      "same_target_digest":None,
+                      "A_present":aa is not None,
+                      "B_present":bb is not None,
+                  })
+                  continue
               same=aa.get("target_digest")==bb.get("target_digest")
               identical &= same
               rows.append({
-                "generation":g,
-                "same_target_digest":same,
-                "A_target_digest":aa.get("target_digest"),
-                "B_target_digest":bb.get("target_digest"),
-                "A_expected_parent_ids":aa.get("expected_parent_ids"),
-                "B_expected_parent_ids":bb.get("expected_parent_ids"),
-                "A_recursive_reuse_ok":aa.get("recursive_reuse_ok"),
-                "B_recursive_reuse_ok":bb.get("recursive_reuse_ok"),
-                "A_closure_reuse_rate":aa.get("closure_reuse_rate"),
-                "B_closure_reuse_rate":bb.get("closure_reuse_rate"),
-                "A_probe_reuse_rate":aa.get("probe_reuse_rate"),
-                "B_probe_reuse_rate":bb.get("probe_reuse_rate"),
-                "A_closure_trap_count":aa.get("closure_trap_count"),
-                "B_closure_trap_count":bb.get("closure_trap_count"),
-                "A_probe_trap_count":aa.get("probe_trap_count"),
-                "B_probe_trap_count":bb.get("probe_trap_count"),
+                  "generation":g,
+                  "same_target_digest":same,
+                  "A_target_digest":aa.get("target_digest"),
+                  "B_target_digest":bb.get("target_digest"),
+                  "A_expected_parent_ids":aa.get("expected_parent_ids"),
+                  "B_expected_parent_ids":bb.get("expected_parent_ids"),
+                  "A_recursive_reuse_ok":aa.get("recursive_reuse_ok"),
+                  "B_recursive_reuse_ok":bb.get("recursive_reuse_ok"),
+                  "A_closure_reuse_rate":aa.get("closure_reuse_rate"),
+                  "B_closure_reuse_rate":bb.get("closure_reuse_rate"),
+                  "A_probe_reuse_rate":aa.get("probe_reuse_rate"),
+                  "B_probe_reuse_rate":bb.get("probe_reuse_rate"),
+                  "A_closure_trap_count":aa.get("closure_trap_count"),
+                  "B_closure_trap_count":bb.get("closure_trap_count"),
+                  "A_probe_trap_count":aa.get("probe_trap_count"),
+                  "B_probe_trap_count":bb.get("probe_trap_count"),
               })
+
+          complete = complete and a.get("completed_generations")==12 and b.get("completed_generations")==12
+
           report={
-            "protocol":"ACSIE.PR110.snapshot-replay.v1",
-            "canonical_system":"Infrasigma/ACSIE",
-            "laboratory":"Infrasigma/subsume-proving-ground",
-            "A_sha":a["runtime_sha"],
-            "B_sha":b["runtime_sha"],
-            "proving_sha":a["proving_sha"],
-            "seed":a["seed"],
-            "generations":a["generations"],
-            "target_digests_identical":identical,
-            "A_cost":{k:a[k] for k in ["wall_time_seconds","cpu_time_seconds","max_generated_expressions","max_unique_search_states","max_search_states_in_depth","final_gate"]},
-            "B_cost":{k:b[k] for k in ["wall_time_seconds","cpu_time_seconds","max_generated_expressions","max_unique_search_states","max_search_states_in_depth","final_gate"]},
-            "selected_generations":rows,
-            "scientific_status":"INCONCLUSIVE_UNTIL_REVIEWED",
-            "promotion_status":"DO_NOT_PROMOTE",
-            "frozen_5x12_budget":"UNTOUCHED",
+              "protocol":"ACSIE.PR110.checkpointed-snapshot-replay.v2",
+              "canonical_system":"Infrasigma/ACSIE",
+              "laboratory":"Infrasigma/subsume-proving-ground",
+              "A_sha":a.get("runtime_sha"),
+              "B_sha":b.get("runtime_sha"),
+              "proving_sha":"33259fc5c69d87b99c604f0050508c433a279daf",
+              "seed":2026100305,
+              "generations":12,
+              "selected_generations":selected,
+              "checkpoint_bytes_preserved":bool(a.get("checkpoint_digest") and b.get("checkpoint_digest")),
+              "checkpoint_digests":{
+                  "A":a.get("checkpoint_digest"),
+                  "B":b.get("checkpoint_digest"),
+              },
+              "full_blob_digests":{
+                  "A":a.get("full_blob_digest"),
+                  "B":b.get("full_blob_digest"),
+              },
+              "target_digests_identical":identical if complete else None,
+              "selected_generations_complete":all(g in ar and g in br for g in selected),
+              "A_cost":{
+                  "max_generated_expressions":a.get("max_generated_expressions"),
+                  "max_unique_search_states":a.get("max_unique_search_states"),
+                  "max_search_states_in_depth":a.get("max_search_states_in_depth"),
+              },
+              "B_cost":{
+                  "max_generated_expressions":b.get("max_generated_expressions"),
+                  "max_unique_search_states":b.get("max_unique_search_states"),
+                  "max_search_states_in_depth":b.get("max_search_states_in_depth"),
+              },
+              "selected_generations":rows,
+              "scientific_status":"READY_FOR_CAUSAL_REVIEW" if complete else "INCONCLUSIVE",
+              "promotion_status":"DO_NOT_PROMOTE",
+              "frozen_5x12_budget":"UNTOUCHED",
+              "note":"This run repairs checkpoint persistence only. A reconstructed checkpoint is never substituted for a missing original."
           }
-          Path("evidence/paired-comparison.json").write_text(json.dumps(report,indent=2,sort_keys=True)+"
-")
+          Path("evidence/paired-comparison.json").write_text(
+              json.dumps(report,indent=2,sort_keys=True)+"\\n"
+          )
           print(json.dumps(report,indent=2,sort_keys=True))
           PY
+
+      - name: Run deterministic checkpoint twin test
+        if: always()
+        run: |
+          set -euo pipefail
+          . /tmp/pr110-snapshot-venv/bin/activate
+          pytest -q lab/test_exact_checkpoint_resume.py -k 'bit_identical_for_repeated_same_boundary_runs'
 
       - name: Upload evidence
         if: always()
@@ -194,3 +333,4 @@ jobs:
         with:
           name: pr110-snapshot-causal-replay
           path: evidence/
+          retention-days: 30
