@@ -48,9 +48,6 @@ def test_exact_checkpoint_roundtrip_preserves_future_trajectory():
         assert resumed["max_generated_expressions"] == uninterrupted["max_generated_expressions"]
         assert resumed["max_unique_search_states"] == uninterrupted["max_unique_search_states"]
 
-# trigger: exact-checkpoint-roundtrip validation
-
-
 
 def test_checkpoint_digest_rejects_tampering():
     metadata = {"proving_sha": "checkpoint-test", "acsie_ref": "checkpoint-test"}
@@ -95,3 +92,28 @@ def test_checkpoint_runtime_identity_rejects_cross_revision_resume():
                     "acsie_ref": "runtime-a",
                 },
             )
+
+
+def test_checkpoint_is_bit_identical_for_repeated_same_boundary_runs():
+    metadata = {"proving_sha": "checkpoint-test", "acsie_ref": "checkpoint-test"}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        first = Path(tmp) / "first.json"
+        second = Path(tmp) / "second.json"
+
+        run_seed(
+            104,
+            3,
+            checkpoint_path=str(first),
+            stop_after=2,
+            checkpoint_metadata=metadata,
+        )
+        run_seed(
+            104,
+            3,
+            checkpoint_path=str(second),
+            stop_after=2,
+            checkpoint_metadata=metadata,
+        )
+
+        assert first.read_bytes() == second.read_bytes()
