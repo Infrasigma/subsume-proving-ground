@@ -63,11 +63,13 @@ def main(out_dir: str) -> None:
     previous = cp0
     for gen in (1, 3, 5, 6):
         current = root / f"checkpoint-gen{gen}.json"
+        if gen != 1:
+            current.write_bytes(previous.read_bytes())
         result = run_seed(
             SEED,
             GENERATIONS,
             checkpoint_path=str(current),
-            resume_from=None if gen == 1 else str(previous),
+            resume_from=None if gen == 1 else str(current),
             stop_after=gen,
             checkpoint_metadata={
                 "proving_sha": PROVING_SHA,
