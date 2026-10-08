@@ -1,0 +1,59 @@
+{
+  "protocol": "ACSIE.PR110.phase6.archive.v1",
+  "phase": "PHASE6",
+  "archive_status": "PASSED AS DIAGNOSTIC",
+  "SCALABILITY_CAUSE": "LINEAGE_PRESERVATION_EXPLOSION",
+  "PR110": "INCONCLUSIVE",
+  "provenance": {
+    "A_runtime_sha": "7e905d73c15ece4b8b5d7cb73218bac34c2e1314",
+    "B_runtime_sha": "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be",
+    "seed": 2026100305,
+    "evaluator": "33259fc5c69d87b99c604f0050508c433a279daf",
+    "artifact": 11536026911,
+    "artifact_digest": "sha256:49e476c47322957dfd21ecaa05db8104b620deae2de254d3c1476876febac1ef",
+    "workflow_run": 37738748858,
+    "forensic_job": 113184264996
+  },
+  "raw_artifact_validity": {
+    "raw_telemetry_present": true,
+    "raw_telemetry_used_without_trajectory_rerun": true,
+    "final_aggregation_harness_originally_failed": true,
+    "trajectory_steps_A": "SUCCESS",
+    "trajectory_steps_B": "SUCCESS",
+    "artifact_upload": "SUCCESS",
+    "raw_telemetry_remains_valid": true
+  },
+  "supported_conclusions": {
+    "behavioral_equivalence_growth": "modest",
+    "lineage_distinct_representatives": "explosive",
+    "gen5_depth4_B_frontier": "~951",
+    "gen5_depth4_B_frontier_observed_range": [940, 951],
+    "gen5_depth4_B_lineage_signatures": "~154–165",
+    "gen5_depth4_B_representatives_removable_when_executable_lineage_is_ignored": "~837–842",
+    "max_lineage_size": "~9–10",
+    "frontier_explosion": "primary observed scalability bottleneck",
+    "serialization_checkpointing": "not primary cause",
+    "behavioral_state_explosion": "not primary cause",
+    "8_alternative_truncation": "not immediate cause",
+    "lineage_computation_timing": "UNDETERMINED"
+  },
+  "telemetry_limits": {
+    "lineage_computation_timing": "UNDETERMINED: the prior observer did not capture valid nonzero inner lineage timing.",
+    "cache_hypothesis": "UNJUSTIFIED"
+  },
+  "controls_untouched": {
+    "five_by_twelve_gate": false,
+    "runtime_algorithm_changes": false,
+    "cache_changes": false,
+    "frontier_policy_changes": false,
+    "ranking_changes": false,
+    "threshold_changes": false,
+    "H3_alternative_width_experiment": false
+  },
+  "raw_file_sha256": {
+    "A-forensics.json": "b8cc148cc2655744853569461f91cc5a8224322720f7910e37244b51e01b1fb9",
+    "B-forensics.json": "a3252743c53bcf6c9f65cdaaaa12a71e753145f5b40936e74ddaab24ffa77dfd",
+    "A-checkpoint.json": "8a68a2604a55fe3492fbcf87e90e77c0142cd18d26357f169e46954cbdca4372",
+    "B-checkpoint.json": "0f1eb24edb708e6b1215024b5ad53b3ef9c16eea3910d2852eaf9ad2fcb19987"
+  }
+}
