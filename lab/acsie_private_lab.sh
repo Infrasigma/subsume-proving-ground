@@ -109,3 +109,5 @@ run_q4_hypothesis python research/native_q4_recursive_library_procedure_v1.py 27
 run_q4_hypothesis python research/native_q4_recursive_learning_v1.py 913771 12
 
 echo "ACSIE_PRIVATE_LAB_RESULT=PASS"
+
+# H7 offline-counterfactual branch trigger; no scientific runtime change.
