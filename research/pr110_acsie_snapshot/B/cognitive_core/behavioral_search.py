@@ -554,12 +554,19 @@ def find_exact_expression(
             len(retained_frontier),
         )
 
-        bucket[state_key] = state
-        stats["unique_states"] += 1
-        stats["max_states_in_depth"] = max(
-            int(stats["max_states_in_depth"]),
-            len(bucket),
-        )
+        state_is_retained = any(int(s[5]) == int(state[5]) for s in retained_frontier)
+        if state_is_retained:
+            bucket[state_key] = state
+            stats["unique_states"] += 1
+            stats["max_states_in_depth"] = max(
+                int(stats["max_states_in_depth"]),
+                len(bucket),
+            )
+        else:
+            # The newly synthesized state was selected out of the H7 reservoir.
+            # Never leak that evicted state back through the register() return path.
+            replacement = min(retained_frontier, key=rank)
+            state = replacement
 
         old_any = best_any.get(outputs)
         if old_any is None or is_dominated(old_any) or rank(state) < rank(old_any):
