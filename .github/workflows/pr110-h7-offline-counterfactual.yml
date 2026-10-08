@@ -16,17 +16,9 @@ jobs:
     env:
       PYTHONHASHSEED: "0"
     steps:
-      - name: Checkout proving harness
+      - name: Checkout proving harness and pinned snapshot
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
-
-      - name: Checkout exact repaired ACSIE runtime
-        uses: actions/checkout@v4
-        with:
-          repository: Infrasigma/ACSIE
-          ref: 9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be
-          path: acsie-runtime
           fetch-depth: 1
 
       - name: Download exact Phase6 Gen5 checkpoint artifact
@@ -37,37 +29,39 @@ jobs:
           github-token: ${{ github.token }}
           path: evidence
 
-      - name: Verify exact checkpoint provenance
+      - name: Verify exact checkpoint and snapshot provenance
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import json
           from pathlib import Path
+          m=json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
           b=json.loads(Path("evidence/B-forensics.json").read_text())
           ck=json.loads(Path("evidence/B-checkpoint.json").read_text())
-          assert b["runtime_sha"] == "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
-          assert b["proving_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
+          assert m["B"]["runtime_sha"] == "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
+          assert m["proving_harness_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
+          assert b["runtime_sha"] == m["B"]["runtime_sha"]
+          assert b["proving_sha"] == m["proving_harness_sha"]
           assert b["seed"] == 2026100305
           assert ck["seed"] == 2026100305
           assert ck["generation_next"] == 5
+          for rel, expected in m["B"]["files"].items():
+              actual = __import__("hashlib").sha1(
+                  Path("research/pr110_acsie_snapshot/B", rel).read_bytes()
+              ).hexdigest()
+              assert actual == expected, (rel, actual, expected)
           print("H7_OFFLINE_INPUT_PROVENANCE=PASS")
           PY
-
-      - name: Verify runtime checkout SHA
-        run: |
-          set -euo pipefail
-          test "$(git -C acsie-runtime rev-parse HEAD)" = "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
-          echo "ACSIE_RUNTIME_SHA=9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
 
       - name: Syntax smoke
         run: |
           set -euo pipefail
-          python3 -m py_compile lab/pr110_h7_offline_capture.py lab/pr110_h7_offline_counterfactual.py
+          python3 -m py_compile lab/pr110_h7_offline_capture.py lab/pr110_h7_offline_counterfactual.py             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py
 
       - name: Capture exact Gen5 frontier identity at depths 2-4
         run: |
           set -euo pipefail
-          env PYTHONPATH="$GITHUB_WORKSPACE/acsie-runtime:$GITHUB_WORKSPACE"             RUNTIME_SHA="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"             PROVING_SHA="33259fc5c69d87b99c604f0050508c433a279daf"             python3 -u lab/pr110_h7_offline_capture.py               --checkpoint evidence/B-checkpoint.json               --output evidence/h7-offline-frontiers.json
+          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE"             RUNTIME_SHA="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"             PROVING_SHA="33259fc5c69d87b99c604f0050508c433a279daf"             python3 -u lab/pr110_h7_offline_capture.py               --checkpoint evidence/B-checkpoint.json               --output evidence/h7-offline-frontiers.json
 
       - name: Compute offline K counterfactual
         run: |
