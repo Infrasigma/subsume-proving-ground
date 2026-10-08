@@ -1,0 +1,76 @@
+name: PR110 H7 runtime ablation
+
+on:
+  push:
+    branches:
+      - research/pr110-h7-runtime-ablation-20261008
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  h7-runtime:
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - label: CONTROL
+            k: UNBOUNDED
+          - label: H7-K2
+            k: "2"
+          - label: H7-K4
+            k: "4"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 115
+    env:
+      PYTHONHASHSEED: "0"
+      ACSIE_H7_REPRESENTATIVE_K: ${{ matrix.k }}
+    steps:
+      - name: Checkout exact H7 runtime branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Verify scientific provenance and exact base runtime
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+
+          m = json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
+          assert m["acsie_runtime_sha"] == "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
+          assert m["proving_evaluator_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
+          assert m["seed"] == 2026100305
+          expected_base = m["base_runtime_files"]
+          for rel, expected in expected_base.items():
+              data = Path("research/pr110_acsie_snapshot/B", rel).read_bytes()
+              actual = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+              if rel.endswith("behavioral_search.py"):
+                  assert actual == m["experimental_behavioral_search_blob_sha"], (rel, actual)
+              else:
+                  assert actual == expected, (rel, actual, expected)
+          assert ${{ matrix.k }} in {"UNBOUNDED", "2", "4"}
+          print("H7_RUNTIME_INPUT_PROVENANCE=PASS")
+          PY
+
+      - name: Syntax and invariant smoke
+        run: |
+          set -euo pipefail
+          python3 -m py_compile             lab/h7_runtime_ablation.py             lab/acsie_open_ended_self_extending_proving.py             lab/exact_checkpoint.py             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py
+
+      - name: Run frozen Gen0-to-Gen6 trajectory
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/${{ matrix.label }}
+          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE"             ACSIE_H7_REPRESENTATIVE_K="${{ matrix.k }}"             python3 -u lab/h7_runtime_ablation.py               --seed 2026100305               --generations 7               --output "evidence/${{ matrix.label }}"
+
+      - name: Upload H7 runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-h7-runtime-${{ matrix.label }}
+          path: evidence/${{ matrix.label }}/
+          retention-days: 90
