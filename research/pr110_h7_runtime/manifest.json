@@ -5,16 +5,22 @@
   "acsie_runtime_sha": "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be",
   "proving_evaluator_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
   "seed": 2026100305,
-  "generation_range": [0, 6],
+  "generation_range": [
+    0,
+    6
+  ],
   "base_runtime_files": {
     "cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
     "cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
     "cognitive_core/behavioral_search.py": "c126aa723b5c5f6013ac7ee53a9401875c2395ee"
   },
-  "experimental_behavioral_search_blob_sha": "cf058ac3e77e05a85ef28dd28530b45279079e34",
+  "experimental_behavioral_search_blob_sha": "7fb322326acbdf19d7cbb3251bc8f551377ab1ab",
   "h7_policy": {
     "control": "UNBOUNDED",
-    "ablations": [2, 4],
+    "ablations": [
+      2,
+      4
+    ],
     "scope": "post-dominance executable-lineage representatives within each behavioral-equivalence/free-input class",
     "selection_priority": [
       "maximize current-state marginal executable-lineage coverage",
