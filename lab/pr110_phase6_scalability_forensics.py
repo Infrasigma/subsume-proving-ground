@@ -35,6 +35,7 @@ class ForensicTrace:
         self.finished = False
         self.searches: list[dict[str, Any]] = []
         self.active: dict[int, dict[str, Any]] = {}
+        self.child_started: dict[int, float] = {}
         self.next_id = 0
         self.checkpoint_timings: list[dict[str, Any]] = []
         self._old_save = proving.save_checkpoint
@@ -111,6 +112,7 @@ class ForensicTrace:
             "frontier_seconds": 0.0,
             "candidate_submit_calls": 0,
             "candidate_submit_seconds": 0.0,
+            "search_started": time.perf_counter(),
             "return_seconds": None,
             "snapshots": [],
         }
@@ -181,10 +183,6 @@ class ForensicTrace:
             live_frontier.extend(live)
             sigs = []
             for s in live:
-                try:
-                    sig = tuple(sorted(compiler.executable_lineage(pid) for pid in ()))
-                except Exception:
-                    sig = ()
                 used = tuple(s[2])
                 try:
                     sig = tuple(sorted({
@@ -314,8 +312,7 @@ class ForensicTrace:
         ctx["line_last"] = frame.f_lineno
         ctx["time_last"] = now
 
-    def _return_event(self, frame, ctx, result) -> None:
-        elapsed = time.perf_counter() - ctx["time_last"]
+    def _return_event(self, frame, ctx, result, elapsed: float) -> None:
         name = frame.f_code.co_name
         if name == "dominates":
             ctx["dominance_calls"] += 1
@@ -345,6 +342,7 @@ class ForensicTrace:
             if code_name in {"dominates", "executable_lineage_ids", "provenance_lineage_ids", "register"}:
                 parent = frame.f_back
                 if parent is not None and id(parent) in self.active:
+                    self.child_started[id(frame)] = time.perf_counter()
                     return self._child_trace
             return None
         if event == "line":
@@ -357,8 +355,9 @@ class ForensicTrace:
             if ctx is not None:
                 if code_name == "find_exact_expression":
                     self._snapshot(frame, ctx)
-                    ctx["return_seconds"] = time.perf_counter() - ctx["time_last"]
+                    ctx["return_seconds"] = time.perf_counter() - ctx["search_started"]
                     ctx["return_stats"] = dict(frame.f_locals.get("stats", {}))
+                    ctx["search_wall_seconds"] = ctx["return_seconds"]
                     ctx["completed_depths"] = list(frame.f_locals.get("completed", []))
                     self.flush()
                     self.searches.extend(
@@ -379,7 +378,8 @@ class ForensicTrace:
                 parent = frame.f_back
                 pctx = self.active.get(id(parent)) if parent is not None else None
                 if pctx is not None:
-                    self._return_event(frame, pctx, arg)
+                    started = self.child_started.pop(id(frame), time.perf_counter())
+                    self._return_event(frame, pctx, arg, time.perf_counter() - started)
                 return None
         return self.trace if id(frame) in self.active else None
 
@@ -388,7 +388,8 @@ class ForensicTrace:
             parent = frame.f_back
             ctx = self.active.get(id(parent)) if parent is not None else None
             if ctx is not None:
-                self._return_event(frame, ctx, arg)
+                started = self.child_started.pop(id(frame), time.perf_counter())
+                self._return_event(frame, ctx, arg, time.perf_counter() - started)
             return None
         return self._child_trace
 
