@@ -273,6 +273,7 @@ class ForensicTrace:
             "stage": ctx["stage"],
             "search_id": ctx["id"],
             "depth": depth,
+            "search_elapsed_seconds": time.perf_counter() - ctx["search_started"],
             "snapshot": snapshot,
         }
         self.searches.append(record)
