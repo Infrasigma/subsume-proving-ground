@@ -36,8 +36,8 @@ jobs:
           import json
           from pathlib import Path
           m=json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
-          b=json.loads(Path("evidence/B-forensics.json").read_text())
-          ck=json.loads(Path("evidence/B-checkpoint.json").read_text())
+          b=json.loads(Path("evidence/pr110-phase6-scalability-forensics/B-forensics.json").read_text())
+          ck=json.loads(Path("evidence/pr110-phase6-scalability-forensics/B-checkpoint.json").read_text())
           assert m["B"]["runtime_sha"] == "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
           assert m["proving_harness_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
           assert b["runtime_sha"] == m["B"]["runtime_sha"]
@@ -61,7 +61,7 @@ jobs:
       - name: Capture exact Gen5 frontier identity at depths 2-4
         run: |
           set -euo pipefail
-          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE"             RUNTIME_SHA="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"             PROVING_SHA="33259fc5c69d87b99c604f0050508c433a279daf"             python3 -u lab/pr110_h7_offline_capture.py               --checkpoint evidence/B-checkpoint.json               --output evidence/h7-offline-frontiers.json
+          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE"             RUNTIME_SHA="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"             PROVING_SHA="33259fc5c69d87b99c604f0050508c433a279daf"             python3 -u lab/pr110_h7_offline_capture.py               --checkpoint evidence/pr110-phase6-scalability-forensics/B-checkpoint.json               --output evidence/h7-offline-frontiers.json
 
       - name: Compute offline K counterfactual
         run: |
