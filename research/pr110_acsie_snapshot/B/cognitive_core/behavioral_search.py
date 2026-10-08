@@ -372,6 +372,7 @@ def find_exact_expression(
     first_exact_target_depth: int | None = None
     target_continuation_budget = 2
     h7_k = _h7_representative_k_from_env()
+    h7_lost_pairs: set[tuple[tuple, str]] = set()
 
     def expr_key(expr: Mapping[str, Any]) -> str:
         return json.dumps(expr, sort_keys=True, separators=(",", ":"))
@@ -540,9 +541,8 @@ def find_exact_expression(
                     *(set(executable_lineage_ids(s[2])) for s in retained_frontier)
                 )
                 stats["h7_lineage_ids_represented"] += len(lineage_union_after)
-                stats["h7_lineage_ids_lost"] += len(
-                    lineage_union_before - lineage_union_after
-                )
+                for lineage_id in lineage_union_before - lineage_union_after:
+                    h7_lost_pairs.add((behavior_key, str(lineage_id)))
 
         dominance_frontier[behavior_key] = retained_frontier
         stats["dominance_frontier_max"] = max(
@@ -952,6 +952,20 @@ def find_exact_expression(
                         "bounded_exact_macro_target_continuation"
                     )
                     break
+
+    current_frontier_states = [
+        state
+        for states in dominance_frontier.values()
+        for state in states
+        if not is_dominated(state)
+    ]
+    current_lineage_ids = set()
+    for state in current_frontier_states:
+        current_lineage_ids.update(executable_lineage_ids(state[2]))
+    stats["behavioral_equivalence_classes"] = len(dominance_frontier)
+    stats["h7_current_representatives"] = len(current_frontier_states)
+    stats["h7_lineage_ids_represented"] = len(current_lineage_ids)
+    stats["h7_lineage_ids_lost"] = len({lineage_id for _, lineage_id in h7_lost_pairs})
 
     if best_target is not None:
         stats["status"] = "TARGET_FOUND"
