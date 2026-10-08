@@ -334,6 +334,15 @@ class ForensicTrace:
             ctx["candidate_submit_calls"] += 1
             ctx["candidate_submit_seconds"] += elapsed
 
+    def _nearest_active_context(self, frame):
+        parent = frame.f_back
+        while parent is not None:
+            ctx = self.active.get(id(parent))
+            if ctx is not None:
+                return ctx
+            parent = parent.f_back
+        return None
+
     def trace(self, frame, event, arg):
         code_name = frame.f_code.co_name
         if event == "call":
@@ -341,8 +350,7 @@ class ForensicTrace:
                 self._find_context(frame)
                 return self.trace
             if code_name in {"dominates", "executable_lineage_ids", "provenance_lineage_ids", "register"}:
-                parent = frame.f_back
-                if parent is not None and id(parent) in self.active:
+                if self._nearest_active_context(frame) is not None:
                     self.child_started[id(frame)] = time.perf_counter()
                     return self._child_trace
             return None
@@ -386,8 +394,7 @@ class ForensicTrace:
 
     def _child_trace(self, frame, event, arg):
         if event == "return":
-            parent = frame.f_back
-            ctx = self.active.get(id(parent)) if parent is not None else None
+            ctx = self._nearest_active_context(frame)
             if ctx is not None:
                 started = self.child_started.pop(id(frame), time.perf_counter())
                 self._return_event(frame, ctx, arg, time.perf_counter() - started)
