@@ -52,7 +52,7 @@ jobs:
                   assert actual == m["experimental_behavioral_search_blob_sha"], (rel, actual)
               else:
                   assert actual == expected, (rel, actual, expected)
-          assert ${{ matrix.k }} in {"UNBOUNDED", "2", "4"}
+          assert "${{ matrix.k }}" in {"UNBOUNDED", "2", "4"}
           print("H7_RUNTIME_INPUT_PROVENANCE=PASS")
           PY
 
