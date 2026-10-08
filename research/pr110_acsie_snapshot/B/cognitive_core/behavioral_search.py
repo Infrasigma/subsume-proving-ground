@@ -19,6 +19,19 @@ class BehavioralSearchResult:
 
 
 
+
+def _h7_representative_k_from_env() -> int | None:
+    raw = str(os.environ.get("ACSIE_H7_REPRESENTATIVE_K", "")).strip().upper()
+    if raw in {"", "UNBOUNDED", "NONE"}:
+        return None
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"invalid ACSIE_H7_REPRESENTATIVE_K={raw!r}") from exc
+    if value < 1:
+        raise ValueError("ACSIE_H7_REPRESENTATIVE_K must be >= 1 or UNBOUNDED")
+    return value
+
 def find_exact_expression(
     compiler: Any,
     rows: Sequence[Any],
