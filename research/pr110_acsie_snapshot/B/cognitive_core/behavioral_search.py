@@ -19,46 +19,6 @@ class BehavioralSearchResult:
 
 
 
-def _h7_representative_k_from_env() -> int | None:
-    raw = str(os.environ.get("ACSIE_H7_REPRESENTATIVE_K", "")).strip().upper()
-    if raw in {"", "UNBOUNDED", "NONE"}:
-        return None
-    try:
-        value = int(raw)
-    except ValueError as exc:
-        raise ValueError(f"invalid ACSIE_H7_REPRESENTATIVE_K={raw!r}") from exc
-    if value < 1:
-        raise ValueError("ACSIE_H7_REPRESENTATIVE_K must be >= 1 or UNBOUNDED")
-    return value
-
-
-def _h7_select_representatives(states: Sequence[tuple], k: int) -> tuple[tuple, ...]:
-    remaining = list(states)
-    chosen: list[tuple] = []
-    covered: set[str] = set()
-    while remaining and len(chosen) < k:
-        ranked = []
-        for state in remaining:
-            lineage = set(executable_lineage_ids(state[2]))
-            marginal = len(lineage - covered)
-            depth, nodes = executable_cost(state[0])
-            canonical_expr = json.dumps(state[0], sort_keys=True, separators=(",", ":"))
-            ranked.append((
-                -marginal,
-                depth,
-                nodes,
-                canonical_expr,
-                int(state[5]),
-                state,
-            ))
-        ranked.sort(key=lambda item: item[:-1])
-        pick = ranked[0][-1]
-        chosen.append(pick)
-        covered.update(executable_lineage_ids(pick[2]))
-        remaining.remove(pick)
-    return tuple(chosen)
-
-
 def find_exact_expression(
     compiler: Any,
     rows: Sequence[Any],
@@ -238,6 +198,32 @@ def find_exact_expression(
 
 
     structural_lineage_by_key: dict[str, set[str]] = {}
+    def _h7_select_representatives(states: Sequence[tuple], k: int) -> tuple[tuple, ...]:
+        remaining = list(states)
+        chosen: list[tuple] = []
+        covered: set[str] = set()
+        while remaining and len(chosen) < k:
+            ranked = []
+            for state in remaining:
+                lineage = set(executable_lineage_ids(state[2]))
+                marginal = len(lineage - covered)
+                depth, nodes = executable_cost(state[0])
+                canonical_expr = json.dumps(state[0], sort_keys=True, separators=(",", ":"))
+                ranked.append((
+                    -marginal,
+                    depth,
+                    nodes,
+                    canonical_expr,
+                    int(state[5]),
+                    state,
+                ))
+            ranked.sort(key=lambda item: item[:-1])
+            pick = ranked[0][-1]
+            chosen.append(pick)
+            covered.update(executable_lineage_ids(pick[2]))
+            remaining.remove(pick)
+        return tuple(chosen)
+
     executable_cost_cache: dict[str, tuple[int, int]] = {}
 
     def executable_cost(expr: Mapping[str, Any], active: tuple[str, ...] = ()) -> tuple[int, int]:
