@@ -107,7 +107,7 @@ def search_summary(record: dict | None) -> dict:
     snapshots = record.get("snapshot", [])
     wall = record.get("search_wall_seconds")
     if wall is None and snapshots:
-        wall = snapshots[-1].get("max_rss_kb")
+        wall = snapshots[-1].get("search_elapsed_seconds")
     max_frontier = max((x["snapshot"].get("frontier_size_max_class", 0) for x in snapshots), default=0)
     final_snap = snapshots[-1]["snapshot"] if snapshots else {}
     return {
