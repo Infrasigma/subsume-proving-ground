@@ -1,0 +1,72 @@
+name: PR110 Phase6 scalability forensics
+
+on:
+  push:
+    branches:
+      - research/pr110-phase6-scalability-forensics-20261008
+
+permissions:
+  contents: read
+
+jobs:
+  forensic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PROVING_SHA: "33259fc5c69d87b99c604f0050508c433a279daf"
+      A_SHA: "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+      B_SHA: "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
+      SEED: "2026100305"
+      GENERATIONS: "6"
+      PYTHONHASHSEED: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Verify exact diagnostic inputs
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
+          assert m["A"]["runtime_sha"] == "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+          assert m["B"]["runtime_sha"] == "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
+          assert m["fixed_seed"] == 2026100305
+          assert m["proving_harness_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
+          print("INPUT_PROVENANCE=PASS")
+          PY
+
+      - name: Syntax smoke
+        run: |
+          set -euo pipefail
+          python3 -m py_compile             lab/pr110_phase6_scalability_forensics.py             lab/pr110_phase6_aggregate.py             lab/exact_checkpoint.py             lab/acsie_open_ended_self_extending_proving.py             research/pr110_acsie_snapshot/A/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py
+
+      - name: Run A forensic trajectory
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=30s 80m             env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/A:$GITHUB_WORKSPACE"             RUNTIME_SHA="$A_SHA" PROVING_SHA="$PROVING_SHA" PYTHONHASHSEED="$PYTHONHASHSEED"             python3 -u lab/pr110_phase6_scalability_forensics.py               --label A               --output evidence/A-forensics.json               --checkpoint evidence/A-checkpoint.json
+          echo "$?" > evidence/A-exit-code.txt
+          set -e
+
+      - name: Run B forensic trajectory
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=30s 80m             env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE"             RUNTIME_SHA="$B_SHA" PROVING_SHA="$PROVING_SHA" PYTHONHASHSEED="$PYTHONHASHSEED"             python3 -u lab/pr110_phase6_scalability_forensics.py               --label B               --output evidence/B-forensics.json               --checkpoint evidence/B-checkpoint.json
+          echo "$?" > evidence/B-exit-code.txt
+          set -e
+
+      - name: Aggregate forensic report
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 lab/pr110_phase6_aggregate.py
+
+      - name: Upload Phase6 forensic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-phase6-scalability-forensics
+          path: evidence/
+          retention-days: 30
