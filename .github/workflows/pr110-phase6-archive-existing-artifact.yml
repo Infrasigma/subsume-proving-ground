@@ -1,0 +1,60 @@
+name: PR110 Phase6 archive existing artifact
+
+on:
+  push:
+    branches:
+      - research/pr110-phase6-archive-existing-artifact-20261008
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  archive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download exact Phase6 artifact
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 37738748858
+          artifact-ids: 11536026911
+          github-token: ${{ github.token }}
+          path: evidence
+
+      - name: Verify artifact provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+          req=urllib.request.Request(
+              "https://api.github.com/repos/Infrasigma/subsume-proving-ground/actions/artifacts/11536026911",
+              headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json"},
+          )
+          data=json.load(urllib.request.urlopen(req))
+          assert data["id"] == 11536026911
+          assert data["digest"] == "sha256:49e476c47322957dfd21ecaa05db8104b620deae2de254d3c1476876febac1ef"
+          assert data["workflow_run"]["id"] == 37738748858
+          print("ARTIFACT_PROVENANCE=PASS")
+          PY
+
+      - name: Aggregate raw telemetry only
+        run: |
+          set -euo pipefail
+          python3 lab/pr110_phase6_aggregate.py
+          test -s evidence/phase6-forensic-report.json
+
+      - name: Upload archived Phase6 report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-phase6-archived-report
+          path: evidence/phase6-forensic-report.json
+          retention-days: 90
