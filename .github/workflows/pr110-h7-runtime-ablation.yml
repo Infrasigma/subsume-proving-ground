@@ -3,7 +3,7 @@ name: PR110 H7 runtime ablation
 on:
   push:
     branches:
-      - research/pr110-h7-runtime-ablation-20261008
+      - research/pr110-h7-unbounded-control-240m-20261009
 
 permissions:
   contents: read
@@ -13,17 +13,13 @@ jobs:
   h7-runtime:
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 1
       matrix:
         include:
           - label: CONTROL
             k: UNBOUNDED
-          - label: H7-K2
-            k: "2"
-          - label: H7-K4
-            k: "4"
     runs-on: ubuntu-24.04
-    timeout-minutes: 115
+    timeout-minutes: 240
     env:
       PYTHONHASHSEED: "0"
       ACSIE_H7_REPRESENTATIVE_K: ${{ matrix.k }}
