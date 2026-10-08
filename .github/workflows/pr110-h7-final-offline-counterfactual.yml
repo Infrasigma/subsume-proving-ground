@@ -1,0 +1,74 @@
+name: PR110 H7 final offline counterfactual
+
+on:
+  push:
+    branches:
+      - research/pr110-h7-redundant-representative-compression-20261008
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  h7-offline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      PYTHONHASHSEED: "0"
+    steps:
+      - name: Checkout pinned proving harness branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download existing Phase6 artifact
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 37738748858
+          artifact-ids: 11536026911
+          github-token: ${{ github.token }}
+          path: evidence
+
+      - name: Verify fixed scientific inputs
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          m=json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
+          b=json.loads(Path("evidence/pr110-phase6-scalability-forensics/B-forensics.json").read_text())
+          ck=json.loads(Path("evidence/pr110-phase6-scalability-forensics/B-checkpoint.json").read_text())
+          assert m["B"]["runtime_sha"] == "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
+          assert m["proving_harness_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
+          assert b["runtime_sha"] == m["B"]["runtime_sha"]
+          assert b["proving_sha"] == m["proving_harness_sha"]
+          assert b["seed"] == 2026100305 and ck["seed"] == 2026100305
+          assert ck["generation_next"] == 5
+          for rel, expected in m["B"]["files"].items():
+              data=Path("research/pr110_acsie_snapshot/B", rel).read_bytes()
+              actual=hashlib.sha1(b"blob "+str(len(data)).encode()+b"\\0"+data).hexdigest()
+              assert actual == expected, (rel, actual, expected)
+          print("H7_INPUTS=PASS")
+          PY
+
+      - name: Syntax smoke
+        run: |
+          set -euo pipefail
+          python3 -m py_compile             lab/pr110_h7_offline_capture.py             lab/pr110_h7_offline_counterfactual.py             lab/exact_checkpoint.py             lab/acsie_open_ended_self_extending_proving.py             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py
+
+      - name: Capture current-state Gen5 lineage representatives
+        run: |
+          set -euo pipefail
+          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE"             RUNTIME_SHA="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"             PROVING_SHA="33259fc5c69d87b99c604f0050508c433a279daf"             python3 -u lab/pr110_h7_offline_capture.py               --checkpoint evidence/pr110-phase6-scalability-forensics/B-checkpoint.json               --output evidence/h7-offline-frontiers.json
+
+      - name: Compute K counterfactuals
+        run: |
+          set -euo pipefail
+          python3 -u lab/pr110_h7_offline_counterfactual.py             --input evidence/h7-offline-frontiers.json             --output evidence/h7-offline-counterfactual.json
+
+      - name: Upload H7 offline evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-h7-final-offline-counterfactual
+          path: evidence/h7-offline-*.json
+          retention-days: 90
