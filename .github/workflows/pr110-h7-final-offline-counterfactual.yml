@@ -46,7 +46,7 @@ jobs:
           assert ck["generation_next"] == 5
           for rel, expected in m["B"]["files"].items():
               data=Path("research/pr110_acsie_snapshot/B", rel).read_bytes()
-              actual=hashlib.sha1(b"blob "+str(len(data)).encode()+b"\\0"+data).hexdigest()
+              actual=hashlib.sha1(b"blob "+str(len(data)).encode()+b"\0"+data).hexdigest()
               assert actual == expected, (rel, actual, expected)
           print("H7_INPUTS=PASS")
           PY
