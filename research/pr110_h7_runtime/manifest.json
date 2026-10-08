@@ -14,7 +14,7 @@
     "cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
     "cognitive_core/behavioral_search.py": "c126aa723b5c5f6013ac7ee53a9401875c2395ee"
   },
-  "experimental_behavioral_search_blob_sha": "ba87e57635b53cfdce701dc6fddef9faaa70636b",
+  "experimental_behavioral_search_blob_sha": "fbe2355aaffbb52e8d9a3ee7347224ea94a788de",
   "h7_policy": {
     "control": "UNBOUNDED",
     "ablations": [
