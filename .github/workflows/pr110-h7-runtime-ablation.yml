@@ -40,7 +40,7 @@ jobs:
           import hashlib, json
           from pathlib import Path
 
-          m = json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
+          m = json.loads(Path("research/pr110_h7_runtime/manifest.json").read_text())
           assert m["acsie_runtime_sha"] == "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
           assert m["proving_evaluator_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
           assert m["seed"] == 2026100305
