@@ -45,6 +45,8 @@ def find_exact_expression(
     macro_vectors: dict[str, tuple[float, ...]] = {}
     macro_free: dict[str, tuple[str, ...]] = {}
     active_macros: set[str] = set()
+    h7_k = _h7_representative_k_from_env()
+    h7_lost_pairs: set[tuple[tuple, str]] = set()
 
     stats: dict[str, Any] = {
         "schema": "ACSIE.behavioral-search.v1",
