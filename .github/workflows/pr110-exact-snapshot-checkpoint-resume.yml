@@ -69,10 +69,42 @@ jobs:
               "B":"f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced",
           }[arm]
           assert manifest[arm]["runtime_sha"] == runtime
-          for rel, expected in manifest[arm]["files"].items():
+          # The snapshot harness intentionally changes only two telemetry list outputs
+          # in behavioral_search.py from list(set_union) to sorted(set_union), eliminating
+          # nondeterministic ordering. Confirm the exact lab-copy blob; keep the original
+          # upstream source blob from manifest separately in evidence.
+          expected_lab = {
+              "A": {
+                  "cognitive_core/open_ended_growth.py":"ec94fc545badde972510f2db9cbf008cc214e705",
+                  "cognitive_core/recursive_cognitive_compiler.py":"ccfb096e0fa2ae5a39f95aa54017c6a223a5b8fd",
+                  "cognitive_core/behavioral_search.py":"6145789aaf4e6a4c4d1cf78ec93e6f94b1df2411",
+              },
+              "B": {
+                  "cognitive_core/open_ended_growth.py":"ec94fc545badde972510f2db9cbf008cc214e705",
+                  "cognitive_core/recursive_cognitive_compiler.py":"284d4abd5ab467d465be21973090bc24cee26e69",
+                  "cognitive_core/behavioral_search.py":"90616f062298b52eb72b95cffeeb754c626ec4ed",
+              },
+          }[arm]
+          local_files = {}
+          for rel, upstream_expected in manifest[arm]["files"].items():
               path=Path("research/pr110_acsie_snapshot")/arm/rel
               actual=subprocess.check_output(["git","hash-object",str(path)],text=True).strip()
-              assert actual == expected, f"{arm} snapshot blob mismatch: {rel}: {actual} != {expected}"
+              local_expected=expected_lab[rel]
+              assert actual == local_expected, f"{arm} laboratory copy mismatch: {rel}: {actual} != {local_expected}"
+              if rel != "cognitive_core/behavioral_search.py":
+                  assert actual == upstream_expected, f"{arm} pinned source blob mismatch: {rel}: {actual} != {upstream_expected}"
+              local_files[rel]={"upstream_manifest_blob_sha":upstream_expected,"laboratory_copy_blob_sha":actual}
+          Path("evidence/local-runtime-identity.json").write_text(json.dumps({
+              "arm":arm,
+              "upstream_runtime_commit":runtime,
+              "upstream_source_blobs":manifest[arm]["files"],
+              "lab_snapshot_blobs":{rel:item["laboratory_copy_blob_sha"] for rel,item in local_files.items()},
+              "known_lab_only_change":"behavioral_search.py: two selected_structural_lineage_ids telemetry outputs changed from list(set(...)) to sorted(set(...)); mechanics/search scoring unchanged in this narrow diff",
+              "identity_classification":"PINNED_UPSTREAM_RUNTIME_WITH_DETERMINISTIC_TELEMETRY_PATCH",
+          },indent=2,sort_keys=True)+"\\n")
+          print("PINNED_UPSTREAM_RUNTIME=PASS")
+          print("LAB_COPY_IDENTITIES=PASS")
+          print("LAB_TELEMETRY_SORT_PATCH=EXPLICITLY_RECORDED")
           checkpoint=Path("evidence/input-checkpoint.json")
           assert hashlib.sha256(checkpoint.read_bytes()).hexdigest() == blob_digest
           envelope=load_checkpoint(checkpoint,expected_seed=seed,expected_metadata={"proving_sha":proving_sha,"acsie_ref":runtime})
@@ -145,6 +177,8 @@ jobs:
               "seed":2026100305,"generations":12,"selected_generations_expected":[5,6,9,10,11],
               "resume_hash_seed":0,
               "resume_boundary_hash_seed_note":"The original checkpoint-producing process did not pin PYTHONHASHSEED; continuation pins it to 0. This is a controlled checkpoint continuation, not byte-identical process replay.",
+              "runtime_identity_file":"local-runtime-identity.json",
+              "lab_only_telemetry_patch":"behavioral_search.py selected_structural_lineage_ids list(set(...)) -> sorted(set(...)) at two output sites; upstream commits still recorded separately.",
               "input_checkpoint_sha256":hashlib.sha256(Path("evidence/input-checkpoint.json").read_bytes()).hexdigest(),
               "resume_exit_code":int(Path("evidence/resume-exit-code.txt").read_text()) if Path("evidence/resume-exit-code.txt").exists() else None,
               "checkpoint_present":p.exists(),"selected":[],"completed_generations":0,"generation_next":None,
