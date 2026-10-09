@@ -95,7 +95,7 @@ jobs:
       - name: Verify exact checkpoint bytes and continuation harness
         run: |
           set -euo pipefail
-          python3 -m py_compile             lab/h7_resume_gen5_control.py             lab/acsie_open_ended_self_extending_proving.py             lab/exact_checkpoint.py             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py
+          python3 -m py_compile             lab/h7_resume_gen5_control.py             lab/h7_gen6_observer.py             lab/acsie_open_ended_self_extending_proving.py             lab/exact_checkpoint.py             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py
           python3 - <<'PY'
           import hashlib
           from pathlib import Path
@@ -114,7 +114,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p evidence/CONTROL
-          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE"             ACSIE_H7_REPRESENTATIVE_K="UNBOUNDED"             python3 -u lab/h7_resume_gen5_control.py               --checkpoint "resume-input/checkpoint-current.json"               --output "evidence/CONTROL"
+          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE"             ACSIE_H7_REPRESENTATIVE_K="UNBOUNDED"             python3 -u lab/h7_gen6_observer.py               --log "evidence/CONTROL/observer.jsonl"               --evidence-dir "evidence/CONTROL"               --interval-seconds 45               -- python3 -u lab/h7_resume_gen5_control.py                 --checkpoint "resume-input/checkpoint-current.json"                 --output "evidence/CONTROL"
 
       - name: Upload Gen5-to-Gen6 continuation evidence
         if: always()
