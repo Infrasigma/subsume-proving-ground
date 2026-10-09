@@ -1,72 +1,125 @@
-name: PR110 H7 runtime ablation
+name: PR110 H7 exact Gen5 checkpoint continuation
 
 on:
   push:
     branches:
-      - research/pr110-h7-unbounded-control-240m-20261009
+      - research/pr110-h7-unbounded-gen5-resume-20261009
 
 permissions:
   contents: read
   actions: read
 
 jobs:
-  h7-runtime:
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          - label: CONTROL
-            k: UNBOUNDED
+  control-gen6:
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 350
     env:
       PYTHONHASHSEED: "0"
-      ACSIE_H7_REPRESENTATIVE_K: ${{ matrix.k }}
+      ACSIE_H7_REPRESENTATIVE_K: "UNBOUNDED"
     steps:
-      - name: Checkout exact H7 runtime branch
+      - name: Checkout continuation harness
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Verify scientific provenance and exact base runtime
+      - name: Verify pinned runtime provenance
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import hashlib, json
+          import hashlib, json, os
           from pathlib import Path
 
           m = json.loads(Path("research/pr110_h7_runtime/manifest.json").read_text())
           assert m["acsie_runtime_sha"] == "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
           assert m["proving_evaluator_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
           assert m["seed"] == 2026100305
-          expected_base = m["base_runtime_files"]
-          for rel, expected in expected_base.items():
+          for rel, expected in m["base_runtime_files"].items():
               data = Path("research/pr110_acsie_snapshot/B", rel).read_bytes()
               actual = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
               if rel.endswith("behavioral_search.py"):
                   assert actual == m["experimental_behavioral_search_blob_sha"], (rel, actual)
               else:
                   assert actual == expected, (rel, actual, expected)
-          assert "${{ matrix.k }}" in {"UNBOUNDED", "2", "4"}
+          assert os.environ["ACSIE_H7_REPRESENTATIVE_K"] == "UNBOUNDED"
+          assert os.environ["PYTHONHASHSEED"] == "0"
           print("H7_RUNTIME_INPUT_PROVENANCE=PASS")
           PY
 
-      - name: Syntax and invariant smoke
+      - name: Verify prior artifact identity and digest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python3 -m py_compile             lab/h7_runtime_ablation.py             lab/acsie_open_ended_self_extending_proving.py             lab/exact_checkpoint.py             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
 
-      - name: Run frozen Gen0-to-Gen6 trajectory
+          url = "https://api.github.com/repos/Infrasigma/subsume-proving-ground/actions/artifacts/11583669251"
+          request = urllib.request.Request(
+              url,
+              headers={
+                  "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+          with urllib.request.urlopen(request, timeout=30) as response:
+              artifact = json.load(response)
+          assert artifact["id"] == 11583669251
+          assert artifact["name"] == "pr110-h7-runtime-CONTROL"
+          assert artifact["digest"] == "sha256:c57666f352cd79a068141f2c1747decaf2b475002817f3bdc1a38cbfb1974982"
+          assert artifact["expired"] is False
+          run = artifact["workflow_run"]
+          assert run["id"] == 37828029305
+          assert run["head_branch"] == "research/pr110-h7-unbounded-control-240m-20261009"
+          assert run["head_sha"] == "cd710c18584d0956dcdd05d1612ab4a8fe9dd6a1"
+          print(json.dumps({
+              "event": "SOURCE_ARTIFACT_IDENTITY_VERIFIED",
+              "artifact_id": artifact["id"],
+              "digest": artifact["digest"],
+              "workflow_run_id": run["id"],
+              "head_sha": run["head_sha"],
+          }, sort_keys=True))
+          PY
+
+      - name: Download exact Gen5 checkpoint artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pr110-h7-runtime-CONTROL
+          github-token: ${{ github.token }}
+          repository: Infrasigma/subsume-proving-ground
+          run-id: 37828029305
+          path: resume-input
+
+      - name: Verify exact checkpoint bytes and continuation harness
         run: |
           set -euo pipefail
-          mkdir -p evidence/${{ matrix.label }}
-          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE"             ACSIE_H7_REPRESENTATIVE_K="${{ matrix.k }}"             python3 -u lab/h7_runtime_ablation.py               --seed 2026100305               --generations 7               --output "evidence/${{ matrix.label }}"
+          python3 -m py_compile             lab/h7_resume_gen5_control.py             lab/acsie_open_ended_self_extending_proving.py             lab/exact_checkpoint.py             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          source = Path("resume-input/checkpoint-current.json")
+          expected = "325f0be706ccfdba1aa2c850752610f1bc860162eba4dd208da7ffc8c8f4034d"
+          actual = hashlib.sha256(source.read_bytes()).hexdigest()
+          assert actual == expected, (actual, expected)
+          gen5 = Path("resume-input/checkpoint-gen5.json")
+          if gen5.exists():
+              assert hashlib.sha256(gen5.read_bytes()).hexdigest() == expected
+              assert gen5.read_bytes() == source.read_bytes()
+          print("EXACT_GEN5_CHECKPOINT_RAW_BYTES=PASS")
+          PY
 
-      - name: Upload H7 runtime evidence
+      - name: Continue exact UNBOUNDED control from Gen5 to Gen6
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/CONTROL
+          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE"             ACSIE_H7_REPRESENTATIVE_K="UNBOUNDED"             python3 -u lab/h7_resume_gen5_control.py               --checkpoint "resume-input/checkpoint-current.json"               --output "evidence/CONTROL"
+
+      - name: Upload Gen5-to-Gen6 continuation evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pr110-h7-runtime-${{ matrix.label }}
-          path: evidence/${{ matrix.label }}/
+          name: pr110-h7-unbounded-gen5-resume
+          path: evidence/CONTROL/
           retention-days: 90
