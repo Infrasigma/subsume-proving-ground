@@ -3,7 +3,7 @@ name: PR110 H7 Gen5 checkpoint continuation
 on:
   push:
     branches:
-      - research/pr110-h7-unbounded-gen5-resume-20261009
+      - research/pr110-h7-lineage-cache-resume-20261009
 
 permissions:
   contents: read
@@ -108,6 +108,84 @@ jobs:
               assert hashlib.sha256(gen5.read_bytes()).hexdigest() == expected
               assert gen5.read_bytes() == source.read_bytes()
           print("EXACT_GEN5_CHECKPOINT_RAW_BYTES=PASS")
+          PY
+
+      - name: Smoke-test lineage memoization on a synthetic discovery-only task
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/B:${{ github.workspace }}
+          PYTHONHASHSEED: "0"
+          ACSIE_H7_REPRESENTATIVE_K: "UNBOUNDED"
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from cognitive_core.behavioral_search import find_exact_expression
+          from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
+          from cognitive_core.recursive_cognitive_compiler import CognitivePrimitive, Trace, eval_expr
+
+          compiler = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=2026100305)
+          pid = "prim:lineage-cache-smoke"
+          compiler.primitives[pid] = CognitivePrimitive(
+              primitive_id=pid,
+              expression={"op": "get", "key": "x"},
+              input_roles=("x",),
+              output_semantics="delta",
+              generation=0,
+              parent_ids=(),
+              source_families=("synthetic-lineage-cache-smoke",),
+              train_error=0.0,
+              holdout_error=0.0,
+              transfer_error=0.0,
+              complexity=1,
+              provenance={"origin": "synthetic_test", "external_model": False},
+          )
+          rows = tuple(
+              Trace(
+                  inputs={"x": float(x), "y": float(-x)},
+                  target=2.0 * float(x),
+                  family="synthetic-lineage-cache-smoke",
+                  context={},
+                  task_id=f"smoke:{i}",
+              )
+              for i, x in enumerate((-7, -5, -3, -2, -1, 1, 2, 3, 5, 7, 9, 11))
+          )
+          calls = {"executable": {}, "provenance": {}}
+          original_executable = compiler.executable_lineage
+          original_provenance = compiler.primitive_lineage
+
+          def counted_executable(primitive_id):
+              key = str(primitive_id)
+              calls["executable"][key] = calls["executable"].get(key, 0) + 1
+              return original_executable(key)
+
+          def counted_provenance(primitive_id):
+              key = str(primitive_id)
+              calls["provenance"][key] = calls["provenance"].get(key, 0) + 1
+              return original_provenance(key)
+
+          compiler.executable_lineage = counted_executable
+          compiler.primitive_lineage = counted_provenance
+          result = find_exact_expression(
+              compiler, rows, 2, require_macro=True, max_alternatives=8
+          )
+          assert result is not None, "exact synthetic composition not discovered"
+          assert pid in result.used_primitives, result.used_primitives
+          pmap = compiler._pmap()
+          assert all(
+              abs(eval_expr(result.expression, row.inputs, pmap) - row.target) <= 1e-9
+              for row in rows
+          ), "discovered expression failed synthetic exactness"
+          for kind, by_id in calls.items():
+              assert by_id, f"{kind} lineage cache was not exercised"
+              assert max(by_id.values()) == 1, f"{kind} graph walk was repeated: {by_id}"
+          print({
+              "event": "H7_LINEAGE_MEMOIZATION_SMOKE_PASS",
+              "expression": result.expression,
+              "used_primitives": result.used_primitives,
+              "executable_lineage_graph_walks": calls["executable"],
+              "provenance_lineage_graph_walks": calls["provenance"],
+              "generated_expressions": result.stats.get("generated_expressions"),
+              "depths_completed": result.stats.get("depths_completed"),
+          })
           PY
 
       - name: Continue exact UNBOUNDED control from Gen5 to Gen6
