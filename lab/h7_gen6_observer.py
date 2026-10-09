@@ -96,7 +96,7 @@ def validate(out):
         "generation_completed":r.get("generation_completed"),"generation_next":r.get("generation_next"),
         "completed_generations":r.get("scientific_summary",{}).get("completed_generations"),
         "generation_history":[g.get("generation") for g in gens if isinstance(g,dict)] if isinstance(gens,list) else None,
-        "checkpoint_generation_next":c.get("generation_next),"checkpoint_sha256":digest,
+        "checkpoint_generation_next":c.get("generation_next"),"checkpoint_sha256":digest,
         "checkpoint_state_digest":c.get("state_digest"),
         "gen6_metrics":gens[-1] if isinstance(gens,list) and gens and isinstance(gens[-1],dict) else None}
 
