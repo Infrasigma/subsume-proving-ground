@@ -1,0 +1,99 @@
+name: ACSIE open-ended protocol-clean seed3 diagnostic
+on:
+  push:
+    branches:
+      - research/open-ended-protocol-clean-v1-20261004
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  seed3:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone exact ACSIE protocol-clean commit
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "252413f14216a3d9462e407c4a53282d0e7de8f5"
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          rm -rf /tmp/acsie-open-ended-protocol-clean
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-open-ended-protocol-clean
+          git -C /tmp/acsie-open-ended-protocol-clean fetch --depth 1 origin "$ACSIE_REF"
+          git -C /tmp/acsie-open-ended-protocol-clean checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie-open-ended-protocol-clean rev-parse HEAD)" = "$ACSIE_REF"
+      - name: Run ACSIE open-ended unit tests
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/open-ended-venv
+          . /tmp/open-ended-venv/bin/activate
+          python -m pip install --upgrade pip pytest
+          PYTHONPATH=/tmp/acsie-open-ended-protocol-clean pytest -q /tmp/acsie-open-ended-protocol-clean/tests/test_open_ended_growth.py
+          PYTHONPATH=/tmp/acsie-open-ended-protocol-clean:. pytest -q lab/test_open_ended_bootstrap_language.py
+      - name: Static protocol source audit
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+
+          compiler = Path("/tmp/acsie-open-ended-protocol-clean/cognitive_core/recursive_cognitive_compiler.py").read_text()
+          tree = ast.parse(compiler)
+          frontier = next(
+              n for n in ast.walk(tree)
+              if isinstance(n, ast.FunctionDef) and n.name == "synthesize_process_frontier"
+          )
+          loaded = {n.id for n in ast.walk(frontier) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+          forbidden = loaded & {"transfer", "ood"}
+          assert not forbidden, f"frontier method loads validation inputs: {sorted(forbidden)}"
+
+          growth = Path("/tmp/acsie-open-ended-protocol-clean/cognitive_core/open_ended_growth.py").read_text()
+          gtree = ast.parse(growth)
+          invent = next(
+              n for n in ast.walk(gtree)
+              if isinstance(n, ast.FunctionDef) and n.name == "invent_primitive"
+          )
+          exact_calls = [
+              n for n in ast.walk(invent)
+              if isinstance(n, ast.Call)
+              and isinstance(n.func, ast.Name)
+              and n.func.id == "find_exact_expression"
+          ]
+          assert exact_calls, "open-ended primitive search call missing"
+          call = exact_calls[0]
+          assert len(call.args) >= 2
+          assert isinstance(call.args[1], ast.Name) and call.args[1].id == "discovery_rows"
+          print("PROTOCOL_SOURCE_AUDIT=PASS")
+          PY
+      - name: Run seed-3 twelve-generation diagnostic
+        env:
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: /tmp/acsie-open-ended-protocol-clean
+        run: |
+          set +e
+          . /tmp/open-ended-venv/bin/activate
+          set -o pipefail
+          {
+            echo "WORKFLOW_SHA=${{ github.sha }}"
+            echo "ACSIE_REF=252413f14216a3d9462e407c4a53282d0e7de8f5"
+            echo "SEED=2026100303"
+            echo "GENERATIONS=12"
+            echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            python3 -u - <<'PY'
+          import json
+          import lab.acsie_open_ended_self_extending_proving as proving
+          result = proving.run_seed(2026100303, 12)
+          print(json.dumps(result, sort_keys=True), flush=True)
+          PY
+          } 2>&1 | tee protocol-clean-seed3.txt
+          rc=${PIPESTATUS[0]}
+          echo "SCIENTIFIC_DIAGNOSTIC_RC=$rc" | tee -a protocol-clean-seed3.txt
+          exit 0
+      - name: Upload seed-3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-open-ended-protocol-clean-seed3-${{ github.sha }}
+          path: protocol-clean-seed3.txt
