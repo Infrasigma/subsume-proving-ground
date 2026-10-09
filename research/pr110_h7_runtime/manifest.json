@@ -14,7 +14,7 @@
     "cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
     "cognitive_core/behavioral_search.py": "c126aa723b5c5f6013ac7ee53a9401875c2395ee"
   },
-  "experimental_behavioral_search_blob_sha": "d78db9e53676909b57df97007a52a7526faa3f7f",
+  "experimental_behavioral_search_blob_sha": "a27a462d624f0ee71bcfb426448a3e83d7b7b62e",
   "h7_policy": {
     "control": "UNBOUNDED",
     "ablations": [
@@ -35,5 +35,16 @@
     "equivalence_changes": false,
     "dominance_changes": false,
     "candidate_generation_changes": false
+  },
+  "execution_only_patch": {
+    "kind": "per_search_lineage_memoization",
+    "behavioral_search_blob_sha": "a27a462d624f0ee71bcfb426448a3e83d7b7b62e",
+    "scientific_semantics_changed": false,
+    "cache_scope": "single_find_exact_expression_call",
+    "cached_values": [
+      "per-primitive provenance lineage",
+      "per-primitive executable lineage",
+      "macro-set lineage unions"
+    ]
   }
 }
