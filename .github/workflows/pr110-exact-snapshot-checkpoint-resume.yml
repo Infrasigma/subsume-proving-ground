@@ -45,7 +45,7 @@ jobs:
           mkdir -p evidence
           cp "prior/${ARM}-checkpoint-current.json" evidence/input-checkpoint.json
           cp "prior/${ARM}-checkpoint-manifest.json" evidence/input-checkpoint-manifest.json
-          python3 - <<'PY'
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/$ARM:$GITHUB_WORKSPACE" python3 - <<'PY'
           import hashlib, json, os, subprocess
           from pathlib import Path
           from lab.exact_checkpoint import load_checkpoint
@@ -133,7 +133,7 @@ jobs:
           ARM: ${{ matrix.arm }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/$ARM:$GITHUB_WORKSPACE" python3 - <<'PY'
           import hashlib, json, os
           from pathlib import Path
           from lab.exact_checkpoint import load_checkpoint
