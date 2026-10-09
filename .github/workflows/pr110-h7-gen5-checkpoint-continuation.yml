@@ -1,4 +1,4 @@
-name: PR110 H7 exact Gen5 checkpoint continuation
+name: PR110 H7 Gen5 checkpoint continuation
 
 on:
   push:
@@ -35,7 +35,7 @@ jobs:
           assert m["seed"] == 2026100305
           for rel, expected in m["base_runtime_files"].items():
               data = Path("research/pr110_acsie_snapshot/B", rel).read_bytes()
-              actual = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+              actual = hashlib.sha1(b"blob " + str(len(data)).encode() + bytes([0]) + data).hexdigest()
               if rel.endswith("behavioral_search.py"):
                   assert actual == m["experimental_behavioral_search_blob_sha"], (rel, actual)
               else:
