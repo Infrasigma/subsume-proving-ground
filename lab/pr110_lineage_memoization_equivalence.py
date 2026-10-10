@@ -80,8 +80,22 @@ if hasattr(compiler, "executable_lineage"):
         calls["executable"][key] = calls["executable"].get(key, 0) + 1
         return original_executable(key)
     compiler.executable_lineage = counted_executable
-result = find_exact_expression(compiler, rows, 2, require_macro=True, max_alternatives=8)
+search_results = [
+    find_exact_expression(compiler, rows, 2, require_macro=True, max_alternatives=8)
+    for _ in range(5)
+]
+result = search_results[0]
 assert result is not None, "exact synthetic composition not discovered"
+for repeat_result in search_results[1:]:
+    assert repeat_result is not None, "repeated exact synthetic composition not discovered"
+    assert repeat_result.expression == result.expression
+    assert repeat_result.used_primitives == result.used_primitives
+    assert repeat_result.alternatives == result.alternatives
+    def normalized_stats(value):
+        stats = dict(value.stats)
+        stats.pop("lineage_cache_counters", None)
+        return stats
+    assert normalized_stats(repeat_result) == normalized_stats(result), "repeated search stats changed"
 assert primitive_ids[-1] in result.used_primitives, result.used_primitives
 if hasattr(compiler, "executable_lineage"):
     assert primitive_ids[0] in original_executable(primitive_ids[-1])
@@ -97,6 +111,7 @@ print(json.dumps({
     "stats": stats,
     "lineage_cache_counters": cache_counters,
     "underlying_graph_walk_calls": calls,
+    "search_repetitions_on_same_compiler": len(search_results),
 }, sort_keys=True, separators=(",", ":")))
 """
 
