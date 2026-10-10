@@ -1,4 +1,5 @@
 name: PR110 bounded Gen6 phase localization
+# Diagnostic-only continuation: starts at saved generation 6 and stops at its first checkpoint boundary.
 on:
   push:
     branches:
