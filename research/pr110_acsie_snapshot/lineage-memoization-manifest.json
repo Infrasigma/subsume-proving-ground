@@ -44,7 +44,54 @@
       ]
     }
   },
-  "equivalence_test": "lab/pr110_lineage_memoization_equivalence.py compares reference and cached search outputs, alternatives, and all non-cache search stats for synthetic discovery-only tasks on both A and B.",
+  "equivalence_test": {
+    "test_script": "lab/pr110_lineage_memoization_equivalence.py",
+    "fixture": "8-node executable-parent chain, 12 deterministic discovery rows, exact target composition",
+    "reference_commit": "c0db56983a92807524280b652dadced7fa07bd84",
+    "latest_run": 38033528970,
+    "artifact_id": 11662843002,
+    "artifact_zip_sha256": "81f2d4aa0eb256e4cd50cb5874bf6f96fe35731c42b4f4e72c09ae1bf9b8f10d",
+    "run_url": "https://github.com/Infrasigma/subsume-proving-ground/actions/runs/38033528970",
+    "synthetic_results": {
+      "A": {
+        "selected_expression_identical": true,
+        "direct_primitive_and_alternatives_identical": true,
+        "non_cache_search_stats_identical": true,
+        "reference_primitive_lineage_calls_by_id": {
+          "prim:lineage-cache-smoke:0": 3,
+          "prim:lineage-cache-smoke:1": 5,
+          "prim:lineage-cache-smoke:2": 5,
+          "prim:lineage-cache-smoke:3": 5,
+          "prim:lineage-cache-smoke:4": 5,
+          "prim:lineage-cache-smoke:5": 5,
+          "prim:lineage-cache-smoke:6": 5,
+          "prim:lineage-cache-smoke:7": 50
+        },
+        "memoized_primitive_lineage_calls_per_id": 1,
+        "union_cache_hits": 66
+      },
+      "B": {
+        "selected_expression_identical": true,
+        "direct_primitive_and_alternatives_identical": true,
+        "non_cache_search_stats_identical": true,
+        "reference_executable_lineage_calls_by_id": {
+          "prim:lineage-cache-smoke:0": 930,
+          "prim:lineage-cache-smoke:1": 618,
+          "prim:lineage-cache-smoke:2": 620,
+          "prim:lineage-cache-smoke:3": 622,
+          "prim:lineage-cache-smoke:4": 624,
+          "prim:lineage-cache-smoke:5": 626,
+          "prim:lineage-cache-smoke:6": 628,
+          "prim:lineage-cache-smoke:7": 763
+        },
+        "memoized_executable_lineage_calls_per_id": 1,
+        "executable_union_cache_hits": 2968,
+        "reference_provenance_calls_total": 4,
+        "memoized_provenance_calls_total": 2
+      }
+    },
+    "interpretation": "Mechanism-level synthetic equivalence and invocation-count reduction only; not a wall-time benchmark, Gen6 result, or scientific capability qualification."
+  },
   "known_caveats": [
     "These are controlled lab copies; upstream source blobs remain pinned in research/pr110_acsie_snapshot/manifest.json.",
     "A memoization performance win is not yet demonstrated for the exact PR110 B checkpoint.",
@@ -52,5 +99,16 @@
     "Promotion remains forbidden until the full pinned comparison is completed and scientifically qualifies."
   ],
   "scientific_status": "NOT_RUN",
-  "promotion_status": "DO_NOT_PROMOTE"
+  "promotion_status": "DO_NOT_PROMOTE",
+  "exact_b_diagnostic_run": {
+    "run_id": 38033213264,
+    "run_url": "https://github.com/Infrasigma/subsume-proving-ground/actions/runs/38033213264",
+    "cap_minutes": 110,
+    "purpose": "exact checkpoint continuation, Gen6 only, diagnostics and durable-checkpoint integrity",
+    "initial_generation_next": 6,
+    "initial_checkpoint_raw_sha256": "f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced",
+    "preflight": "PASS at last observed status",
+    "latest_status_as_of": "2026-10-10T07:11:03Z",
+    "latest_observation": "resume step in progress; no terminal Gen6 claim"
+  }
 }
