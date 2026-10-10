@@ -46,12 +46,12 @@
   },
   "equivalence_test": {
     "test_script": "lab/pr110_lineage_memoization_equivalence.py",
-    "fixture": "8-node executable-parent chain, 12 deterministic discovery rows, exact target composition",
+    "fixture": "32-node executable-parent chain, 12 deterministic discovery rows; paired subprocess timings, 5 repeats per arm",
     "reference_commit": "c0db56983a92807524280b652dadced7fa07bd84",
-    "latest_run": 38033697302,
+    "latest_run": 38033935977,
     "artifact_id": 11662843002,
     "artifact_zip_sha256": "81f2d4aa0eb256e4cd50cb5874bf6f96fe35731c42b4f4e72c09ae1bf9b8f10d",
-    "run_url": "https://github.com/Infrasigma/subsume-proving-ground/actions/runs/38033528970",
+    "run_url": "https://github.com/Infrasigma/subsume-proving-ground/actions/runs/38033935977",
     "synthetic_results": {
       "A": {
         "selected_expression_identical": true,
@@ -91,45 +91,113 @@
       }
     },
     "interpretation": "Synthetic equivalence is proven and repeated lineage graph-walk counts are strongly reduced. Timed evidence is mixed: B median 1.221x faster on the small synthetic fixture; A showed no measurable speedup. This is not a Gen6 wall-time claim or scientific qualification.",
-    "latest_artifact_id": 11663327736,
-    "latest_artifact_zip_sha256": "a0d6eecbe94d3c6d6ec2a70a48ce91a52b4403cb06f4594cad0f0de51e57d381",
+    "latest_artifact_id": 11663254166,
+    "latest_artifact_zip_sha256": "4430277de17aea414911ae40b1ef2946dce0dfb995c32b4481ebce43a5a350a9",
     "wall_time_benchmark": {
       "repeats_per_arm": 5,
       "A": {
-        "reference_median_seconds": 0.053178,
-        "memoized_median_seconds": 0.054293,
-        "median_speedup_ratio": 0.979,
-        "verdict": "NO_MEASURABLE_SPEEDUP_ON_THIS_SMALL_A_FIXTURE"
+        "reference_median_seconds": 0.091364,
+        "memoized_median_seconds": 0.070083,
+        "speedup_ratio": 1.304,
+        "reduction_percent": 23.3,
+        "verdict": "MODEST_MEDIAN_SPEEDUP_ON_SYNTHETIC_FIXTURE",
+        "lineage_counters": {
+          "primitive_graph_walks": 32,
+          "union_cache_hits": 146
+        }
       },
       "B": {
-        "reference_median_seconds": 0.096192,
-        "memoized_median_seconds": 0.078757,
-        "median_speedup_ratio": 1.221,
-        "reduction_percent": 18.12,
-        "verdict": "MODEST_MEDIAN_SPEEDUP_ON_THIS_SYNTHETIC_B_FIXTURE"
+        "reference_median_seconds": 65.678514,
+        "memoized_median_seconds": 18.370333,
+        "speedup_ratio": 3.575,
+        "reduction_percent": 72,
+        "verdict": "LARGE_MEDIAN_SPEEDUP_ON_SYNTHETIC_FIXTURE",
+        "lineage_counters": {
+          "executable_primitive_graph_walks": 32,
+          "executable_primitive_cache_hits": 992,
+          "executable_union_cache_hits": 511900,
+          "provenance_primitive_graph_walks": 2,
+          "provenance_union_cache_hits": 0
+        }
       },
       "includes_python_process_startup": true,
-      "timing_scope": "8-node executable-parent chain, 12 fixed discovery rows; paired subprocess timing; 5 repeats each; not representative of full Gen6",
-      "interpretation": "Graph-walk call counts collapsed dramatically but only B showed a modest wall-time win in the small fixture; A timing is noise/no win. Full B Gen6 continuation must establish whether this removes the actual stall."
+      "interpretation": "Both arms' selected expression, primitive usage, alternatives and all non-cache search stats were identical. B shows a 3.575x median speedup on this 32-node synthetic benchmark; A shows a modest 1.304x speedup. Not a Gen6 wall-time ratio, but consistent with the exact-checkpoint Gen6 completion result."
     }
   },
   "known_caveats": [
     "These are controlled lab copies; upstream source blobs remain pinned in research/pr110_acsie_snapshot/manifest.json.",
-    "A memoization performance win is not yet demonstrated for the exact PR110 B checkpoint.",
-    "The frozen five-seed by twelve-generation scientific budget is not run or altered by the twin-check workflow.",
-    "Promotion remains forbidden until the full pinned comparison is completed and scientifically qualifies."
+    "The Gen6 memoized continuation succeeded from the original B checkpoint and recorded accepted Gen6 metrics, but it is a single diagnostic continuation with PYTHONHASHSEED pinned only at resume time.",
+    "The frozen 5-seed by 12-generation scientific qualification budget has not been run or altered by this diagnostic.",
+    "A full paired A/B causal replay for Gen6/9/10/11 and full open-ended growth gate has not passed; PR110 remains INCONCLUSIVE / DO_NOT_PROMOTE.",
+    "The 32-node benchmark is synthetic; it demonstrates exact output equivalence and timed speedup there but does not quantify full-trajectory speedup.",
+    "Gen6 still spends tens of minutes in primary process synthesis; representative explosion/frontier cost remains for follow-up profiling/compression."
   ],
-  "scientific_status": "NOT_RUN",
+  "scientific_status": "GEN6_DIAGNOSTIC_ACCEPTED; FULL_PR110_TRAJECTORY_INCONCLUSIVE",
   "promotion_status": "DO_NOT_PROMOTE",
   "exact_b_diagnostic_run": {
     "run_id": 38033213264,
     "run_url": "https://github.com/Infrasigma/subsume-proving-ground/actions/runs/38033213264",
+    "artifact_id": 11664044731,
+    "artifact_zip_sha256": "9db37c017bc06c62708451faf5da250de08d3bb706ed36a6f35a8dcc4bee5542",
+    "source_commit": "3252e87ce68cc15a0c2a021e4a859fe71ea539ed",
+    "treatment_behavioral_search_blob": "ab658a2e49adf479bf9ea4892dfef930624c6e7b",
     "cap_minutes": 110,
-    "purpose": "exact checkpoint continuation, Gen6 only, diagnostics and durable-checkpoint integrity",
-    "initial_generation_next": 6,
-    "initial_checkpoint_raw_sha256": "f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced",
-    "preflight": "PASS at last observed status",
-    "latest_status_as_of": "2026-10-10T07:11:03Z",
-    "latest_observation": "resume step in progress; no terminal Gen6 claim"
+    "actual_result": {
+      "process_exit_code": 0,
+      "completed_result_present": true,
+      "checkpoint_validation": "PASS",
+      "initial_generation_next": 6,
+      "final_generation_next": 7,
+      "completed_rows": 7,
+      "final_state_digest": "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b",
+      "phase_start_count": 83,
+      "phase_timing_count": 83,
+      "last_open_phase_at_stop": null,
+      "generation_progress_count": 1,
+      "wall_time_minutes": 74.8,
+      "gen6": {
+        "accepted": true,
+        "acceptance_reason": "ACCEPTED_FRONTIER",
+        "closure_reuse_rate": 1,
+        "closure_success_rate": 1,
+        "probe_reuse_rate": 0.75,
+        "probe_success_rate": 1,
+        "lineage_ok": true,
+        "ood_error": 0,
+        "transfer_error": 0,
+        "primitive_found": true,
+        "retained_count": 7,
+        "resource_cost": 14,
+        "novelty": 0.07142857142857142,
+        "target_depth": 7,
+        "target_expression_status": "TARGET_FOUND",
+        "generated_expressions": 121218,
+        "unique_states": 12231,
+        "target_candidates": 112458,
+        "target_matches": 6641,
+        "dominance_frontier_max": 6145,
+        "duplicate_states": 94696,
+        "dominance_pruned_states": 28478,
+        "executable_primitive_graph_walks": 15,
+        "executable_macro_set_union_cache_hits": 176601808,
+        "provenance_primitive_graph_walks": 9,
+        "primary_process_synthesis_slowest_observed_seconds": [
+          1530.117098,
+          1466.049179
+        ]
+      }
+    },
+    "hash_seed_caveat": "Original checkpoint-producing process did not pin PYTHONHASHSEED; continuation set it to 0. Exact durable checkpoint continuation, not byte-identical process replay.",
+    "classification": "DIAGNOSTIC_CONTINUATION_NOT_FULL_CAUSAL_REPLAY",
+    "scientific_budget": "FROZEN_5X12_UNTOUCHED",
+    "promotion_status": "DO_NOT_PROMOTE"
+  },
+  "duplicate_diagnostic_run": {
+    "run_id": 38033262358,
+    "run_url": "https://github.com/Infrasigma/subsume-proving-ground/actions/runs/38033262358",
+    "observed_as_of": "2026-10-10T08:26Z",
+    "status": "IN_PROGRESS",
+    "reason": "Accidentally queued during workflow trigger activation; duplicate same checkpoint/experiment, not independent replication",
+    "action": "Do not treat as replication; cancel when authorized API is available or let the bounded 110-minute job exit"
   }
 }
