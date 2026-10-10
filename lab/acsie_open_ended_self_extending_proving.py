@@ -5,6 +5,7 @@ import argparse
 import json
 import random
 import statistics
+from time import perf_counter
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 from typing import Any
@@ -331,6 +332,31 @@ def compact_search_stats(search_stats: dict[str, Any]) -> dict[str, Any]:
     out["target_candidate_lineage_signature_sample"] = list(signatures[:16])
     return out
 
+
+def emit_phase_timing(
+    phase: str,
+    started: float,
+    seed: int,
+    generation: int,
+    **details: Any,
+) -> None:
+    """Emit diagnostic wall-time telemetry without feeding it back into search."""
+    print(
+        json.dumps(
+            {
+                "event": "PROCESS_PHASE_TIMING",
+                "phase": str(phase),
+                "seed": int(seed),
+                "generation": int(generation),
+                "elapsed_seconds": round(perf_counter() - started, 6),
+                **details,
+            },
+            sort_keys=True,
+        ),
+        flush=True,
+    )
+
+
 def run_seed(
     seed: int,
     generations: int,
@@ -621,6 +647,7 @@ def run_seed(
                 # This block is diagnostic-only; the scientific closure gate below
                 # performs the real discovery/selection search. The prior audit
                 # duplicated that work for every retained pair and dominated wall time.
+                closure_synthesis_started = perf_counter()
                 if hasattr(learner, "synthesize_process_frontier"):
                     cprocs = tuple(
                         learner.synthesize_process_frontier(
@@ -633,6 +660,21 @@ def run_seed(
                 else:
                     fallback = learner.synthesize_process(closure_discovery_rows, cv, co)
                     cprocs = (fallback,) if fallback is not None else ()
+
+                phase_stats = getattr(learner, "last_search_stats", {})
+                emit_phase_timing(
+                    "closure_synthesis",
+                    closure_synthesis_started,
+                    seed,
+                    generation,
+                    expected_parent_ids=sorted((left_parent.primitive_id, right_parent.primitive_id)),
+                    frontier_size=len(cprocs),
+                    generated_expressions=int(phase_stats.get("generated_expressions", 0)),
+                    unique_states=int(phase_stats.get("unique_states", 0)),
+                    max_states_in_depth=int(phase_stats.get("max_states_in_depth", 0)),
+                    dominance_frontier_max=int(phase_stats.get("dominance_frontier_max", 0)),
+                    target_candidate_count=int(phase_stats.get("target_candidate_count", 0)),
+                )
 
                 expected = {left_parent.primitive_id, right_parent.primitive_id}
                 search_stats_full = dict(getattr(learner, "last_search_stats", {}))
@@ -671,15 +713,24 @@ def run_seed(
                 expected = {left_parent.primitive_id, right_parent.primitive_id}
                 selected_proc = None
                 frontier_lineage_matches = 0
+                candidate_evaluation_started = perf_counter()
+                candidate_evaluations = 0
+                candidate_accepted = 0
+                lineage_elapsed_seconds = 0.0
                 for candidate_proc in cprocs:
+                    candidate_evaluations += 1
                     ceval = learner.evaluate(candidate_proc, ctr, ch, cv, co, ())
                     candidate_competence = bool(
                         ceval.accepted and ceval.ood_error <= 1e-9
                     )
+                    if candidate_competence:
+                        candidate_accepted += 1
+                    lineage_started = perf_counter()
                     candidate_lineage = executable_lineage_ids(
                         learner,
                         tuple(candidate_proc.used_primitives),
                     )
+                    lineage_elapsed_seconds += perf_counter() - lineage_started
                     if candidate_competence:
                         competence = True
                         if selected_proc is None:
@@ -687,6 +738,16 @@ def run_seed(
                     if candidate_competence and expected.issubset(candidate_lineage):
                         frontier_lineage_matches += 1
                         reuse_ok = True
+                emit_phase_timing(
+                    "closure_candidate_evaluation",
+                    candidate_evaluation_started,
+                    seed,
+                    generation,
+                    expected_parent_ids=sorted(expected),
+                    candidates_evaluated=candidate_evaluations,
+                    candidates_accepted=candidate_accepted,
+                    lineage_elapsed_seconds=round(lineage_elapsed_seconds, 6),
+                )
 
                 cproc = selected_proc
                 print(
@@ -705,12 +766,21 @@ def run_seed(
                 )
                 closure_rates.append(float(competence))
                 closure_reuse_rates.append(float(reuse_ok))
+                semantic_match_started = perf_counter()
                 semantic_matches = semantic_parent_match_count(
                     learner,
                     (left_parent, right_parent),
                     tuple(cproc.used_primitives) if cproc is not None else tuple(),
                     tuple(ctr),
                     closure_macros,
+                )
+                emit_phase_timing(
+                    "closure_semantic_parent_match",
+                    semantic_match_started,
+                    seed,
+                    generation,
+                    expected_parent_ids=sorted(expected),
+                    selected_process_id=cproc.process_id if cproc is not None else None,
                 )
                 semantic_closure_reuse_rates.append(
                     float(
@@ -774,6 +844,7 @@ def run_seed(
             pholdout = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_holdout', 5, 0.27, probe_macros)
             ptransfer = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_transfer', 5, -0.22, probe_macros)
             pood = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_ood', 5, 0.41, probe_macros)
+            primary_synthesis_started = perf_counter()
             proc = learner.synthesize_process(tuple(ptrain) + tuple(pselection), ptransfer, pood)
             print(
                 json.dumps(
@@ -796,27 +867,70 @@ def run_seed(
                 ),
                 flush=True,
             )
+            phase_stats = getattr(learner, "last_search_stats", {})
+            emit_phase_timing(
+                "primary_process_synthesis",
+                primary_synthesis_started,
+                seed,
+                generation,
+                probe_index=int(probe_idx),
+                selected_process_id=getattr(proc, "process_id", None),
+                frontier_size=len(getattr(learner, "last_process_candidate_frontier", ())),
+                generated_expressions=int(phase_stats.get("generated_expressions", 0)),
+                unique_states=int(phase_stats.get("unique_states", 0)),
+                dominance_frontier_max=int(phase_stats.get("dominance_frontier_max", 0)),
+                target_candidate_count=int(phase_stats.get("target_candidate_count", 0)),
+            )
             competence = False
             reuse_ok = False
             if proc is not None:
+                primary_evaluation_started = perf_counter()
                 peval = learner.evaluate(proc, ptrain, pholdout, ptransfer, pood, ())
+                emit_phase_timing(
+                    "primary_process_evaluation",
+                    primary_evaluation_started,
+                    seed,
+                    generation,
+                    probe_index=int(probe_idx),
+                    accepted=bool(peval.accepted and peval.ood_error <= 1e-9),
+                )
                 competence = bool(peval.accepted and peval.ood_error <= 1e-9)
                 expected = {p.primitive_id for p in probe_parents}
+                primary_lineage_started = perf_counter()
                 candidate_lineage = executable_lineage_ids(
                     learner,
                     tuple(proc.used_primitives),
+                )
+                emit_phase_timing(
+                    "primary_process_lineage",
+                    primary_lineage_started,
+                    seed,
+                    generation,
+                    probe_index=int(probe_idx),
+                    used_primitive_count=len(proc.used_primitives),
+                    lineage_count=len(candidate_lineage),
                 )
                 reuse_ok = competence and (
                     not expected or expected.issubset(candidate_lineage)
                 )
             probe_rates.append(float(competence))
             probe_reuse_rates.append(float(reuse_ok))
+            probe_semantic_started = perf_counter()
             semantic_probe_matches = semantic_parent_match_count(
                 learner,
                 probe_parents,
                 tuple(proc.used_primitives) if proc is not None else tuple(),
                 tuple(ptrain),
                 probe_macros,
+            )
+            emit_phase_timing(
+                "primary_probe_semantic_match",
+                probe_semantic_started,
+                seed,
+                generation,
+                probe_index=int(probe_idx),
+                expected_parent_count=len(probe_parents),
+                selected_process_id=proc.process_id if proc is not None else None,
             )
             semantic_probe_reuse_rates.append(
                 float(
@@ -854,11 +968,29 @@ def run_seed(
                 )
                 probe_trap_count += 1
 
+            baseline_synthesis_started = perf_counter()
             bproc = synthesize_discovery_only(baseline, ptrain, ptransfer)
+            emit_phase_timing(
+                "baseline_probe_synthesis",
+                baseline_synthesis_started,
+                seed,
+                generation,
+                probe_index=int(probe_idx),
+                selected_process_id=getattr(bproc, "process_id", None),
+            )
             bcompetence = False
             if bproc is not None:
+                baseline_evaluation_started = perf_counter()
                 beval = baseline.evaluate(bproc, ptrain, pholdout, ptransfer, pood, ())
                 bcompetence = bool(beval.accepted and beval.ood_error <= 1e-9)
+                emit_phase_timing(
+                    "baseline_probe_evaluation",
+                    baseline_evaluation_started,
+                    seed,
+                    generation,
+                    probe_index=int(probe_idx),
+                    accepted=bcompetence,
+                )
             baseline_probe_rates.append(float(bcompetence))
         previous_runtime_depth = (
             initial_depth
