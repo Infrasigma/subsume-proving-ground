@@ -1,11 +1,6 @@
 name: PR110 bounded Gen6 phase localization
 # Diagnostic-only continuation: starts at saved generation 6 and stops at its first checkpoint boundary.
 on:
-  push:
-    branches:
-      - research/pr110-gen6-phase-timing-20261010
-    paths:
-      - .github/workflows/pr110-gen6-phase-localization.yml
   workflow_dispatch:
 permissions:
   actions: read
@@ -133,7 +128,7 @@ jobs:
           result["proving_sha"] = os.environ["PROVING_SHA"]
           result["hash_seed_at_resume_boundary"] = 0
           Path("evidence/completed-result.json").write_text(
-              json.dumps(result, indent=2, sort_keys=True) + "\\n"
+              json.dumps(result, indent=2, sort_keys=True) + "\n"
           )
           print("GEN6_DIAGNOSTIC_RETURNED=PASS", flush=True)
           PY
