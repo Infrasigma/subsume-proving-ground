@@ -69,20 +69,20 @@ jobs:
               "B":"f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced",
           }[arm]
           assert manifest[arm]["runtime_sha"] == runtime
-          # The snapshot harness intentionally changes only two telemetry list outputs
-          # in behavioral_search.py from list(set_union) to sorted(set_union), eliminating
-          # nondeterministic ordering. Confirm the exact lab-copy blob; keep the original
-          # upstream source blob from manifest separately in evidence.
+          # The lab snapshot adds deterministic lineage memoization to the sorted telemetry patch.
+          # It caches immutable per-primitive lineage graph walks and macro-set unions only;
+          # candidate generation, ranking, dominance, selection, and gates are unchanged.
+          # Keep the original upstream source blob separately in the manifest/evidence.
           expected_lab = {
               "A": {
                   "cognitive_core/open_ended_growth.py":"ec94fc545badde972510f2db9cbf008cc214e705",
                   "cognitive_core/recursive_cognitive_compiler.py":"ccfb096e0fa2ae5a39f95aa54017c6a223a5b8fd",
-                  "cognitive_core/behavioral_search.py":"6145789aaf4e6a4c4d1cf78ec93e6f94b1df2411",
+                  "cognitive_core/behavioral_search.py":"a159f394afce54b8a95e507ed0e2f2e632b69b5d",
               },
               "B": {
                   "cognitive_core/open_ended_growth.py":"ec94fc545badde972510f2db9cbf008cc214e705",
                   "cognitive_core/recursive_cognitive_compiler.py":"284d4abd5ab467d465be21973090bc24cee26e69",
-                  "cognitive_core/behavioral_search.py":"90616f062298b52eb72b95cffeeb754c626ec4ed",
+                  "cognitive_core/behavioral_search.py":"ab658a2e49adf479bf9ea4892dfef930624c6e7b",
               },
           }[arm]
           local_files = {}
@@ -99,8 +99,8 @@ jobs:
               "upstream_runtime_commit":runtime,
               "upstream_source_blobs":manifest[arm]["files"],
               "lab_snapshot_blobs":{rel:item["laboratory_copy_blob_sha"] for rel,item in local_files.items()},
-              "known_lab_only_change":"behavioral_search.py: two selected_structural_lineage_ids telemetry outputs changed from list(set(...)) to sorted(set(...)); mechanics/search scoring unchanged in this narrow diff",
-              "identity_classification":"PINNED_UPSTREAM_RUNTIME_WITH_DETERMINISTIC_TELEMETRY_PATCH",
+              "known_lab_only_change":"behavioral_search.py: sorted lineage telemetry plus per-call provenance/executable lineage and macro-set memoization; diagnostic counters only; search/gating semantics unchanged",
+              "identity_classification":"PINNED_UPSTREAM_RUNTIME_WITH_SORTED_TELEMETRY_AND_EXECUTION_MEMOIZATION",
           },indent=2,sort_keys=True)+"\\n")
           print("PINNED_UPSTREAM_RUNTIME=PASS")
           print("LAB_COPY_IDENTITIES=PASS")
