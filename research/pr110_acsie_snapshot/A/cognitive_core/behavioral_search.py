@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
@@ -162,11 +163,30 @@ def find_exact_expression(
         vector_cache[ident] = values
         return values
 
-    # Primitive lineage is immutable during one search call. Cache graph walks
-    # and repeated macro-set unions; this is execution-only memoization.
-    lineage_by_primitive: dict[str, tuple[str, ...]] = {}
-    lineage_by_macro_set: dict[tuple[str, ...], tuple[str, ...]] = {}
-    lineage_cache_counters = {"primitive_graph_walks": 0, "union_cache_hits": 0}
+    # Share immutable lineage closures across search calls on the same compiler.
+    # The graph signature invalidates caches when primitives are added, removed, or
+    # replaced; a bounded LRU caps repeated macro-set union memory. Search decisions
+    # consume only the resulting tuples, never cache state or counters.
+    graph_signature = tuple(
+        (str(pid), id(primitive))
+        for pid, primitive in sorted(compiler.primitives.items(), key=lambda item: str(item[0]))
+    )
+    shared_lineage_cache = getattr(compiler, "_acsie_lineage_cache_state_v2", None)
+    if not isinstance(shared_lineage_cache, dict) or shared_lineage_cache.get("graph_signature") != graph_signature:
+        shared_lineage_cache = {
+            "graph_signature": graph_signature,
+            "primitive_by_id": {},
+            "macro_set_unions": OrderedDict(),
+        }
+        setattr(compiler, "_acsie_lineage_cache_state_v2", shared_lineage_cache)
+    lineage_by_primitive: dict[str, tuple[str, ...]] = shared_lineage_cache["primitive_by_id"]
+    lineage_by_macro_set = shared_lineage_cache["macro_set_unions"]
+    lineage_cache_counters = {
+        "primitive_graph_walks": 0,
+        "primitive_cache_hits": 0,
+        "union_cache_hits": 0,
+    }
+    MAX_LINEAGE_UNION_CACHE = 8192
 
     def lineage_ids(used_primitives: tuple[str, ...]) -> tuple[str, ...]:
         macro_set = tuple(sorted({str(pid) for pid in used_primitives}))
@@ -175,6 +195,7 @@ def find_exact_expression(
         cached_union = lineage_by_macro_set.get(macro_set)
         if cached_union is not None:
             lineage_cache_counters["union_cache_hits"] += 1
+            lineage_by_macro_set.move_to_end(macro_set)
             return cached_union
         lineage: set[str] = set()
         primitive_lineage = getattr(compiler, "primitive_lineage", None)
@@ -189,9 +210,14 @@ def find_exact_expression(
                         sorted({str(x) for x in primitive_lineage(pid)})
                     )
                 lineage_by_primitive[pid] = cached_primitive
+            else:
+                lineage_cache_counters["primitive_cache_hits"] += 1
             lineage.update(cached_primitive)
         result = tuple(sorted(lineage))
         lineage_by_macro_set[macro_set] = result
+        lineage_by_macro_set.move_to_end(macro_set)
+        while len(lineage_by_macro_set) > MAX_LINEAGE_UNION_CACHE:
+            lineage_by_macro_set.popitem(last=False)
         return result
 
 
