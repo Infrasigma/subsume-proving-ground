@@ -1,0 +1,223 @@
+name: PR110 exact B Gen6 lineage-memoization continuation
+on:
+  push:
+    branches:
+      - research/pr110-gen6-phase-timing-20261010
+    paths:
+      - .github/workflows/pr110-gen6-memoized-b-continuation.yml
+  workflow_dispatch:
+concurrency:
+  group: pr110-exact-b-gen6-memoized-continuation
+  cancel-in-progress: false
+permissions:
+  actions: read
+  contents: read
+jobs:
+  continue-b:
+    name: B checkpoint Gen6 continuation with cached lineage walks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 125
+    env:
+      SEED: "2026100305"
+      GENERATIONS: "12"
+      PROVING_SHA: "33259fc5c69d87b99c604f0050508c433a279daf"
+      RUNTIME_SHA: "af0c7ef503c51a5bc7872717b263a01f495c855f"
+      ORIGINAL_HEAD: "c0db56983a92807524280b652dadced7fa07bd84"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Retrieve original immutable B Gen5 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: pr110-snapshot-causal-replay
+          run-id: 37570567635
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: prior
+      - name: Verify exact checkpoint, pinned runtime, and execution-only memoization patch
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp prior/B-checkpoint-current.json evidence/input-checkpoint.json
+          cp prior/B-checkpoint-manifest.json evidence/input-checkpoint-manifest.json
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" python3 - <<'PY'
+          import hashlib, json, subprocess
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+          seed = 2026100305
+          proving_sha = "33259fc5c69d87b99c604f0050508c433a279daf"
+          runtime_sha = "af0c7ef503c51a5bc7872717b263a01f495c855f"
+          expected_blob = "f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced"
+          expected_state = "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a"
+          expected_lab_blobs = {
+              "cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
+              "cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
+              "cognitive_core/behavioral_search.py": "ab658a2e49adf479bf9ea4892dfef930624c6e7b",
+          }
+          manifest = json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
+          patch = json.loads(Path("research/pr110_acsie_snapshot/lineage-memoization-manifest.json").read_text())
+          assert manifest["fixed_seed"] == seed
+          assert manifest["generations"] == 12
+          assert manifest["selected_generations"] == [5, 6, 9, 10, 11]
+          assert manifest["proving_harness_sha"] == proving_sha
+          assert manifest["B"]["runtime_sha"] == runtime_sha
+          assert patch["exact_original_snapshots"]["B_checkpoint_raw_sha256"] == expected_blob
+          local_files = {}
+          for rel, expected in expected_lab_blobs.items():
+              actual = subprocess.check_output(
+                  ["git", "hash-object", str(Path("research/pr110_acsie_snapshot/B") / rel)],
+                  text=True,
+              ).strip()
+              assert actual == expected, f"unexpected B lab blob {rel}: {actual}"
+              local_files[rel] = actual
+          checkpoint = Path("evidence/input-checkpoint.json")
+          raw_sha = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+          assert raw_sha == expected_blob, (raw_sha, expected_blob)
+          envelope = load_checkpoint(
+              checkpoint,
+              expected_seed=seed,
+              expected_metadata={"proving_sha": proving_sha, "acsie_ref": runtime_sha},
+          )
+          assert envelope["generation_next"] == 6
+          assert envelope["state_digest"] == expected_state
+          identity = {
+              "preflight": "PASS",
+              "runtime_sha": runtime_sha,
+              "proving_sha": proving_sha,
+              "seed": seed,
+              "generations": 12,
+              "selected_generations_expected": [5, 6, 9, 10, 11],
+              "upstream_behavioral_search_blob": manifest["B"]["files"]["cognitive_core/behavioral_search.py"],
+              "lab_behavioral_search_blob": local_files["cognitive_core/behavioral_search.py"],
+              "lab_only_change": "sorted telemetry plus per-call provenance/executable lineage and macro-set memoization; no candidate or gate changes",
+              "checkpoint_raw_sha256": raw_sha,
+              "checkpoint_state_digest": envelope["state_digest"],
+              "generation_next": envelope["generation_next"],
+              "resume_hash_seed": 0,
+              "hash_seed_caveat": "Original checkpoint-producing process did not pin PYTHONHASHSEED; continuation pins it to 0, so this is exact checkpoint continuation, not byte-identical process replay.",
+              "twin_validation_run": 38033144896,
+              "twin_validation_artifact": 11663077209
+          }
+          Path("evidence/preflight.json").write_text(json.dumps(identity, indent=2, sort_keys=True) + "\n")
+          print("PINNED_B_SOURCE_AND_MEMOIZATION_PATCH=PASS")
+          print("IMMUTABLE_CHECKPOINT_BYTES_AND_STATE=PASS")
+          print("CONTINUATION_BOUNDARY=GEN6")
+          PY
+      - name: Resume exact B checkpoint; stop after Gen6; 110-minute diagnostic ceiling
+        run: |
+          set -u
+          cp evidence/input-checkpoint.json evidence/working-checkpoint.json
+          ARM_ROOT="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B"
+          export ARM_ROOT RUNTIME_SHA
+          set +e
+          timeout --signal=TERM --kill-after=60s 110m env \
+            PYTHONHASHSEED=0 \
+            PYTHONPATH="$ARM_ROOT:$GITHUB_WORKSPACE" \
+            python3 -u - <<'PY' > evidence/memoized-b-raw.txt 2>&1
+          import json, os, time
+          from pathlib import Path
+          from lab.acsie_open_ended_self_extending_proving import run_seed
+          start = time.perf_counter()
+          checkpoint = "evidence/working-checkpoint.json"
+          result = run_seed(
+              int(os.environ["SEED"]),
+              int(os.environ["GENERATIONS"]),
+              checkpoint_path=checkpoint,
+              resume_from=checkpoint,
+              stop_after=7,
+              checkpoint_metadata={
+                  "proving_sha": os.environ["PROVING_SHA"],
+                  "acsie_ref": os.environ["RUNTIME_SHA"],
+              },
+          )
+          result["memoized_continuation_wall_time_seconds"] = time.perf_counter() - start
+          result["runtime_sha"] = os.environ["RUNTIME_SHA"]
+          result["proving_sha"] = os.environ["PROVING_SHA"]
+          result["hash_seed_at_resume_boundary"] = 0
+          Path("evidence/completed-result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+          print("MEMOIZED_B_GEN6_CONTINUATION_RETURNED=PASS", flush=True)
+          PY
+          rc=$?
+          set -e
+          printf "%s\n" "$rc" > evidence/process-exit-code.txt
+          echo "MEMOIZED_CONTINUATION_EXIT_CODE=$rc"
+      - name: Diagnose last phase and validate the last durable checkpoint
+        if: always()
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+          p = Path("evidence/memoized-b-raw.txt")
+          raw = p.read_text(errors="replace") if p.exists() else ""
+          events = []
+          for line in raw.splitlines():
+              try:
+                  item = json.loads(line)
+                  if isinstance(item, dict) and item.get("event"):
+                      events.append(item)
+              except Exception:
+                  pass
+          starts = [(i, e) for i, e in enumerate(events) if e.get("event") == "PROCESS_PHASE_START"]
+          timings = [(i, e) for i, e in enumerate(events) if e.get("event") == "PROCESS_PHASE_TIMING"]
+          progress = [e for e in events if e.get("event") == "GENERATION_PROGRESS"]
+          last_open_phase = None
+          if starts:
+              last_i, last = starts[-1]
+              completed_after_start = any(idx > last_i and e.get("phase") == last.get("phase") for idx, e in timings)
+              if not completed_after_start:
+                  last_open_phase = last
+          cp = Path("evidence/working-checkpoint.json")
+          cpinfo = {"checkpoint_present": cp.exists(), "checkpoint_validation": "MISSING"}
+          if cp.exists():
+              envelope = load_checkpoint(
+                  cp,
+                  expected_seed=2026100305,
+                  expected_metadata={
+                      "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+                      "acsie_ref": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+                  },
+              )
+              cpinfo.update({
+                  "checkpoint_validation": "PASS",
+                  "generation_next": int(envelope["generation_next"]),
+                  "state_digest": envelope["state_digest"],
+                  "completed_rows": len(envelope.get("generations_out", [])),
+                  "final_generation_search_stats": (
+                      envelope.get("generations_out", [])[-1].get("search_stats", {})
+                      if envelope.get("generations_out") else {}
+                  ),
+              })
+          summary = {
+              "schema": "ACSIE.PR110.MemoizedBGen6Diagnostic.v1",
+              "classification": "DIAGNOSTIC_CONTINUATION_NOT_FULL_CAUSAL_REPLAY",
+              "original_input_checkpoint_raw_sha256": "f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced",
+              "memoized_behavioral_search_blob": "ab658a2e49adf479bf9ea4892dfef930624c6e7b",
+              "phase_start_count": len(starts),
+              "phase_timing_count": len(timings),
+              "last_open_phase_at_stop": last_open_phase,
+              "last_12_phase_starts": [e for _, e in starts[-12:]],
+              "last_12_completed_phase_timings": [e for _, e in timings[-12:]],
+              "generation_progress_count": len(progress),
+              "last_generation_progress": progress[-1] if progress else None,
+              "process_exit_code": int(Path("evidence/process-exit-code.txt").read_text()) if Path("evidence/process-exit-code.txt").exists() else None,
+              "completed_result_present": Path("evidence/completed-result.json").exists(),
+              "raw_log_bytes": len(raw.encode()),
+              "frozen_5x12_scientific_budget": "UNTOUCHED",
+              "promotion_status": "DO_NOT_PROMOTE",
+              **cpinfo
+          }
+          Path("evidence/memoized-diagnostic.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+      - name: Upload exact B memoized continuation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-exact-b-gen6-memoized-continuation
+          path: evidence/
+          retention-days: 90
