@@ -1,0 +1,81 @@
+name: PR110 lineage memoization twin validation
+on:
+  push:
+    branches:
+      - research/pr110-gen6-phase-timing-20261010
+    paths:
+      - .github/workflows/pr110-lineage-cache-twin.yml
+      - lab/pr110_lineage_memoization_equivalence.py
+      - research/pr110_acsie_snapshot/lineage-memoization-manifest.json
+      - research/pr110_acsie_snapshot/A/cognitive_core/behavioral_search.py
+      - research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  twin-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      ORIGINAL_HEAD: "c0db56983a92807524280b652dadced7fa07bd84"
+      OPTIMIZED_A_BLOB: "a159f394afce54b8a95e507ed0e2f2e632b69b5d"
+      OPTIMIZED_B_BLOB: "ab658a2e49adf479bf9ea4892dfef930624c6e7b"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify pinned runtime IDs and syntax
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            lab/pr110_lineage_memoization_equivalence.py \
+            lab/acsie_open_ended_self_extending_proving.py \
+            lab/exact_checkpoint.py \
+            research/pr110_acsie_snapshot/A/cognitive_core/behavioral_search.py \
+            research/pr110_acsie_snapshot/A/cognitive_core/open_ended_growth.py \
+            research/pr110_acsie_snapshot/A/cognitive_core/recursive_cognitive_compiler.py \
+            research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py \
+            research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py \
+            research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py
+          test "$(git hash-object research/pr110_acsie_snapshot/A/cognitive_core/behavioral_search.py)" = "$OPTIMIZED_A_BLOB"
+          test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py)" = "$OPTIMIZED_B_BLOB"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path("research/pr110_acsie_snapshot/lineage-memoization-manifest.json").read_text())
+          assert m["exact_original_snapshots"]["A_runtime_sha"] == "7e905d73c15ece4b8b5d7cb73218bac34c2e1314"
+          assert m["exact_original_snapshots"]["B_runtime_sha"] == "af0c7ef503c51a5bc7872717b263a01f495c855f"
+          assert m["exact_original_snapshots"]["evaluator_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
+          assert m["exact_original_snapshots"]["B_generation_next"] == 6
+          assert m["promotion_status"] == "DO_NOT_PROMOTE"
+          print("PINNED_SNAPSHOT_AND_PATCH_MANIFEST=PASS")
+          PY
+      - name: Build unmodified exact-snapshot reference copies
+        run: |
+          set -euo pipefail
+          for arm in A B; do
+            mkdir -p "/tmp/pr110-reference/$arm"
+            cp -a "research/pr110_acsie_snapshot/$arm/cognitive_core" "/tmp/pr110-reference/$arm/"
+            git show "$ORIGINAL_HEAD:research/pr110_acsie_snapshot/$arm/cognitive_core/behavioral_search.py" \
+              > "/tmp/pr110-reference/$arm/cognitive_core/behavioral_search.py"
+          done
+          test "$(git hash-object /tmp/pr110-reference/A/cognitive_core/behavioral_search.py)" = "6145789aaf4e6a4c4d1cf78ec93e6f94b1df2411"
+          test "$(git hash-object /tmp/pr110-reference/B/cognitive_core/behavioral_search.py)" = "90616f062298b52eb72b95cffeeb754c626ec4ed"
+          echo "UNMODIFIED_REFERENCE_COPIES=PASS"
+      - name: Compare cached and uncached search on both exact snapshots
+        run: |
+          set -euo pipefail
+          python lab/pr110_lineage_memoization_equivalence.py \
+            --reference-root /tmp/pr110-reference \
+            --optimized-root "$GITHUB_WORKSPACE/research/pr110_acsie_snapshot" \
+            --output evidence/lineage-memoization-twin-check.json
+      - name: Upload auditable twin-check result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-lineage-memoization-twin-check
+          path: evidence/
+          retention-days: 90
