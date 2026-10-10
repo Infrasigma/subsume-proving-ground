@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
@@ -163,25 +164,42 @@ def find_exact_expression(
         vector_cache[ident] = values
         return values
 
-    # These lineage graphs are immutable during one find_exact_expression call.
-    # Cache per-primitive graph walks and repeated macro-set unions only; no
-    # expression generation, rank, frontier, pruning, or selection rule changes.
-    provenance_lineage_by_primitive: dict[str, tuple[str, ...]] = {}
-    provenance_lineage_by_macro_set: dict[tuple[str, ...], tuple[str, ...]] = {}
-    executable_lineage_by_primitive: dict[str, tuple[str, ...]] = {}
-    executable_lineage_by_macro_set: dict[tuple[str, ...], tuple[str, ...]] = {}
+    # Share immutable lineage closures between searches while the primitive graph
+    # is unchanged. A graph signature invalidates on archive mutation; macro-set
+    # union caches use a bounded LRU so a long generation cannot retain all sets.
+    graph_signature = tuple(
+        (str(pid), id(primitive))
+        for pid, primitive in sorted(compiler.primitives.items(), key=lambda item: str(item[0]))
+    )
+    shared_lineage_cache = getattr(compiler, "_acsie_lineage_cache_state_v2", None)
+    if not isinstance(shared_lineage_cache, dict) or shared_lineage_cache.get("graph_signature") != graph_signature:
+        shared_lineage_cache = {
+            "graph_signature": graph_signature,
+            "provenance_primitive_by_id": {},
+            "provenance_macro_set_unions": OrderedDict(),
+            "executable_primitive_by_id": {},
+            "executable_macro_set_unions": OrderedDict(),
+        }
+        setattr(compiler, "_acsie_lineage_cache_state_v2", shared_lineage_cache)
+    provenance_lineage_by_primitive: dict[str, tuple[str, ...]] = shared_lineage_cache["provenance_primitive_by_id"]
+    provenance_lineage_by_macro_set = shared_lineage_cache["provenance_macro_set_unions"]
+    executable_lineage_by_primitive: dict[str, tuple[str, ...]] = shared_lineage_cache["executable_primitive_by_id"]
+    executable_lineage_by_macro_set = shared_lineage_cache["executable_macro_set_unions"]
     lineage_cache_counters = {
         "provenance_primitive_graph_walks": 0,
         "executable_primitive_graph_walks": 0,
+        "provenance_primitive_cache_hits": 0,
+        "executable_primitive_cache_hits": 0,
         "provenance_union_cache_hits": 0,
         "executable_union_cache_hits": 0,
     }
+    MAX_LINEAGE_UNION_CACHE = 8192
 
     def _cached_lineage_ids(
         used_primitives: tuple[str, ...],
         *,
         primitive_cache: dict[str, tuple[str, ...]],
-        set_cache: dict[tuple[str, ...], tuple[str, ...]],
+        set_cache: Any,
         lineage_method: Any,
         counter_prefix: str,
     ) -> tuple[str, ...]:
@@ -192,6 +210,7 @@ def find_exact_expression(
         cached_union = set_cache.get(macro_set)
         if cached_union is not None:
             lineage_cache_counters[f"{counter_prefix}_union_cache_hits"] += 1
+            set_cache.move_to_end(macro_set)
             return cached_union
         lineage: set[str] = set()
         for pid in macro_set:
@@ -205,9 +224,14 @@ def find_exact_expression(
                         sorted({str(x) for x in lineage_method(pid)})
                     )
                 primitive_cache[pid] = cached_primitive
+            else:
+                lineage_cache_counters[f"{counter_prefix}_primitive_cache_hits"] += 1
             lineage.update(cached_primitive)
         result = tuple(sorted(lineage))
         set_cache[macro_set] = result
+        set_cache.move_to_end(macro_set)
+        while len(set_cache) > MAX_LINEAGE_UNION_CACHE:
+            set_cache.popitem(last=False)
         return result
 
     def provenance_lineage_ids(used_primitives: tuple[str, ...]) -> tuple[str, ...]:
