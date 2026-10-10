@@ -3,8 +3,6 @@ on:
   push:
     branches:
       - research/pr110-gen6-phase-timing-20261010
-    paths:
-      - .github/workflows/pr110-gen6-memoized-b-continuation.yml
   workflow_dispatch:
 concurrency:
   group: pr110-exact-b-gen6-memoized-continuation
