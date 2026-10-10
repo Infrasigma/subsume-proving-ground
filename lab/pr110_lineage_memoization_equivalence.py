@@ -23,9 +23,9 @@ from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
 from cognitive_core.recursive_cognitive_compiler import CognitivePrimitive, Trace, eval_expr
 
 compiler = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=2026100305)
-# Make an 8-node executable-parent chain. Every macro represents x, but the
+# Make an 32-node executable-parent chain. Every macro represents x, but the
 # transitive lineage graph has depth and overlap unlike a single-root smoke case.
-primitive_ids = [f"prim:lineage-cache-smoke:{i}" for i in range(8)]
+primitive_ids = [f"prim:lineage-cache-smoke:{i}" for i in range(32)]
 compiler.primitives[primitive_ids[0]] = CognitivePrimitive(
     primitive_id=primitive_ids[0],
     expression={"op": "get", "key": "x"},
