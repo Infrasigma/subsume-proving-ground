@@ -82,8 +82,8 @@ result = find_exact_expression(compiler, rows, 2, require_macro=True, max_altern
 assert result is not None, "exact synthetic composition not discovered"
 assert primitive_ids[-1] in result.used_primitives, result.used_primitives
 if hasattr(compiler, "executable_lineage"):
-    assert primitive_ids[0] in compiler.executable_lineage(primitive_ids[-1])
-assert primitive_ids[0] in compiler.primitive_lineage(primitive_ids[-1])
+    assert primitive_ids[0] in original_executable(primitive_ids[-1])
+assert primitive_ids[0] in original_primitive(primitive_ids[-1])
 pmap = compiler._pmap()
 assert all(abs(eval_expr(result.expression, row.inputs, pmap) - row.target) <= 1e-9 for row in rows)
 stats = dict(result.stats)
