@@ -1,0 +1,48 @@
+name: PR110 Gen6 phase-timing static validation
+on:
+  push:
+    branches:
+      - research/pr110-gen6-phase-timing-20261010
+    paths:
+      - .github/workflows/pr110-gen6-phase-timing.yml
+      - lab/acsie_open_ended_self_extending_proving.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  static-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile diagnostic harness only
+        run: python -m py_compile lab/acsie_open_ended_self_extending_proving.py
+      - name: Verify telemetry is diagnostic-only
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("lab/acsie_open_ended_self_extending_proving.py")
+          source = path.read_text()
+          required = [
+              '"event": "PROCESS_PHASE_TIMING"',
+              '"closure_synthesis"',
+              '"closure_candidate_evaluation"',
+              '"closure_semantic_parent_match"',
+              '"primary_process_synthesis"',
+              '"primary_process_evaluation"',
+              '"primary_process_lineage"',
+              '"primary_probe_semantic_match"',
+              '"baseline_probe_synthesis"',
+              '"baseline_probe_evaluation"',
+          ]
+          missing = [item for item in required if item not in source]
+          assert not missing, f"missing timing probes: {missing}"
+          # These checks guard against accidental edits to the scientific gate.
+          assert "finite_gate = (" in source
+          assert "and trap_free_ok" in source
+          assert "OPEN_ENDED_SELF_EXTENDING_GATE=" in source
+          print("PHASE_TIMING_STATIC_VALIDATION=PASS")
+          PY
