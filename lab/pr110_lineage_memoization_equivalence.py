@@ -11,6 +11,8 @@ import json
 import os
 import subprocess
 import sys
+import statistics
+import time
 from pathlib import Path
 
 
@@ -103,6 +105,7 @@ def run(root: Path, arm: str) -> dict:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(root / arm)
     env["PYTHONHASHSEED"] = "0"
+    started = time.perf_counter()
     proc = subprocess.run(
         [sys.executable, "-c", _RUN],
         env=env,
@@ -119,7 +122,9 @@ def run(root: Path, arm: str) -> dict:
     lines = [line for line in proc.stdout.splitlines() if line.strip()]
     if len(lines) != 1:
         raise RuntimeError(f"{arm} produced unexpected stdout: {proc.stdout!r}")
-    return json.loads(lines[0])
+    result = json.loads(lines[0])
+    result["_harness_elapsed_seconds"] = time.perf_counter() - started
+    return result
 
 
 def main() -> int:
@@ -130,9 +135,22 @@ def main() -> int:
     args = parser.parse_args()
 
     results = {}
+    repeats = 5
     for arm in ("A", "B"):
-        reference = run(args.reference_root, arm)
-        optimized = run(args.optimized_root, arm)
+        reference_runs = []
+        optimized_runs = []
+        for repeat in range(repeats):
+            # Alternate measurement order to reduce systematic first/second bias.
+            if repeat % 2 == 0:
+                reference_runs.append(run(args.reference_root, arm))
+                optimized_runs.append(run(args.optimized_root, arm))
+            else:
+                optimized_runs.append(run(args.optimized_root, arm))
+                reference_runs.append(run(args.reference_root, arm))
+        reference = reference_runs[0]
+        optimized = optimized_runs[0]
+        reference_times = [r["_harness_elapsed_seconds"] for r in reference_runs]
+        optimized_times = [r["_harness_elapsed_seconds"] for r in optimized_runs]
         if reference["expression"] != optimized["expression"]:
             raise AssertionError(f"{arm}: selected expression changed")
         if reference["used_primitives"] != optimized["used_primitives"]:
@@ -161,6 +179,18 @@ def main() -> int:
             "memoized_graph_walk_calls": optimized_calls,
             "memoization_counters": counters,
             "baseline_expression": reference["expression"],
+            "wall_time_benchmark": {
+                "repeats_per_arm": repeats,
+                "reference_seconds": [round(x, 6) for x in reference_times],
+                "memoized_seconds": [round(x, 6) for x in optimized_times],
+                "reference_median_seconds": round(statistics.median(reference_times), 6),
+                "memoized_median_seconds": round(statistics.median(optimized_times), 6),
+                "median_speedup_ratio": round(
+                    statistics.median(reference_times) / max(statistics.median(optimized_times), 1e-9),
+                    3,
+                ),
+                "scope": "small deterministic synthetic search; includes Python process startup; not a Gen6 wall-time claim",
+            },
         }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
