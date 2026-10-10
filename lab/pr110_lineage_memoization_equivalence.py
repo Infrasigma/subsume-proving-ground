@@ -21,9 +21,11 @@ from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
 from cognitive_core.recursive_cognitive_compiler import CognitivePrimitive, Trace, eval_expr
 
 compiler = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=2026100305)
-pid = "prim:lineage-cache-smoke"
-compiler.primitives[pid] = CognitivePrimitive(
-    primitive_id=pid,
+# Make an 8-node executable-parent chain. Every macro represents x, but the
+# transitive lineage graph has depth and overlap unlike a single-root smoke case.
+primitive_ids = [f"prim:lineage-cache-smoke:{i}" for i in range(8)]
+compiler.primitives[primitive_ids[0]] = CognitivePrimitive(
+    primitive_id=primitive_ids[0],
     expression={"op": "get", "key": "x"},
     input_roles=("x",),
     output_semantics="delta",
@@ -36,6 +38,22 @@ compiler.primitives[pid] = CognitivePrimitive(
     complexity=1,
     provenance={"origin": "synthetic_test", "external_model": False},
 )
+for depth, pid in enumerate(primitive_ids[1:], start=1):
+    parent = primitive_ids[depth - 1]
+    compiler.primitives[pid] = CognitivePrimitive(
+        primitive_id=pid,
+        expression={"op": "macro", "id": parent},
+        input_roles=("x",),
+        output_semantics="delta",
+        generation=depth,
+        parent_ids=(parent,),
+        source_families=("synthetic-lineage-cache-smoke",),
+        train_error=0.0,
+        holdout_error=0.0,
+        transfer_error=0.0,
+        complexity=1,
+        provenance={"origin": "synthetic_test", "external_model": False},
+    )
 rows = tuple(
     Trace(
         inputs={"x": float(x), "y": float(-x)},
@@ -62,7 +80,10 @@ if hasattr(compiler, "executable_lineage"):
     compiler.executable_lineage = counted_executable
 result = find_exact_expression(compiler, rows, 2, require_macro=True, max_alternatives=8)
 assert result is not None, "exact synthetic composition not discovered"
-assert pid in result.used_primitives, result.used_primitives
+assert primitive_ids[-1] in result.used_primitives, result.used_primitives
+if hasattr(compiler, "executable_lineage"):
+    assert primitive_ids[0] in compiler.executable_lineage(primitive_ids[-1])
+assert primitive_ids[0] in compiler.primitive_lineage(primitive_ids[-1])
 pmap = compiler._pmap()
 assert all(abs(eval_expr(result.expression, row.inputs, pmap) - row.target) <= 1e-9 for row in rows)
 stats = dict(result.stats)
