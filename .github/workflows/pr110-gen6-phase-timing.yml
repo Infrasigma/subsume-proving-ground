@@ -1,4 +1,5 @@
 name: PR110 Gen6 phase-timing static validation
+# Validates the diagnostic-only wall-time and phase-entry probes; never runs a scientific trajectory.
 on:
   push:
     branches:
