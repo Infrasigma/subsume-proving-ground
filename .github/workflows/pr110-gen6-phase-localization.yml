@@ -56,7 +56,7 @@ jobs:
           expected_lab = {
               "cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
               "cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
-              "cognitive_core/behavioral_search.py": "90616f062298b52eb72b95cffeeb754c626ec4ed",
+              "cognitive_core/behavioral_search.py": "ab658a2e49adf479bf9ea4892dfef930624c6e7b",
           }
           identities = {}
           for rel, expected in expected_lab.items():
