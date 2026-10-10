@@ -48,7 +48,7 @@
     "test_script": "lab/pr110_lineage_memoization_equivalence.py",
     "fixture": "8-node executable-parent chain, 12 deterministic discovery rows, exact target composition",
     "reference_commit": "c0db56983a92807524280b652dadced7fa07bd84",
-    "latest_run": 38033528970,
+    "latest_run": 38033697302,
     "artifact_id": 11662843002,
     "artifact_zip_sha256": "81f2d4aa0eb256e4cd50cb5874bf6f96fe35731c42b4f4e72c09ae1bf9b8f10d",
     "run_url": "https://github.com/Infrasigma/subsume-proving-ground/actions/runs/38033528970",
@@ -90,7 +90,28 @@
         "memoized_provenance_calls_total": 2
       }
     },
-    "interpretation": "Mechanism-level synthetic equivalence and invocation-count reduction only; not a wall-time benchmark, Gen6 result, or scientific capability qualification."
+    "interpretation": "Synthetic equivalence is proven and repeated lineage graph-walk counts are strongly reduced. Timed evidence is mixed: B median 1.221x faster on the small synthetic fixture; A showed no measurable speedup. This is not a Gen6 wall-time claim or scientific qualification.",
+    "latest_artifact_id": 11663327736,
+    "latest_artifact_zip_sha256": "a0d6eecbe94d3c6d6ec2a70a48ce91a52b4403cb06f4594cad0f0de51e57d381",
+    "wall_time_benchmark": {
+      "repeats_per_arm": 5,
+      "A": {
+        "reference_median_seconds": 0.053178,
+        "memoized_median_seconds": 0.054293,
+        "median_speedup_ratio": 0.979,
+        "verdict": "NO_MEASURABLE_SPEEDUP_ON_THIS_SMALL_A_FIXTURE"
+      },
+      "B": {
+        "reference_median_seconds": 0.096192,
+        "memoized_median_seconds": 0.078757,
+        "median_speedup_ratio": 1.221,
+        "reduction_percent": 18.12,
+        "verdict": "MODEST_MEDIAN_SPEEDUP_ON_THIS_SYNTHETIC_B_FIXTURE"
+      },
+      "includes_python_process_startup": true,
+      "timing_scope": "8-node executable-parent chain, 12 fixed discovery rows; paired subprocess timing; 5 repeats each; not representative of full Gen6",
+      "interpretation": "Graph-walk call counts collapsed dramatically but only B showed a modest wall-time win in the small fixture; A timing is noise/no win. Full B Gen6 continuation must establish whether this removes the actual stall."
+    }
   },
   "known_caveats": [
     "These are controlled lab copies; upstream source blobs remain pinned in research/pr110_acsie_snapshot/manifest.json.",
