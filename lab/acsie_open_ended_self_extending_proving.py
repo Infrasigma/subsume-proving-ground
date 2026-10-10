@@ -333,6 +333,28 @@ def compact_search_stats(search_stats: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def emit_phase_start(
+    phase: str,
+    seed: int,
+    generation: int,
+    **details: Any,
+) -> None:
+    """Mark entry into a possibly long phase so interrupted runs localize the stall."""
+    print(
+        json.dumps(
+            {
+                "event": "PROCESS_PHASE_START",
+                "phase": str(phase),
+                "seed": int(seed),
+                "generation": int(generation),
+                **details,
+            },
+            sort_keys=True,
+        ),
+        flush=True,
+    )
+
+
 def emit_phase_timing(
     phase: str,
     started: float,
@@ -647,6 +669,10 @@ def run_seed(
                 # This block is diagnostic-only; the scientific closure gate below
                 # performs the real discovery/selection search. The prior audit
                 # duplicated that work for every retained pair and dominated wall time.
+                emit_phase_start(
+                    "closure_synthesis", seed, generation,
+                    expected_parent_ids=sorted((left_parent.primitive_id, right_parent.primitive_id)),
+                )
                 closure_synthesis_started = perf_counter()
                 if hasattr(learner, "synthesize_process_frontier"):
                     cprocs = tuple(
@@ -713,6 +739,10 @@ def run_seed(
                 expected = {left_parent.primitive_id, right_parent.primitive_id}
                 selected_proc = None
                 frontier_lineage_matches = 0
+                emit_phase_start(
+                    "closure_candidate_evaluation", seed, generation,
+                    expected_parent_ids=sorted(expected), candidate_count=len(cprocs),
+                )
                 candidate_evaluation_started = perf_counter()
                 candidate_evaluations = 0
                 candidate_accepted = 0
@@ -766,6 +796,10 @@ def run_seed(
                 )
                 closure_rates.append(float(competence))
                 closure_reuse_rates.append(float(reuse_ok))
+                emit_phase_start(
+                    "closure_semantic_parent_match", seed, generation,
+                    expected_parent_ids=sorted(expected),
+                )
                 semantic_match_started = perf_counter()
                 semantic_matches = semantic_parent_match_count(
                     learner,
@@ -844,6 +878,10 @@ def run_seed(
             pholdout = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_holdout', 5, 0.27, probe_macros)
             ptransfer = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_transfer', 5, -0.22, probe_macros)
             pood = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_ood', 5, 0.41, probe_macros)
+            emit_phase_start(
+                "primary_process_synthesis", seed, generation,
+                probe_index=int(probe_idx),
+            )
             primary_synthesis_started = perf_counter()
             proc = learner.synthesize_process(tuple(ptrain) + tuple(pselection), ptransfer, pood)
             print(
@@ -884,6 +922,10 @@ def run_seed(
             competence = False
             reuse_ok = False
             if proc is not None:
+                emit_phase_start(
+                    "primary_process_evaluation", seed, generation,
+                    probe_index=int(probe_idx),
+                )
                 primary_evaluation_started = perf_counter()
                 peval = learner.evaluate(proc, ptrain, pholdout, ptransfer, pood, ())
                 emit_phase_timing(
@@ -896,6 +938,10 @@ def run_seed(
                 )
                 competence = bool(peval.accepted and peval.ood_error <= 1e-9)
                 expected = {p.primitive_id for p in probe_parents}
+                emit_phase_start(
+                    "primary_process_lineage", seed, generation,
+                    probe_index=int(probe_idx),
+                )
                 primary_lineage_started = perf_counter()
                 candidate_lineage = executable_lineage_ids(
                     learner,
@@ -915,6 +961,10 @@ def run_seed(
                 )
             probe_rates.append(float(competence))
             probe_reuse_rates.append(float(reuse_ok))
+            emit_phase_start(
+                "primary_probe_semantic_match", seed, generation,
+                probe_index=int(probe_idx),
+            )
             probe_semantic_started = perf_counter()
             semantic_probe_matches = semantic_parent_match_count(
                 learner,
@@ -968,6 +1018,10 @@ def run_seed(
                 )
                 probe_trap_count += 1
 
+            emit_phase_start(
+                "baseline_probe_synthesis", seed, generation,
+                probe_index=int(probe_idx),
+            )
             baseline_synthesis_started = perf_counter()
             bproc = synthesize_discovery_only(baseline, ptrain, ptransfer)
             emit_phase_timing(
@@ -980,6 +1034,10 @@ def run_seed(
             )
             bcompetence = False
             if bproc is not None:
+                emit_phase_start(
+                    "baseline_probe_evaluation", seed, generation,
+                    probe_index=int(probe_idx),
+                )
                 baseline_evaluation_started = perf_counter()
                 beval = baseline.evaluate(bproc, ptrain, pholdout, ptransfer, pood, ())
                 bcompetence = bool(beval.accepted and beval.ood_error <= 1e-9)
