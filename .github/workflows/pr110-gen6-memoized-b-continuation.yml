@@ -1,8 +1,5 @@
 name: PR110 exact B Gen6 lineage-memoization continuation
 on:
-  push:
-    branches:
-      - research/pr110-gen6-phase-timing-20261010
   workflow_dispatch:
 concurrency:
   group: pr110-exact-b-gen6-memoized-continuation
