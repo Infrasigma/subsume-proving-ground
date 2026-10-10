@@ -1,0 +1,56 @@
+{
+  "schema": "ACSIE.PR110.lineage-memoization-experiment.v1",
+  "parent_commit": "c0db56983a92807524280b652dadced7fa07bd84",
+  "experiment_branch": "research/pr110-gen6-phase-timing-20261010",
+  "purpose": "Execution-only cache for immutable lineage graph closures during one find_exact_expression call. No candidate-generation, candidate-rank, dominance, eligibility, retention, or gate changes.",
+  "exact_original_snapshots": {
+    "A_runtime_sha": "7e905d73c15ece4b8b5d7cb73218bac34c2e1314",
+    "B_runtime_sha": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+    "evaluator_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+    "seed": 2026100305,
+    "generations": 12,
+    "selected_generations": [
+      5,
+      6,
+      9,
+      10,
+      11
+    ],
+    "checkpoint_run": 37570567635,
+    "B_checkpoint_raw_sha256": "f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced",
+    "B_checkpoint_state_digest": "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a",
+    "B_generation_next": 6
+  },
+  "lab_snapshot_behavioral_search": {
+    "A": {
+      "prior_lab_blob_sha256": "6145789aaf4e6a4c4d1cf78ec93e6f94b1df2411",
+      "optimized_lab_blob_sha256": "a159f394afce54b8a95e507ed0e2f2e632b69b5d",
+      "upstream_runtime_blob_sha256": "e1c461571d775e510ee1d02762909e683468be5e",
+      "changes": [
+        "sorted per-primitive lineage memoization",
+        "sorted macro-set union memoization",
+        "diagnostic cache counters"
+      ]
+    },
+    "B": {
+      "prior_lab_blob_sha256": "90616f062298b52eb72b95cffeeb754c626ec4ed",
+      "optimized_lab_blob_sha256": "ab658a2e49adf479bf9ea4892dfef930624c6e7b",
+      "upstream_runtime_blob_sha256": "fdd75290600458976e63c2c58771ed7a254da5a0",
+      "changes": [
+        "separate provenance lineage memoization",
+        "separate executable lineage memoization",
+        "per-primitive and macro-set union caches",
+        "diagnostic cache counters"
+      ]
+    }
+  },
+  "equivalence_test": "lab/pr110_lineage_memoization_equivalence.py compares reference and cached search outputs, alternatives, and all non-cache search stats for synthetic discovery-only tasks on both A and B.",
+  "known_caveats": [
+    "These are controlled lab copies; upstream source blobs remain pinned in research/pr110_acsie_snapshot/manifest.json.",
+    "A memoization performance win is not yet demonstrated for the exact PR110 B checkpoint.",
+    "The frozen five-seed by twelve-generation scientific budget is not run or altered by the twin-check workflow.",
+    "Promotion remains forbidden until the full pinned comparison is completed and scientifically qualifies."
+  ],
+  "scientific_status": "NOT_RUN",
+  "promotion_status": "DO_NOT_PROMOTE"
+}
