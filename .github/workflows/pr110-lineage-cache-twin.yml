@@ -18,8 +18,8 @@ jobs:
     timeout-minutes: 10
     env:
       ORIGINAL_HEAD: "c0db56983a92807524280b652dadced7fa07bd84"
-      OPTIMIZED_A_BLOB: "a159f394afce54b8a95e507ed0e2f2e632b69b5d"
-      OPTIMIZED_B_BLOB: "ab658a2e49adf479bf9ea4892dfef930624c6e7b"
+      OPTIMIZED_A_BLOB: "1c67bdcd00cc86f755f461d78e0eb77a0977cab1"
+      OPTIMIZED_B_BLOB: "7d0a7d7709a93543667b27ffed2bb1b4574f9221"
     steps:
       - uses: actions/checkout@v4
         with:
