@@ -162,17 +162,37 @@ def find_exact_expression(
         vector_cache[ident] = values
         return values
 
+    # Primitive lineage is immutable during one search call. Cache graph walks
+    # and repeated macro-set unions; this is execution-only memoization.
+    lineage_by_primitive: dict[str, tuple[str, ...]] = {}
+    lineage_by_macro_set: dict[tuple[str, ...], tuple[str, ...]] = {}
+    lineage_cache_counters = {"primitive_graph_walks": 0, "union_cache_hits": 0}
+
     def lineage_ids(used_primitives: tuple[str, ...]) -> tuple[str, ...]:
-        if not used_primitives:
+        macro_set = tuple(sorted({str(pid) for pid in used_primitives}))
+        if not macro_set:
             return ()
+        cached_union = lineage_by_macro_set.get(macro_set)
+        if cached_union is not None:
+            lineage_cache_counters["union_cache_hits"] += 1
+            return cached_union
         lineage: set[str] = set()
         primitive_lineage = getattr(compiler, "primitive_lineage", None)
-        if primitive_lineage is None:
-            lineage.update(used_primitives)
-        else:
-            for pid in used_primitives:
-                lineage.update(str(x) for x in primitive_lineage(pid))
-        return tuple(sorted(lineage))
+        for pid in macro_set:
+            cached_primitive = lineage_by_primitive.get(pid)
+            if cached_primitive is None:
+                if primitive_lineage is None:
+                    cached_primitive = (pid,)
+                else:
+                    lineage_cache_counters["primitive_graph_walks"] += 1
+                    cached_primitive = tuple(
+                        sorted({str(x) for x in primitive_lineage(pid)})
+                    )
+                lineage_by_primitive[pid] = cached_primitive
+            lineage.update(cached_primitive)
+        result = tuple(sorted(lineage))
+        lineage_by_macro_set[macro_set] = result
+        return result
 
 
     structural_lineage_by_key: dict[str, set[str]] = {}
@@ -835,6 +855,7 @@ def find_exact_expression(
                     )
                     break
 
+    stats["lineage_cache_counters"] = dict(lineage_cache_counters)
     if best_target is not None:
         stats["status"] = "TARGET_FOUND"
         stats["depths_completed"] = completed
