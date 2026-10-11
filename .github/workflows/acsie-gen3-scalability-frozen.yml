@@ -1,0 +1,275 @@
+name: ACSIE Gen3 scalability from verified frozen Gen2
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-r3-exact-source-20261011
+    paths:
+      - ".github/workflows/acsie-gen3-scalability-frozen.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  frozen-predecessor-gen3-scale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout proving-ground diagnostic
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Record diagnostic identity and compile
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/gen3
+          {
+            echo "EXECUTOR_REPOSITORY=Infrasigma/subsume-proving-ground"
+            echo "EXECUTOR_BRANCH=${GITHUB_REF_NAME}"
+            echo "EXECUTOR_COMMIT=${GITHUB_SHA}"
+            echo "WORKFLOW_RUN_ID=${GITHUB_RUN_ID}"
+            echo "HARNESS_SHA256=$(sha256sum lab/acsie_gen6_gen3_scalability.py | awk '{print $1}')"
+            echo "SCALED_DIMENSION=Gen3 inner discovery streams"
+            echo "SCALE_VALUES=3,6,12,24"
+            echo "REPEATS_PER_SCALE=2"
+            echo "FROZEN_GEN2_SOURCE=0e9c2ad9a146775c162a278b0330c596d29055b9"
+            echo "CURRENT_GEN3_SOURCE=9203e044750f5f1ba9e86ec5b967c834d5e66aa7"
+            echo "GEN3_SEED=771221"
+            echo "CANDIDATE_CAP=128"
+          } | tee evidence/gen3/provenance.txt
+          python -m py_compile lab/acsie_gen6_gen3_scalability.py
+
+      - name: Checkout historically verified Gen2 predecessor source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: 0e9c2ad9a146775c162a278b0330c596d29055b9
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-old
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout pinned Gen3 frozen-predecessor continuation
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: 9203e044750f5f1ba9e86ec5b967c834d5e66aa7
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-current
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact source revisions and script identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          old_commit="$(git -C acsie-old rev-parse HEAD)"
+          gen3_commit="$(git -C acsie-current rev-parse HEAD)"
+          old_tree="$(git -C acsie-old rev-parse 'HEAD^{tree}')"
+          gen3_tree="$(git -C acsie-current rev-parse 'HEAD^{tree}')"
+          old_export_sha="$(sha256sum acsie-old/research/export_verified_gen2_state_v1.py | awk '{print $1}')"
+          gen3_script_sha="$(sha256sum acsie-current/research/gen3_from_frozen_verified_gen2_v1.py | awk '{print $1}')"
+          gen3_core_sha="$(sha256sum acsie-current/research/native_self_learning_kernel_gen3_compositional_retention_v1.py | awk '{print $1}')"
+          test "$old_commit" = "0e9c2ad9a146775c162a278b0330c596d29055b9"
+          test "$gen3_commit" = "9203e044750f5f1ba9e86ec5b967c834d5e66aa7"
+          {
+            echo "FROZEN_GEN2_SOURCE_COMMIT=$old_commit"
+            echo "FROZEN_GEN2_SOURCE_TREE=$old_tree"
+            echo "FROZEN_GEN2_EXPORTER_SHA256=$old_export_sha"
+            echo "CURRENT_GEN3_SOURCE_COMMIT=$gen3_commit"
+            echo "CURRENT_GEN3_SOURCE_TREE=$gen3_tree"
+            echo "GEN3_FROZEN_CONTINUATION_SHA256=$gen3_script_sha"
+            echo "GEN3_COMPOSITIONAL_SOURCE_SHA256=$gen3_core_sha"
+            echo "SOURCE_IDENTITY=PASS"
+          } | tee -a evidence/gen3/provenance.txt
+
+      - name: Export and validate the frozen verified Gen2 state
+        shell: bash
+        working-directory: acsie-old
+        run: |
+          set -uo pipefail
+          set +e
+          PYTHONPATH=. python research/export_verified_gen2_state_v1.py \
+            2>&1 | tee ../evidence/gen3/frozen-gen2-export.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "FROZEN_EXPORT_RC=$rc" | tee -a ../evidence/gen3/provenance.txt
+          exit 0
+
+      - name: Extract state only after all frozen-predecessor gates pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, pathlib
+          r=json.load(open('evidence/gen3/frozen-gen2-export.log'))
+          assert r['scientific_status']=='PASSED', r
+          assert r['source_commit']=='0e9c2ad9a146775c162a278b0330c596d29055b9', r.get('source_commit')
+          assert r['scientific_parent_commit']=='15faeb036999c94c6e9f5cc0d35c2aae99d9830b', r.get('scientific_parent_commit')
+          state=r.get('frozen_state')
+          assert isinstance(state,dict) and state, 'empty/missing frozen predecessor state'
+          pathlib.Path('frozen-gen2-state.json').write_text(json.dumps(state, sort_keys=True))
+          pathlib.Path('evidence/gen3/frozen-gen2-state.json').write_text(json.dumps(state, sort_keys=True))
+          pathlib.Path('evidence/gen3/frozen-gen2-export.json').write_text(json.dumps(r, sort_keys=True))
+          digest=hashlib.sha256(pathlib.Path('frozen-gen2-state.json').read_bytes()).hexdigest()
+          with open('evidence/gen3/provenance.txt','a') as f:
+              f.write(f'FROZEN_GEN2_STATE_SHA256={digest}\n')
+              f.write(f'FROZEN_GEN2_HOLDOUT_GAIN={r["gen2_holdout_gain"]}\n')
+              f.write(f'FROZEN_GEN2_TRANSFER_GAIN={r["gen2_transfer_gain"]}\n')
+          print('FROZEN_GEN2_EXPORT=PASSED')
+          print('FROZEN_GEN2_STATE_SHA256='+digest)
+          print('FROZEN_GEN2_HOLDOUT_GAIN='+str(r['gen2_holdout_gain']))
+          print('FROZEN_GEN2_TRANSFER_GAIN='+str(r['gen2_transfer_gain']))
+          PY
+
+      - name: Run stream-volume scaling and paired deterministic repeats
+        timeout-minutes: 55
+        shell: bash
+        run: |
+          set -uo pipefail
+          root="$GITHUB_WORKSPACE/evidence/gen3"
+          for streams in 3 6 12 24; do
+            for repeat in 1 2; do
+              stem="gen3-streams-$streams-repeat-$repeat"
+              echo "GEN3_FROZEN_SCALE streams=$streams repeat=$repeat fixed_seed=771221"
+              set +e
+              PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie-current" \
+                timeout 300s python "$GITHUB_WORKSPACE/lab/acsie_gen6_gen3_scalability.py" \
+                  --mode gen3 --seed 771221 --gen3-inner-streams "$streams" \
+                  --frozen-state "$GITHUB_WORKSPACE/frozen-gen2-state.json" \
+                  > "$root/$stem.json" 2> "$root/$stem.stderr"
+              rc=$?
+              set -e
+              if [ "$rc" -eq 0 ]; then status="CHILD_EXIT_0"; \
+              elif [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then status="CHILD_WALL_TIMEOUT"; \
+              else status="CHILD_EXIT_${rc}"; fi
+              printf '{"streams":%s,"repeat":%s,"child_returncode":%s,"wrapper_status":"%s"}\n' \
+                "$streams" "$repeat" "$rc" "$status" > "$root/$stem.status.json"
+              echo "RESULT streams=$streams repeat=$repeat rc=$rc status=$status"
+            done
+          done
+          python - "$root" <<'PY'
+          import json, pathlib, statistics, sys
+          root=pathlib.Path(sys.argv[1])
+          sizes=(3,6,12,24)
+          repeats=(1,2)
+          rows=[]
+          for size in sizes:
+              for repeat in repeats:
+                  stem=f"gen3-streams-{size}-repeat-{repeat}"
+                  wrapper=json.loads((root/f"{stem}.status.json").read_text())
+                  row={"streams":size,"repeat":repeat,**wrapper}
+                  path=root/f"{stem}.json"
+                  if wrapper["child_returncode"]==0 and path.exists() and path.stat().st_size:
+                      try:
+                          d=json.loads(path.read_text())
+                          row["record"]=d
+                          row["record_status"]=(
+                              "PASS" if d.get("schema")=="ACSIE.gen3_frozen_scalability_diagnostic.v1"
+                              else "INVALID_CHILD_SCHEMA"
+                          )
+                      except Exception as exc:
+                          row["record_status"]=f"INVALID_JSON:{type(exc).__name__}:{exc}"
+                  else:
+                      row["record_status"]="NO_COMPLETE_CHILD_RECORD"
+                  rows.append(row)
+          completed=[r for r in rows if r.get("record_status")=="PASS"]
+          complete=len(completed)==len(sizes)*len(repeats)
+          scale_summary=[]
+          deterministic=True
+          for size in sizes:
+              group=[r for r in completed if r["streams"]==size]
+              signatures=[r["record"].get("scientific_signature_sha256") for r in group]
+              same=len(group)==len(repeats) and len(set(signatures))==1
+              deterministic=deterministic and same
+              times=[r["record"].get("run_elapsed_ms_including_lightweight_telemetry") for r in group]
+              rss=[r["record"].get("process_peak_rss_mb") for r in group]
+              variant_times=[r["record"].get("search_scaling_telemetry",{}).get("variant_generation",[]) for r in group]
+              variant_ms=[x.get("elapsed_ms") for run in variant_times for x in run if isinstance(x.get("elapsed_ms"),(int,float))]
+              kernel_eval=[r["record"].get("search_scaling_telemetry",{}).get("kernel_evaluation",{}) for r in group]
+              regress=[r["record"].get("search_scaling_telemetry",{}).get("historical_regression",{}) for r in group]
+              statuses={str(r["record"].get("gen3_scientific_status")):sum(r["record"].get("gen3_scientific_status")==x["record"].get("gen3_scientific_status") for x in group) for r in group}
+              scale_summary.append({
+                  "gen3_inner_streams":size,
+                  "completed_repeats":len(group),
+                  "science_signature_stable_across_repeats":same,
+                  "scientific_status_by_repeat":[r["record"].get("gen3_scientific_status") for r in group],
+                  "candidate_count_by_repeat":[r["record"].get("candidate_count") for r in group],
+                  "eligible_count_by_repeat":[r["record"].get("eligible_count") for r in group],
+                  "median_run_elapsed_ms":round(statistics.median([x for x in times if isinstance(x,(int,float))]),3) if times else None,
+                  "median_peak_rss_mb":round(statistics.median([x for x in rss if isinstance(x,(int,float))]),3) if rss else None,
+                  "median_variant_generation_ms":round(statistics.median(variant_ms),3) if variant_ms else None,
+                  "median_kernel_eval_calls":statistics.median([x.get("calls",0) for x in kernel_eval]) if kernel_eval else None,
+                  "median_kernel_eval_elapsed_ms":round(statistics.median([x.get("elapsed_ms",0.0) for x in kernel_eval]),3) if kernel_eval else None,
+                  "median_historical_regression_calls":statistics.median([x.get("calls",0) for x in regress]) if regress else None,
+                  "median_historical_regression_elapsed_ms":round(statistics.median([x.get("elapsed_ms",0.0) for x in regress]),3) if regress else None,
+                  "outer_stream_counts_fixed_all_repeats":len(group)==len(repeats) and all(
+                      r["record"].get("all_outer_stream_counts_fixed") is True
+                      and r["record"].get("integrity",{}).get("exactly_one_target_stream_group_scaled") is True
+                      for r in group
+                  ),
+                  "integrity_pass_all_repeats":len(group)==len(repeats) and all(
+                      all(r["record"].get("integrity",{}).values()) for r in group
+                  ),
+              })
+          statuses=[r["record"].get("gen3_scientific_status") for r in completed]
+          integrity_all=complete and all(all(r["record"].get("integrity",{}).values()) for r in completed)
+          if not complete:
+              classification="INCONCLUSIVE_INCOMPLETE_SCALE_REPEAT_MATRIX"
+          elif not deterministic:
+              classification="INVALID_NONDETERMINISTIC_REPEATED_CELL"
+          elif not integrity_all:
+              classification="INVALID_OR_INTEGRITY_GATE_FAILURE"
+          elif all(s=="PASSED" for s in statuses):
+              classification="GEN3_FROZEN_PREDECESSOR_SCIENTIFIC_PASS_ALL_SCALE_CELLS"
+          elif any(s=="BLOCKED" for s in statuses):
+              classification="BLOCKED_GEN3_FROZEN_PREDECESSOR_CASE"
+          else:
+              classification="GEN3_SCIENTIFIC_FAILURE_PRESENT_AT_ONE_OR_MORE_SCALE_CELLS"
+          summary={
+              "schema":"ACSIE.gen3_frozen_scalability_summary.v1",
+              "historical_gen2_source_commit":"0e9c2ad9a146775c162a278b0330c596d29055b9",
+              "current_gen3_source_commit":"9203e044750f5f1ba9e86ec5b967c834d5e66aa7",
+              "frozen_gen2_seed":771221,
+              "gen3_seed":771221,
+              "scale_values":list(sizes),
+              "repeats_per_scale":len(repeats),
+              "completed_cells":len(completed),
+              "expected_cells":len(sizes)*len(repeats),
+              "scientific_classification":classification,
+              "stable_science_across_repeats":deterministic,
+              "all_integrity_gates_pass":integrity_all,
+              "by_stream_size":scale_summary,
+              "cells":[{
+                  k:v for k,v in row.items() if k!="record"
+              } | ({
+                  "scientific_status":row["record"].get("gen3_scientific_status"),
+                  "scientific_reason":row["record"].get("gen3_reason"),
+                  "candidate_count":row["record"].get("candidate_count"),
+                  "eligible_count":row["record"].get("eligible_count"),
+                  "holdout_gain":row["record"].get("gen3_holdout_gain"),
+                  "transfer_gain":row["record"].get("gen3_transfer_gain"),
+                  "scientific_signature_sha256":row["record"].get("scientific_signature_sha256"),
+                  "elapsed_ms":row["record"].get("run_elapsed_ms_including_lightweight_telemetry"),
+                  "peak_rss_mb":row["record"].get("process_peak_rss_mb"),
+                  "integrity":row["record"].get("integrity"),
+              } if "record" in row else {}) for row in rows],
+              "interpretation_guard":(
+                  "Only Gen3 inner discovery stream count changed. Uses the exact verified frozen Gen2 predecessor, "
+                  "holds Gen1/Gen2 state and all outer streams fixed, and leaves the 128-program cap and original gates unchanged. "
+                  "Single-seed repeated diagnostic only; not a qualification or AGI/ASI claim."
+              )
+          }
+          (root/"summary.json").write_text(json.dumps(summary,sort_keys=True,indent=2)+"\n")
+          print(json.dumps(summary,sort_keys=True,indent=2))
+          PY
+
+      - name: Upload Gen3 frozen-predecessor evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-gen3-frozen-scalability-${{ github.run_id }}
+          path: evidence/gen3/
+          if-no-files-found: error
