@@ -91,6 +91,27 @@ jobs:
             echo "SOURCE_IDENTITY=PASS"
           } | tee "$GITHUB_WORKSPACE/evidence/h7-r3/source-identity.txt"
 
+      - name: Checkout exact R2 control source
+        if: ${{ steps.verify-source.outcome == 'success' }}
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: 5b6dc50d36a2584ab9c05525ed19047ca1792b3b
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-r2
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify R2 control commit
+        id: verify-r2-source
+        if: ${{ steps.verify-source.outcome == 'success' }}
+        working-directory: acsie-r2
+        run: |
+          set -euo pipefail
+          actual_commit="$(git rev-parse HEAD)"
+          test "$actual_commit" = "5b6dc50d36a2584ab9c05525ed19047ca1792b3b"
+          echo "ACSIE_R2_CONTROL_COMMIT=$actual_commit" | tee "$GITHUB_WORKSPACE/evidence/h7-r3/r2-control-identity.txt"
+
       - name: Setup Python 3.11
         if: ${{ steps.verify-source.outcome == 'success' }}
         uses: actions/setup-python@v5
@@ -299,6 +320,139 @@ jobs:
           print(out)
           if mismatches:
               raise SystemExit("R3 result/stat payload differs across hash seeds")
+          PY
+
+      - name: Run exact R2 control on same representative workloads
+        if: ${{ steps.representative-scale.outcome == 'success' && steps.verify-r2-source.outcome == 'success' && steps.install-pytest.outcome == 'success' }}
+        id: r2-control-scale
+        working-directory: acsie-r2
+        env:
+          PYTHONPATH: ${{ github.workspace }}/acsie-r2
+        run: |
+          set -euo pipefail
+          for seed in 0 731; do
+            repeats=1
+            if [ "$seed" = "0" ]; then repeats=3; fi
+            echo "R2_CONTROL PYTHONHASHSEED=$seed repeats=$repeats"
+            PYTHONHASHSEED="$seed" timeout 300s python "$GITHUB_WORKSPACE/lab/h7_r3_representative_scale.py" --repeats "$repeats" \
+              | tee "$GITHUB_WORKSPACE/evidence/h7-r3/r2-control-scale-seed-$seed.jsonl"
+          done
+
+      - name: Compare exact R2 control and R3 candidate
+        if: ${{ steps.r2-control-scale.outcome == 'success' && steps.representative-scale.outcome == 'success' }}
+        id: compare-r2-r3-scale
+        run: |
+          set -euo pipefail
+          python - "$GITHUB_WORKSPACE/evidence/h7-r3" <<'PY'
+          import json
+          import pathlib
+          import statistics
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          seeds = (0, 731)
+          cells = {(n, task) for n in (16, 24, 32) for task in ("reachable_add", "unreachable")}
+          sources = {}
+          records_out = []
+          medians = {}
+          for label in ("r2-control", "r3-candidate"):
+              source_runs = {}
+              performance = []
+              for seed in seeds:
+                  path = root / (
+                      f"{label}-scale-seed-{seed}.jsonl"
+                      if label == "r2-control"
+                      else f"representative-scale-seed-{seed}.jsonl"
+                  )
+                  rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+                  expected_count = 18 if seed == 0 else 6
+                  if len(rows) != expected_count:
+                      raise SystemExit(f"{label} seed {seed}: expected {expected_count} records, got {len(rows)}")
+                  per_cell = {}
+                  for row in rows:
+                      stable, perf = row["stable"], row["performance"]
+                      key = (stable["n_primitives"], stable["task"])
+                      if key not in cells:
+                          raise SystemExit(f"{label}: unexpected cell {key}")
+                      if not stable["active_identity_consistent"]:
+                          raise SystemExit(f"{label}: live-level/frontier/index identity mismatch at {key}")
+                      if perf["elapsed_ms"] > 15000 or perf["process_peak_rss_mb"] > 2048:
+                          raise SystemExit(f"{label}: resource guard exceeded at {key}")
+                      if stable["result_found"] != (stable["task"] == "reachable_add"):
+                          raise SystemExit(f"{label}: reachability control failed at {key}")
+                      per_cell.setdefault(key, []).append(stable["signature_sha256"])
+                      if seed == 0:
+                          performance.append({"source": label, **stable, **perf})
+                  if set(per_cell) != cells:
+                      raise SystemExit(f"{label} seed {seed}: wrong cell set")
+                  for key, signatures in per_cell.items():
+                      if len(set(signatures)) != 1:
+                          raise SystemExit(f"{label} seed {seed}: unstable repeated full result/stats for {key}")
+                  source_runs[seed] = {key: signatures[0] for key, signatures in per_cell.items()}
+              hash_mismatches = [
+                  {"cell": key, "seed0": source_runs[0][key], "seed731": source_runs[731][key]}
+                  for key in sorted(cells) if source_runs[0][key] != source_runs[731][key]
+              ]
+              if hash_mismatches:
+                  raise SystemExit(f"{label}: full result/stats vary across hash seeds: {hash_mismatches}")
+              sources[label] = {"signatures": source_runs[0], "hashseed_matches": True}
+              for key in sorted(cells):
+                  vals = [
+                      row["elapsed_ms"] for row in performance
+                      if (row["n_primitives"], row["task"]) == key
+                  ]
+                  medians[f"{label}_n{key[0]}_{key[1]}"] = round(statistics.median(vals), 3)
+              records_out.extend(performance)
+
+          deltas = []
+          r2_by_cell = {
+              (r["n_primitives"], r["task"]): r
+              for r in records_out if r["source"] == "r2-control"
+          }
+          r3_by_cell = {
+              (r["n_primitives"], r["task"]): r
+              for r in records_out if r["source"] == "r3-candidate"
+          }
+          for key in sorted(cells):
+              old, new = r2_by_cell[key], r3_by_cell[key]
+              deltas.append({
+                  "n_primitives": key[0],
+                  "task": key[1],
+                  "r2_median_ms": round(statistics.median([
+                      r["elapsed_ms"] for r in records_out
+                      if r["source"] == "r2-control"
+                      and (r["n_primitives"], r["task"]) == key
+                  ]), 3),
+                  "r3_median_ms": round(statistics.median([
+                      r["elapsed_ms"] for r in records_out
+                      if r["source"] == "r3-candidate"
+                      and (r["n_primitives"], r["task"]) == key
+                  ]), 3),
+                  "r2_unique_states": old["unique_states"],
+                  "r3_unique_states": new["unique_states"],
+                  "r2_generated": old["generated_expressions"],
+                  "r3_generated": new["generated_expressions"],
+                  "r2_frontier_max": old["dominance_frontier_max"],
+                  "r3_frontier_max": new["dominance_frontier_max"],
+                  "r2_r3_result_stats_digest_equal": old["signature_sha256"] == new["signature_sha256"],
+              })
+          summary = {
+              "schema": "ACSIE.H7_R2_vs_R3.same-workload-benchmark.v1",
+              "r2_source_commit": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+              "r3_source_commit": "e5f4526bf724650b09051b6625e4dd70b59282c2",
+              "workload": {"primitive_sizes": [16, 24, 32], "rows": 10, "max_depth": 2, "tasks": ["reachable_add", "unreachable"]},
+              "trials": {"hashseed_0": 3, "hashseed_731": 1},
+              "same_source_full_result_stats_repeatability": True,
+              "same_source_cross_hashseed_payload_stability": True,
+              "r2_r3_payload_equality_expected": False,
+              "medians_ms": medians,
+              "paired_deltas": deltas,
+              "performance_records_seed_0": records_out,
+              "interpretation_guard": "Performance comparison is diagnostic only. R3 intentionally preserves additional valid Pareto/context representatives, so R2/R3 result or state-count equality is not required. Do not promote on timings alone."
+          }
+          out = json.dumps(summary, sort_keys=True, indent=2)
+          (root / "r2-vs-r3-representative-scale-summary.json").write_text(out + "\\n")
+          print(out)
           PY
 
       - name: Upload auditable H7 R3 regression logs
