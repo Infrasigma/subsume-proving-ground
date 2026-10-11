@@ -1055,3 +1055,4 @@ jobs:
         with:
           name: acsie-open-ended-growth-evidence-${{ github.sha }}
           path: open-ended-growth-result.txt
+# H7 bounded next-notch diagnostic is implemented in lab/h7_r3_uninstrumented_timing.py; keep this workflow-path trigger intentional.
