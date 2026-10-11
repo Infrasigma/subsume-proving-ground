@@ -33,184 +33,282 @@ def _sha256(value: Any) -> str:
 
 
 def run_gen6(seed: int, generations: int) -> dict[str, Any]:
-    """Instrument the exact generic recursive compiler growth lab without changing its decisions."""
-    import acsie_open_ended_growth_proving as growth_lab
+    """Instrument the actual open-ended self-extending compiler through G6."""
+    import acsie_open_ended_self_extending_proving as growth_lab
+    import cognitive_core.open_ended_growth as open_growth
     import cognitive_core.recursive_cognitive_compiler as rcc
 
-    compiler_type = rcc.RecursiveCognitiveCompiler
+    base_type = rcc.RecursiveCognitiveCompiler
+    learner_type = open_growth.OpenEndedRecursiveCognitiveCompiler
     original_run_seed = growth_lab.run_seed
-    original_traces_for = growth_lab.traces_for
-    originals = {name: getattr(compiler_type, name) for name in (
-        "__init__", "_exprs", "invent_primitive", "synthesize_process", "evaluate", "retain"
-    )}
+    original_make_traces = growth_lab.make_traces
+    original_find = open_growth.find_exact_expression
+
+    method_specs = (
+        (base_type, "invent_primitive"),
+        (learner_type, "invent_primitive"),
+        (base_type, "_exprs"),
+        (base_type, "synthesize_process_frontier"),
+        (base_type, "synthesize_process"),
+        (base_type, "evaluate"),
+        (learner_type, "accept_primitive"),
+    )
+    original_methods = {(cls, name): getattr(cls, name) for cls, name in method_specs}
+    original_init = base_type.__init__
     instance_roles: dict[int, str] = {}
+    state: dict[str, Any] = {"generation": None}
 
-    state: dict[str, Any] = {"seed": seed, "generation": None}
-    meter: dict[int, dict[str, Any]] = defaultdict(lambda: {
-        "learner": {
+    def new_role_metrics():
+        return {
             "method_calls": defaultdict(int),
             "method_elapsed_ms": defaultdict(float),
             "search_calls": [],
-            "primitive_counts_before_after": [],
-        },
-        "baseline": {
-            "method_calls": defaultdict(int),
-            "method_elapsed_ms": defaultdict(float),
-            "search_calls": [],
-            "primitive_counts_before_after": [],
-        },
-    })
+            "primitive_changes": [],
+            "process_frontier_calls": [],
+            "accepted_primitive_count": 0,
+        }
 
-    def _role(compiler: Any) -> str:
-        # The scientific compiler does not store its constructor seed as an attribute.
-        # Classify instances from the original constructor argument without mutating them.
-        return instance_roles.get(id(compiler), "unclassified")
+    meter: dict[int, dict[str, Any]] = defaultdict(
+        lambda: {"learner": new_role_metrics(), "baseline": new_role_metrics()}
+    )
 
-    def _slot(compiler: Any) -> dict[str, Any]:
-        gen = state["generation"]
-        if gen is None:
-            gen = int(getattr(compiler, "generation", 0))
-        gen = max(0, int(gen))
-        return meter[gen][_role(compiler)]
-
-    def traced_traces_for(expr, trace_seed, generation, split, count, *, key_shift=0.0):
-        state["generation"] = int(generation)
-        return original_traces_for(
-            expr, trace_seed, generation, split, count, key_shift=key_shift
+    def role_for(compiler: Any) -> str:
+        return instance_roles.get(
+            id(compiler),
+            "learner" if isinstance(compiler, learner_type) else "baseline",
         )
 
-    def wrap_method(name, original):
+    def slot_for(compiler: Any) -> dict[str, Any]:
+        generation = state["generation"]
+        if generation is None:
+            generation = int(getattr(compiler, "generation", 0))
+        return meter[max(0, int(generation))][role_for(compiler)]
+
+    def init_wrapper(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        instance_roles[id(self)] = (
+            "learner" if isinstance(self, learner_type) else "baseline"
+        )
+
+    def traces_wrapper(expr, trace_seed, generation, split, count, shift, macros):
+        state["generation"] = int(generation)
+        return original_make_traces(
+            expr, trace_seed, generation, split, count, shift, macros
+        )
+
+    def traced_find(compiler, rows, max_depth, **kwargs):
+        started = time.perf_counter()
+        result = None
+        error = None
+        try:
+            result = original_find(compiler, rows, max_depth, **kwargs)
+            return result
+        except BaseException as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            raise
+        finally:
+            stats = dict(getattr(result, "stats", {}) or {})
+            slot = slot_for(compiler)
+            keys = (
+                "status", "generated_expressions", "unique_states",
+                "duplicate_states", "dominance_pruned_states",
+                "dominance_frontier_max", "target_candidate_count",
+                "generic_binary_pairs_evaluated", "generic_binary_path_skipped_after_target",
+                "max_lineage_coverage", "first_exact_target_depth", "best_target_depth",
+                "depths_completed", "frontier_profile_count",
+            )
+            slot["search_calls"].append({
+                "engine": "behavioral_search.find_exact_expression",
+                "elapsed_ms": round((time.perf_counter() - started) * 1000.0, 3),
+                "input_rows": len(rows),
+                "max_depth_argument": int(max_depth),
+                "primitive_count": len(getattr(compiler, "primitives", {})),
+                "require_macro": bool(kwargs.get("require_macro", False)),
+                "target_found": result is not None,
+                "stats": {k: stats.get(k) for k in keys if k in stats},
+                "error": error,
+            })
+
+    def wrap_method(cls, name, original):
         def wrapped(self, *args, **kwargs):
             if name == "__init__":
-                constructor_seed = kwargs.get("seed", args[2] if len(args) >= 3 else 0)
-                original(self, *args, **kwargs)
-                instance_roles[id(self)] = (
-                    "baseline" if int(constructor_seed) == seed + 9109 else "learner"
-                )
-                return None
-            slot = _slot(self)
+                return original(self, *args, **kwargs)
+            slot = slot_for(self)
             started = time.perf_counter()
-            before = len(getattr(self, "primitives", {}))
+            before_count = len(getattr(self, "primitives", {}))
             result = None
+            error = None
             try:
                 result = original(self, *args, **kwargs)
                 return result
+            except BaseException as exc:
+                error = f"{type(exc).__name__}: {exc}"
+                raise
             finally:
                 elapsed = (time.perf_counter() - started) * 1000.0
                 slot["method_calls"][name] += 1
                 slot["method_elapsed_ms"][name] += elapsed
+
                 if name == "_exprs":
                     values = result or []
-                    # _exprs has already structurally deduplicated its return list.
-                    # Count only; do not add a second serialization pass to the timed search.
                     slot["search_calls"].append({
+                        "engine": "recursive_compiler._exprs",
                         "elapsed_ms": round(elapsed, 3),
                         "input_rows": None,
-                        "max_depth_argument": int(args[2] if len(args) > 2 else kwargs.get("depth_limit", 0)),
+                        "max_depth_argument": int(
+                            args[2] if len(args) > 2 else kwargs.get("depth_limit", 0)
+                        ),
                         "primitive_count": len(getattr(self, "primitives", {})),
-                        "cache_entries_after": len(getattr(self, "_expr_cache", {})),
                         "target_found": None,
                         "stats": {
                             "generated_expressions": len(values),
                             "unique_states": len(values),
                         },
-                        "error": None if result is not None else "EXPRESSION_ENUMERATOR_RETURNED_NONE",
+                        "error": error,
                     })
+
                 if name == "invent_primitive":
-                    slot["primitive_counts_before_after"].append({
-                        "before": before,
-                        "after": len(getattr(self, "primitives", {})),
-                        "accepted": result is not None,
+                    slot["primitive_changes"].append({
+                        "primitive_count_before": before_count,
+                        "primitive_count_after": len(getattr(self, "primitives", {})),
+                        "returned_primitive": result is not None,
+                        "primitive_id": getattr(result, "primitive_id", None),
+                        "parent_ids": list(getattr(result, "parent_ids", ()) or ()),
                         "train_rows": len(args[0]) if len(args) > 0 else None,
                         "holdout_rows": len(args[1]) if len(args) > 1 else None,
                         "transfer_rows": len(args[2]) if len(args) > 2 else None,
+                        "elapsed_ms": round(elapsed, 3),
+                        "error": error,
                     })
-                if name == "retain":
-                    slot["retain_accepted_count"] = (
-                        int(slot.get("retain_accepted_count", 0)) + int(bool(result))
+
+                if name == "synthesize_process_frontier":
+                    summary = dict(
+                        getattr(self, "last_process_candidate_selection_summary", {}) or {}
                     )
+                    try:
+                        returned_count = len(result or ())
+                    except TypeError:
+                        returned_count = None
+                    slot["process_frontier_calls"].append({
+                        "returned_candidate_count": returned_count,
+                        "discovery_qualified_count": summary.get("discovery_qualified"),
+                        "primitive_count": len(getattr(self, "primitives", {})),
+                        "generation": int(getattr(self, "generation", 0)),
+                        "elapsed_ms": round(elapsed, 3),
+                        "error": error,
+                    })
+
+                if name == "accept_primitive" and bool(result):
+                    slot["accepted_primitive_count"] += 1
+
         return wrapped
 
-    growth_lab.traces_for = traced_traces_for
-    for method_name, method_original in originals.items():
-        setattr(compiler_type, method_name, wrap_method(method_name, method_original))
+    growth_lab.make_traces = traces_wrapper
+    open_growth.find_exact_expression = traced_find
+    base_type.__init__ = init_wrapper
+    for (cls, name), original in original_methods.items():
+        setattr(cls, name, wrap_method(cls, name, original))
 
     started = time.perf_counter()
     try:
         raw = original_run_seed(seed, generations)
     finally:
-        growth_lab.traces_for = original_traces_for
-        for method_name, method_original in originals.items():
-            setattr(compiler_type, method_name, method_original)
+        growth_lab.make_traces = original_make_traces
+        open_growth.find_exact_expression = original_find
+        base_type.__init__ = original_init
+        for (cls, name), original in original_methods.items():
+            setattr(cls, name, original)
 
+    raw_generations = list(raw.get("generations_detail", []))
     per_generation = []
     for gen in range(generations):
-        record = raw["generation_records"][gen]
-        slot = meter[gen]
+        outcome = raw_generations[gen] if gen < len(raw_generations) else {}
         role_metrics = {}
         for role in ("learner", "baseline"):
-            r = slot[role]
+            r = meter[gen][role]
             calls = list(r["search_calls"])
+            exact_calls = [x for x in calls if x.get("engine") == "behavioral_search.find_exact_expression"]
+            enum_calls = [x for x in calls if x.get("engine") == "recursive_compiler._exprs"]
+            all_stats = [x.get("stats", {}) for x in calls]
+            def max_stat(key: str) -> int:
+                return max((int(x[key]) for x in all_stats if isinstance(x.get(key), (int, float))), default=0)
+
             role_metrics[role] = {
                 "method_calls": dict(sorted(r["method_calls"].items())),
                 "method_elapsed_ms": {
                     k: round(v, 3) for k, v in sorted(r["method_elapsed_ms"].items())
                 },
-                "primitive_counts_before_after": r["primitive_counts_before_after"],
-                "search_call_count": len(calls),
-                "search_elapsed_ms_total": round(sum(c["elapsed_ms"] for c in calls), 3),
-                "generated_expressions_total": sum(
-                    int(c["stats"].get("generated_expressions", 0)) for c in calls
+                "primitive_changes": r["primitive_changes"],
+                "accepted_primitive_count": r["accepted_primitive_count"],
+                "process_frontier_calls": r["process_frontier_calls"],
+                "exact_search_calls": len(exact_calls),
+                "exact_search_elapsed_ms_total": round(sum(x["elapsed_ms"] for x in exact_calls), 3),
+                "exact_search_generated_expressions_total": sum(
+                    int(x.get("stats", {}).get("generated_expressions", 0) or 0)
+                    for x in exact_calls
                 ),
-                "unique_states_total": sum(
-                    int(c["stats"].get("unique_states", 0)) for c in calls
+                "exact_search_unique_states_total": sum(
+                    int(x.get("stats", {}).get("unique_states", 0) or 0)
+                    for x in exact_calls
                 ),
-                "max_dominance_frontier": max(
-                    (int(c["stats"].get("dominance_frontier_max", 0)) for c in calls),
-                    default=0,
+                "exact_search_max_dominance_frontier": max(
+                    (int(x.get("stats", {}).get("dominance_frontier_max", 0) or 0)
+                     for x in exact_calls), default=0
+                ),
+                "expression_enum_calls": len(enum_calls),
+                "expression_enum_elapsed_ms_total": round(sum(x["elapsed_ms"] for x in enum_calls), 3),
+                "expression_enum_candidate_total": sum(
+                    int(x.get("stats", {}).get("generated_expressions", 0) or 0)
+                    for x in enum_calls
                 ),
                 "search_calls": calls,
             }
+
         per_generation.append({
             "generation": gen,
-            "target_depth": record["target_depth"],
-            "learned": record["learned"],
-            "parent_reuse": bool(record["used_parent_ids"]),
-            "used_parent_ids": record["used_parent_ids"],
-            "retained_count": record["retained_count"],
-            "recursive_depth": record["recursive_depth"],
-            "probe_success_rate": record["probe_success_rate"],
-            "baseline_probe_success_rate": record["baseline_probe_success_rate"],
-            "event_count": record["event_count"],
+            "target_depth": outcome.get("target_depth"),
+            "accepted": outcome.get("accepted"),
+            "parent_used": outcome.get("parent_used"),
+            "multi_parent_used": outcome.get("multi_parent_used"),
+            "retained_count": outcome.get("retained_count"),
+            "runtime_max_depth": outcome.get("runtime_max_depth"),
+            "closure_pair_count": outcome.get("closure_pair_count"),
+            "closure_success_count": outcome.get("closure_success_count"),
+            "probe_success_rate": outcome.get("probe_success_rate"),
+            "baseline_probe_success_rate": outcome.get("baseline_probe_success_rate"),
             "metrics": role_metrics,
         })
 
-    return {
-        "schema": "ACSIE.gen6_scalability_diagnostic.v1",
-        "mode": "gen6_recursive_synthetic_growth",
+    result = {
+        "schema": "ACSIE.gen6_scalability_diagnostic.v2",
+        "mode": "gen6_open_ended_self_extending_compiler",
         "seed": seed,
         "generation_indices": list(range(generations)),
-        "generation_6_reached": generations >= 7,
+        "gen6_checkpoint_index": 6,
+        "generation_6_reached": generations >= 7 and len(raw_generations) >= 7,
         "original_growth_lab_result": raw,
         "per_generation_telemetry": per_generation,
         "run_elapsed_ms_including_lightweight_telemetry": round(
             (time.perf_counter() - started) * 1000.0, 3
         ),
         "process_peak_rss_mb": round(_rss_mb(), 3),
-        "telemetry": "pass-through wrappers only; no cProfile/sys.setprofile; data returned unchanged",
+        "telemetry": (
+            "Pass-through timing/count wrappers on the actual OpenEndedRecursiveCognitiveCompiler, "
+            "its inherited process frontier, and its imported behavioral search; no cProfile/sys.setprofile."
+        ),
         "source_integrity": {
-            "external_model": raw["external_model"] is False,
-            "target_identity_available_to_runtime": raw["target_identity_available_to_runtime"] is False,
-            "task_family_route": raw["task_family_route"] is False,
-            "unmodified_growth_gate": bool(raw["finite_open_ended_gate"]),
+            "external_model": raw.get("external_model") is False,
+            "target_identity_available_to_runtime": raw.get("target_identity_available_to_runtime") is False,
+            "task_family_route": raw.get("task_family_route") is False,
+            "source_script_finite_gate": raw.get("finite_open_ended_growth_gate") is True,
         },
         "raw_result_sha256": _sha256(raw),
         "interpretation_guard": (
-            "Bounded synthetic recursive-growth workload only. A Gen6 checkpoint is generation index 6 "
-            "(seven measured indices including bootstrap Gen0). No open-ended scalability, AGI, or ASI claim."
+            "Exact ACSIE open-ended self-extending synthetic growth workload; G6 is generation index 6. "
+            "This is not the 5x12 frozen qualification, real-world generality, or an AGI/ASI claim."
         ),
     }
-
+    return result
 
 def run_gen3(seed: int, n_gen3_inner_streams: int) -> dict[str, Any]:
     """Scale only Gen3 discovery streams while preserving fixed Gen1/Gen2 and Gen3 outer streams."""
