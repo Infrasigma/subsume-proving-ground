@@ -150,6 +150,7 @@ jobs:
             tests/test_asi_claim_gate.py 2>&1 | tee "$GITHUB_WORKSPACE/evidence/h7-r3/six-file-regression.txt"
 
       - name: Run bounded H7 determinism and scalability ladder
+        id: bounded-scale
         if: ${{ steps.six-file-suite.outcome == 'success' && steps.verify-source.outcome == 'success' && steps.install-pytest.outcome == 'success' }}
         working-directory: acsie
         env:
@@ -208,6 +209,96 @@ jobs:
           print(text)
           if mismatches:
               raise SystemExit("determinism counters differ across PYTHONHASHSEED values")
+          PY
+
+      - name: Run H7 R3 representative-size benchmark (16/24/32 primitives)
+        if: ${{ steps.six-file-suite.outcome == 'success' && steps.bounded-scale.outcome == 'success' && steps.verify-source.outcome == 'success' && steps.install-pytest.outcome == 'success' }}
+        id: representative-scale
+        working-directory: acsie
+        env:
+          PYTHONPATH: ${{ github.workspace }}/acsie
+        run: |
+          set -euo pipefail
+          for seed in 0 731; do
+            repeats=1
+            if [ "$seed" = "0" ]; then repeats=3; fi
+            echo "PYTHONHASHSEED=$seed repeats=$repeats"
+            PYTHONHASHSEED="$seed" timeout 300s python "$GITHUB_WORKSPACE/lab/h7_r3_representative_scale.py" --repeats "$repeats" \
+              | tee "$GITHUB_WORKSPACE/evidence/h7-r3/representative-scale-seed-$seed.jsonl"
+          done
+          python - "$GITHUB_WORKSPACE/evidence/h7-r3" <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import statistics
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          seeds = (0, 731)
+          expected = {(n, task) for n in (16, 24, 32) for task in ("reachable_add", "unreachable")}
+          runs = {}
+          performance = []
+          for seed in seeds:
+              path = root / f"representative-scale-seed-{seed}.jsonl"
+              records = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+              if {(r["stable"]["n_primitives"], r["stable"]["task"]) for r in records} != expected:
+                  raise SystemExit(f"invalid size/task matrix for seed {seed}")
+              expected_count = 18 if seed == 0 else 6
+              if len(records) != expected_count:
+                  raise SystemExit(f"expected {expected_count} records for seed {seed}, got {len(records)}")
+              per_cell = {}
+              for record in records:
+                  stable = record["stable"]
+                  key = (stable["n_primitives"], stable["task"])
+                  per_cell.setdefault(key, []).append(stable["signature_sha256"])
+                  if not stable["active_identity_consistent"]:
+                      raise SystemExit(f"frontier/index identity mismatch at seed={seed}, cell={key}")
+                  if record["performance"]["elapsed_ms"] > 15000:
+                      raise SystemExit(f"15-second per-search guard exceeded at seed={seed}, cell={key}")
+                  if record["performance"]["process_peak_rss_mb"] > 2048:
+                      raise SystemExit(f"2-GiB process RSS guard exceeded at seed={seed}, cell={key}")
+                  performance.append({"seed": seed, **stable, **record["performance"]})
+              for key, digests in per_cell.items():
+                  if len(set(digests)) != 1:
+                      raise SystemExit(f"unstable repeated result/stat digest at seed={seed}, cell={key}")
+              runs[seed] = {key: digests[0] for key, digests in per_cell.items()}
+          mismatches = [
+              {"cell": key, "seed0": runs[0][key], "seed731": runs[731][key]}
+              for key in sorted(expected)
+              if runs[0][key] != runs[731][key]
+          ]
+          medians = {}
+          for key in sorted(expected):
+              values = [
+                  row["elapsed_ms"] for row in performance
+                  if row["seed"] == 0
+                  and (row["n_primitives"], row["task"]) == key
+              ]
+              medians[f"n{key[0]}_{key[1]}"] = round(statistics.median(values), 3)
+          summary = {
+              "schema": "ACSIE.H7_R3.representative_scale.v1",
+              "source_commit": "e5f4526bf724650b09051b6625e4dd70b59282c2",
+              "source_sha256": "b938a61ba3ea78410eb7f4108cc6518515a2bfc555a09c0c3d16acca1f40244b",
+              "test_sha256": "685c92ee3a825013323ea92d40a45e8e684a0867f7e72cd1317f5db72e9ced53",
+              "primitive_sizes": [16, 24, 32],
+              "rows": 10,
+              "max_depth": 2,
+              "tasks": ["reachable_add", "unreachable"],
+              "performance_trials_at_seed_0": 3,
+              "cross_hash_seed_check": [0, 731],
+              "repeated_payload_and_stats_stable": True,
+              "cross_hash_seed_payloads_identical": not mismatches,
+              "cross_hash_seed_mismatches": mismatches,
+              "median_elapsed_ms_seed_0": medians,
+              "max_elapsed_ms_all_trials": round(max(row["elapsed_ms"] for row in performance), 3),
+              "max_process_peak_rss_mb": round(max(row["process_peak_rss_mb"] for row in performance), 3),
+              "records": performance,
+          }
+          out = json.dumps(summary, sort_keys=True, indent=2)
+          (root / "representative-scale-summary.json").write_text(out + "\\n")
+          print(out)
+          if mismatches:
+              raise SystemExit("R3 result/stat payload differs across hash seeds")
           PY
 
       - name: Upload auditable H7 R3 regression logs
