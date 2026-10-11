@@ -72,7 +72,7 @@ jobs:
         working-directory: acsie
         env:
           EXPECTED_COMMIT: d83cb60286f195eec02b4d7aa45a60539316d115
-          EXPECTED_SOURCE_SHA256: DISCOVERY_CAPTURE
+          EXPECTED_SOURCE_SHA256: 2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea
           EXPECTED_TEST_SHA256: 685c92ee3a825013323ea92d40a45e8e684a0867f7e72cd1317f5db72e9ced53
         run: |
           set -euo pipefail
@@ -81,12 +81,8 @@ jobs:
           actual_source="$(sha256sum cognitive_core/behavioral_search.py | awk '{print $1}')"
           actual_test="$(sha256sum tests/test_open_ended_growth.py | awk '{print $1}')"
           test "$actual_commit" = "$EXPECTED_COMMIT"
-          if [ "$EXPECTED_SOURCE_SHA256" != "DISCOVERY_CAPTURE" ]; then
-            test "$actual_source" = "$EXPECTED_SOURCE_SHA256"
-            source_identity_status="PASS"
-          else
-            source_identity_status="PASS_COMMIT_PINNED_DIGEST_CAPTURE"
-          fi
+          test "$actual_source" = "$EXPECTED_SOURCE_SHA256"
+          source_identity_status="PASS"
           test "$actual_test" = "$EXPECTED_TEST_SHA256"
           {
             echo "ACSIE_COMMIT=$actual_commit"
@@ -329,7 +325,7 @@ jobs:
           summary = {
               "schema": "ACSIE.H7_R3.representative_scale.v1",
               "source_commit": "d83cb60286f195eec02b4d7aa45a60539316d115",
-              "source_sha256": "DISCOVERY_CAPTURE",
+              "source_sha256": "2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea",
               "test_sha256": "685c92ee3a825013323ea92d40a45e8e684a0867f7e72cd1317f5db72e9ced53",
               "primitive_sizes": [16, 24, 32],
               "rows": 10,
