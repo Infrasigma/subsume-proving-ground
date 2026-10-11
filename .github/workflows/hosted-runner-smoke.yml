@@ -649,6 +649,139 @@ jobs:
           print(out)
           PY
 
+      - name: Profile R2/R3 H7 search hotspots at eight executable primitives
+        if: ${{ steps.lineage-pressure.outcome == 'success' && steps.verify-r2-source.outcome == 'success' }}
+        id: profile-hotspots
+        run: |
+          set -euo pipefail
+          for source in r2 r3; do
+            if [ "$source" = "r2" ]; then
+              source_path="$GITHUB_WORKSPACE/acsie-r2"
+            else
+              source_path="$GITHUB_WORKSPACE/acsie"
+            fi
+            for seed in 0 731; do
+              echo "PROFILE_HOTSPOTS source=$source PYTHONHASHSEED=$seed"
+              PYTHONHASHSEED="$seed" PYTHONPATH="$source_path" ACSIE_SOURCE_LABEL="$source" timeout 60s \
+                python "$GITHUB_WORKSPACE/lab/h7_r3_profile_hotspots.py" --source "$source" --seed "$seed" --alias-pairs 3 \
+                | tee "$GITHUB_WORKSPACE/evidence/h7-r3/profile-hotspots-$source-seed-$seed.jsonl"
+            done
+          done
+          python - "$GITHUB_WORKSPACE/evidence/h7-r3" <<'PY'
+          import json
+          import pathlib
+          import statistics
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          profiles = {}
+          function_maps = {}
+          for source in ("r2", "r3"):
+              records = {}
+              maps = {}
+              for seed in (0, 731):
+                  path = root / f"profile-hotspots-{source}-seed-{seed}.jsonl"
+                  lines = [line for line in path.read_text().splitlines() if line.strip()]
+                  if len(lines) != 1:
+                      raise SystemExit(f"{source} seed {seed}: expected one profile record")
+                  record = json.loads(lines[0])
+                  stable = record["stable"]
+                  if stable["primitive_count"] != 8 or stable["alias_pairs"] != 3 or not stable["target_found"]:
+                      raise SystemExit(f"{source} seed {seed}: unexpected profile workload")
+                  expected_retention = source == "r3"
+                  if stable["expected_profile_7_14_returned"] != expected_retention:
+                      raise SystemExit(f"{source} seed {seed}: Pareto-preservation control failed")
+                  records[seed] = record
+                  maps[seed] = {row["function"]: row for row in stable["hot_functions"]}
+              if records[0]["signature_sha256"] != records[731]["signature_sha256"]:
+                  raise SystemExit(f"{source}: result and search-counter signature changed across hash seeds")
+              # Function invocation counts must be stable across seeds for every
+              # profiled function present in either profile.
+              for name in set(maps[0]) | set(maps[731]):
+                  a, b = maps[0].get(name), maps[731].get(name)
+                  if a is None or b is None:
+                      raise SystemExit(f"{source}: profile function set changed across seeds at {name}")
+                  if (a["primitive_calls"], a["total_calls"]) != (b["primitive_calls"], b["total_calls"]):
+                      raise SystemExit(f"{source}: invocation counts changed across hash seeds at {name}")
+              profiles[source] = records
+              function_maps[source] = {
+                  name: {
+                      "primitive_calls": maps[0][name]["primitive_calls"],
+                      "total_calls": maps[0][name]["total_calls"],
+                      "self_seconds_mean": statistics.mean([
+                          maps[0][name]["self_seconds"], maps[731][name]["self_seconds"]
+                      ]),
+                      "cumulative_seconds_mean": statistics.mean([
+                          maps[0][name]["cumulative_seconds"], maps[731][name]["cumulative_seconds"]
+                      ]),
+                      "line_r2_or_r3": maps[0][name]["line"],
+                  }
+                  for name in maps[0]
+              }
+
+          common = set(function_maps["r2"]) & set(function_maps["r3"])
+          comparison = []
+          for name in common:
+              r2, r3 = function_maps["r2"][name], function_maps["r3"][name]
+              comparison.append({
+                  "function": name,
+                  "r2_line": r2["line_r2_or_r3"],
+                  "r3_line": r3["line_r2_or_r3"],
+                  "r2_total_calls": r2["total_calls"],
+                  "r3_total_calls": r3["total_calls"],
+                  "total_call_ratio_r3_over_r2": (
+                      round(r3["total_calls"] / r2["total_calls"], 4)
+                      if r2["total_calls"] else None
+                  ),
+                  "r2_self_seconds_mean": round(r2["self_seconds_mean"], 6),
+                  "r3_self_seconds_mean": round(r3["self_seconds_mean"], 6),
+                  "r2_cumulative_seconds_mean": round(r2["cumulative_seconds_mean"], 6),
+                  "r3_cumulative_seconds_mean": round(r3["cumulative_seconds_mean"], 6),
+                  "self_seconds_delta_r3_minus_r2": round(
+                      r3["self_seconds_mean"] - r2["self_seconds_mean"], 6
+                  ),
+              })
+          comparison.sort(
+              key=lambda row: (row["r3_self_seconds_mean"], row["r3_cumulative_seconds_mean"]),
+              reverse=True,
+          )
+          summary = {
+              "schema": "ACSIE.H7_R2_vs_R3.cProfile_hotspots.v1",
+              "source_commits": {
+                  "r2": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+                  "r3": "e5f4526bf724650b09051b6625e4dd70b59282c2",
+              },
+              "fixture": {"primitive_count": 8, "alias_pairs": 3, "rows": 8, "max_depth": 3},
+              "hash_seeds": [0, 731],
+              "result_and_counter_signature_stable_across_seeds": True,
+              "R2_expected_profile_7_14_returned": False,
+              "R3_expected_profile_7_14_returned": True,
+              "cProfile_warning": "Profiler instrumentation changes timings. Treat this as hotspot attribution, not an uninstrumented speed benchmark.",
+              "runs": {
+                  source: {
+                      str(seed): {
+                          "profile_total_seconds": profiles[source][seed]["stable"]["profile_total_seconds"],
+                          "profile_total_calls": profiles[source][seed]["stable"]["profile_total_calls"],
+                          "wall_ms_including_profiler": profiles[source][seed]["performance"]["unprofiled_wrapper_wall_ms_includes_cprofile"],
+                          "process_peak_rss_mb": profiles[source][seed]["performance"]["process_peak_rss_mb"],
+                          "result_stats_signature": profiles[source][seed]["signature_sha256"],
+                      }
+                      for seed in (0, 731)
+                  }
+                  for source in ("r2", "r3")
+              },
+              "functions_common_to_both_versions_sorted_by_R3_self_time": comparison,
+              "top_15_self_time_functions": comparison[:15],
+              "top_15_cumulative_functions": sorted(
+                  comparison, key=lambda row: row["r3_cumulative_seconds_mean"], reverse=True
+              )[:15],
+              "interpretation_guard": "Do not make code changes from this profile alone. Identify one hotspot; then make an isolated optimization and re-run retention, negative-control, indexed-vs-linear, and deterministic checks."
+          }
+          out = json.dumps(summary, sort_keys=True, indent=2)
+          (root / "profile-hotspots-summary.json").write_text(out + "\\n")
+          print(out)
+          PY
+
       - name: Upload auditable H7 R3 regression logs
         if: always()
         uses: actions/upload-artifact@v4

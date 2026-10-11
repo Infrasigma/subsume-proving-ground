@@ -175,11 +175,24 @@ def main() -> None:
         "selected_used_primitives": list(result.used_primitives),
         "selected_expression": result.expression,
         "search_stats": dict(result.stats),
-        "hot_functions": hot_functions[:30],
+        "hot_functions": hot_functions,
         "profile_total_seconds": round(stats.total_tt, 6),
         "profile_total_calls": stats.total_calls,
     }
-    signature_payload = {key: value for key, value in stable.items() if key not in {"source", "source_label", "hash_seed"}}
+    deterministic_keys = (
+        "primitive_count",
+        "alias_pairs",
+        "rows",
+        "max_depth",
+        "target_found",
+        "returned_alternatives",
+        "returned_base_pair_profiles",
+        "expected_profile_7_14_returned",
+        "selected_used_primitives",
+        "selected_expression",
+        "search_stats",
+    )
+    signature_payload = {key: stable[key] for key in deterministic_keys}
     signature = hashlib.sha256(
         json.dumps(signature_payload, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
