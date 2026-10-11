@@ -27,9 +27,9 @@ jobs:
           mkdir -p evidence/gen6
           {
             echo "EXECUTOR_REPOSITORY=Infrasigma/subsume-proving-ground"
-            echo "EXECUTOR_BRANCH=\${GITHUB_REF_NAME}"
-            echo "EXECUTOR_COMMIT=\${GITHUB_SHA}"
-            echo "WORKFLOW_RUN_ID=\${GITHUB_RUN_ID}"
+            echo "EXECUTOR_BRANCH=${GITHUB_REF_NAME}"
+            echo "EXECUTOR_COMMIT=${GITHUB_SHA}"
+            echo "WORKFLOW_RUN_ID=${GITHUB_RUN_ID}"
             echo "HARNESS_SHA256=$(sha256sum lab/acsie_gen6_gen3_scalability.py | awk '{print $1}')"
             echo "GROWTH_LAB_SHA256=$(sha256sum lab/acsie_open_ended_growth_proving.py | awk '{print $1}')"
             echo "GEN6_CHECKPOINT_INDEX=6"
@@ -43,7 +43,7 @@ jobs:
         with:
           repository: Infrasigma/ACSIE
           ref: d83cb60286f195eec02b4d7aa45a60539316d115
-          token: \${{ secrets.ACSIE_READ_TOKEN }}
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie
           fetch-depth: 1
           persist-credentials: false
@@ -104,7 +104,7 @@ jobs:
             set -e
             if [ "$rc" -eq 0 ]; then status="CHILD_EXIT_0"; \
             elif [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then status="CHILD_WALL_TIMEOUT"; \
-            else status="CHILD_EXIT_\${rc}"; fi
+            else status="CHILD_EXIT_${rc}"; fi
             printf '{"seed":%s,"child_returncode":%s,"wrapper_status":"%s"}\n' \
               "$seed" "$rc" "$status" > "$root/$stem.status.json"
             echo "RESULT seed=$seed rc=$rc wrapper_status=$status"
@@ -217,6 +217,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: acsie-gen6-scalability-rerun-\${{ github.run_id }}
+          name: acsie-gen6-scalability-rerun-${{ github.run_id }}
           path: evidence/gen6/
           if-no-files-found: error
