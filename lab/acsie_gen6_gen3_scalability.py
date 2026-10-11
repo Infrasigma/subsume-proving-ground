@@ -100,22 +100,19 @@ def run_gen6(seed: int, generations: int) -> dict[str, Any]:
                 slot["method_calls"][name] += 1
                 slot["method_elapsed_ms"][name] += elapsed
                 if name == "_exprs":
-                    values = list(result or [])
-                    unique = {
-                        json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
-                        for value in values
-                    }
+                    values = result or []
+                    # _exprs has already structurally deduplicated its return list.
+                    # Count only; do not add a second serialization pass to the timed search.
                     slot["search_calls"].append({
                         "elapsed_ms": round(elapsed, 3),
                         "input_rows": None,
                         "max_depth_argument": int(args[2] if len(args) > 2 else kwargs.get("depth_limit", 0)),
                         "primitive_count": len(getattr(self, "primitives", {})),
-                        "cache_entries_before": len(getattr(self, "_expr_cache", {})),
                         "cache_entries_after": len(getattr(self, "_expr_cache", {})),
                         "target_found": None,
                         "stats": {
                             "generated_expressions": len(values),
-                            "unique_states": len(unique),
+                            "unique_states": len(values),
                         },
                         "error": None if result is not None else "EXPRESSION_ENUMERATOR_RETURNED_NONE",
                     })
