@@ -1,0 +1,469 @@
+name: ACSIE Gen6 and Gen3 scalability diagnostics
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-r3-exact-source-20261011
+    paths:
+      - ".github/workflows/acsie-gen6-gen3-scalability.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  gen6-recursive-growth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout proving-ground harness
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Prepare Gen6 evidence and record executor identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/gen6
+          {
+            echo "EXECUTOR_REPOSITORY=Infrasigma/subsume-proving-ground"
+            echo "EXECUTOR_BRANCH=\${GITHUB_REF_NAME}"
+            echo "EXECUTOR_COMMIT=\${GITHUB_SHA}"
+            echo "WORKFLOW_RUN_ID=\${GITHUB_RUN_ID}"
+            echo "HARNESS_SHA256=$(sha256sum lab/acsie_gen6_gen3_scalability.py | awk '{print $1}')"
+            echo "GROWTH_LAB_SHA256=$(sha256sum lab/acsie_open_ended_growth_proving.py | awk '{print $1}')"
+            echo "GEN6_CHECKPOINT_INDEX=6"
+            echo "MEASURED_GENERATION_INDICES=0,1,2,3,4,5,6"
+            echo "SEEDS=2026100301,2026100302,2026100303,2026100304,2026100305"
+          } | tee evidence/gen6/provenance.txt
+          python -m py_compile lab/acsie_gen6_gen3_scalability.py lab/acsie_open_ended_growth_proving.py
+
+      - name: Checkout exact ACSIE R3 research source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: \${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact ACSIE source, tree and test digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_commit="$(git -C acsie rev-parse HEAD)"
+          actual_tree="$(git -C acsie rev-parse 'HEAD^{tree}')"
+          source_sha="$(sha256sum acsie/cognitive_core/behavioral_search.py | awk '{print $1}')"
+          growth_test_sha="$(sha256sum acsie/tests/test_open_ended_growth.py | awk '{print $1}')"
+          compiler_sha="$(sha256sum acsie/cognitive_core/recursive_cognitive_compiler.py | awk '{print $1}')"
+          test "$actual_commit" = "d83cb60286f195eec02b4d7aa45a60539316d115"
+          test "$actual_tree" = "12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+          test "$source_sha" = "2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
+          test "$growth_test_sha" = "685c92ee3a825013323ea92d40a45e8e684a0867f7e72cd1317f5db72e9ced53"
+          {
+            echo "ACSIE_COMMIT=$actual_commit"
+            echo "ACSIE_TREE=$actual_tree"
+            echo "BEHAVIORAL_SEARCH_SHA256=$source_sha"
+            echo "RECURSIVE_COGNITIVE_COMPILER_SHA256=$compiler_sha"
+            echo "TEST_OPEN_ENDED_GROWTH_SHA256=$growth_test_sha"
+            echo "SOURCE_IDENTITY=PASS"
+          } | tee evidence/gen6/acsie-source-identity.txt
+
+      - name: Setup Python 3.11 and pytest
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependency
+        run: python -m pip install --disable-pip-version-check pytest
+
+      - name: Run exact open-ended-growth regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 \
+            python -m pytest -q acsie/tests/test_open_ended_growth.py \
+            2>&1 | tee evidence/gen6/open-ended-growth-tests.txt
+
+      - name: Measure recursive search growth through the Gen6 checkpoint
+        timeout-minutes: 30
+        shell: bash
+        run: |
+          set -uo pipefail
+          root="$GITHUB_WORKSPACE/evidence/gen6"
+          for seed in 2026100301 2026100302 2026100303 2026100304 2026100305; do
+            stem="gen6-seed-$seed"
+            echo "GEN6_SCALE seed=$seed checkpoint_index=6 generations=7"
+            set +e
+            PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie" \
+              timeout 240s python "$GITHUB_WORKSPACE/lab/acsie_gen6_gen3_scalability.py" \
+                --mode gen6 --seed "$seed" --generations 7 \
+                > "$root/$stem.json" 2> "$root/$stem.stderr"
+            rc=$?
+            set -e
+            if [ "$rc" -eq 0 ]; then status="CHILD_EXIT_0"; \
+            elif [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then status="CHILD_WALL_TIMEOUT"; \
+            else status="CHILD_EXIT_\${rc}"; fi
+            printf '{"seed":%s,"child_returncode":%s,"wrapper_status":"%s"}\n' \
+              "$seed" "$rc" "$status" > "$root/$stem.status.json"
+            echo "RESULT seed=$seed rc=$rc wrapper_status=$status"
+          done
+          python - "$root" <<'PY'
+          import json
+          import pathlib
+          import statistics
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          seeds = (2026100301, 2026100302, 2026100303, 2026100304, 2026100305)
+          rows = []
+          for seed in seeds:
+              stem = f"gen6-seed-{seed}"
+              wrapper = json.loads((root / f"{stem}.status.json").read_text())
+              row = {"seed": seed, **wrapper}
+              path = root / f"{stem}.json"
+              if wrapper["child_returncode"] == 0 and path.exists() and path.stat().st_size:
+                  try:
+                      result = json.loads(path.read_text())
+                      row["record"] = result
+                      row["output_schema"] = result.get("schema")
+                      row["generation_6_reached"] = result.get("generation_6_reached") is True
+                      raw = result.get("original_growth_lab_result", {})
+                      records = result.get("per_generation_telemetry", [])
+                      row["finite_open_ended_gate"] = raw.get("finite_open_ended_gate")
+                      row["gen6_learned"] = records[-1].get("learned") if len(records) >= 7 else None
+                      row["gen6_parent_reuse"] = records[-1].get("parent_reuse") if len(records) >= 7 else None
+                      row["record_status"] = "PASS"
+                  except Exception as exc:
+                      row["record_status"] = f"INVALID_JSON:{type(exc).__name__}:{exc}"
+              else:
+                  row["record_status"] = "NO_COMPLETE_CHILD_RECORD"
+              rows.append(row)
+
+          complete = [r for r in rows if r.get("record_status") == "PASS"
+                      and r.get("output_schema") == "ACSIE.gen6_scalability_diagnostic.v1"
+                      and r.get("generation_6_reached") is True]
+          all_complete = len(complete) == len(seeds)
+          scientific_gates = {
+              "original_finite_open_ended_gate_all_seeds": all_complete and all(
+                  r.get("finite_open_ended_gate") is True for r in complete
+              ),
+              "generation_6_learned_and_reused_parent_all_seeds": all_complete and all(
+                  r.get("gen6_learned") is True and r.get("gen6_parent_reuse") is True
+                  for r in complete
+              ),
+          }
+
+          generation_summary = []
+          for gen in range(7):
+              rs = [r["record"]["per_generation_telemetry"][gen]
+                    for r in complete
+                    if len(r["record"].get("per_generation_telemetry", [])) > gen]
+              learner_metrics = [r.get("metrics", {}).get("learner", {}) for r in rs]
+              def med(field):
+                  vals = [m[field] for m in learner_metrics if m.get(field) is not None]
+                  return round(statistics.median(vals), 3) if vals else None
+              generation_summary.append({
+                  "generation_index": gen,
+                  "completed_seed_count": len(rs),
+                  "learned_count": sum(bool(r.get("learned")) for r in rs),
+                  "parent_reuse_count": sum(bool(r.get("parent_reuse")) for r in rs),
+                  "median_target_depth": (
+                      statistics.median([r["target_depth"] for r in rs]) if rs else None
+                  ),
+                  "median_retained_count": (
+                      statistics.median([r["retained_count"] for r in rs]) if rs else None
+                  ),
+                  "median_learner_search_ms": med("search_elapsed_ms_total"),
+                  "median_generated_expressions": med("generated_expressions_total"),
+                  "median_unique_states": med("unique_states_total"),
+                  "median_max_dominance_frontier": med("max_dominance_frontier"),
+              })
+
+          classification = (
+              "INCONCLUSIVE_INCOMPLETE_SEED_MATRIX" if not all_complete else
+              "GEN6_DIAGNOSTIC_PASS_ALL_FROZEN_SEEDS" if all(scientific_gates.values()) else
+              "GEN6_DIAGNOSTIC_GATE_FAILURE_REPORTED"
+          )
+          summary = {
+              "schema": "ACSIE.gen6_scalability_summary.v1",
+              "acsie_source_commit": "d83cb60286f195eec02b4d7aa45a60539316d115",
+              "generations": list(range(7)),
+              "gen6_checkpoint_index": 6,
+              "seeds": list(seeds),
+              "completed_seed_count": len(complete),
+              "classification": classification,
+              "scientific_gates": scientific_gates,
+              "per_generation_scalability": generation_summary,
+              "seed_records": [
+                  {k: v for k, v in row.items() if k != "record"}
+                  | ({
+                      "finite_open_ended_gate": row.get("finite_open_ended_gate"),
+                      "gen6_learned": row.get("gen6_learned"),
+                      "gen6_parent_reuse": row.get("gen6_parent_reuse"),
+                      "run_elapsed_ms": row["record"].get("run_elapsed_ms_including_lightweight_telemetry"),
+                      "process_peak_rss_mb": row["record"].get("process_peak_rss_mb"),
+                      "raw_result_sha256": row["record"].get("raw_result_sha256"),
+                  } if "record" in row else {})
+                  for row in rows
+              ],
+              "interpretation_guard": "A five-seed Gen6 synthetic growth diagnostic, not the frozen 5x12 run or an AGI/ASI qualification.",
+          }
+          (root / "summary.json").write_text(json.dumps(summary, sort_keys=True, indent=2) + "\n")
+          print(json.dumps(summary, sort_keys=True, indent=2))
+          PY
+
+      - name: Upload Gen6 scalability evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-gen6-scalability-\${{ github.run_id }}
+          path: evidence/gen6/
+          if-no-files-found: error
+
+  gen3-native-kernel-scaling:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout proving-ground harness
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Prepare Gen3 evidence and record executor identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/gen3
+          {
+            echo "EXECUTOR_REPOSITORY=Infrasigma/subsume-proving-ground"
+            echo "EXECUTOR_BRANCH=\${GITHUB_REF_NAME}"
+            echo "EXECUTOR_COMMIT=\${GITHUB_SHA}"
+            echo "WORKFLOW_RUN_ID=\${GITHUB_RUN_ID}"
+            echo "HARNESS_SHA256=$(sha256sum lab/acsie_gen6_gen3_scalability.py | awk '{print $1}')"
+            echo "SCALED_DIMENSION=Gen3 inner discovery stream count"
+            echo "SCALE_VALUES=3,6,12"
+            echo "SEEDS=771221,771222"
+            echo "FIXED_CANDIDATE_PROGRAM_CAP=128"
+            echo "GEN1_GEN2_AND_ALL_OUTER_STREAMS=6"
+          } | tee evidence/gen3/provenance.txt
+          python -m py_compile lab/acsie_gen6_gen3_scalability.py
+
+      - name: Checkout exact ACSIE R3 research source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: \${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact ACSIE source and record Gen3 hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_commit="$(git -C acsie rev-parse HEAD)"
+          actual_tree="$(git -C acsie rev-parse 'HEAD^{tree}')"
+          behavioral_sha="$(sha256sum acsie/cognitive_core/behavioral_search.py | awk '{print $1}')"
+          gen3_sha="$(sha256sum acsie/research/native_self_learning_kernel_gen3_compositional_retention_v1.py | awk '{print $1}')"
+          native_core_sha="$(sha256sum acsie/cognitive_core/native_independent_core.py | awk '{print $1}')"
+          gen2_sha="$(sha256sum acsie/research/native_self_learning_kernel_gen2_corrected_retention_v1.py | awk '{print $1}')"
+          test "$actual_commit" = "d83cb60286f195eec02b4d7aa45a60539316d115"
+          test "$actual_tree" = "12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+          test "$behavioral_sha" = "2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
+          {
+            echo "ACSIE_COMMIT=$actual_commit"
+            echo "ACSIE_TREE=$actual_tree"
+            echo "BEHAVIORAL_SEARCH_SHA256=$behavioral_sha"
+            echo "GEN3_COMPOSITIONAL_RETENTION_SHA256=$gen3_sha"
+            echo "NATIVE_INDEPENDENT_CORE_SHA256=$native_core_sha"
+            echo "GEN2_CORRECTED_RETENTION_SHA256=$gen2_sha"
+            echo "SOURCE_IDENTITY=PASS"
+          } | tee evidence/gen3/acsie-source-identity.txt
+
+      - name: Setup Python 3.11 and pytest
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependency
+        run: python -m pip install --disable-pip-version-check pytest
+
+      - name: Run six-file cognitive regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 \
+            python -m pytest -q \
+              acsie/tests/test_open_ended_growth.py \
+              acsie/tests/test_core014_recursive_cognitive_compiler.py \
+              acsie/tests/test_core015_semantic_operator_discovery.py \
+              acsie/tests/test_core016_open_semantic_substrate.py \
+              acsie/tests/test_adaptive_capability_repair.py \
+              acsie/tests/test_asi_claim_gate.py \
+            2>&1 | tee evidence/gen3/six-file-regression.txt
+
+      - name: Run fixed-seed Gen3 discovery-stream scaling matrix
+        timeout-minutes: 55
+        shell: bash
+        run: |
+          set -uo pipefail
+          root="$GITHUB_WORKSPACE/evidence/gen3"
+          for streams in 3 6 12; do
+            for seed in 771221 771222; do
+              stem="gen3-streams-$streams-seed-$seed"
+              echo "GEN3_SCALE streams=$streams seed=$seed candidate_cap=128"
+              set +e
+              PYTHONHASHSEED=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie" \
+                timeout 600s python "$GITHUB_WORKSPACE/lab/acsie_gen6_gen3_scalability.py" \
+                  --mode gen3 --seed "$seed" --gen3-inner-streams "$streams" \
+                  > "$root/$stem.json" 2> "$root/$stem.stderr"
+              rc=$?
+              set -e
+              if [ "$rc" -eq 0 ]; then status="CHILD_EXIT_0"; \
+              elif [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then status="CHILD_WALL_TIMEOUT"; \
+              else status="CHILD_EXIT_\${rc}"; fi
+              printf '{"streams":%s,"seed":%s,"child_returncode":%s,"wrapper_status":"%s"}\n' \
+                "$streams" "$seed" "$rc" "$status" > "$root/$stem.status.json"
+              echo "RESULT streams=$streams seed=$seed rc=$rc wrapper_status=$status"
+            done
+          done
+          python - "$root" <<'PY'
+          import json
+          import pathlib
+          import statistics
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          stream_sizes = (3, 6, 12)
+          seeds = (771221, 771222)
+          rows = []
+          for streams in stream_sizes:
+              for seed in seeds:
+                  stem = f"gen3-streams-{streams}-seed-{seed}"
+                  wrapper = json.loads((root / f"{stem}.status.json").read_text())
+                  row = {"streams": streams, "seed": seed, **wrapper}
+                  path = root / f"{stem}.json"
+                  if wrapper["child_returncode"] == 0 and path.exists() and path.stat().st_size:
+                      try:
+                          result = json.loads(path.read_text())
+                          row["record"] = result
+                          row["output_schema"] = result.get("schema")
+                          row["record_status"] = (
+                              "PASS" if result.get("schema") == "ACSIE.gen3_scalability_diagnostic.v1"
+                              else "CHILD_DIAGNOSTIC_FAILURE"
+                          )
+                      except Exception as exc:
+                          row["record_status"] = f"INVALID_JSON:{type(exc).__name__}:{exc}"
+                  else:
+                      row["record_status"] = "NO_COMPLETE_CHILD_RECORD"
+                  rows.append(row)
+
+          complete = [r for r in rows if r.get("record_status") == "PASS"]
+          matrix_complete = len(complete) == len(stream_sizes) * len(seeds)
+          group_summary = []
+          for streams in stream_sizes:
+              group = [r["record"] for r in complete if r["streams"] == streams]
+              gen3_pass = [r.get("gen3_scientific_status") == "PASSED" for r in group]
+              gen2_pass = [r.get("gen2_baseline_passed") is True for r in group]
+              selection_times = [
+                  r.get("selection_summary", {}).get("elapsed_ms")
+                  for r in group
+                  if isinstance(r.get("selection_summary", {}).get("elapsed_ms"), (int,float))
+              ]
+              variants = [
+                  r.get("selection_summary", {}).get("candidate_count")
+                  for r in group
+                  if isinstance(r.get("selection_summary", {}).get("candidate_count"), (int,float))
+              ]
+              kernel = [r.get("search_scaling_telemetry", {}).get("kernel_evaluation", {}) for r in group]
+              run_times = [r.get("run_elapsed_ms_including_lightweight_telemetry") for r in group]
+              rss_values = [r.get("process_peak_rss_mb") for r in group]
+              holdout_gains = [r["gen3_holdout_gain"] for r in group
+                                if isinstance(r.get("gen3_holdout_gain"), (int,float))]
+              transfer_gains = [r["gen3_transfer_gain"] for r in group
+                                if isinstance(r.get("gen3_transfer_gain"), (int,float))]
+              group_summary.append({
+                  "gen3_inner_streams": streams,
+                  "completed_seed_count": len(group),
+                  "gen2_baseline_passed_all": len(group) == len(seeds) and all(gen2_pass),
+                  "gen3_scientific_status_by_seed": {
+                      str(r["seed"]): r.get("gen3_scientific_status") for r in group
+                  },
+                  "gen3_passed_all_seeds": len(group) == len(seeds) and all(gen3_pass),
+                  "median_run_elapsed_ms": round(statistics.median(run_times), 3) if run_times else None,
+                  "median_process_peak_rss_mb": round(statistics.median(rss_values), 3) if rss_values else None,
+                  "median_candidate_count": statistics.median(variants) if variants else None,
+                  "median_candidate_selection_ms": round(statistics.median(selection_times), 3) if selection_times else None,
+                  "median_native_kernel_evaluations": statistics.median([x.get("calls",0) for x in kernel]) if kernel else None,
+                  "median_native_kernel_evaluation_ms": round(statistics.median([x.get("elapsed_ms",0.0) for x in kernel]), 3) if kernel else None,
+                  "median_gen3_holdout_gain": round(statistics.median(holdout_gains), 6) if holdout_gains else None,
+                  "median_gen3_transfer_gain": round(statistics.median(transfer_gains), 6) if transfer_gains else None,
+              })
+
+          all_gen3_statuses = [r["record"].get("gen3_scientific_status") for r in complete]
+          all_baselines_pass = all(r["record"].get("gen2_baseline_passed") is True for r in complete)
+          if not matrix_complete:
+              classification = "INCONCLUSIVE_INCOMPLETE_SCALE_MATRIX"
+          elif not all_baselines_pass:
+              classification = "BLOCKED_GEN2_BASELINE_REPRODUCTION"
+          elif all(s == "PASSED" for s in all_gen3_statuses):
+              classification = "GEN3_SCIENTIFIC_GATE_PASSED_ALL_DIAGNOSTIC_CELLS"
+          elif any(s == "FAILED" for s in all_gen3_statuses):
+              classification = "GEN3_SCIENTIFIC_FAILURE_PRESENT"
+          elif any(s == "BLOCKED" for s in all_gen3_statuses):
+              classification = "GEN3_BLOCKED_CASE_PRESENT"
+          else:
+              classification = "GEN3_DIAGNOSTIC_COMPLETED_WITH_NONPASS_STATUS"
+
+          summary = {
+              "schema": "ACSIE.gen3_scalability_summary.v1",
+              "acsie_source_commit": "d83cb60286f195eec02b4d7aa45a60539316d115",
+              "fixed_candidate_program_cap": 128,
+              "scaled_dimension": "Gen3 inner discovery stream count only",
+              "fixed_dimensions": {
+                  "Gen1_inner_streams": 6,
+                  "Gen2_inner_streams": 6,
+                  "Gen1_Gen2_Gen3_outer_streams": 6,
+                  "GAIN_GATE": 0.05,
+                  "candidate_selection_rule": "unchanged original Gen3 script",
+              },
+              "scale_values": list(stream_sizes),
+              "seeds": list(seeds),
+              "completed_cells": len(complete),
+              "expected_cells": len(stream_sizes) * len(seeds),
+              "classification": classification,
+              "by_stream_size": group_summary,
+              "cell_records": [
+                  {k:v for k,v in r.items() if k != "record"} | ({
+                      "scientific_status": r["record"].get("gen3_scientific_status"),
+                      "reason": r["record"].get("gen3_reason"),
+                      "gen2_baseline_passed": r["record"].get("gen2_baseline_passed"),
+                      "run_elapsed_ms": r["record"].get("run_elapsed_ms_including_lightweight_telemetry"),
+                      "process_peak_rss_mb": r["record"].get("process_peak_rss_mb"),
+                      "candidate_count": r["record"].get("selection_summary", {}).get("candidate_count"),
+                      "candidate_selection_ms": r["record"].get("selection_summary", {}).get("elapsed_ms"),
+                      "gen3_holdout_gain": r["record"].get("gen3_holdout_gain"),
+                      "gen3_transfer_gain": r["record"].get("gen3_transfer_gain"),
+                      "raw_result_sha256": r["record"].get("raw_result_sha256"),
+                  } if "record" in r else {})
+                  for r in rows
+              ],
+              "interpretation_guard": (
+                  "Scale data volume only; unchanged candidate cap and scientific gates. "
+                  "This diagnostic does not substitute for the 5x12 frozen qualification and does not establish AGI/ASI."
+              ),
+          }
+          (root / "summary.json").write_text(json.dumps(summary, sort_keys=True, indent=2) + "\n")
+          print(json.dumps(summary, sort_keys=True, indent=2))
+          PY
+
+      - name: Upload Gen3 scalability evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-gen3-scalability-\${{ github.run_id }}
+          path: evidence/gen3/
+          if-no-files-found: error
