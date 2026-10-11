@@ -554,6 +554,101 @@ jobs:
           print(text)
           PY
 
+      - name: Measure H7 lineage-frontier pressure with redundant executable aliases
+        if: ${{ steps.target-frontier-integration.outcome == 'success' && steps.verify-r2-source.outcome == 'success' }}
+        id: lineage-pressure
+        run: |
+          set -euo pipefail
+          for source in r2 r3; do
+            if [ "$source" = "r2" ]; then
+              source_path="$GITHUB_WORKSPACE/acsie-r2"
+            else
+              source_path="$GITHUB_WORKSPACE/acsie"
+            fi
+            for seed in 0 731; do
+              echo "LINEAGE_PRESSURE source=$source PYTHONHASHSEED=$seed"
+              PYTHONHASHSEED="$seed" PYTHONPATH="$source_path" timeout 90s \
+                python "$GITHUB_WORKSPACE/lab/h7_r3_lineage_pressure_ladder.py" --source "$source" --seed "$seed" \
+                | tee "$GITHUB_WORKSPACE/evidence/h7-r3/lineage-pressure-$source-seed-$seed.jsonl"
+            done
+          done
+          python - "$GITHUB_WORKSPACE/evidence/h7-r3" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          expected_sizes = [2, 4, 6, 8]
+          source_runs = {}
+          all_records = []
+          for source in ("r2", "r3"):
+              by_seed = {}
+              for seed in (0, 731):
+                  path = root / f"lineage-pressure-{source}-seed-{seed}.jsonl"
+                  records = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+                  if [row["stable"]["n_primitives"] for row in records] != expected_sizes:
+                      raise SystemExit(f"{source} seed {seed}: invalid alias-size ladder")
+                  if any(not row["stable"]["target_found"] for row in records):
+                      raise SystemExit(f"{source} seed {seed}: exact target missing")
+                  if any(not row["stable"]["active_identity_consistent"] for row in records):
+                      raise SystemExit(f"{source} seed {seed}: active frontier/index identity mismatch")
+                  if any(row["performance"]["elapsed_ms"] > 15000 or row["performance"]["process_peak_rss_mb"] > 2048 for row in records):
+                      raise SystemExit(f"{source} seed {seed}: per-search resource guard exceeded")
+                  signatures = [row["signature_sha256"] for row in records]
+                  by_seed[seed] = {
+                      "records": records,
+                      "signatures": signatures,
+                  }
+                  all_records.extend({"source": source, "seed": seed, **row["stable"], **row["performance"]} for row in records)
+              mismatches = [
+                  n for index, n in enumerate(expected_sizes)
+                  if by_seed[0]["signatures"][index] != by_seed[731]["signatures"][index]
+              ]
+              if mismatches:
+                  raise SystemExit(f"{source}: stable result/counter signature changes across hash seeds at n={mismatches}")
+              source_runs[source] = by_seed
+
+          comparison = []
+          for index, n in enumerate(expected_sizes):
+              r2 = source_runs["r2"][0]["records"][index]
+              r3 = source_runs["r3"][0]["records"][index]
+              comparison.append({
+                  "n_primitives": n,
+                  "r2_expected_profile_live": r2["stable"]["expected_profile_live"],
+                  "r3_expected_profile_live": r3["stable"]["expected_profile_live"],
+                  "r2_expected_profile_returned": r2["stable"]["expected_profile_returned"],
+                  "r3_expected_profile_returned": r3["stable"]["expected_profile_returned"],
+                  "r2_generated_expressions": r2["stable"]["stats"]["generated_expressions"],
+                  "r3_generated_expressions": r3["stable"]["stats"]["generated_expressions"],
+                  "r2_unique_states": r2["stable"]["stats"]["unique_states"],
+                  "r3_unique_states": r3["stable"]["stats"]["unique_states"],
+                  "r2_dominance_pruned": r2["stable"]["stats"]["dominance_pruned_states"],
+                  "r3_dominance_pruned": r3["stable"]["stats"]["dominance_pruned_states"],
+                  "r2_returned_alternatives": r2["stable"]["returned_alternative_count"],
+                  "r3_returned_alternatives": r3["stable"]["returned_alternative_count"],
+                  "r2_elapsed_ms": r2["performance"]["elapsed_ms"],
+                  "r3_elapsed_ms": r3["performance"]["elapsed_ms"],
+                  "r2_peak_rss_mb": r2["performance"]["process_peak_rss_mb"],
+                  "r3_peak_rss_mb": r3["performance"]["process_peak_rss_mb"],
+              })
+          summary = {
+              "schema": "ACSIE.H7_R2_vs_R3.lineage-pressure.v1",
+              "source_commits": {
+                  "r2": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+                  "r3": "e5f4526bf724650b09051b6625e4dd70b59282c2",
+              },
+              "hash_seeds": [0, 731],
+              "primitive_sizes": expected_sizes,
+              "alias_design": "Each step adds one executable alias to A and one to B; each alias wraps its parent macro in two negations, preserving behavior while altering executable ancestry/cost.",
+              "cross_hash_seed_result_stats_stable": True,
+              "r2_r3_comparison": comparison,
+              "interpretation_guard": "Bounded synthetic lineage-pressure diagnostic only. Report truncation and growth; neither timing nor a single pass proves open-ended scalability."
+          }
+          out = json.dumps(summary, sort_keys=True, indent=2)
+          (root / "lineage-pressure-summary.json").write_text(out + "\\n")
+          print(out)
+          PY
+
       - name: Upload auditable H7 R3 regression logs
         if: always()
         uses: actions/upload-artifact@v4
