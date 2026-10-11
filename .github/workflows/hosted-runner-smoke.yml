@@ -817,7 +817,7 @@ jobs:
         run: |
           set -euo pipefail
           for seed in 0 731; do
-            for aliases in 0 1 2 3; do
+            for aliases in 0 1 2 3 4; do
               for pair in 1 2 3 4; do
                 case "$pair" in
                   1|4) order="r2 r3" ;;
@@ -848,7 +848,7 @@ jobs:
 
           root = pathlib.Path(sys.argv[1])
           seeds = (0, 731)
-          aliases = (0, 1, 2, 3)
+          aliases = (0, 1, 2, 3, 4)
           pairs = (1, 2, 3, 4)
           rows = {}
           all_records = []
@@ -961,7 +961,7 @@ jobs:
               "r2_source_commit": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
               "r3_source_commit": "d83cb60286f195eec02b4d7aa45a60539316d115",
               "r3_source_sha256": "2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea",
-              "primitive_sizes": [2, 4, 6, 8],
+              "primitive_sizes": [2, 4, 6, 8, 10],
               "rows": 8,
               "max_depth": 3,
               "hash_seeds": list(seeds),
@@ -972,7 +972,7 @@ jobs:
               "cross_seed_checks": cross_seed_checks,
               "cell_summaries": cell_summaries,
               "raw_performance_records": all_records,
-              "interpretation_guard": "Uninstrumented search-only timers; startup/import is excluded. Bounded synthetic workload only, with no claim of open-ended scalability. Compare paired R2/R3 order-balanced ratios rather than relying on a single runner timing."
+              "interpretation_guard": "Uninstrumented search-only timers; startup/import is excluded. Bounded synthetic 2/4/6/8/10-primitive workload only, with no claim of open-ended scalability. Compare paired R2/R3 order-balanced ratios rather than relying on a single runner timing."
           }
           out = json.dumps(summary, sort_keys=True, indent=2)
           (root / "uninstrumented-timing-summary.json").write_text(out + "\\n")
