@@ -40,10 +40,10 @@ def run_gen6(seed: int, generations: int) -> dict[str, Any]:
     compiler_type = rcc.RecursiveCognitiveCompiler
     original_run_seed = growth_lab.run_seed
     original_traces_for = growth_lab.traces_for
-    original_find = rcc.find_exact_expression
     originals = {name: getattr(compiler_type, name) for name in (
-        "invent_primitive", "synthesize_process", "evaluate", "retain"
+        "__init__", "_exprs", "invent_primitive", "synthesize_process", "evaluate", "retain"
     )}
+    instance_roles: dict[int, str] = {}
 
     state: dict[str, Any] = {"seed": seed, "generation": None}
     meter: dict[int, dict[str, Any]] = defaultdict(lambda: {
@@ -62,7 +62,9 @@ def run_gen6(seed: int, generations: int) -> dict[str, Any]:
     })
 
     def _role(compiler: Any) -> str:
-        return "baseline" if int(getattr(compiler, "seed", -10**9)) == seed + 9109 else "learner"
+        # The scientific compiler does not store its constructor seed as an attribute.
+        # Classify instances from the original constructor argument without mutating them.
+        return instance_roles.get(id(compiler), "unclassified")
 
     def _slot(compiler: Any) -> dict[str, Any]:
         gen = state["generation"]
@@ -77,39 +79,15 @@ def run_gen6(seed: int, generations: int) -> dict[str, Any]:
             expr, trace_seed, generation, split, count, key_shift=key_shift
         )
 
-    def traced_find(compiler, rows, max_depth, **kwargs):
-        started = time.perf_counter()
-        error = None
-        result = None
-        try:
-            result = original_find(compiler, rows, max_depth, **kwargs)
-            return result
-        except BaseException as exc:
-            error = f"{type(exc).__name__}: {exc}"
-            raise
-        finally:
-            slot = _slot(compiler)
-            stats = dict(getattr(result, "stats", {}) or {})
-            keys = (
-                "status", "max_depth", "primitive_count", "rows", "first_exact_target_depth",
-                "best_target_depth", "generated_expressions", "unique_states",
-                "dominance_frontier_max", "dominance_pruned_states", "duplicate_states",
-                "inverse_hits", "target_matches", "target_candidate_count",
-                "generic_binary_pairs_evaluated", "generic_binary_path_skipped_after_target",
-                "max_lineage_coverage",
-            )
-            slot["search_calls"].append({
-                "elapsed_ms": round((time.perf_counter() - started) * 1000.0, 3),
-                "input_rows": len(rows),
-                "max_depth_argument": int(max_depth),
-                "require_macro": bool(kwargs.get("require_macro", False)),
-                "target_found": result is not None,
-                "stats": {k: stats.get(k) for k in keys if k in stats},
-                "error": error,
-            })
-
     def wrap_method(name, original):
         def wrapped(self, *args, **kwargs):
+            if name == "__init__":
+                constructor_seed = kwargs.get("seed", args[2] if len(args) >= 3 else 0)
+                original(self, *args, **kwargs)
+                instance_roles[id(self)] = (
+                    "baseline" if int(constructor_seed) == seed + 9109 else "learner"
+                )
+                return None
             slot = _slot(self)
             started = time.perf_counter()
             before = len(getattr(self, "primitives", {}))
@@ -121,6 +99,26 @@ def run_gen6(seed: int, generations: int) -> dict[str, Any]:
                 elapsed = (time.perf_counter() - started) * 1000.0
                 slot["method_calls"][name] += 1
                 slot["method_elapsed_ms"][name] += elapsed
+                if name == "_exprs":
+                    values = list(result or [])
+                    unique = {
+                        json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+                        for value in values
+                    }
+                    slot["search_calls"].append({
+                        "elapsed_ms": round(elapsed, 3),
+                        "input_rows": None,
+                        "max_depth_argument": int(args[2] if len(args) > 2 else kwargs.get("depth_limit", 0)),
+                        "primitive_count": len(getattr(self, "primitives", {})),
+                        "cache_entries_before": len(getattr(self, "_expr_cache", {})),
+                        "cache_entries_after": len(getattr(self, "_expr_cache", {})),
+                        "target_found": None,
+                        "stats": {
+                            "generated_expressions": len(values),
+                            "unique_states": len(unique),
+                        },
+                        "error": None if result is not None else "EXPRESSION_ENUMERATOR_RETURNED_NONE",
+                    })
                 if name == "invent_primitive":
                     slot["primitive_counts_before_after"].append({
                         "before": before,
@@ -137,7 +135,6 @@ def run_gen6(seed: int, generations: int) -> dict[str, Any]:
         return wrapped
 
     growth_lab.traces_for = traced_traces_for
-    rcc.find_exact_expression = traced_find
     for method_name, method_original in originals.items():
         setattr(compiler_type, method_name, wrap_method(method_name, method_original))
 
@@ -146,7 +143,6 @@ def run_gen6(seed: int, generations: int) -> dict[str, Any]:
         raw = original_run_seed(seed, generations)
     finally:
         growth_lab.traces_for = original_traces_for
-        rcc.find_exact_expression = original_find
         for method_name, method_original in originals.items():
             setattr(compiler_type, method_name, method_original)
 
