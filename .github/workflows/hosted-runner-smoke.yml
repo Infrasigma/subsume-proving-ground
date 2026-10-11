@@ -24,10 +24,16 @@ permissions:
 
 jobs:
   acsie-lab:
-    if: github.event_name != 'pull_request' || (
-      !startsWith(github.event.pull_request.head.ref, 'research/acsie-h9e-independent-proof-20261003') &&
-      !startsWith(github.event.pull_request.head.ref, 'research/open-ended-growth-proving-20261003')
-    )
+    if: >-
+      ${{
+        (github.event_name != 'push' || github.ref != 'refs/heads/research/acsie-h7-r3-exact-source-20261011')
+        &&
+        (github.event_name != 'pull_request' || (
+          !startsWith(github.event.pull_request.head.ref, 'research/acsie-h9e-independent-proof-20261003') &&
+          !startsWith(github.event.pull_request.head.ref, 'research/open-ended-growth-proving-20261003') &&
+          !startsWith(github.event.pull_request.head.ref, 'research/acsie-h7-r3-exact-source-20261011')
+        ))
+      }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +42,120 @@ jobs:
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
           ACSIE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.acsie_ref || '1a67903eb56ec32b829769f7d842d44b3edc410b' }}
+
+
+  h7-r3-exact-source:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/research/acsie-h7-r3-exact-source-20261011' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout proving-ground workflow revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Prepare evidence directory
+        run: mkdir -p evidence/h7-r3
+
+      - name: Checkout exact private ACSIE R3 commit
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: e5f4526bf724650b09051b6625e4dd70b59282c2
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact commit and source/test digests
+        id: verify-source
+        working-directory: acsie
+        env:
+          EXPECTED_COMMIT: e5f4526bf724650b09051b6625e4dd70b59282c2
+          EXPECTED_SOURCE_SHA256: b938a61ba3ea78410eb7f4108cc6518515a2bfc555a09c0c3d16acca1f40244b
+          EXPECTED_TEST_SHA256: 685c92ee3a825013323ea92d40a45e8e684a0867f7e72cd1317f5db72e9ced53
+        run: |
+          set -euo pipefail
+          actual_commit="$(git rev-parse HEAD)"
+          actual_tree="$(git rev-parse 'HEAD^{tree}')"
+          actual_source="$(sha256sum cognitive_core/behavioral_search.py | awk '{print $1}')"
+          actual_test="$(sha256sum tests/test_open_ended_growth.py | awk '{print $1}')"
+          test "$actual_commit" = "$EXPECTED_COMMIT"
+          test "$actual_source" = "$EXPECTED_SOURCE_SHA256"
+          test "$actual_test" = "$EXPECTED_TEST_SHA256"
+          {
+            echo "ACSIE_COMMIT=$actual_commit"
+            echo "ACSIE_TREE=$actual_tree"
+            echo "BEHAVIORAL_SEARCH_SHA256=$actual_source"
+            echo "TEST_OPEN_ENDED_GROWTH_SHA256=$actual_test"
+            echo "SOURCE_IDENTITY=PASS"
+          } | tee "$GITHUB_WORKSPACE/evidence/h7-r3/source-identity.txt"
+
+      - name: Setup Python 3.11
+        if: ${{ steps.verify-source.outcome == 'success' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pytest
+        id: install-pytest
+        if: ${{ steps.verify-source.outcome == 'success' }}
+        run: python -m pip install --disable-pip-version-check pytest
+
+      - name: Compile cognitive core
+        if: ${{ always() && steps.verify-source.outcome == 'success' && steps.install-pytest.outcome == 'success' }}
+        working-directory: acsie
+        run: |
+          set -euo pipefail
+          python -m compileall -q cognitive_core 2>&1 | tee "$GITHUB_WORKSPACE/evidence/h7-r3/compile.txt"
+
+      - name: Run exact open-ended-growth test file
+        if: ${{ always() && steps.verify-source.outcome == 'success' && steps.install-pytest.outcome == 'success' }}
+        working-directory: acsie
+        env:
+          PYTHONPATH: ${{ github.workspace }}/acsie
+          PYTHONHASHSEED: "0"
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_open_ended_growth.py 2>&1 | tee "$GITHUB_WORKSPACE/evidence/h7-r3/open-ended-growth.txt"
+
+      - name: Compare indexed frontier to linear oracle under two hash seeds
+        if: ${{ always() && steps.verify-source.outcome == 'success' && steps.install-pytest.outcome == 'success' }}
+        working-directory: acsie
+        env:
+          PYTHONPATH: ${{ github.workspace }}/acsie
+        run: |
+          set -euo pipefail
+          test_name="tests/test_open_ended_growth.py::test_h7_frontier_keeps_cost_tradeoffs_and_bucket_index_identity_consistent"
+          for seed in 0 731; do
+            echo "PYTHONHASHSEED=$seed"
+            PYTHONHASHSEED="$seed" python -m pytest -q "$test_name" 2>&1 | tee "$GITHUB_WORKSPACE/evidence/h7-r3/indexed-linear-seed-$seed.txt"
+          done
+
+      - name: Run six-file H7 regression suite
+        id: six-file-suite
+        if: ${{ always() && steps.verify-source.outcome == 'success' && steps.install-pytest.outcome == 'success' }}
+        working-directory: acsie
+        env:
+          PYTHONPATH: ${{ github.workspace }}/acsie
+          PYTHONHASHSEED: "0"
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_open_ended_growth.py \
+            tests/test_core014_recursive_cognitive_compiler.py \
+            tests/test_core015_semantic_operator_discovery.py \
+            tests/test_core016_open_semantic_substrate.py \
+            tests/test_adaptive_capability_repair.py \
+            tests/test_asi_claim_gate.py 2>&1 | tee "$GITHUB_WORKSPACE/evidence/h7-r3/six-file-regression.txt"
+
+      - name: Upload auditable H7 R3 regression logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h7-r3-exact-source-regression-${{ github.run_id }}
+          path: evidence/h7-r3/
+          if-no-files-found: warn
 
 
   h9e:

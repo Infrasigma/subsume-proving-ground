@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   test:
+    if: ${{ github.ref != 'refs/heads/research/acsie-h7-r3-exact-source-20261011' && (github.event_name != 'pull_request' || github.event.pull_request.head.ref != 'research/acsie-h7-r3-exact-source-20261011') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -51,7 +52,7 @@ jobs:
           path: acex-result.txt
 
   ace-x-forensic:
-    if: github.event_name == 'push'
+    if: ${{ github.event_name == 'push' && github.ref != 'refs/heads/research/acsie-h7-r3-exact-source-20261011' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
