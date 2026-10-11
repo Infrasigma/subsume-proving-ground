@@ -127,7 +127,7 @@ jobs:
         run: |
           set -euo pipefail
           test_name="tests/test_open_ended_growth.py::test_h7_frontier_keeps_cost_tradeoffs_and_bucket_index_identity_consistent"
-          for seed in 0 731; do
+          for seed in 0 1 42 731 2026; do
             echo "PYTHONHASHSEED=$seed"
             PYTHONHASHSEED="$seed" python -m pytest -q "$test_name" 2>&1 | tee "$GITHUB_WORKSPACE/evidence/h7-r3/indexed-linear-seed-$seed.txt"
           done
@@ -148,6 +148,67 @@ jobs:
             tests/test_core016_open_semantic_substrate.py \
             tests/test_adaptive_capability_repair.py \
             tests/test_asi_claim_gate.py 2>&1 | tee "$GITHUB_WORKSPACE/evidence/h7-r3/six-file-regression.txt"
+
+      - name: Run bounded H7 determinism and scalability ladder
+        if: ${{ steps.six-file-suite.outcome == 'success' && steps.verify-source.outcome == 'success' && steps.install-pytest.outcome == 'success' }}
+        working-directory: acsie
+        env:
+          PYTHONPATH: ${{ github.workspace }}/acsie
+        run: |
+          set -euo pipefail
+          for seed in 0 1 42 731 2026; do
+            echo "PYTHONHASHSEED=$seed"
+            PYTHONHASHSEED="$seed" timeout 60s python "$GITHUB_WORKSPACE/lab/h7_r3_bounded_scalability.py" \
+              | tee "$GITHUB_WORKSPACE/evidence/h7-r3/scale-seed-$seed.jsonl"
+          done
+          python - "$GITHUB_WORKSPACE/evidence/h7-r3" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          seeds = (0, 1, 42, 731, 2026)
+          runs = {}
+          performance = []
+          for seed in seeds:
+              path = root / f"scale-seed-{seed}.jsonl"
+              records = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+              if [r["stable"]["n_primitives"] for r in records] != [2, 4, 6, 8]:
+                  raise SystemExit(f"invalid case ladder for seed {seed}")
+              if len(records) != 4:
+                  raise SystemExit(f"expected four cases for seed {seed}, got {len(records)}")
+              stable = [r["stable"] for r in records]
+              if not all(row["active_identity_consistent"] for row in stable):
+                  raise SystemExit(f"frontier/index identity mismatch for seed {seed}")
+              if not all(row["status"] == "TARGET_NOT_FOUND" and not row["target_found"] for row in stable):
+                  raise SystemExit(f"unexpected target result invalidates stress workload for seed {seed}")
+              runs[seed] = stable
+              for record in records:
+                  performance.append({
+                      "seed": seed,
+                      "n_primitives": record["stable"]["n_primitives"],
+                      **record["performance"],
+                  })
+          baseline = runs[seeds[0]]
+          mismatches = [seed for seed in seeds[1:] if runs[seed] != baseline]
+          summary = {
+              "schema": "ACSIE.H7_R3.bounded_scalability.v1",
+              "case_sizes": [2, 4, 6, 8],
+              "rows_per_case": 8,
+              "max_depth": 2,
+              "hash_seeds": list(seeds),
+              "stable_counters_match_across_hash_seeds": not mismatches,
+              "mismatching_seeds": mismatches,
+              "max_elapsed_ms": max(item["elapsed_ms"] for item in performance),
+              "max_tracemalloc_peak_bytes": max(item["tracemalloc_peak_bytes"] for item in performance),
+              "performance_records": performance,
+          }
+          text = json.dumps(summary, sort_keys=True, indent=2)
+          (root / "scalability-summary.json").write_text(text + "\\n")
+          print(text)
+          if mismatches:
+              raise SystemExit("determinism counters differ across PYTHONHASHSEED values")
+          PY
 
       - name: Upload auditable H7 R3 regression logs
         if: always()
