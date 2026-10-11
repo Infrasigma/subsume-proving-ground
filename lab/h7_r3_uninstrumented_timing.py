@@ -3,7 +3,7 @@
 
 Unlike the profiling harness, this script does not install sys.setprofile or
 cProfile. It times only find_exact_expression after constructing the fixed
-synthetic 2/4/6/8-primitive alias fixture. The workflow counterbalances R2/R3
+synthetic 2/4/6/8/10-primitive alias fixture. The workflow counterbalances R2/R3
 execution order and repeats each cell under two hash seeds. Timing is still a
 bounded diagnostic, not a broad performance qualification.
 """
@@ -99,7 +99,7 @@ def make_compiler(alias_pairs: int) -> OpenEndedRecursiveCognitiveCompiler:
 
 
 def run_next_notch_probe(args: argparse.Namespace) -> None:
-    """Measure one 10-primitive search; report failures as data rather than gating baseline."""
+    """Measure one 12-primitive search; report failures as data rather than gating baseline."""
     rows = tuple(
         Trace(
             {"x": x, "y": (-2.0 * x if x < 0.0 else 0.0)},
@@ -172,7 +172,7 @@ def run_next_notch_probe(args: argparse.Namespace) -> None:
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
     print(json.dumps({
-        "schema": "ACSIE.H7_R3.next_notch_probe.v1",
+        "schema": "ACSIE.H7_R3.next_notch_probe.v2",
         "status": status,
         "stable": stable,
         "stable_signature_sha256": signature,
@@ -181,27 +181,27 @@ def run_next_notch_probe(args: argparse.Namespace) -> None:
             "process_peak_rss_mb": round(peak_rss_mb, 3),
         },
         "instrumentation": "none within find_exact_expression (no cProfile/sys.setprofile)",
-        "interpretation_guard": "10-primitive bounded synthetic diagnostic only.",
+        "interpretation_guard": "12-primitive bounded synthetic diagnostic only.",
     }, sort_keys=True, separators=(",", ":")), flush=True)
 
 
 def attach_next_notch_probe(args: argparse.Namespace, row: dict[str, Any]) -> None:
-    """Probe 10 primitives twice per source and seed, with hard resource guards."""
-    if args.alias_pairs != 3 or args.pair not in (1, 4):
+    """Probe 12 primitives twice per source and seed, with hard resource guards."""
+    if args.alias_pairs != 4 or args.pair not in (1, 4):
         return
     root = pathlib.Path(os.environ.get("GITHUB_WORKSPACE", str(pathlib.Path.cwd())))
     evidence = root / "evidence" / "h7-r3"
     evidence.mkdir(parents=True, exist_ok=True)
-    path = evidence / f"next-notch-a4-seed{args.seed}-pair{args.pair}-{args.source}.json"
+    path = evidence / f"next-notch-a5-seed{args.seed}-pair{args.pair}-{args.source}.json"
     command = [
         sys.executable, str(pathlib.Path(__file__).resolve()),
         "--source", args.source, "--seed", str(args.seed),
-        "--alias-pairs", "4", "--pair", str(args.pair), "--next-notch-only",
+        "--alias-pairs", "5", "--pair", str(args.pair), "--next-notch-only",
     ]
     item = {
-        "schema": "ACSIE.H7_R3.next_notch_wrapper.v1",
+        "schema": "ACSIE.H7_R3.next_notch_wrapper.v2",
         "seed": args.seed, "source": args.source, "pair": args.pair,
-        "alias_pairs": 4, "primitive_count": 10,
+        "alias_pairs": 5, "primitive_count": 12,
     }
     try:
         proc = subprocess.run(
@@ -239,7 +239,7 @@ def attach_next_notch_probe(args: argparse.Namespace, row: dict[str, Any]) -> No
     if (args.seed, args.pair, args.source) != (731, 4, "r3"):
         return
     expected_paths = [
-        evidence / f"next-notch-a4-seed{seed}-pair{pair}-{source}.json"
+        evidence / f"next-notch-a5-seed{seed}-pair{pair}-{source}.json"
         for seed in (0, 731) for pair in (1, 4) for source in ("r2", "r3")
     ]
     records, missing = [], []
@@ -272,10 +272,10 @@ def attach_next_notch_probe(args: argparse.Namespace, row: dict[str, Any]) -> No
         x["matches"] for x in cross_seed_checks
     )
     summary = {
-        "schema": "ACSIE.H7_R3.next_notch_summary.v1",
+        "schema": "ACSIE.H7_R3.next_notch_summary.v2",
         "r2_source_commit": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
         "r3_source_commit": "d83cb60286f195eec02b4d7aa45a60539316d115",
-        "fixture": {"primitive_count": 10, "alias_pairs": 4, "rows": 8, "max_depth": 3},
+        "fixture": {"primitive_count": 12, "alias_pairs": 5, "rows": 8, "max_depth": 3},
         "hash_seeds": [0, 731], "paired_repetitions_per_source_and_seed": 2,
         "per_search_guard_seconds": 15, "child_wall_timeout_seconds": 17,
         "per_process_rss_guard_mb": 2048, "missing_sidecars": missing,
@@ -285,7 +285,7 @@ def attach_next_notch_probe(args: argparse.Namespace, row: dict[str, Any]) -> No
         "records": records,
         "classification": "PASSED_BOUNDED_NEXT_NOTCH_DIAGNOSTIC" if all_pass and deterministic
                           else "INCONCLUSIVE_DIAGNOSTIC_FAILURE_OR_RESOURCE_BOUNDARY",
-        "interpretation_guard": "Bounded synthetic result only; not evidence of open-ended scalability.",
+        "interpretation_guard": "12-primitive bounded synthetic result only; not evidence of open-ended scalability.",
     }
     (evidence / "next-notch-summary.json").write_text(
         json.dumps(summary, sort_keys=True, indent=2) + "\n"
@@ -301,13 +301,13 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", choices=("r2", "r3"), required=True)
     parser.add_argument("--seed", type=int, required=True)
-    parser.add_argument("--alias-pairs", choices=(0, 1, 2, 3, 4), type=int, required=True)
+    parser.add_argument("--alias-pairs", choices=(0, 1, 2, 3, 4, 5), type=int, required=True)
     parser.add_argument("--pair", type=int, required=True)
     parser.add_argument("--next-notch-only", action="store_true")
     args = parser.parse_args()
     if args.next_notch_only:
-        if args.alias_pairs != 4:
-            raise SystemExit("--next-notch-only requires --alias-pairs 4")
+        if args.alias_pairs != 5:
+            raise SystemExit("--next-notch-only requires --alias-pairs 5")
         run_next_notch_probe(args)
         return
 
