@@ -310,73 +310,56 @@ def run_gen6(seed: int, generations: int) -> dict[str, Any]:
     }
     return result
 
-def run_gen3(seed: int, n_gen3_inner_streams: int) -> dict[str, Any]:
-    """Scale only Gen3 discovery streams while preserving fixed Gen1/Gen2 and Gen3 outer streams."""
+def run_gen3(seed: int, n_gen3_inner_streams: int, frozen_state_path: str) -> dict[str, Any]:
+    """Scale the documented, verified-frozen-Gen2 Gen3 continuation (not a fresh Gen2 rerun)."""
     gen3 = importlib.import_module(
-        "research.native_self_learning_kernel_gen3_compositional_retention_v1"
+        "research.gen3_from_frozen_verified_gen2_v1"
     )
-    core_type = gen3.NativeCognitiveCore
+    core_type = importlib.import_module(
+        "cognitive_core.native_independent_core"
+    ).NativeCognitiveCore
     original_make_streams = gen3._make_streams
-    original_baseline = gen3.run_gen2_baseline
-    original_select = gen3._select_candidate
-    original_kernel_eval = core_type._evaluate_kernel
+    original_regression = gen3._regression
     original_variants = core_type._compositional_kernel_variants
-    original_regression = gen3._candidate_regression_scores
+    original_kernel_eval = core_type._evaluate_kernel
 
-    phase: dict[str, Any] = {"tracking": False, "name": "idle"}
     telemetry: dict[str, Any] = {
         "stream_construction": [],
-        "program_generation": [],
+        "variant_generation": [],
         "kernel_evaluation": {"calls": 0, "elapsed_ms": 0.0, "streams": 0, "rows": 0},
-        "regression_evaluation": {"calls": 0, "elapsed_ms": 0.0, "sets": 0, "streams": 0, "rows": 0},
-        "candidate_selection": {},
+        "historical_regression": {"calls": 0, "elapsed_ms": 0.0, "sets": 0, "streams": 0, "rows": 0},
     }
-
-    scaled_seed = seed + 8000
+    target_stream_seed = seed + 8000
 
     def scaled_make_streams(stream_seed, count, *, rule):
-        actual_count = n_gen3_inner_streams if int(stream_seed) == scaled_seed and int(count) == 6 else int(count)
+        scale_this_gen3_input = (
+            int(stream_seed) == target_stream_seed
+            and int(count) == 6
+            and str(rule) == "parity_relation"
+        )
+        actual_count = n_gen3_inner_streams if scale_this_gen3_input else int(count)
         streams = original_make_streams(stream_seed, actual_count, rule=rule)
         telemetry["stream_construction"].append({
+            "stream_seed": int(stream_seed),
             "seed_offset": int(stream_seed) - seed,
-            "rule": rule,
+            "rule": str(rule),
             "requested_count": int(count),
             "actual_count": actual_count,
             "row_count": sum(len(row) for row in streams),
-            "scaled_gen3_inner_only": int(stream_seed) == scaled_seed and int(count) == 6,
+            "scaled_gen3_inner_only": scale_this_gen3_input,
         })
         return streams
-
-    def wrapped_baseline(*args, **kwargs):
-        previous = phase["tracking"]
-        phase["tracking"] = False
-        phase["name"] = "gen2_baseline"
-        started = time.perf_counter()
-        try:
-            result = original_baseline(*args, **kwargs)
-            telemetry["gen2_baseline"] = {
-                "elapsed_ms": round((time.perf_counter() - started) * 1000.0, 3),
-                "passed": bool(result.get("passed")),
-                "holdout_gain": result.get("gen2_outer_holdout_gain"),
-                "transfer_gain": result.get("gen2_outer_transfer_gain"),
-                "result_sha256": _sha256(result),
-            }
-            return result
-        finally:
-            phase["tracking"] = previous
-            phase["name"] = "idle"
 
     def variants_wrapper(cls, base, streams, *, max_programs=128):
         started = time.perf_counter()
         result = original_variants(base, streams, max_programs=max_programs)
-        if phase["tracking"] and phase["name"] == "gen3_candidate_selection":
-            telemetry["program_generation"].append({
-                "max_programs_argument": int(max_programs),
-                "input_streams": len(streams),
-                "input_rows": sum(len(s) for s in streams),
-                "returned_variants": len(result),
-                "elapsed_ms": round((time.perf_counter() - started) * 1000.0, 3),
-            })
+        telemetry["variant_generation"].append({
+            "input_streams": len(streams),
+            "input_rows": sum(len(stream) for stream in streams),
+            "max_programs_argument": int(max_programs),
+            "returned_variants": len(result),
+            "elapsed_ms": round((time.perf_counter() - started) * 1000.0, 3),
+        })
         return result
 
     def kernel_eval_wrapper(kernel, streams, *, seed=0, include_retention=True, protected_hypotheses=None):
@@ -385,71 +368,40 @@ def run_gen3(seed: int, n_gen3_inner_streams: int) -> dict[str, Any]:
             kernel, streams, seed=seed, include_retention=include_retention,
             protected_hypotheses=protected_hypotheses,
         )
-        if phase["tracking"] and phase["name"] == "gen3_candidate_selection":
-            row_count = sum(len(s) for s in streams)
-            telemetry["kernel_evaluation"]["calls"] += 1
-            telemetry["kernel_evaluation"]["elapsed_ms"] += (time.perf_counter() - started) * 1000.0
-            telemetry["kernel_evaluation"]["streams"] += len(streams)
-            telemetry["kernel_evaluation"]["rows"] += row_count
+        telemetry["kernel_evaluation"]["calls"] += 1
+        telemetry["kernel_evaluation"]["elapsed_ms"] += (
+            time.perf_counter() - started
+        ) * 1000.0
+        telemetry["kernel_evaluation"]["streams"] += len(streams)
+        telemetry["kernel_evaluation"]["rows"] += sum(len(s) for s in streams)
         return result
 
     def regression_wrapper(pre_state, candidate, regression_sets):
         started = time.perf_counter()
         result = original_regression(pre_state, candidate, regression_sets)
-        if phase["tracking"] and phase["name"] == "gen3_candidate_selection":
-            telemetry["regression_evaluation"]["calls"] += 1
-            telemetry["regression_evaluation"]["elapsed_ms"] += (time.perf_counter() - started) * 1000.0
-            telemetry["regression_evaluation"]["sets"] += len(regression_sets)
-            telemetry["regression_evaluation"]["streams"] += sum(len(s) for s in regression_sets)
-            telemetry["regression_evaluation"]["rows"] += sum(
-                len(stream) for s in regression_sets for stream in s
-            )
+        telemetry["historical_regression"]["calls"] += 1
+        telemetry["historical_regression"]["elapsed_ms"] += (
+            time.perf_counter() - started
+        ) * 1000.0
+        telemetry["historical_regression"]["sets"] += len(regression_sets)
+        telemetry["historical_regression"]["streams"] += sum(len(s) for s in regression_sets)
+        telemetry["historical_regression"]["rows"] += sum(
+            len(stream) for group in regression_sets for stream in group
+        )
         return result
 
-    def select_wrapper(*args, **kwargs):
-        phase["tracking"] = True
-        phase["name"] = "gen3_candidate_selection"
-        started = time.perf_counter()
-        try:
-            result = original_select(*args, **kwargs)
-            diagnostics = result.get("diagnostics", [])
-            telemetry["candidate_selection"] = {
-                "elapsed_ms": round((time.perf_counter() - started) * 1000.0, 3),
-                "candidate_count": int(result.get("candidate_count", len(diagnostics))),
-                "eligible_count": int(result.get("eligible_count", len(result.get("eligible", [])))),
-                "diagnostic_rows_returned": len(diagnostics),
-                "accepted": bool(result.get("accepted")),
-                "reason": result.get("reason"),
-                "base_fresh": result.get("base_fresh"),
-                "base_regression": result.get("base_regression"),
-                "chosen_candidate_index": (
-                    result.get("chosen", {}).get("candidate_index")
-                    if isinstance(result.get("chosen"), dict) else None
-                ),
-            }
-            return result
-        finally:
-            phase["tracking"] = False
-            phase["name"] = "post_gen3_selection"
-
     gen3._make_streams = scaled_make_streams
-    gen3.run_gen2_baseline = wrapped_baseline
-    gen3._select_candidate = select_wrapper
-    gen3._candidate_regression_scores = regression_wrapper
+    gen3._regression = regression_wrapper
     core_type._compositional_kernel_variants = classmethod(variants_wrapper)
     core_type._evaluate_kernel = staticmethod(kernel_eval_wrapper)
 
     started = time.perf_counter()
     try:
-        result = gen3.run(seed=seed)
+        result = gen3.run(frozen_state_path, seed=seed)
     finally:
         gen3._make_streams = original_make_streams
-        gen3.run_gen2_baseline = original_baseline
-        gen3._select_candidate = original_select
-        gen3._candidate_regression_scores = original_regression
-        core_type._compositional_kernel_variants = classmethod(
-            original_variants.__func__
-        )
+        gen3._regression = original_regression
+        core_type._compositional_kernel_variants = classmethod(original_variants.__func__)
         core_type._evaluate_kernel = staticmethod(original_kernel_eval)
 
     for entry in telemetry["stream_construction"]:
@@ -458,41 +410,60 @@ def run_gen3(seed: int, n_gen3_inner_streams: int) -> dict[str, Any]:
         else:
             assert entry["actual_count"] == entry["requested_count"]
 
-    for key in ("kernel_evaluation", "regression_evaluation"):
+    for key in ("kernel_evaluation", "historical_regression"):
         telemetry[key]["elapsed_ms"] = round(telemetry[key]["elapsed_ms"], 3)
 
-    gen3_metric = result.get("gen3", {})
-    selection = result.get("selection", {})
+    scientific_signature = _sha256(result)
+    integrity = result.get("integrity", {})
+    actual_gen3_stream_records = [
+        item for item in telemetry["stream_construction"]
+        if item["scaled_gen3_inner_only"]
+    ]
+    all_outer_fixed = all(
+        item["actual_count"] == 6
+        for item in telemetry["stream_construction"]
+        if item["rule"] == "parity_relation" and not item["scaled_gen3_inner_only"]
+    )
     return {
-        "schema": "ACSIE.gen3_scalability_diagnostic.v1",
-        "mode": "native_gen3_compositional_candidate_scaling",
+        "schema": "ACSIE.gen3_frozen_scalability_diagnostic.v1",
+        "mode": "gen3_frozen_verified_gen2_compositional_continuation",
         "seed": seed,
-        "fixed_candidate_program_cap": 128,
         "gen3_inner_stream_count": n_gen3_inner_streams,
-        "gen1_inner_stream_count_fixed": 6,
-        "gen2_inner_stream_count_fixed": 6,
-        "all_outer_stream_counts_fixed": 6,
+        "frozen_state_path": str(frozen_state_path),
+        "frozen_predecessor_commit": result.get("provenance", {}).get("frozen_predecessor_commit"),
+        "executed_gen3_source_commit": result.get("provenance", {}).get("executed_source_commit"),
         "gen3_scientific_status": result.get("scientific_status"),
         "gen3_reason": result.get("reason"),
-        "gen3_holdout_gain": gen3_metric.get("holdout_gain"),
-        "gen3_transfer_gain": gen3_metric.get("transfer_gain"),
+        "candidate_count": result.get("candidate_count"),
+        "eligible_count": result.get("eligible_count"),
+        "gen3_holdout_gain": result.get("gen3", {}).get("holdout_gain"),
+        "gen3_transfer_gain": result.get("gen3", {}).get("transfer_gain"),
         "retention": result.get("retention"),
-        "selection_summary": telemetry["candidate_selection"],
+        "selection": result.get("selection"),
+        "fixed_candidate_program_cap": 128,
+        "scaled_gen3_inner_stream_builds": actual_gen3_stream_records,
+        "all_outer_stream_counts_fixed": all_outer_fixed,
         "search_scaling_telemetry": telemetry,
         "run_elapsed_ms_including_lightweight_telemetry": round(
             (time.perf_counter() - started) * 1000.0, 3
         ),
         "process_peak_rss_mb": round(_rss_mb(), 3),
-        "gen2_baseline_passed": bool(telemetry.get("gen2_baseline", {}).get("passed", False)),
         "original_unmodified_gen3_result": result,
-        "raw_result_sha256": _sha256(result),
+        "scientific_signature_sha256": scientific_signature,
+        "integrity": {
+            "holdout_contamination": integrity.get("holdout_contamination") is False,
+            "task_routing": integrity.get("task_routing") is False,
+            "external_model": integrity.get("external_model") is False,
+            "network_dependency": integrity.get("network_dependency") is False,
+            "outer_streams_unchanged": all_outer_fixed,
+            "exactly_one_target_stream_group_scaled": len(actual_gen3_stream_records) == 1,
+        },
         "interpretation_guard": (
-            "Gen3 stream-cardinality diagnostic only: only Gen3 inner discovery stream count changes. "
-            "Gen1/Gen2 discovery and all outer sets remain fixed; candidate cap and scientific gates are unchanged. "
-            "This is not a frozen qualification or AGI/ASI claim."
+            "Scales only Gen3 inner discovery streams while loading the verified historical Gen2 state. "
+            "Gen1/Gen2 predecessor and all outer regression/Gen3 outer streams remain fixed. "
+            "This is a single-seed diagnostic with repeats, not a multi-seed qualification or AGI/ASI claim."
         ),
     }
-
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -500,13 +471,16 @@ def main() -> int:
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--generations", type=int, default=7)
     parser.add_argument("--gen3-inner-streams", type=int, choices=(3, 6, 12, 24), default=6)
+    parser.add_argument("--frozen-state", default=None)
     args = parser.parse_args()
 
     try:
         if args.mode == "gen6":
             result = run_gen6(args.seed, args.generations)
         else:
-            result = run_gen3(args.seed, args.gen3_inner_streams)
+            if not args.frozen_state:
+                raise ValueError("--frozen-state is required for the verified-Gen2 Gen3 protocol")
+            result = run_gen3(args.seed, args.gen3_inner_streams, args.frozen_state)
         print(json.dumps(result, sort_keys=True, separators=(",", ":"), default=str), flush=True)
         return 0
     except BaseException as exc:
