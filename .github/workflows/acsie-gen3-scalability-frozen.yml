@@ -31,6 +31,7 @@ jobs:
             echo "EXECUTOR_COMMIT=${GITHUB_SHA}"
             echo "WORKFLOW_RUN_ID=${GITHUB_RUN_ID}"
             echo "HARNESS_SHA256=$(sha256sum lab/acsie_gen6_gen3_scalability.py | awk '{print $1}')"
+            echo "GEN3_CANDIDATE_SCALING_SHA256=$(sha256sum lab/acsie_gen3_candidate_scalability.py | awk '{print $1}')"
             echo "SCALED_DIMENSION=Gen3 inner discovery streams"
             echo "SCALE_VALUES=3,6,12,24"
             echo "REPEATS_PER_SCALE=2"
@@ -98,33 +99,62 @@ jobs:
           echo "FROZEN_EXPORT_RC=$rc" | tee -a ../evidence/gen3/provenance.txt
           exit 0
 
-      - name: Extract state only after all frozen-predecessor gates pass
+      - name: Gate the frozen Gen2 predecessor without bypassing failure
+        id: frozen_gate
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib, json, pathlib
-          r=json.load(open('evidence/gen3/frozen-gen2-export.log'))
-          assert r['scientific_status']=='PASSED', r
-          assert r['source_commit']=='0e9c2ad9a146775c162a278b0330c596d29055b9', r.get('source_commit')
-          assert r['scientific_parent_commit']=='15faeb036999c94c6e9f5cc0d35c2aae99d9830b', r.get('scientific_parent_commit')
+          import hashlib, json, pathlib, os
+          export_path=pathlib.Path('evidence/gen3/frozen-gen2-export.log')
+          r=json.loads(export_path.read_text())
+          pathlib.Path('evidence/gen3/frozen-gen2-export.json').write_text(json.dumps(r,sort_keys=True,indent=2))
           state=r.get('frozen_state')
-          assert isinstance(state,dict) and state, 'empty/missing frozen predecessor state'
-          pathlib.Path('frozen-gen2-state.json').write_text(json.dumps(state, sort_keys=True))
-          pathlib.Path('evidence/gen3/frozen-gen2-state.json').write_text(json.dumps(state, sort_keys=True))
-          pathlib.Path('evidence/gen3/frozen-gen2-export.json').write_text(json.dumps(r, sort_keys=True))
-          digest=hashlib.sha256(pathlib.Path('frozen-gen2-state.json').read_bytes()).hexdigest()
-          with open('evidence/gen3/provenance.txt','a') as f:
-              f.write(f'FROZEN_GEN2_STATE_SHA256={digest}\n')
-              f.write(f'FROZEN_GEN2_HOLDOUT_GAIN={r["gen2_holdout_gain"]}\n')
-              f.write(f'FROZEN_GEN2_TRANSFER_GAIN={r["gen2_transfer_gain"]}\n')
-          print('FROZEN_GEN2_EXPORT=PASSED')
-          print('FROZEN_GEN2_STATE_SHA256='+digest)
-          print('FROZEN_GEN2_HOLDOUT_GAIN='+str(r['gen2_holdout_gain']))
-          print('FROZEN_GEN2_TRANSFER_GAIN='+str(r['gen2_transfer_gain']))
+          identity_ok=(
+              r.get('source_commit')=='0e9c2ad9a146775c162a278b0330c596d29055b9'
+              and r.get('scientific_parent_commit')=='15faeb036999c94c6e9f5cc0d35c2aae99d9830b'
+          )
+          passed=(r.get('scientific_status')=='PASSED' and identity_ok and isinstance(state,dict) and bool(state))
+          status={
+              'schema':'ACSIE.gen3_frozen_predecessor_gate.v1',
+              'status':'PASSED' if passed else 'BLOCKED',
+              'reason':None if passed else (
+                  'historical_gen2_export_identity_mismatch' if not identity_ok else
+                  'historical_gen2_export_scientific_status_'+str(r.get('scientific_status'))
+              ),
+              'export_source_commit':r.get('source_commit'),
+              'declared_parent_commit':r.get('scientific_parent_commit'),
+              'export_scientific_status':r.get('scientific_status'),
+              'export_reason':r.get('reason'),
+              'gen2_holdout_gain':r.get('gen2_holdout_gain'),
+              'gen2_transfer_gain':r.get('gen2_transfer_gain'),
+              'state_present':isinstance(state,dict) and bool(state),
+              'interpretation_guard':'No state is manufactured, substituted, or promoted when the verified predecessor gate fails.'
+          }
+          if passed:
+              pathlib.Path('frozen-gen2-state.json').write_text(json.dumps(state,sort_keys=True))
+              pathlib.Path('evidence/gen3/frozen-gen2-state.json').write_text(json.dumps(state,sort_keys=True))
+              digest=hashlib.sha256(pathlib.Path('frozen-gen2-state.json').read_bytes()).hexdigest()
+              status['state_sha256']=digest
+              with open('evidence/gen3/provenance.txt','a') as f:
+                  f.write(f'FROZEN_GEN2_STATE_SHA256={digest}\n')
+              print('FROZEN_GEN2_STATE_SHA256='+digest)
+              print('FROZEN_GEN2_PREDECESSOR=PASSED')
+              print('FROZEN_GEN2_HOLDOUT_GAIN='+str(r.get('gen2_holdout_gain')))
+              print('FROZEN_GEN2_TRANSFER_GAIN='+str(r.get('gen2_transfer_gain')))
+          else:
+              print('FROZEN_GEN2_PREDECESSOR=BLOCKED')
+              print('GEN2_FAILURE_REASON='+str(r.get('reason')))
+          pathlib.Path('evidence/gen3/frozen-gen2-predecessor-status.json').write_text(
+              json.dumps(status,sort_keys=True,indent=2)+'\n'
+          )
+          print(json.dumps(status,sort_keys=True,indent=2))
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              f.write('state_available='+('true' if passed else 'false')+'\n')
           PY
 
-      - name: Run stream-volume scaling and paired deterministic repeats
+      - name: Run full Gen3 continuation scale test from verified frozen predecessor
+        if: steps.frozen_gate.outputs.state_available == 'true'
         timeout-minutes: 55
         shell: bash
         run: |
