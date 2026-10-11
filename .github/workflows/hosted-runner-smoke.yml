@@ -480,6 +480,77 @@ jobs:
           print(out)
           PY
 
+      - name: Test natural target reconstruction preserves Pareto alternatives
+        if: ${{ steps.compare-r2-r3-scale.outcome == 'success' && steps.verify-r2-source.outcome == 'success' }}
+        id: target-frontier-integration
+        run: |
+          set -euo pipefail
+          for source in r2 r3; do
+            if [ "$source" = "r2" ]; then
+              source_path="$GITHUB_WORKSPACE/acsie-r2"
+            else
+              source_path="$GITHUB_WORKSPACE/acsie"
+            fi
+            for seed in 0 731; do
+              echo "NATURAL_TARGET_FRONTIER source=$source PYTHONHASHSEED=$seed"
+              PYTHONHASHSEED="$seed" PYTHONPATH="$source_path" ACSIE_SOURCE_LABEL="$source" \
+                timeout 30s python "$GITHUB_WORKSPACE/lab/h7_r3_target_frontier_integration.py" \
+                | tee "$GITHUB_WORKSPACE/evidence/h7-r3/target-frontier-$source-seed-$seed.jsonl"
+            done
+          done
+          python - "$GITHUB_WORKSPACE/evidence/h7-r3" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          rows = {}
+          expected_profiles = {(6, 21), (7, 14)}
+          for source in ("r2", "r3"):
+              by_seed = {}
+              for seed in (0, 731):
+                  path = root / f"target-frontier-{source}-seed-{seed}.jsonl"
+                  records = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+                  if len(records) != 1:
+                      raise SystemExit(f"{source} seed {seed}: expected one JSON result")
+                  record = records[0]
+                  if record["source_label"] != source or record["seed"] != seed:
+                      raise SystemExit(f"{source} seed {seed}: source/seed identity mismatch")
+                  if record["natural_level_profiles"] is None:
+                      raise SystemExit(f"{source} seed {seed}: no natural search profiles")
+                  natural = {tuple(item) for item in record["natural_level_profiles"]}
+                  returned = {tuple(item) for item in record["returned_alternative_profiles"]}
+                  if not expected_profiles.issubset(natural):
+                      raise SystemExit(f"{source} seed {seed}: search did not generate both expected profiles: {natural}")
+                  by_seed[seed] = record
+              if by_seed[0]["result_stats_sha256"] != by_seed[731]["result_stats_sha256"]:
+                  raise SystemExit(f"{source}: natural target result/stats differ across hash seeds")
+              rows[source] = by_seed
+          r2_returned = {tuple(x) for x in rows["r2"][0]["returned_alternative_profiles"]}
+          r3_returned = {tuple(x) for x in rows["r3"][0]["returned_alternative_profiles"]}
+          if expected_profiles.issubset(r2_returned):
+              raise SystemExit(f"negative control invalid: exact R2 already returns both Pareto alternatives: {r2_returned}")
+          if not expected_profiles.issubset(r3_returned):
+              raise SystemExit(f"R3 integration failure: result alternatives did not preserve both Pareto profiles: {r3_returned}")
+          summary = {
+              "schema": "ACSIE.H7_R2_vs_R3.natural_target_frontier.v1",
+              "r2_commit": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+              "r3_commit": "e5f4526bf724650b09051b6625e4dd70b59282c2",
+              "hash_seeds": [0, 731],
+              "search_naturally_generated_both_profiles": True,
+              "result_stats_stable_across_hash_seeds": True,
+              "r2_returned_profiles": [list(x) for x in sorted(r2_returned)],
+              "r3_returned_profiles": [list(x) for x in sorted(r3_returned)],
+              "r2_negative_control_lost_at_least_one_pareto_profile": True,
+              "r3_natural_result_preserved_both_pareto_profiles": True,
+              "r2_performance": [rows["r2"][s]["performance"] for s in (0, 731)],
+              "r3_performance": [rows["r3"][s]["performance"] for s in (0, 731)],
+          }
+          text = json.dumps(summary, sort_keys=True, indent=2)
+          (root / "target-frontier-integration-summary.json").write_text(text + "\\n")
+          print(text)
+          PY
+
       - name: Upload auditable H7 R3 regression logs
         if: always()
         uses: actions/upload-artifact@v4
