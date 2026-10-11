@@ -131,12 +131,13 @@ jobs:
                       row["generation_6_reached"] = result.get("generation_6_reached") is True
                       raw = result.get("original_growth_lab_result", {})
                       records = result.get("per_generation_telemetry", [])
-                      row["finite_open_ended_gate"] = raw.get("finite_open_ended_gate")
-                      row["gen6_learned"] = records[-1].get("learned") if len(records) >= 7 else None
-                      row["gen6_parent_reuse"] = records[-1].get("parent_reuse") if len(records) >= 7 else None
+                      row["source_finite_growth_gate"] = raw.get("finite_open_ended_growth_gate")
+                      row["gen6_accepted"] = records[6].get("accepted") if len(records) >= 7 else None
+                      row["gen6_parent_used"] = records[6].get("parent_used") if len(records) >= 7 else None
+                      row["gen6_multi_parent_used"] = records[6].get("multi_parent_used") if len(records) >= 7 else None
                       row["child_error"] = result.get("error")
                       row["record_status"] = (
-                          "PASS" if result.get("schema") == "ACSIE.gen6_scalability_diagnostic.v1"
+                          "PASS" if result.get("schema") == "ACSIE.gen6_scalability_diagnostic.v2"
                           else "CHILD_EXCEPTION_OR_INVALID_SCHEMA"
                       )
                   except Exception as exc:
@@ -145,69 +146,113 @@ jobs:
                   row["record_status"] = "NO_COMPLETE_CHILD_RECORD"
               rows.append(row)
 
-          complete = [r for r in rows if r.get("record_status") == "PASS"
-                      and r.get("generation_6_reached") is True]
-          all_complete = len(complete) == len(seeds)
-          scientific_gates = {
-              "original_finite_open_ended_gate_all_seeds": all_complete and all(
-                  r.get("finite_open_ended_gate") is True for r in complete
-              ),
-              "generation_6_learned_and_reused_parent_all_seeds": all_complete and all(
-                  r.get("gen6_learned") is True and r.get("gen6_parent_reuse") is True
-                  for r in complete
-              ),
-          }
+          complete = [
+              r for r in rows
+              if r.get("record_status") == "PASS" and r.get("generation_6_reached") is True
+          ]
+          matrix_complete = len(complete) == len(seeds)
+          source_gate_all = matrix_complete and all(
+              r.get("source_finite_growth_gate") is True for r in complete
+          )
+          g6_accept_reuse_all = matrix_complete and all(
+              r.get("gen6_accepted") is True and r.get("gen6_parent_used") is True
+              for r in complete
+          )
+          g6_multi_parent_all = matrix_complete and all(
+              r.get("gen6_accepted") is True and r.get("gen6_multi_parent_used") is True
+              for r in complete
+          )
 
           generation_summary = []
           for gen in range(7):
-              rs = [r["record"]["per_generation_telemetry"][gen]
-                    for r in complete
-                    if len(r["record"].get("per_generation_telemetry", [])) > gen]
-              learner_metrics = [r.get("metrics", {}).get("learner", {}) for r in rs]
-              def med(field):
-                  vals = [m[field] for m in learner_metrics if m.get(field) is not None]
-                  return round(statistics.median(vals), 3) if vals else None
+              g_rows = [
+                  r["record"]["per_generation_telemetry"][gen]
+                  for r in complete
+                  if len(r["record"].get("per_generation_telemetry", [])) > gen
+              ]
+              learner = [g.get("metrics", {}).get("learner", {}) for g in g_rows]
+              def med(values):
+                  return round(statistics.median(values), 3) if values else None
+              def med_field(field):
+                  values = [m[field] for m in learner if isinstance(m.get(field), (int, float))]
+                  return med(values)
+              process_elapsed = [
+                  m.get("method_elapsed_ms", {}).get("synthesize_process_frontier", 0.0)
+                  for m in learner
+              ]
+              process_candidate_counts = []
+              for m in learner:
+                  calls = m.get("process_frontier_calls", [])
+                  process_candidate_counts.append(
+                      statistics.fmean([
+                          c["returned_candidate_count"] for c in calls
+                          if isinstance(c.get("returned_candidate_count"), (int, float))
+                      ]) if any(isinstance(c.get("returned_candidate_count"), (int, float)) for c in calls) else None
+                  )
+              process_candidate_counts = [x for x in process_candidate_counts if x is not None]
               generation_summary.append({
                   "generation_index": gen,
-                  "completed_seed_count": len(rs),
-                  "learned_count": sum(bool(r.get("learned")) for r in rs),
-                  "parent_reuse_count": sum(bool(r.get("parent_reuse")) for r in rs),
-                  "median_target_depth": statistics.median([r["target_depth"] for r in rs]) if rs else None,
-                  "median_retained_count": statistics.median([r["retained_count"] for r in rs]) if rs else None,
-                  "median_learner_search_ms": med("search_elapsed_ms_total"),
-                  "median_generated_expressions": med("generated_expressions_total"),
-                  "median_unique_states": med("unique_states_total"),
-                  "median_max_expression_batch": med("max_dominance_frontier"),
+                  "completed_seed_count": len(g_rows),
+                  "accepted_count": sum(bool(g.get("accepted")) for g in g_rows),
+                  "parent_reuse_count": sum(bool(g.get("parent_used")) for g in g_rows),
+                  "multi_parent_accept_count": sum(
+                      bool(g.get("accepted")) and bool(g.get("multi_parent_used")) for g in g_rows
+                  ),
+                  "median_target_depth": med([g["target_depth"] for g in g_rows if isinstance(g.get("target_depth"), (int, float))]),
+                  "median_retained_count": med([g["retained_count"] for g in g_rows if isinstance(g.get("retained_count"), (int, float))]),
+                  "median_exact_search_calls": med_field("exact_search_calls"),
+                  "median_exact_search_elapsed_ms": med_field("exact_search_elapsed_ms_total"),
+                  "median_exact_search_generated_expressions": med_field("exact_search_generated_expressions_total"),
+                  "median_exact_search_unique_states": med_field("exact_search_unique_states_total"),
+                  "median_exact_search_max_dominance_frontier": med_field("exact_search_max_dominance_frontier"),
+                  "median_process_frontier_elapsed_ms_total": med(process_elapsed),
+                  "median_process_frontier_candidates_per_call": med(process_candidate_counts),
+                  "median_expression_enum_elapsed_ms_total": med_field("expression_enum_elapsed_ms_total"),
+                  "median_expression_enum_candidate_total": med_field("expression_enum_candidate_total"),
               })
 
-          classification = (
-              "INCONCLUSIVE_INCOMPLETE_SEED_MATRIX" if not all_complete else
-              "GEN6_DIAGNOSTIC_PASS_ALL_FROZEN_SEEDS" if all(scientific_gates.values()) else
-              "GEN6_DIAGNOSTIC_GATE_FAILURE_REPORTED"
-          )
+          if not matrix_complete:
+              classification = "INCONCLUSIVE_INCOMPLETE_SEED_MATRIX_OR_CHILD_EXCEPTION"
+          elif source_gate_all and g6_accept_reuse_all and g6_multi_parent_all:
+              classification = "GEN6_SELF_EXTENDING_DIAGNOSTIC_PASS_ALL_FIVE_SEEDS"
+          else:
+              classification = "GEN6_SCIENTIFIC_GATE_FAILURE_REPORTED"
+
           summary = {
-              "schema": "ACSIE.gen6_scalability_summary.v1",
+              "schema": "ACSIE.gen6_scalability_summary.v2",
               "acsie_source_commit": "d83cb60286f195eec02b4d7aa45a60539316d115",
+              "experiment": "acsie_open_ended_self_extending_proving.py:run_seed",
               "generations": list(range(7)),
               "gen6_checkpoint_index": 6,
               "seeds": list(seeds),
               "completed_seed_count": len(complete),
               "classification": classification,
-              "scientific_gates": scientific_gates,
+              "scientific_gates": {
+                  "source_finite_open_ended_growth_gate_all_seeds": source_gate_all,
+                  "gen6_accepted_and_used_parent_all_seeds": g6_accept_reuse_all,
+                  "gen6_accepted_and_used_multiple_parents_all_seeds": g6_multi_parent_all,
+              },
               "per_generation_scalability": generation_summary,
               "seed_records": [
                   {k: v for k, v in row.items() if k != "record"}
                   | ({
-                      "finite_open_ended_gate": row.get("finite_open_ended_gate"),
-                      "gen6_learned": row.get("gen6_learned"),
-                      "gen6_parent_reuse": row.get("gen6_parent_reuse"),
+                      "source_finite_growth_gate": row.get("source_finite_growth_gate"),
+                      "gen6_accepted": row.get("gen6_accepted"),
+                      "gen6_parent_used": row.get("gen6_parent_used"),
+                      "gen6_multi_parent_used": row.get("gen6_multi_parent_used"),
                       "run_elapsed_ms": row["record"].get("run_elapsed_ms_including_lightweight_telemetry"),
                       "process_peak_rss_mb": row["record"].get("process_peak_rss_mb"),
                       "raw_result_sha256": row["record"].get("raw_result_sha256"),
+                      "final_closure_gain": row["record"].get("original_growth_lab_result", {}).get("final_closure_gain"),
+                      "final_probe_success_rate": row["record"].get("original_growth_lab_result", {}).get("final_probe_success_rate"),
+                      "final_baseline_probe_success_rate": row["record"].get("original_growth_lab_result", {}).get("final_baseline_probe_success_rate"),
                   } if "record" in row else {})
                   for row in rows
               ],
-              "interpretation_guard": "Five-seed Gen6 recursive-growth diagnostic, not the frozen 5x12 run or an AGI/ASI qualification.",
+              "interpretation_guard": (
+                  "Actual OpenEndedRecursiveCognitiveCompiler self-extending workload through generation index 6. "
+                  "This is a bounded diagnostic, not the frozen 5x12 qualification or an AGI/ASI claim."
+              ),
           }
           (root / "summary.json").write_text(json.dumps(summary, sort_keys=True, indent=2) + "\n")
           print(json.dumps(summary, sort_keys=True, indent=2))
