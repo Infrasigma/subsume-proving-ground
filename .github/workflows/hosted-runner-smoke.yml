@@ -810,6 +810,175 @@ jobs:
           print(out)
           PY
 
+      - name: Run uninstrumented order-balanced H7 R2/R3 timing ladder
+        if: ${{ steps.profile-hotspots.outcome == 'success' && steps.lineage-pressure.outcome == 'success' }}
+        id: uninstrumented-timing
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          for seed in 0 731; do
+            for aliases in 0 1 2 3; do
+              for pair in 1 2 3 4; do
+                case "$pair" in
+                  1|4) order="r2 r3" ;;
+                  2|3) order="r3 r2" ;;
+                  *) echo "invalid pair $pair" >&2; exit 2 ;;
+                esac
+                for source in $order; do
+                  if [ "$source" = "r2" ]; then
+                    source_path="$GITHUB_WORKSPACE/acsie-r2"
+                  else
+                    source_path="$GITHUB_WORKSPACE/acsie"
+                  fi
+                  out="$GITHUB_WORKSPACE/evidence/h7-r3/uninstrumented-a$aliases-seed$seed-pair$pair-$source.jsonl"
+                  echo "UNINSTRUMENTED_TIMING seed=$seed aliases=$aliases pair=$pair source=$source"
+                  PYTHONHASHSEED="$seed" PYTHONPATH="$source_path" timeout 30s \
+                    python "$GITHUB_WORKSPACE/lab/h7_r3_uninstrumented_timing.py" \
+                    --source "$source" --seed "$seed" --alias-pairs "$aliases" --pair "$pair" \
+                    | tee "$out"
+                done
+              done
+            done
+          done
+          python - "$GITHUB_WORKSPACE/evidence/h7-r3" <<'PY'
+          import json
+          import pathlib
+          import statistics
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          seeds = (0, 731)
+          aliases = (0, 1, 2, 3)
+          pairs = (1, 2, 3, 4)
+          rows = {}
+          all_records = []
+
+          for seed in seeds:
+              for alias_pairs in aliases:
+                  for pair in pairs:
+                      pair_rows = {}
+                      for source in ("r2", "r3"):
+                          path = root / (
+                              f"uninstrumented-a{alias_pairs}-seed{seed}-pair{pair}-{source}.jsonl"
+                          )
+                          lines = [line for line in path.read_text().splitlines() if line.strip()]
+                          if len(lines) != 1:
+                              raise SystemExit(f"{path.name}: expected one JSON record")
+                          record = json.loads(lines[0])
+                          stable, perf = record["stable"], record["performance"]
+                          if stable["source"] != source or stable["hash_seed"] != seed:
+                              raise SystemExit(f"{path.name}: source/hashseed identity mismatch")
+                          if stable["alias_pairs"] != alias_pairs or stable["order_pair"] != pair:
+                              raise SystemExit(f"{path.name}: workload identity mismatch")
+                          expected_profile = source == "r3"
+                          if stable["expected_profile_7_14_returned"] != expected_profile:
+                              raise SystemExit(f"{path.name}: Pareto negative-control/retention gate failed")
+                          if not stable["target_found"]:
+                              raise SystemExit(f"{path.name}: exact target not found")
+                          if perf["search_elapsed_ms"] > 15000 or perf["process_peak_rss_mb"] > 2048:
+                              raise SystemExit(f"{path.name}: resource guard exceeded")
+                          pair_rows[source] = record
+                          all_records.append({
+                              "seed": seed,
+                              "alias_pairs": alias_pairs,
+                              "pair": pair,
+                              "source": source,
+                              **perf,
+                              "returned_alternatives": stable["returned_alternative_count"],
+                              "generated_expressions": stable["search_stats"]["generated_expressions"],
+                              "unique_states": stable["search_stats"]["unique_states"],
+                              "expected_profile_7_14_returned": expected_profile,
+                          })
+                      if pair_rows["r2"]["stable_signature_sha256"] != pair_rows["r3"]["stable_signature_sha256"]:
+                          # R2 and R3 are expected to differ in alternatives / counters.
+                          pass
+                      rows[(seed, alias_pairs, pair)] = pair_rows
+
+          cell_summaries = []
+          for seed in seeds:
+              for alias_pairs in aliases:
+                  cell = {}
+                  for source in ("r2", "r3"):
+                      records = [rows[(seed, alias_pairs, pair)][source] for pair in pairs]
+                      signatures = [row["stable_signature_sha256"] for row in records]
+                      if len(set(signatures)) != 1:
+                          raise SystemExit(
+                              f"{source} seed={seed} aliases={alias_pairs}: result/counter signatures differ across timing repetitions"
+                          )
+                      cell[source] = records
+                  if cell["r2"][0]["stable_signature_sha256"] != cell["r2"][1]["stable_signature_sha256"]:
+                      raise SystemExit("R2 stable identity unexpectedly changed")
+                  for source in ("r2", "r3"):
+                      sig0 = cell[source][0]["stable_signature_sha256"]
+                      sig731 = next(
+                          rows[(other_seed, alias_pairs, 1)][source]["stable_signature_sha256"]
+                          for other_seed in seeds if other_seed != seed
+                      )
+                      # Cross-seed equality is checked exactly once per source/cell below.
+                  r2_times = [
+                      rows[(seed, alias_pairs, pair)]["r2"]["performance"]["search_elapsed_ms"]
+                      for pair in pairs
+                  ]
+                  r3_times = [
+                      rows[(seed, alias_pairs, pair)]["r3"]["performance"]["search_elapsed_ms"]
+                      for pair in pairs
+                  ]
+                  paired_ratios = [r3 / r2 for r2, r3 in zip(r2_times, r3_times)]
+                  cell_summaries.append({
+                      "seed": seed,
+                      "alias_pairs": alias_pairs,
+                      "primitive_count": 2 + 2 * alias_pairs,
+                      "pair_order": {"1": "R2_then_R3", "2": "R3_then_R2", "3": "R3_then_R2", "4": "R2_then_R3"},
+                      "r2_times_ms_by_pair": r2_times,
+                      "r3_times_ms_by_pair": r3_times,
+                      "median_r2_ms": round(statistics.median(r2_times), 3),
+                      "median_r3_ms": round(statistics.median(r3_times), 3),
+                      "paired_r3_over_r2_ratios": [round(x, 4) for x in paired_ratios],
+                      "median_paired_r3_over_r2_ratio": round(statistics.median(paired_ratios), 4),
+                      "median_relative_time_change_pct": round((statistics.median(paired_ratios) - 1.0) * 100.0, 2),
+                      "r2_stable_signature": cell["r2"][0]["stable_signature_sha256"],
+                      "r3_stable_signature": cell["r3"][0]["stable_signature_sha256"],
+                  })
+
+          cross_seed_checks = []
+          for alias_pairs in aliases:
+              for source in ("r2", "r3"):
+                  sig0 = rows[(0, alias_pairs, 1)][source]["stable_signature_sha256"]
+                  sig731 = rows[(731, alias_pairs, 1)][source]["stable_signature_sha256"]
+                  match = sig0 == sig731
+                  cross_seed_checks.append({
+                      "source": source,
+                      "alias_pairs": alias_pairs,
+                      "seed0_signature": sig0,
+                      "seed731_signature": sig731,
+                      "matches": match,
+                  })
+                  if not match:
+                      raise SystemExit(f"{source} aliases={alias_pairs}: stable result/counter signature differs across hash seeds")
+
+          summary = {
+              "schema": "ACSIE.H7_R2_vs_R3.uninstrumented_order_balanced_timing.v1",
+              "r2_source_commit": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+              "r3_source_commit": "d83cb60286f195eec02b4d7aa45a60539316d115",
+              "r3_source_sha256": "2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea",
+              "primitive_sizes": [2, 4, 6, 8],
+              "rows": 8,
+              "max_depth": 3,
+              "hash_seeds": list(seeds),
+              "four_order_balanced_pairs_per_cell_and_seed": True,
+              "profiler_installed_during_search": False,
+              "result_counter_signatures_stable_across_repeats": True,
+              "result_counter_signatures_match_across_hash_seeds": True,
+              "cross_seed_checks": cross_seed_checks,
+              "cell_summaries": cell_summaries,
+              "raw_performance_records": all_records,
+              "interpretation_guard": "Uninstrumented search-only timers; startup/import is excluded. Bounded synthetic workload only, with no claim of open-ended scalability. Compare paired R2/R3 order-balanced ratios rather than relying on a single runner timing."
+          }
+          out = json.dumps(summary, sort_keys=True, indent=2)
+          (root / "uninstrumented-timing-summary.json").write_text(out + "\\n")
+          print(out)
+          PY
+
       - name: Upload auditable H7 R3 regression logs
         if: always()
         uses: actions/upload-artifact@v4
