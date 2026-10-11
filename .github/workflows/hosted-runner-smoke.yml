@@ -692,53 +692,80 @@ jobs:
                   if stable["expected_profile_7_14_returned"] != expected_retention:
                       raise SystemExit(f"{source} seed {seed}: Pareto-preservation control failed")
                   records[seed] = record
-                  maps[seed] = {row["function"]: row for row in stable["hot_functions"]}
+                  maps[seed] = {
+                  (row["function"], row["line"]): row
+                  for row in stable["hot_functions"]
+              }
               if records[0]["signature_sha256"] != records[731]["signature_sha256"]:
                   raise SystemExit(f"{source}: result and search-counter signature changed across hash seeds")
-              # Function invocation counts must be stable across seeds for every
-              # profiled function present in either profile.
-              for name in set(maps[0]) | set(maps[731]):
-                  a, b = maps[0].get(name), maps[731].get(name)
+              # Distinguish separate generator/list-comprehension code objects
+              # by source line while checking invocation counts for determinism.
+              for identity in set(maps[0]) | set(maps[731]):
+                  a, b = maps[0].get(identity), maps[731].get(identity)
                   if a is None or b is None:
-                      raise SystemExit(f"{source}: profile function set changed across seeds at {name}")
+                      raise SystemExit(f"{source}: profile code-object set changed across seeds at {identity}")
                   if (a["primitive_calls"], a["total_calls"]) != (b["primitive_calls"], b["total_calls"]):
-                      raise SystemExit(f"{source}: invocation counts changed across hash seeds at {name}")
+                      raise SystemExit(f"{source}: invocation counts changed across hash seeds at {identity}")
               profiles[source] = records
-              function_maps[source] = {
-                  name: {
-                      "primitive_calls": maps[0][name]["primitive_calls"],
-                      "total_calls": maps[0][name]["total_calls"],
-                      "self_seconds_mean": statistics.mean([
-                          maps[0][name]["self_seconds"], maps[731][name]["self_seconds"]
-                      ]),
-                      "cumulative_seconds_mean": statistics.mean([
-                          maps[0][name]["cumulative_seconds"], maps[731][name]["cumulative_seconds"]
-                      ]),
-                      "line_r2_or_r3": maps[0][name]["line"],
-                  }
-                  for name in maps[0]
-              }
 
-          common = set(function_maps["r2"]) & set(function_maps["r3"])
+              # For cross-version reporting, aggregate multiple same-named
+              # code objects (such as generator expressions) as one family.
+              def grouped(seed):
+                  groups = {}
+                  for row in maps[seed].values():
+                      group = groups.setdefault(row["function"], {
+                          "primitive_calls": 0, "total_calls": 0,
+                          "self_seconds": 0.0, "cumulative_seconds": 0.0,
+                          "locations": [],
+                      })
+                      group["primitive_calls"] += row["primitive_calls"]
+                      group["total_calls"] += row["total_calls"]
+                      group["self_seconds"] += row["self_seconds"]
+                      group["cumulative_seconds"] += row["cumulative_seconds"]
+                      group["locations"].append(row["line"])
+                  for group in groups.values():
+                      group["locations"] = sorted(group["locations"])
+                  return groups
+
+              grouped0, grouped731 = grouped(0), grouped(731)
+              if set(grouped0) != set(grouped731):
+                  raise SystemExit(f"{source}: grouped profile function families changed across seeds")
+              function_maps[source] = {}
+              for name in grouped0:
+                  a, b = grouped0[name], grouped731[name]
+                  if (a["primitive_calls"], a["total_calls"]) != (b["primitive_calls"], b["total_calls"]):
+                      raise SystemExit(f"{source}: grouped invocation counts changed across seeds at {name}")
+                  function_maps[source][name] = {
+                      "primitive_calls": a["primitive_calls"],
+                      "total_calls": a["total_calls"],
+                      "self_seconds_mean": statistics.mean([a["self_seconds"], b["self_seconds"]]),
+                      "cumulative_seconds_mean": statistics.mean([a["cumulative_seconds"], b["cumulative_seconds"]]),
+                      "locations": a["locations"],
+                  }
+
           comparison = []
-          for name in common:
-              r2, r3 = function_maps["r2"][name], function_maps["r3"][name]
+          all_names = set(function_maps["r2"]) | set(function_maps["r3"])
+          for name in all_names:
+              r2, r3 = function_maps["r2"].get(name), function_maps["r3"].get(name)
               comparison.append({
-                  "function": name,
-                  "r2_line": r2["line_r2_or_r3"],
-                  "r3_line": r3["line_r2_or_r3"],
-                  "r2_total_calls": r2["total_calls"],
-                  "r3_total_calls": r3["total_calls"],
+                  "function_family": name,
+                  "r2_present": r2 is not None,
+                  "r3_present": r3 is not None,
+                  "r2_locations": [] if r2 is None else r2["locations"],
+                  "r3_locations": [] if r3 is None else r3["locations"],
+                  "r2_total_calls": 0 if r2 is None else r2["total_calls"],
+                  "r3_total_calls": 0 if r3 is None else r3["total_calls"],
                   "total_call_ratio_r3_over_r2": (
                       round(r3["total_calls"] / r2["total_calls"], 4)
-                      if r2["total_calls"] else None
+                      if r2 is not None and r3 is not None and r2["total_calls"] else None
                   ),
-                  "r2_self_seconds_mean": round(r2["self_seconds_mean"], 6),
-                  "r3_self_seconds_mean": round(r3["self_seconds_mean"], 6),
-                  "r2_cumulative_seconds_mean": round(r2["cumulative_seconds_mean"], 6),
-                  "r3_cumulative_seconds_mean": round(r3["cumulative_seconds_mean"], 6),
+                  "r2_self_seconds_mean": 0.0 if r2 is None else round(r2["self_seconds_mean"], 6),
+                  "r3_self_seconds_mean": 0.0 if r3 is None else round(r3["self_seconds_mean"], 6),
+                  "r2_cumulative_seconds_mean": 0.0 if r2 is None else round(r2["cumulative_seconds_mean"], 6),
+                  "r3_cumulative_seconds_mean": 0.0 if r3 is None else round(r3["cumulative_seconds_mean"], 6),
                   "self_seconds_delta_r3_minus_r2": round(
-                      r3["self_seconds_mean"] - r2["self_seconds_mean"], 6
+                      (0.0 if r3 is None else r3["self_seconds_mean"])
+                      - (0.0 if r2 is None else r2["self_seconds_mean"]), 6
                   ),
               })
           comparison.sort(
