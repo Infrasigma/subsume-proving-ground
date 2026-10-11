@@ -130,7 +130,8 @@ def main() -> None:
         "selected_used_primitives": list(result.used_primitives),
         "alternatives": alternatives_serialized,
     }
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    signature_payload = {key: value for key, value in payload.items() if key != "seed"}
+    encoded = json.dumps(signature_payload, sort_keys=True, separators=(",", ":"))
     output = {
         **payload,
         "result_stats_sha256": hashlib.sha256(encoded.encode()).hexdigest(),
