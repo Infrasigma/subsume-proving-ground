@@ -170,6 +170,31 @@ jobs:
             tests/test_adaptive_capability_repair.py \
             tests/test_asi_claim_gate.py 2>&1 | tee "$GITHUB_WORKSPACE/evidence/h7-r3/six-file-regression.txt"
 
+      - name: Confirm R3 frontier regression fails on exact R2 control
+        if: ${{ steps.six-file-suite.outcome == 'success' && steps.verify-r2-source.outcome == 'success' && steps.install-pytest.outcome == 'success' }}
+        id: r2-negative-control
+        working-directory: acsie-r2
+        env:
+          PYTHONPATH: ${{ github.workspace }}/acsie-r2
+          PYTHONHASHSEED: "0"
+        run: |
+          set -euo pipefail
+          cp "$GITHUB_WORKSPACE/acsie/tests/test_open_ended_growth.py" "$GITHUB_WORKSPACE/evidence/h7-r3/r3_test_against_r2.py"
+          set +e
+          python -m pytest -q "$GITHUB_WORKSPACE/evidence/h7-r3/r3_test_against_r2.py::test_h7_frontier_keeps_cost_tradeoffs_and_bucket_index_identity_consistent" > "$GITHUB_WORKSPACE/evidence/h7-r3/r2-negative-control.txt" 2>&1
+          rc=$?
+          set -e
+          cat "$GITHUB_WORKSPACE/evidence/h7-r3/r2-negative-control.txt"
+          if [ "$rc" -eq 0 ]; then
+            echo "R2_NEGATIVE_CONTROL=INVALID_OLD_SOURCE_PASSED_R3_REGRESSION" | tee "$GITHUB_WORKSPACE/evidence/h7-r3/r2-negative-control-result.txt"
+            exit 1
+          fi
+          if ! grep -Fq 'assert (7, 14) in paired_profiles' "$GITHUB_WORKSPACE/evidence/h7-r3/r2-negative-control.txt"; then
+            echo "R2_NEGATIVE_CONTROL=INVALID_FAILURE_DID_NOT_MATCH_EXPECTED_COST_PROFILE_ASSERTION" | tee "$GITHUB_WORKSPACE/evidence/h7-r3/r2-negative-control-result.txt"
+            exit 1
+          fi
+          echo "R2_NEGATIVE_CONTROL=EXPECTED_FAILURE_ON_LOST_PARETO_COST_PROFILE" | tee "$GITHUB_WORKSPACE/evidence/h7-r3/r2-negative-control-result.txt"
+
       - name: Run bounded H7 determinism and scalability ladder
         id: bounded-scale
         if: ${{ steps.six-file-suite.outcome == 'success' && steps.verify-source.outcome == 'success' && steps.install-pytest.outcome == 'success' }}
