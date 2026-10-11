@@ -80,7 +80,7 @@ def make_rows(xs: tuple[float, ...]) -> tuple[Trace, ...]:
         Trace(
             {"x": x, "y": (-2.0 * x if x < 0.0 else 0.0)},
             (-3.0 * x if x < 0.0 else x),
-            "opaque", {}, f"h7-timeout-resolution-{index}",
+            "opaque", {}, f"h7-alias-scale-{index}",
         )
         for index, x in enumerate(xs)
     )
