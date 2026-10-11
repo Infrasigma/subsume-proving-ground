@@ -196,8 +196,9 @@ def run_case(alias_pairs: int, seed: int, source_label: str) -> dict[str, Any]:
         "active_identity_consistent": identity_consistent,
         "stats": stats,
     }
+    signature_payload = {key: value for key, value in stable.items() if key != "hash_seed"}
     signature = hashlib.sha256(
-        json.dumps(stable, sort_keys=True, separators=(",", ":")).encode()
+        json.dumps(signature_payload, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
     output = {
         "stable": stable,
