@@ -296,6 +296,127 @@ jobs:
           print(json.dumps(summary,sort_keys=True,indent=2))
           PY
 
+      - name: Measure Gen3 candidate-generation scaling only when predecessor is blocked
+        if: steps.frozen_gate.outputs.state_available != 'true'
+        timeout-minutes: 30
+        shell: bash
+        run: |
+          set -uo pipefail
+          root="$GITHUB_WORKSPACE/evidence/gen3"
+          for streams in 3 6 12 24; do
+            for hash_seed in 0 731; do
+              for repeat in 1 2; do
+                stem="gen3-enumeration-streams-$streams-hash-$hash_seed-repeat-$repeat"
+                echo "GEN3_ENUMERATION_ONLY streams=$streams hash_seed=$hash_seed repeat=$repeat cap=128"
+                set +e
+                PYTHONHASHSEED="$hash_seed" PYTHONPATH="$GITHUB_WORKSPACE/acsie-current" \
+                  timeout 120s python "$GITHUB_WORKSPACE/lab/acsie_gen3_candidate_scalability.py" \
+                    --seed 771221 --streams "$streams" --max-programs 128 \
+                    > "$root/$stem.json" 2> "$root/$stem.stderr"
+                rc=$?
+                set -e
+                if [ "$rc" -eq 0 ]; then status="CHILD_EXIT_0"; \
+                elif [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then status="CHILD_WALL_TIMEOUT"; \
+                else status="CHILD_EXIT_\${rc}"; fi
+                printf '{"streams":%s,"hash_seed":%s,"repeat":%s,"child_returncode":%s,"wrapper_status":"%s"}\n' \
+                  "$streams" "$hash_seed" "$repeat" "$rc" "$status" > "$root/$stem.status.json"
+                echo "RESULT streams=$streams hash_seed=$hash_seed repeat=$repeat rc=$rc status=$status"
+              done
+            done
+          done
+          python - "$root" <<'PY'
+          import json, pathlib, statistics, sys
+          root=pathlib.Path(sys.argv[1])
+          sizes=(3,6,12,24)
+          hash_seeds=(0,731)
+          repeats=(1,2)
+          rows=[]
+          for size in sizes:
+              for hs in hash_seeds:
+                  for repeat in repeats:
+                      stem=f"gen3-enumeration-streams-{size}-hash-{hs}-repeat-{repeat}"
+                      wrapper=json.loads((root/f"{stem}.status.json").read_text())
+                      row={"streams":size,"hash_seed":hs,"repeat":repeat,**wrapper}
+                      path=root/f"{stem}.json"
+                      if wrapper["child_returncode"]==0 and path.exists() and path.stat().st_size:
+                          try:
+                              d=json.loads(path.read_text())
+                              row["record"]=d
+                              row["record_status"]="PASS" if d.get("schema")=="ACSIE.gen3_candidate_generation_scale_only.v1" and not d.get("error") else "CHILD_DIAGNOSTIC_FAILURE"
+                          except Exception as exc:
+                              row["record_status"]=f"INVALID_JSON:{type(exc).__name__}:{exc}"
+                      else:
+                          row["record_status"]="NO_COMPLETE_CHILD_RECORD"
+                      rows.append(row)
+          complete=[r for r in rows if r.get("record_status")=="PASS"]
+          cells=[]
+          for size in sizes:
+              group=[r for r in complete if r["streams"]==size]
+              per_hash={}
+              for hs in hash_seeds:
+                  hgroup=[r for r in group if r["hash_seed"]==hs]
+                  sigs=[r["record"].get("candidate_output_sha256") for r in hgroup]
+                  per_hash[str(hs)]={
+                      "completed_repeats":len(hgroup),
+                      "same_hash_seed_repeat_stable":len(hgroup)==len(repeats) and len(set(sigs))==1,
+                      "candidate_signatures":sigs,
+                  }
+              all_sigs=[r["record"].get("candidate_output_sha256") for r in group]
+              times=[r["record"].get("candidate_generation_elapsed_ms") for r in group]
+              rss=[r["record"].get("process_peak_rss_mb") for r in group]
+              counts=[r["record"].get("candidate_count") for r in group]
+              cells.append({
+                  "streams":size,
+                  "completed_records":len(group),
+                  "candidate_counts":counts,
+                  "median_candidate_generation_ms":round(statistics.median(times),3) if times else None,
+                  "median_process_peak_rss_mb":round(statistics.median(rss),3) if rss else None,
+                  "hash_seed_groups":per_hash,
+                  "hash_seed_invariant_output":len(group)==len(hash_seeds)*len(repeats) and len(set(all_sigs))==1,
+                  "same_hash_seed_repeat_stability_all":len(group)==len(hash_seeds)*len(repeats) and all(v["same_hash_seed_repeat_stable"] for v in per_hash.values()),
+              })
+          matrix_complete=len(complete)==len(sizes)*len(hash_seeds)*len(repeats)
+          repeat_stable=all(c["same_hash_seed_repeat_stability_all"] for c in cells)
+          hash_invariant=matrix_complete and all(c["hash_seed_invariant_output"] for c in cells)
+          predecessor=json.loads((root/"frozen-gen2-predecessor-status.json").read_text())
+          summary={
+              "schema":"ACSIE.gen3_candidate_generation_scale_only_summary.v1",
+              "classification":(
+                  "BLOCKED_FROZEN_GEN2_PREDECESSOR_CANDIDATE_SCALE_MATRIX_COMPLETE"
+                  if matrix_complete and repeat_stable and predecessor.get("status")=="BLOCKED" else
+                  "INCONCLUSIVE_CANDIDATE_SCALE_MATRIX_INCOMPLETE"
+              ),
+              "frozen_gen2_predecessor":predecessor,
+              "source_commit":"9203e044750f5f1ba9e86ec5b967c834d5e66aa7",
+              "scale_dimension":"Gen3 inner stream count supplied to native compositional candidate generator",
+              "candidate_cap":128,
+              "stream_sizes":list(sizes),
+              "hash_seeds":list(hash_seeds),
+              "repeats_per_hash_seed":len(repeats),
+              "completed_cells":len(complete),
+              "expected_cells":len(sizes)*len(hash_seeds)*len(repeats),
+              "same_hash_seed_repeat_stable":repeat_stable,
+              "hash_seed_invariant_output":hash_invariant,
+              "by_stream_size":cells,
+              "records":[{
+                  k:v for k,v in row.items() if k!="record"
+              } | ({
+                  "candidate_count":row["record"].get("candidate_count"),
+                  "unique_candidates":row["record"].get("unique_candidate_signatures"),
+                  "unique_programs":row["record"].get("unique_compositional_program_signatures"),
+                  "elapsed_ms":row["record"].get("candidate_generation_elapsed_ms"),
+                  "peak_rss_mb":row["record"].get("process_peak_rss_mb"),
+                  "candidate_output_sha256":row["record"].get("candidate_output_sha256"),
+                  "integrity":row["record"].get("integrity")
+              } if "record" in row else {}) for row in rows],
+              "scientific_status":"BLOCKED",
+              "scientific_blocker":"The required verified Gen2 state was not exported because its unchanged scientific gate FAILED; candidate enumeration measurements cannot substitute for this predecessor.",
+              "interpretation_guard":"This measures candidate generator compute only. It does not execute candidate evaluation, selection, holdout/transfer gain, regression preservation, or Gen3 recursive continuation."
+          }
+          (root/"summary.json").write_text(json.dumps(summary,sort_keys=True,indent=2)+"\n")
+          print(json.dumps(summary,sort_keys=True,indent=2))
+          PY
+
       - name: Upload Gen3 frozen-predecessor evidence
         if: always()
         uses: actions/upload-artifact@v4
