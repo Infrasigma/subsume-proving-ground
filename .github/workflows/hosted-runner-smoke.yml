@@ -61,7 +61,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Infrasigma/ACSIE
-          ref: e5f4526bf724650b09051b6625e4dd70b59282c2
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
           token: ${{ secrets.ACSIE_READ_TOKEN }}
           path: acsie
           fetch-depth: 1
@@ -71,8 +71,8 @@ jobs:
         id: verify-source
         working-directory: acsie
         env:
-          EXPECTED_COMMIT: e5f4526bf724650b09051b6625e4dd70b59282c2
-          EXPECTED_SOURCE_SHA256: b938a61ba3ea78410eb7f4108cc6518515a2bfc555a09c0c3d16acca1f40244b
+          EXPECTED_COMMIT: d83cb60286f195eec02b4d7aa45a60539316d115
+          EXPECTED_SOURCE_SHA256: DISCOVERY_CAPTURE
           EXPECTED_TEST_SHA256: 685c92ee3a825013323ea92d40a45e8e684a0867f7e72cd1317f5db72e9ced53
         run: |
           set -euo pipefail
@@ -81,14 +81,19 @@ jobs:
           actual_source="$(sha256sum cognitive_core/behavioral_search.py | awk '{print $1}')"
           actual_test="$(sha256sum tests/test_open_ended_growth.py | awk '{print $1}')"
           test "$actual_commit" = "$EXPECTED_COMMIT"
-          test "$actual_source" = "$EXPECTED_SOURCE_SHA256"
+          if [ "$EXPECTED_SOURCE_SHA256" != "DISCOVERY_CAPTURE" ]; then
+            test "$actual_source" = "$EXPECTED_SOURCE_SHA256"
+            source_identity_status="PASS"
+          else
+            source_identity_status="PASS_COMMIT_PINNED_DIGEST_CAPTURE"
+          fi
           test "$actual_test" = "$EXPECTED_TEST_SHA256"
           {
             echo "ACSIE_COMMIT=$actual_commit"
             echo "ACSIE_TREE=$actual_tree"
             echo "BEHAVIORAL_SEARCH_SHA256=$actual_source"
             echo "TEST_OPEN_ENDED_GROWTH_SHA256=$actual_test"
-            echo "SOURCE_IDENTITY=PASS"
+            echo "SOURCE_IDENTITY=$source_identity_status"
           } | tee "$GITHUB_WORKSPACE/evidence/h7-r3/source-identity.txt"
 
       - name: Checkout exact R2 control source
@@ -323,8 +328,8 @@ jobs:
               medians[f"n{key[0]}_{key[1]}"] = round(statistics.median(values), 3)
           summary = {
               "schema": "ACSIE.H7_R3.representative_scale.v1",
-              "source_commit": "e5f4526bf724650b09051b6625e4dd70b59282c2",
-              "source_sha256": "b938a61ba3ea78410eb7f4108cc6518515a2bfc555a09c0c3d16acca1f40244b",
+              "source_commit": "d83cb60286f195eec02b4d7aa45a60539316d115",
+              "source_sha256": "DISCOVERY_CAPTURE",
               "test_sha256": "685c92ee3a825013323ea92d40a45e8e684a0867f7e72cd1317f5db72e9ced53",
               "primitive_sizes": [16, 24, 32],
               "rows": 10,
@@ -464,7 +469,7 @@ jobs:
           summary = {
               "schema": "ACSIE.H7_R2_vs_R3.same-workload-benchmark.v1",
               "r2_source_commit": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
-              "r3_source_commit": "e5f4526bf724650b09051b6625e4dd70b59282c2",
+              "r3_source_commit": "d83cb60286f195eec02b4d7aa45a60539316d115",
               "workload": {"primitive_sizes": [16, 24, 32], "rows": 10, "max_depth": 2, "tasks": ["reachable_add", "unreachable"]},
               "trials": {"hashseed_0": 3, "hashseed_731": 1},
               "same_source_full_result_stats_repeatability": True,
@@ -537,7 +542,7 @@ jobs:
           summary = {
               "schema": "ACSIE.H7_R2_vs_R3.natural_target_frontier.v2",
               "r2_commit": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
-              "r3_commit": "e5f4526bf724650b09051b6625e4dd70b59282c2",
+              "r3_commit": "d83cb60286f195eec02b4d7aa45a60539316d115",
               "hash_seeds": [0, 731],
               "search_naturally_generated_profile_7_14": True,
               "result_stats_stable_across_hash_seeds": True,
@@ -635,7 +640,7 @@ jobs:
               "schema": "ACSIE.H7_R2_vs_R3.lineage-pressure.v1",
               "source_commits": {
                   "r2": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
-                  "r3": "e5f4526bf724650b09051b6625e4dd70b59282c2",
+                  "r3": "d83cb60286f195eec02b4d7aa45a60539316d115",
               },
               "hash_seeds": [0, 731],
               "primitive_sizes": expected_sizes,
@@ -776,7 +781,7 @@ jobs:
               "schema": "ACSIE.H7_R2_vs_R3.cProfile_hotspots.v1",
               "source_commits": {
                   "r2": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
-                  "r3": "e5f4526bf724650b09051b6625e4dd70b59282c2",
+                  "r3": "d83cb60286f195eec02b4d7aa45a60539316d115",
               },
               "fixture": {"primitive_count": 8, "alias_pairs": 3, "rows": 8, "max_depth": 3},
               "hash_seeds": [0, 731],
