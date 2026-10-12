@@ -169,11 +169,74 @@ def main() -> int:
         label="switch free/vector/execution-cost cache lookups to exact AST IDs",
     )
 
+    seen_type_block = '''    class _H7_ExactSeenExpressionKeys:
+        """Set-like membership bridge for exact integer IDs and JSON-key test hooks."""
+        def __init__(self):
+            self._ids = set()
+            self._order_keys = set()
+            self._id_by_order_key = {}
+            self._order_key_by_id = {}
+
+        def __contains__(self, value):
+            if isinstance(value, int):
+                return value in self._ids
+            return value in self._order_keys
+
+        def __len__(self):
+            return len(self._ids)
+
+        def __iter__(self):
+            return iter(self._order_keys)
+
+        def add(self, value):
+            if isinstance(value, int):
+                self._ids.add(value)
+            elif isinstance(value, str):
+                self._order_keys.add(value)
+                ident = self._id_by_order_key.get(value)
+                if ident is not None:
+                    self._ids.add(ident)
+
+        def add_with_order_key(self, ident, order_key):
+            old_key = self._order_key_by_id.get(ident)
+            if old_key is not None and old_key != order_key:
+                self._id_by_order_key.pop(old_key, None)
+                self._order_keys.discard(old_key)
+            self._ids.add(ident)
+            self._order_keys.add(order_key)
+            self._order_key_by_id[ident] = order_key
+            self._id_by_order_key[order_key] = ident
+
+        def discard(self, value):
+            if isinstance(value, int):
+                self._ids.discard(value)
+                old_key = self._order_key_by_id.pop(value, None)
+                if old_key is not None:
+                    self._id_by_order_key.pop(old_key, None)
+                    self._order_keys.discard(old_key)
+                return
+            if isinstance(value, str):
+                self._order_keys.discard(value)
+                ident = self._id_by_order_key.pop(value, None)
+                if ident is None:
+                    try:
+                        ident = _H7_exact_expr_id(json.loads(value))
+                    except Exception:
+                        ident = None
+                if ident is not None:
+                    self._ids.discard(ident)
+                    old_key = self._order_key_by_id.pop(ident, None)
+                    if old_key is not None:
+                        self._id_by_order_key.pop(old_key, None)
+                        self._order_keys.discard(old_key)
+
+    seen_expression_keys = _H7_ExactSeenExpressionKeys()
+'''
     source = replace_exact(
         source,
         "    seen_expression_keys: set[str] = set()\n",
-        "    seen_expression_keys: set[int] = set()\n",
-        label="seen expression key type",
+        seen_type_block,
+        label="install set-compatible exact-ID membership adapter",
     )
     source = replace_exact(
         source,
@@ -190,6 +253,12 @@ def main() -> int:
             expression_ident = int(metadata_hint["expression_ident"])
             expression_order_key = str(metadata_hint["expression_order_key"])''',
         label="register exact expression IDs and preserve JSON order keys",
+    )
+    source = replace_exact(
+        source,
+        "        seen_expression_keys.add(expression_ident)\n        try:\n            outputs = tuple(output_hint) if output_hint is not None else eval_vector(expr)\n",
+        "        seen_expression_keys.add_with_order_key(expression_ident, expression_order_key)\n        try:\n            outputs = tuple(output_hint) if output_hint is not None else eval_vector(expr)\n",
+        label="retain JSON-key test compatibility while using integer membership",
     )
 
     source = replace_exact(
