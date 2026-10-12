@@ -415,21 +415,37 @@ def apply_profile_counters(source: str) -> str:
     )
     source = replace_exact(
         source,
+        '''        expression_ident = (
+            '{"left":' + left_key + ',"op":' + json.dumps(op)
+            + ',"right":' + right_key + '}'
+        )
+        if expression_ident in seen_expression_keys:''',
+        '''        expression_ident = (
+            '{"left":' + left_key + ',"op":' + json.dumps(op)
+            + ',"right":' + right_key + '}'
+        )
+        _H7_PHASE_PROFILE["register_binary_parent_key_chars"] += len(expression_ident)
+        if expression_ident in seen_expression_keys:''',
+        label="count binary expression-key serialization length",
+    )
+    source = replace_exact(
+        source,
         '''        if expression_ident in seen_expression_keys:
+            _H7_PHASE_PROFILE["exact_seen_duplicate_returns"] += 1
             stats["duplicate_states"] += 1
             stats["exact_expression_duplicates_skipped"] += 1
             return None
 
         lvec, rvec = left[1], right[1]''',
-        '''        _H7_PHASE_PROFILE["register_binary_parent_key_chars"] += len(expression_ident)
-        if expression_ident in seen_expression_keys:
+        '''        if expression_ident in seen_expression_keys:
+            _H7_PHASE_PROFILE["exact_seen_duplicate_returns"] += 1
             _H7_PHASE_PROFILE["register_binary_exact_seen_bails"] += 1
             stats["duplicate_states"] += 1
             stats["exact_expression_duplicates_skipped"] += 1
             return None
 
         lvec, rvec = left[1], right[1]''',
-        label="count binary expression keys and exact bails",
+        label="count binary exact-key bails",
     )
     source = replace_exact(
         source,
