@@ -1,0 +1,294 @@
+# Manual replay trigger: H7 R2 vs R3 12-primitive timeout-resolution protocol, 2026-10-12.
+name: H7 R3 12-primitive timeout resolution replay 2026-10-12
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-r3-exact-source-20261011
+    paths:
+      - ".github/workflows/h7-r3-timeout-resolution-replay-20261012.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-prior-timeout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact proving-ground trigger
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Record executor identity and compile diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/h7-timeout-resolution-replay-20261012
+          {
+            echo "EXECUTOR_REPOSITORY=Infrasigma/subsume-proving-ground"
+            echo "EXECUTOR_BRANCH=${GITHUB_REF_NAME}"
+            echo "EXECUTOR_COMMIT=${GITHUB_SHA}"
+            echo "WORKFLOW_RUN_ID=${GITHUB_RUN_ID}"
+            echo "WORKFLOW_PATH=.github/workflows/h7-r3-timeout-resolution-replay-20261012.yml"
+            echo "DIAGNOSTIC_SCRIPT_SHA256=$(sha256sum lab/h7_r3_timeout_resolution.py | awk '{print $1}')"
+            echo "OLD_WRAPPER_TIMEOUT_SECONDS=17"
+            echo "PRESERVED_ORIGINAL_SEARCH_BUDGET_SECONDS=15"
+            echo "EXTENDED_DIAGNOSTIC_BUDGET_SECONDS=120"
+            echo "CHILD_HARD_WALL_SECONDS=150"
+          } | tee evidence/h7-timeout-resolution-replay-20261012/provenance.txt
+          python -m py_compile lab/h7_r3_timeout_resolution.py
+
+      - name: Checkout exact ACSIE R3 candidate
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-r3
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact R3 source and test identities
+        working-directory: acsie-r3
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_commit="$(git rev-parse HEAD)"
+          actual_source="$(sha256sum cognitive_core/behavioral_search.py | awk '{print $1}')"
+          actual_test="$(sha256sum tests/test_open_ended_growth.py | awk '{print $1}')"
+          test "$actual_commit" = "d83cb60286f195eec02b4d7aa45a60539316d115"
+          test "$actual_source" = "2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
+          test "$actual_test" = "685c92ee3a825013323ea92d40a45e8e684a0867f7e72cd1317f5db72e9ced53"
+          {
+            echo "ACSIE_R3_COMMIT=$actual_commit"
+            echo "BEHAVIORAL_SEARCH_SHA256=$actual_source"
+            echo "TEST_OPEN_ENDED_GROWTH_SHA256=$actual_test"
+            echo "R3_SOURCE_IDENTITY=PASS"
+          } | tee "$GITHUB_WORKSPACE/evidence/h7-timeout-resolution-replay-20261012/r3-source-identity.txt"
+
+      - name: Checkout exact R2 control
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: 5b6dc50d36a2584ab9c05525ed19047ca1792b3b
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie-r2
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact R2 identity and compile both cores
+        shell: bash
+        run: |
+          set -euo pipefail
+          r2="$(git -C acsie-r2 rev-parse HEAD)"
+          r3="$(git -C acsie-r3 rev-parse HEAD)"
+          test "$r2" = "5b6dc50d36a2584ab9c05525ed19047ca1792b3b"
+          test "$r3" = "d83cb60286f195eec02b4d7aa45a60539316d115"
+          echo "ACSIE_R2_CONTROL_COMMIT=$r2" | tee evidence/h7-timeout-resolution-replay-20261012/r2-source-identity.txt
+          echo "ACSIE_R2_SOURCE_IDENTITY=PASS" | tee -a evidence/h7-timeout-resolution-replay-20261012/r2-source-identity.txt
+          python -m compileall -q acsie-r2/cognitive_core acsie-r3/cognitive_core
+          echo "BOTH_CORE_COMPILE=PASS" | tee evidence/h7-timeout-resolution-replay-20261012/compile.txt
+
+      - name: Re-run R3 open-ended-growth tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pytest
+          PYTHONPATH="$GITHUB_WORKSPACE/acsie-r3" PYTHONHASHSEED=0 \
+            python -m pytest -q acsie-r3/tests/test_open_ended_growth.py \
+            2>&1 | tee evidence/h7-timeout-resolution-replay-20261012/r3-open-ended-growth-tests.txt
+
+      - name: Resolve old 17-second timeout with order-paired 12-primitive probes
+        timeout-minutes: 25
+        shell: bash
+        run: |
+          set -uo pipefail
+          root="$GITHUB_WORKSPACE/evidence/h7-timeout-resolution-replay-20261012"
+          for source in r2 r3; do
+            if [ "$source" = "r2" ]; then
+              source_path="$GITHUB_WORKSPACE/acsie-r2"
+              source_commit="5b6dc50d36a2584ab9c05525ed19047ca1792b3b"
+            else
+              source_path="$GITHUB_WORKSPACE/acsie-r3"
+              source_commit="d83cb60286f195eec02b4d7aa45a60539316d115"
+            fi
+            for seed in 0 731; do
+              for pair in 1 4; do
+                stem="timeout-resolution-${source}-seed${seed}-pair${pair}"
+                echo "TIMEOUT_RESOLUTION source=$source seed=$seed pair=$pair aliases=5 primitives=12"
+                set +e
+                PYTHONHASHSEED="$seed" PYTHONPATH="$source_path" ACSIE_SOURCE_COMMIT="$source_commit" \
+                  timeout 150s python "$GITHUB_WORKSPACE/lab/h7_r3_timeout_resolution.py" \
+                  --source "$source" --seed "$seed" --pair "$pair" --alias-pairs 5 \
+                  --original-guard-seconds 15 --diagnostic-budget-seconds 120 \
+                  > "$root/$stem.jsonl" 2> "$root/$stem.stderr"
+                rc=$?
+                set -e
+                if [ "$rc" -eq 0 ]; then
+                  status="COMPLETED"
+                elif [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+                  status="WALL_TIMEOUT_150S"
+                else
+                  status="CHILD_ERROR"
+                fi
+                printf '{"source":"%s","seed":%s,"pair":%s,"child_returncode":%s,"status":"%s"}\n' \
+                  "$source" "$seed" "$pair" "$rc" "$status" > "$root/$stem.status.json"
+                echo "RESULT source=$source seed=$seed pair=$pair rc=$rc status=$status"
+              done
+            done
+          done
+          python - "$root" <<'PY'
+          import json
+          import pathlib
+          import statistics
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          expected = [(source, seed, pair)
+                      for source in ("r2", "r3")
+                      for seed in (0, 731)
+                      for pair in (1, 4)]
+          rows = []
+          for source, seed, pair in expected:
+              stem = f"timeout-resolution-{source}-seed{seed}-pair{pair}"
+              wrapper = json.loads((root / f"{stem}.status.json").read_text())
+              row = {"source": source, "seed": seed, "pair": pair,
+                     "wrapper_status": wrapper["status"],
+                     "child_returncode": wrapper["child_returncode"]}
+              out_path = root / f"{stem}.jsonl"
+              lines = [line for line in out_path.read_text().splitlines() if line.strip()] if out_path.exists() else []
+              if wrapper["status"] == "COMPLETED" and len(lines) == 1:
+                  try:
+                      row["record"] = json.loads(lines[0])
+                      row["record_parse_status"] = "PASS"
+                  except Exception as exc:
+                      row["record_parse_status"] = f"INVALID_JSON:{type(exc).__name__}:{exc}"
+              else:
+                  row["record_parse_status"] = "NO_COMPLETE_RECORD"
+              rows.append(row)
+
+          completed = [r for r in rows if r.get("record_parse_status") == "PASS"]
+          all_completed = len(completed) == len(expected)
+          source_stability = {}
+          profile_gates = {}
+          timing_rows = []
+          for source in ("r2", "r3"):
+              source_rows = [r for r in completed if r["source"] == source]
+              signatures = [r["record"]["stable_signature_sha256"] for r in source_rows]
+              source_stability[source] = {
+                  "complete_repetitions": len(source_rows),
+                  "expected_repetitions": 4,
+                  "stable_across_seed_and_order_pairs": len(signatures) == 4 and len(set(signatures)) == 1,
+                  "signatures": signatures,
+              }
+              want_profile = source == "r3"
+              profile_gates[source] = {
+                  "expected_profile_7_14": want_profile,
+                  "all_repetitions_match_expected": (
+                      len(source_rows) == 4 and all(
+                          r["record"]["status"] == "TARGET_FOUND"
+                          and r["record"]["stable"]["expected_profile_7_14_returned"] is want_profile
+                          for r in source_rows
+                      )
+                  ),
+              }
+          by_key = {(r["source"], r["seed"], r["pair"]): r for r in completed}
+          for seed in (0, 731):
+              for pair in (1, 4):
+                  r2 = by_key.get(("r2", seed, pair))
+                  r3 = by_key.get(("r3", seed, pair))
+                  if r2 and r3:
+                      t2 = r2["record"]["performance"]["search_elapsed_ms"]
+                      t3 = r3["record"]["performance"]["search_elapsed_ms"]
+                      timing_rows.append({
+                          "seed": seed, "pair": pair,
+                          "r2_elapsed_ms": t2, "r3_elapsed_ms": t3,
+                          "r3_over_r2_ratio": round(t3 / t2, 5) if t2 else None,
+                          "r2_original_15s_gate_pass": r2["record"]["stable"]["original_15s_gate_pass"],
+                          "r3_original_15s_gate_pass": r3["record"]["stable"]["original_15s_gate_pass"],
+                          "r2_diagnostic_120s_gate_pass": r2["record"]["stable"]["diagnostic_120s_gate_pass"],
+                          "r3_diagnostic_120s_gate_pass": r3["record"]["stable"]["diagnostic_120s_gate_pass"],
+                      })
+
+          stable = all(source_stability[s]["stable_across_seed_and_order_pairs"] for s in ("r2", "r3"))
+          retention = all(profile_gates[s]["all_repetitions_match_expected"] for s in ("r2", "r3"))
+          target = all(r["record"]["status"] == "TARGET_FOUND" for r in completed)
+          if all_completed and stable and retention and target:
+              classification = "CONCLUSIVE_R2_DROPS_PARETO_PROFILE_R3_RETAINS_PROFILE"
+          elif all_completed and target and stable:
+              classification = "CONCLUSIVE_PROFILE_OR_RETENTION_GATE_FAILURE"
+          elif all_completed:
+              classification = "CONCLUSIVE_SEARCH_OR_NONDETERMINISM_FAILURE"
+          else:
+              classification = "INCONCLUSIVE_CHILD_WALL_TIMEOUT_OR_EXECUTION_FAILURE"
+
+          original_budget = (
+              "NOT_ADJUDICATED_INCOMPLETE"
+              if not all_completed
+              else (
+                  "PASS_ALL_EIGHT_WITHIN_15S"
+                  if all(r["record"]["stable"]["original_15s_gate_pass"] for r in completed)
+                  else "FAIL_AT_LEAST_ONE_SEARCH_EXCEEDED_ORIGINAL_15S_GUARD"
+              )
+          )
+          extended_budget = (
+              "NOT_ADJUDICATED_INCOMPLETE"
+              if not all_completed
+              else (
+                  "PASS_ALL_EIGHT_WITHIN_120S_AND_RSS_LIMIT"
+                  if all(r["record"]["stable"]["diagnostic_120s_gate_pass"] for r in completed)
+                  else "FAIL_AT_LEAST_ONE_SEARCH_EXCEEDED_120S_OR_RSS_LIMIT"
+              )
+          )
+
+          summary = {
+              "schema": "ACSIE.H7_R3.timeout_resolution_summary.v1",
+              "executor_commit": __import__("os").environ.get("GITHUB_SHA", "recorded_in_provenance.txt"),
+              "fixture": {"primitive_count": 12, "alias_pairs": 5, "rows": 8, "max_depth": 3},
+              "source_commits": {
+                  "r2": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+                  "r3": "d83cb60286f195eec02b4d7aa45a60539316d115",
+              },
+              "historical_child_wall_timeout_seconds": 17,
+              "preserved_original_search_guard_seconds": 15,
+              "extended_diagnostic_budget_seconds": 120,
+              "hard_child_wall_timeout_seconds": 150,
+              "hash_seeds": [0, 731],
+              "order_pairs": [1, 4],
+              "expected_records": len(expected),
+              "completed_records": len(completed),
+              "all_expected_records_completed": all_completed,
+              "classification": classification,
+              "original_15s_gate": original_budget,
+              "extended_120s_diagnostic_gate": extended_budget,
+              "stable_results_and_counters_by_source": source_stability,
+              "Pareto_profile_7_14_gates_by_source": profile_gates,
+              "paired_timings": timing_rows,
+              "wrapper_records": rows,
+              "interpretation_guard": (
+                  "The extended timeout is diagnostic only. Exceeding the preserved 15-second "
+                  "guard remains a performance-budget failure even when the search eventually "
+                  "returns a fully audited result. This synthetic 12-primitive probe is not an "
+                  "open-ended scalability or AGI/ASI qualification."
+              ),
+          }
+          (root / "timeout-resolution-summary.json").write_text(json.dumps(summary, sort_keys=True, indent=2) + "\n")
+          print(json.dumps({
+              "classification": classification,
+              "completed_records": len(completed),
+              "original_15s_gate": original_budget,
+              "extended_120s_diagnostic_gate": extended_budget,
+              "profile_gates": profile_gates,
+              "stable": stable,
+          }, sort_keys=True, indent=2))
+          PY
+
+      - name: Upload timeout-resolution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h7-r3-timeout-resolution-replay-20261012-${{ github.run_id }}
+          path: evidence/h7-timeout-resolution-replay-20261012/
+          if-no-files-found: error
