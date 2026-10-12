@@ -289,15 +289,13 @@ def main() -> int:
 
     source = replace_exact(
         source,
-        "        expr, _, state_used, state_keys, skey, _ = state\n",
-        "        expr, _, state_used, state_keys, skey, _, _exact_expr_id = state\n",
-        label="rank handles exact-ID state extension",
+        "        expr, _, state_used, state_keys, skey, _ = state[:6]\n",
+        label="rank accepts legacy six-slot probe states and extended internal states",
     )
     source = replace_exact(
         source,
-        "        expr, _, _, _, _, _ = state\n",
-        "        expr, _, _, _, _, _, _exact_expr_id = state\n",
-        label="pruned-state helper handles exact-ID state extension",
+        "        expr = state[0]\n",
+        label="pruned-state helper accepts legacy and extended state tuples",
     )
     source = replace_exact(
         source,
