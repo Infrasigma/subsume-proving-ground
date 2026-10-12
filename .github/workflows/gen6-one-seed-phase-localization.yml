@@ -1,0 +1,279 @@
+name: Gen6 one-seed phase localization
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-r3-exact-source-20261011
+    paths:
+      - ".github/workflows/gen6-one-seed-phase-localization.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  gen6-phase-localization:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout proving-ground executor
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Record experiment contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/gen6-phase
+          {
+            echo "EXECUTOR_REPOSITORY=Infrasigma/subsume-proving-ground"
+            echo "EXECUTOR_COMMIT=$GITHUB_SHA"
+            echo "WORKFLOW_RUN_ID=$GITHUB_RUN_ID"
+            echo "ACSIE_SOURCE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
+            echo "SEED=2026100301"
+            echo "GENERATION_COUNT=7; generation indices 0..6"
+            echo "RUNS=plain-control-120s then low-overhead-event-trace-120s"
+            echo "CHILD_TIMEOUT_SECONDS=120 each"
+            echo "HYPOTHESIS=actual self-extending workload bottleneck is localizable with durable phase checkpoints"
+            echo "NO_ALGORITHM_CHANGE=true"
+            echo "NO_THRESHOLD_OR_SPLIT_CHANGE=true"
+          } | tee evidence/gen6-phase/provenance.txt
+          python --version
+
+      - name: Checkout pinned ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact source and test identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_commit="$(git -C acsie rev-parse HEAD)"
+          actual_tree="$(git -C acsie rev-parse 'HEAD^{tree}')"
+          source_sha="$(sha256sum acsie/cognitive_core/behavioral_search.py | awk '{print $1}')"
+          growth_sha="$(sha256sum lab/acsie_open_ended_self_extending_proving.py | awk '{print $1}')"
+          test_sha="$(sha256sum acsie/tests/test_open_ended_growth.py | awk '{print $1}')"
+          test "$actual_commit" = "d83cb60286f195eec02b4d7aa45a60539316d115"
+          test "$actual_tree" = "12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+          test "$source_sha" = "2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
+          test "$test_sha" = "685c92ee3a825013323ea92d40a45e8e684a0867f7e72cd1317f5db72e9ced53"
+          {
+            echo "ACSIE_COMMIT=$actual_commit"
+            echo "ACSIE_TREE=$actual_tree"
+            echo "BEHAVIORAL_SEARCH_SHA256=$source_sha"
+            echo "SELF_EXTENDING_HARNESS_SHA256=$growth_sha"
+            echo "OPEN_ENDED_GROWTH_TEST_SHA256=$test_sha"
+            echo "SOURCE_IDENTITY=PASS"
+          } | tee evidence/gen6-phase/source-identity.txt
+
+      - name: Prepare low-overhead phase event logger
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostics
+          cat > diagnostics/sitecustomize.py <<'PY'
+          import faulthandler
+          import json
+          import os
+          import sys
+          import time
+          from functools import wraps
+
+          log_path = os.environ.get("ACSIE_PHASE_LOG")
+          _log = open(log_path, "a", buffering=1) if log_path else sys.stderr
+          _start = time.monotonic()
+          _generation = {"value": None}
+
+          def _emit(kind, name=None, **fields):
+              row = {
+                  "elapsed_s": round(time.monotonic() - _start, 4),
+                  "generation": _generation["value"],
+                  "kind": kind,
+                  "name": name,
+                  **fields,
+              }
+              _log.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+              _log.flush()
+
+          # Periodic stack snapshots are lower-overhead than cProfile/sys.setprofile
+          # and survive child timeout because stderr is streamed to a separate file.
+          faulthandler.enable(file=sys.stderr, all_threads=True)
+          faulthandler.dump_traceback_later(20, repeat=True, file=sys.stderr)
+
+          try:
+              import acsie_open_ended_self_extending_proving as growth
+              import cognitive_core.open_ended_growth as og
+              import cognitive_core.recursive_cognitive_compiler as rcc
+
+              _original_make_traces = growth.make_traces
+              @wraps(_original_make_traces)
+              def _make_traces(expr, seed, generation, split, count, shift, macros):
+                  _generation["value"] = int(generation)
+                  _emit("generation_checkpoint", "make_traces", split=split, count=count)
+                  return _original_make_traces(expr, seed, generation, split, count, shift, macros)
+              growth.make_traces = _make_traces
+
+              _original_run_seed = growth.run_seed
+              @wraps(_original_run_seed)
+              def _run_seed(seed, generations):
+                  _emit("run_start", "run_seed", seed=seed, generations=generations)
+                  try:
+                      result = _original_run_seed(seed, generations)
+                      _emit("run_end", "run_seed",
+                            reported_generations=len(result.get("generations_detail", [])),
+                            finite_open_ended_growth_gate=result.get("finite_open_ended_growth_gate"))
+                      return result
+                  except BaseException as exc:
+                      _emit("run_exception", "run_seed", error=f"{type(exc).__name__}: {exc}")
+                      raise
+              growth.run_seed = _run_seed
+
+              def _wrap_method(cls, name):
+                  original = cls.__dict__.get(name)
+                  if original is None or not callable(original):
+                      return
+                  @wraps(original)
+                  def wrapped(self, *args, **kwargs):
+                      started = time.monotonic()
+                      _emit("call_start", f"{cls.__name__}.{name}",
+                            primitive_count=len(getattr(self, "primitives", {})))
+                      try:
+                          result = original(self, *args, **kwargs)
+                          _emit("call_end", f"{cls.__name__}.{name}",
+                                elapsed_ms=round((time.monotonic() - started) * 1000, 3),
+                                primitive_count=len(getattr(self, "primitives", {})),
+                                returned_none=result is None)
+                          return result
+                      except BaseException as exc:
+                          _emit("call_exception", f"{cls.__name__}.{name}",
+                                elapsed_ms=round((time.monotonic() - started) * 1000, 3),
+                                error=f"{type(exc).__name__}: {exc}")
+                          raise
+                  setattr(cls, name, wrapped)
+
+              for _cls in (rcc.RecursiveCognitiveCompiler, og.OpenEndedRecursiveCognitiveCompiler):
+                  for _name in ("invent_primitive", "accept_primitive", "_exprs",
+                                "synthesize_process_frontier", "synthesize_process", "evaluate"):
+                      _wrap_method(_cls, _name)
+
+              _original_find = og.find_exact_expression
+              @wraps(_original_find)
+              def _find(compiler, rows, max_depth, **kwargs):
+                  started = time.monotonic()
+                  _emit("call_start", "find_exact_expression",
+                        input_rows=len(rows), max_depth=max_depth,
+                        primitive_count=len(getattr(compiler, "primitives", {})))
+                  try:
+                      result = _original_find(compiler, rows, max_depth, **kwargs)
+                      _emit("call_end", "find_exact_expression",
+                            elapsed_ms=round((time.monotonic() - started) * 1000, 3),
+                            returned_none=result is None)
+                      return result
+                  except BaseException as exc:
+                      _emit("call_exception", "find_exact_expression",
+                            elapsed_ms=round((time.monotonic() - started) * 1000, 3),
+                            error=f"{type(exc).__name__}: {exc}")
+                      raise
+              og.find_exact_expression = _find
+              _emit("observer_ready", "sitecustomize")
+          except BaseException as exc:
+              _emit("observer_setup_exception", "sitecustomize", error=f"{type(exc).__name__}: {exc}")
+              raise
+          PY
+          python -m py_compile diagnostics/sitecustomize.py
+          sha256sum diagnostics/sitecustomize.py | tee evidence/gen6-phase/observer-sha256.txt
+
+      - name: Run one-seed plain control then observer-enabled phase trace
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set -uo pipefail
+          root="$GITHUB_WORKSPACE/evidence/gen6-phase"
+          seed=2026100301
+
+          echo "PHASE_PROBE=plain_control seed=$seed generations=7 timeout=120s"
+          set +e
+          PYTHONPATH="$GITHUB_WORKSPACE/lab:$GITHUB_WORKSPACE/acsie" \
+            timeout --signal=TERM --kill-after=5s 120s \
+            python -c 'import json,sys,acsie_open_ended_self_extending_proving as g; print(json.dumps(g.run_seed(int(sys.argv[1]),7),sort_keys=True),flush=True)' \
+            "$seed" > "$root/plain.stdout.jsonl" 2> "$root/plain.stderr"
+          plain_rc=$?
+          set -e
+          printf '{"seed":%s,"child_returncode":%s,"timeout_seconds":120,"status":"%s"}\n' \
+            "$seed" "$plain_rc" "$([ "$plain_rc" -eq 0 ] && echo COMPLETED || { [ "$plain_rc" -eq 124 ] || [ "$plain_rc" -eq 137 ]; } && echo WALL_TIMEOUT || echo CHILD_ERROR)" \
+            > "$root/plain.status.json"
+
+          echo "PHASE_PROBE=observer_enabled seed=$seed generations=7 timeout=120s"
+          set +e
+          ACSIE_PHASE_LOG="$root/observer-events.jsonl" \
+          PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/lab:$GITHUB_WORKSPACE/acsie" \
+            timeout --signal=TERM --kill-after=5s 120s \
+            python -c 'import json,sys,acsie_open_ended_self_extending_proving as g; print(json.dumps(g.run_seed(int(sys.argv[1]),7),sort_keys=True),flush=True)' \
+            "$seed" > "$root/observer.stdout.jsonl" 2> "$root/observer.stderr"
+          observer_rc=$?
+          set -e
+          printf '{"seed":%s,"child_returncode":%s,"timeout_seconds":120,"status":"%s"}\n' \
+            "$seed" "$observer_rc" "$([ "$observer_rc" -eq 0 ] && echo COMPLETED || { [ "$observer_rc" -eq 124 ] || [ "$observer_rc" -eq 137 ]; } && echo WALL_TIMEOUT || echo CHILD_ERROR)" \
+            > "$root/observer.status.json"
+
+          python - "$root" <<'PY'
+          import collections, json, pathlib, sys
+          root = pathlib.Path(sys.argv[1])
+          plain = json.loads((root / "plain.status.json").read_text())
+          observed = json.loads((root / "observer.status.json").read_text())
+          events_path = root / "observer-events.jsonl"
+          events = []
+          if events_path.exists():
+              for line in events_path.read_text(errors="replace").splitlines():
+                  try: events.append(json.loads(line))
+                  except Exception: pass
+          starts = collections.Counter(e.get("name") for e in events if e.get("kind") == "call_start")
+          ends = collections.Counter(e.get("name") for e in events if e.get("kind") == "call_end")
+          unfinished = []
+          stack = []
+          for e in events:
+              if e.get("kind") == "call_start":
+                  stack.append({"name": e.get("name"), "generation": e.get("generation"),
+                                "elapsed_s": e.get("elapsed_s")})
+              elif e.get("kind") in ("call_end", "call_exception"):
+                  # Remove latest matching call, even for nested calls with the same method name.
+                  for i in range(len(stack)-1, -1, -1):
+                      if stack[i]["name"] == e.get("name"):
+                          stack.pop(i); break
+          gen_checkpoints = [e for e in events if e.get("kind") == "generation_checkpoint"]
+          last_events = events[-30:]
+          summary = {
+              "schema": "ACSIE.gen6_one_seed_phase_localization.v1",
+              "source_commit": "d83cb60286f195eec02b4d7aa45a60539316d115",
+              "seed": 2026100301, "generations": list(range(7)),
+              "plain_control": plain, "observer_enabled": observed,
+              "observer_event_count": len(events),
+              "observer_setup_seen": any(e.get("kind") == "observer_ready" for e in events),
+              "generation_checkpoint_count": len(gen_checkpoints),
+              "generations_seen": sorted({e.get("generation") for e in gen_checkpoints if e.get("generation") is not None}),
+              "calls_started_by_method": dict(starts),
+              "calls_completed_by_method": dict(ends),
+              "unbalanced_calls_at_observer_exit": stack[-50:],
+              "last_observer_events": last_events,
+              "timeout_stack_samples": (root / "observer.stderr").read_text(errors="replace").count("Timeout (0:00:20)!"),
+              "plain_stdout_bytes": (root / "plain.stdout.jsonl").stat().st_size,
+              "observer_stdout_bytes": (root / "observer.stdout.jsonl").stat().st_size,
+              "interpretation": "Diagnostic only. A timeout is INCONCLUSIVE; the most recent generation checkpoint, unmatched call starts, and repeated faulthandler stacks localize active work. Event tracing is not equivalent to an uninstrumented runtime benchmark."
+          }
+          (root / "summary.json").write_text(json.dumps(summary, sort_keys=True, indent=2) + "\n")
+          print(json.dumps({k:v for k,v in summary.items() if k not in ("last_observer_events","unbalanced_calls_at_observer_exit")}, sort_keys=True, indent=2))
+          PY
+
+      - name: Upload phase-localization evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen6-one-seed-phase-localization-${{ github.run_id }}
+          path: evidence/gen6-phase/
+          if-no-files-found: error
