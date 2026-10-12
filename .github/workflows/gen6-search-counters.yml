@@ -196,49 +196,61 @@ jobs:
           echo "COUNTER_ONLY_SOURCE_SHA256=$counter_sha" | tee evidence/gen6-frontier-cache/source-diff-contract.txt
           python - "$src" <<'PY'
           import hashlib, pathlib, sys
-          p = pathlib.Path(sys.argv[1])
-          s = p.read_text()
 
-          def once(old, new, label):
-              global s
-              n = s.count(old)
-              if n != 1:
-                  raise SystemExit(f"{label}: expected one source marker, found {n}")
-              s = s.replace(old, new, 1)
+          path = pathlib.Path(sys.argv[1])
+          source = path.read_text()
+          start_marker = "    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:"
+          end_marker = "    def build_extreme_lookup("
+          if source.count(start_marker) != 1:
+              raise SystemExit(f"expected one lineage_frontier function, got {source.count(start_marker)}")
+          start = source.index(start_marker)
+          end = source.index(end_marker, start + len(start_marker))
+          fn = source[start:end]
 
-          once(
-              '    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:',
-              '    lineage_frontier_cache: dict[tuple[tuple[int, tuple[str, ...]], ...], tuple[tuple, ...]] = {}\n\n'
-              '    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:',
-              'bounded cache declaration'
+          cache_declaration = (
+              "    lineage_frontier_cache: dict[tuple[tuple[int, tuple[str, ...]], ...], tuple[tuple, ...]] = {}\n\n"
           )
-          once(
-              '        if not states:\n            return ()',
-              '        if not states:\n            return ()\n'
-              '        cache_key = tuple(sorted((int(state[5]), tuple(sorted(structural_lineage_by_key.get(str(state[4]), set())))) for state in states))\n'
-              '        cache_enabled = __import__("os").environ.get("ACSIE_DISABLE_LF_CACHE") != "1"\n'
-              '        cached_frontier = lineage_frontier_cache.get(cache_key) if cache_enabled else None\n'
-              '        if cached_frontier is not None:\n'
-              '            _h7_inc("lineage_frontier_cache_hits")\n'
-              '            return cached_frontier\n'
-              '        if cache_enabled:\n'
-              '            _h7_inc("lineage_frontier_cache_misses")',
-              'exact state-token cache lookup'
+          if "lineage_frontier_cache" in source:
+              raise SystemExit("cache declaration already exists; refusing to double-patch")
+          source = source[:start] + cache_declaration + source[start:]
+          start = source.index(start_marker)
+          end = source.index(end_marker, start + len(start_marker))
+          fn = source[start:end]
+
+          empty_marker = "        if not states:\n            return ()"
+          if fn.count(empty_marker) != 1:
+              raise SystemExit(f"lineage_frontier empty-input marker count={fn.count(empty_marker)}")
+          empty_replacement = (
+              "        if not states:\n            return ()\n"
+              "        # Exact cache key includes mutable structural-lineage metadata used by rank().\n"
+              "        cache_key = tuple(sorted((int(state[5]), tuple(sorted(structural_lineage_by_key.get(str(state[4]), set())))) for state in states))\n"
+              "        cache_enabled = __import__(\"os\").environ.get(\"ACSIE_DISABLE_LF_CACHE\") != \"1\"\n"
+              "        cached_frontier = lineage_frontier_cache.get(cache_key) if cache_enabled else None\n"
+              "        if cached_frontier is not None:\n"
+              "            _h7_inc(\"lineage_frontier_cache_hits\")\n"
+              "            return cached_frontier\n"
+              "        if cache_enabled:\n"
+              "            _h7_inc(\"lineage_frontier_cache_misses\")"
           )
-          once(
-              '        return tuple(sorted(frontier, key=rank))',
-              '        result = tuple(sorted(frontier, key=rank))\n'
-              '        if cache_enabled:\n'
-              '            if len(lineage_frontier_cache) >= 128:\n'
-              '                oldest_key = next(iter(lineage_frontier_cache))\n'
-              '                del lineage_frontier_cache[oldest_key]\n'
-              '                _h7_inc("lineage_frontier_cache_evictions")\n'
-              '            lineage_frontier_cache[cache_key] = result\n'
-              '        return result',
-              'bounded cache store'
+          fn = fn.replace(empty_marker, empty_replacement, 1)
+
+          return_marker = "        return tuple(sorted(frontier, key=rank))"
+          if fn.count(return_marker) != 1:
+              raise SystemExit(f"lineage_frontier result marker count={fn.count(return_marker)}")
+          return_replacement = (
+              "        result = tuple(sorted(frontier, key=rank))\n"
+              "        if cache_enabled:\n"
+              "            if len(lineage_frontier_cache) >= 128:\n"
+              "                oldest_key = next(iter(lineage_frontier_cache))\n"
+              "                del lineage_frontier_cache[oldest_key]\n"
+              "                _h7_inc(\"lineage_frontier_cache_evictions\")\n"
+              "            lineage_frontier_cache[cache_key] = result\n"
+              "        return result"
           )
-          p.write_text(s)
-          print("COUNTER_PLUS_CACHE_SOURCE_SHA256="+hashlib.sha256(s.encode()).hexdigest())
+          fn = fn.replace(return_marker, return_replacement, 1)
+          source = source[:start] + fn + source[end:]
+          path.write_text(source)
+          print("COUNTER_PLUS_CACHE_SOURCE_SHA256=" + hashlib.sha256(source.encode()).hexdigest())
           PY
           python -m py_compile "$src"
           sha256sum "$src" | tee evidence/gen6-frontier-cache/instrumented-source-sha256.txt
