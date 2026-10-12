@@ -100,7 +100,7 @@ def evaluate_case(case, op, alias, objective):
         "alternatives":result.alternatives,
         "stats":dict(result.stats),
     }
-    extra = dict(getattr(find_exact_expression, "_H7_LAST_BUCKET_DUPLICATE_STATS", {}))
+    extra = dict(getattr(find_exact_expression, "_H7_LAST_BUCKET_DUPLICATE_STATS", {})) if result is not None else None
     return {"signature":sig, "bucket_telemetry":extra}
 
 cases = [
@@ -169,10 +169,15 @@ def main() -> int:
             raw = run([sys.executable,str(probe)],cwd=repo,env=env_for(root),log=outpath)
             matrices[name] = json.loads(raw)
         baseline = matrices["pristine"]["cases"]
+        def signatures(matrix):
+            return {case: row["signature"] for case,row in matrix["cases"].items()}
+        baseline_signatures = signatures(matrices["pristine"])
+        control_signatures = signatures(matrices["control"])
+        candidate_signatures = signatures(matrices["candidate"])
         parity = {
-            "control_matches_pristine": matrices["control"]["cases"] == baseline,
-            "candidate_matches_pristine": matrices["candidate"]["cases"] == baseline,
-            "control_matches_candidate": matrices["control"]["cases"] == matrices["candidate"]["cases"],
+            "control_matches_pristine": control_signatures == baseline_signatures,
+            "candidate_matches_pristine": candidate_signatures == baseline_signatures,
+            "control_matches_candidate": control_signatures == candidate_signatures,
             "cases": {},
         }
         candidate_cases = matrices["candidate"]["cases"]
@@ -195,9 +200,25 @@ def main() -> int:
         parity["all_required_operator_collisions_exercised"] = all(
             parity["required_candidate_bucket_hits"][case] > 0 for case in required_bucket_cases
         )
-        parity["non_target_case_had_no_target_candidates"] = (
-            candidate_cases["unrepresentable_non_target"]["signature"] is not None
-            and candidate_cases["unrepresentable_non_target"]["signature"]["stats"].get("target_candidate_count",0) == 0
+        parity["non_target_negative_control_has_no_solution"] = all(
+            matrices[name]["cases"]["unrepresentable_non_target"]["signature"] is None
+            for name in roots
+        )
+        candidate_telemetry_rows = [
+            candidate_cases[name]["bucket_telemetry"] for name in required_bucket_cases
+        ]
+        parity["candidate_bucket_telemetry_consistent"] = all(
+            row is not None
+            and row.get("metadata_only_bucket_hits",0)
+                == row.get("target_bucket_hits",0) + row.get("non_target_bucket_hits",0)
+            and row.get("lineage_keys_updated",0) == row.get("metadata_only_bucket_hits",0)
+            and row.get("lineage_ids_added",0) >= 0
+            and row.get("lineage_growth_events",0) >= 0
+            for row in candidate_telemetry_rows
+        )
+        parity["target_and_non_target_fastpaths_exercised"] = (
+            sum(row.get("target_bucket_hits",0) for row in candidate_telemetry_rows) > 0
+            and sum(row.get("non_target_bucket_hits",0) for row in candidate_telemetry_rows) > 0
         )
         parity["pinned_source"] = {"commit":head,"tree":tree,"source_sha256":sha256(src)}
         parity["diagnostic_source_sha256"] = patched_hashes
@@ -212,7 +233,9 @@ def main() -> int:
         print(json.dumps(parity,indent=2,sort_keys=True,allow_nan=True))
         if not all(parity[k] for k in ("control_matches_pristine","candidate_matches_pristine",
                                       "control_matches_candidate","all_required_operator_collisions_exercised",
-                                      "non_target_case_had_no_target_candidates")):
+                                      "non_target_negative_control_has_no_solution",
+                                      "candidate_bucket_telemetry_consistent",
+                                      "target_and_non_target_fastpaths_exercised")):
             raise RuntimeError("adversarial signature/coverage gate failed; do not run Gen6")
         # Regression is required on both diagnostic arms before any actual seed.
         for name in ("control","candidate"):
@@ -234,7 +257,9 @@ def main() -> int:
             "exact_parity":{"control":True,"candidate":True,"against_pristine":True},
             "regression_tests":{"control":61,"candidate":61},
             "candidate_bucket_hits":parity["required_candidate_bucket_hits"],
-            "non_target_fixture_no_target_candidates":True,
+            "non_target_negative_control_has_no_solution":parity["non_target_negative_control_has_no_solution"],
+            "candidate_bucket_telemetry_consistent":parity["candidate_bucket_telemetry_consistent"],
+            "target_and_non_target_fastpaths_exercised":parity["target_and_non_target_fastpaths_exercised"],
             "hypothesis":"metadata-only same-bucket duplicate path preserves selected executable expression, alternatives, vocabulary, lineage and result statistics on the registered fixture matrix",
             "interpretation_guard":"Fixture parity is not Gen6 acceptance. Actual Gen6 must return complete records; live target candidates are not completion.",
         }

@@ -1,0 +1,98 @@
+name: H7 metadata-only bucket duplicate adversarial review
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-bucket-duplicate-review2-20261012
+    paths:
+      - ".github/workflows/h7-bucket-duplicate-adversarial-review-v2.yml"
+      - "lab/review_h7_metadata_only_bucket_duplicate.py"
+      - "lab/patch_h7_metadata_only_bucket_duplicate.py"
+
+permissions:
+  contents: read
+
+jobs:
+  adversarial-parity-and-gen6:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout proving-ground review branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Predeclare and verify research contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/h7-bucket-duplicate-review
+          {
+            echo "EXECUTOR_REPOSITORY=Infrasigma/subsume-proving-ground"
+            echo "EXECUTOR_BRANCH=${GITHUB_REF_NAME}"
+            echo "EXECUTOR_COMMIT=${GITHUB_SHA}"
+            echo "WORKFLOW_RUN_ID=${GITHUB_RUN_ID}"
+            echo "ACSIE_SOURCE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
+            echo "ACSIE_SOURCE_TREE=12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+            echo "ACSIE_BEHAVIORAL_SEARCH_SHA256=2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
+            echo "FACTOR=metadata-only same-bucket duplicate in register_binary"
+            echo "FIXED_FACTOR=lineage-frontier FIFO cache capacity 128 in both arms"
+            echo "OTHER_CACHES=OFF; GROUPING=OFF"
+            echo "SEED=2026100301"
+            echo "GENERATION_INDICES=0..6"
+            echo "CHILD_WALL_LIMIT_SECONDS=180"
+            echo "RSS_GUARD_BYTES=2147483648"
+            echo "GATE=adversarial exact-signature matrix + 61/61 regression in both arms before Gen6"
+          } | tee evidence/h7-bucket-duplicate-review-v2/initial-contract.txt
+          python -m py_compile lab/review_h7_metadata_only_bucket_duplicate.py lab/patch_h7_metadata_only_bucket_duplicate.py lab/run_h7_metadata_only_bucket_duplicate.py
+
+      - name: Checkout exact private ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify ACSIE commit, tree and source digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C acsie rev-parse HEAD)" = "d83cb60286f195eec02b4d7aa45a60539316d115"
+          test "$(git -C acsie rev-parse 'HEAD^{tree}')" = "12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+          test "$(sha256sum acsie/cognitive_core/behavioral_search.py | awk '{print $1}')" = "2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
+          git -C acsie rev-parse HEAD | tee evidence/h7-bucket-duplicate-review-v2/acsie-commit.txt
+          git -C acsie rev-parse 'HEAD^{tree}' | tee evidence/h7-bucket-duplicate-review-v2/acsie-tree.txt
+          sha256sum acsie/cognitive_core/behavioral_search.py | tee evidence/h7-bucket-duplicate-review-v2/acsie-behavioral-search.sha256
+
+      - name: Setup Python and install test dependency
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pytest
+        run: python -m pip install --disable-pip-version-check pytest
+
+      - name: Run adversarial parity matrix and fixed-budget Gen6 pair
+        shell: bash
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          python lab/review_h7_metadata_only_bucket_duplicate.py \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --acsie-root "$GITHUB_WORKSPACE/acsie" \
+            --evidence "$GITHUB_WORKSPACE/evidence/h7-bucket-duplicate-review-v2" \
+            --seed 2026100301 \
+            --timeout-seconds 180 \
+            2>&1 | tee evidence/h7-bucket-duplicate-review-v2/runner-stdout.txt
+
+      - name: Upload review and Gen6 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h7-bucket-duplicate-review-v2-${{ github.run_id }}
+          path: evidence/h7-bucket-duplicate-review-v2/
+          if-no-files-found: error
+          compression-level: 6
