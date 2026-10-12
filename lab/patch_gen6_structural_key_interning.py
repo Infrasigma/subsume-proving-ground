@@ -161,6 +161,17 @@ def apply_candidate_ids(source: str) -> str:
     end_next = source.index("\n    def used(", b)
     source = source[:a] + STRUCTURAL_ID_BLOCK + source[end_next + 1:]
 
+    # register() historically stringifies metadata-provided structural keys.
+    # Preserve integer IDs after the representation switch; otherwise states made
+    # through register_binary's preflight path mix str and int IDs downstream.
+    source = replace_exact(
+        source,
+        '            skey = str(metadata_hint["skey"])\n',
+        '            skey = metadata_hint["skey"]\n',
+        1,
+        "preserve integer structural ID through register metadata",
+    )
+
     old = '''        left_skey, right_skey = left[4], right[4]
         if commutative and left_skey > right_skey:
             left_skey, right_skey = right_skey, left_skey
