@@ -100,13 +100,13 @@ class _H7ExpressionInterner:
             )
 
         if "left" in expr and "right" in expr:
-            left_expr = expr["left"]
-            right_expr = expr["right"]
-            if op in {"add", "mul", "max", "min"}:
-                if self._json_key(left_expr) > self._json_key(right_expr):
-                    left_expr, right_expr = right_expr, left_expr
-            left_id = self.intern_expr(left_expr)
-            right_id = self.intern_expr(right_expr)
+            # Match ACSIE expr_key() exactly: canonical() sorts only the current
+            # node's children. Descendants arrive canonical when synthesized,
+            # but a legacy diagnostic can pass a nested noncanonical AST.
+            # Do not silently canonicalize below this node, or a test's
+            # string-key removal will map to a different identity.
+            left_id = self.intern_expr(expr["left"])
+            right_id = self.intern_expr(expr["right"])
             known = {"op", "left", "right"}
             extras = tuple(
                 (key, self._freeze(value))
