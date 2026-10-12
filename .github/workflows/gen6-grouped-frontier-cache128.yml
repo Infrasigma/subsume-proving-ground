@@ -1,0 +1,358 @@
+name: Gen6 grouped frontier plus cache-128 factorial
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-r3-exact-source-20261011
+    paths:
+      - ".github/workflows/gen6-grouped-frontier-cache128.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  grouped-frontier-cache128:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Predeclare factorial and resource contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/gen6-group-cache128 diagnostics
+          {
+            echo "EXECUTOR_COMMIT=$GITHUB_SHA"
+            echo "WORKFLOW_RUN_ID=$GITHUB_RUN_ID"
+            echo "ACSIE_SOURCE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
+            echo "FACTORS=direct-vocabulary grouping OFF/ON x frontier cache OFF/ON"
+            echo "FRONTIER_CACHE_CAPACITY=128 FIFO entries per find_exact_expression invocation"
+            echo "FRONTIER_CACHE_KEY=state-token ID plus current structural-lineage union"
+            echo "STRUCTURAL_EXPANSION_CACHE=OFF"
+            echo "REQUIRED=all four arms match pristine signatures; six-file suite passes before Gen6 probe"
+            echo "SEED=2026100301; generation indices 0..6; wall=120s; RSS guard=2048 MiB"
+          } | tee evidence/gen6-group-cache128/provenance.txt
+
+      - name: Checkout exact ACSIE source and pristine baseline worktree
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify source and materialize pristine baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C acsie rev-parse HEAD)" = "d83cb60286f195eec02b4d7aa45a60539316d115"
+          test "$(git -C acsie rev-parse 'HEAD^{tree}')" = "12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+          src="$(sha256sum acsie/cognitive_core/behavioral_search.py | awk '{print $1}')"
+          test "$src" = "2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
+          git -C acsie worktree add --detach "$GITHUB_WORKSPACE/baseline-acsie" d83cb60286f195eec02b4d7aa45a60539316d115
+          echo "ACSIE_BEHAVIORAL_SEARCH_SHA256=$src" | tee evidence/gen6-group-cache128/source-identity.txt
+
+      - name: Install independent original, grouped, and memoized frontier arms
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$GITHUB_WORKSPACE/acsie/cognitive_core/behavioral_search.py" <<'PY'
+          import hashlib, pathlib, sys, textwrap
+          path=pathlib.Path(sys.argv[1]); source=path.read_text()
+          original_sha=hashlib.sha256(source.encode()).hexdigest()
+          expected="2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
+          if original_sha!=expected: raise SystemExit(f"unexpected ACSIE source hash {original_sha}")
+          start_marker="    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:"
+          end_marker="    def build_extreme_lookup("
+          if source.count(start_marker)!=1 or source.count(end_marker)!=1:
+              raise SystemExit("lineage_frontier source markers are not unique")
+          if "_h7_frontier_group_diag" in source or "_h7_frontier_cache128" in source:
+              raise SystemExit("diagnostic frontier wrapper already exists")
+          start=source.index(start_marker); end=source.index(end_marker,start+len(start_marker))
+          original_block=source[start:end]
+
+          grouped_block=original_block.replace(
+              start_marker,
+              "    def _h7_lineage_frontier_grouped(states: Sequence[tuple]) -> tuple[tuple, ...]:",
+              1
+          )
+          loop_start="        frontier = []"
+          loop_end="        return tuple(sorted(frontier, key=rank))"
+          if grouped_block.count(loop_start)!=1 or grouped_block.count(loop_end)!=1:
+              raise SystemExit("frontier pairwise-loop markers are not unique")
+          a=grouped_block.index(loop_start)
+          b=grouped_block.index(loop_end,a)+len(loop_end)
+          new_loop=textwrap.indent(textwrap.dedent("""
+              frontier = []
+              _h7_frontier_group_diag["grouped_frontier_calls"] += 1
+              for representatives in contexts.values():
+                  candidates = tuple(representatives.values())
+                  meta_by_token = {}
+                  by_direct = {}
+                  for state in candidates:
+                      meta = _H7_meta(state)
+                      meta_by_token[state[5]] = meta
+                      by_direct.setdefault(meta["direct"], []).append(state)
+
+                  _h7_frontier_group_diag["candidate_states"] += len(candidates)
+                  _h7_frontier_group_diag["ungrouped_pair_upper_bound"] += len(candidates) * max(0, len(candidates) - 1)
+                  grouped_pairs = sum(len(group) * max(0, len(group) - 1) for group in by_direct.values())
+                  _h7_frontier_group_diag["grouped_pair_upper_bound"] += grouped_pairs
+                  _h7_frontier_group_diag["potential_pair_checks_removed"] += len(candidates) * max(0, len(candidates) - 1) - grouped_pairs
+                  _h7_frontier_group_diag["direct_vocab_groups"] += len(by_direct)
+
+                  for direct_group in by_direct.values():
+                      for state in direct_group:
+                          state_meta = meta_by_token[state[5]]
+                          dominated = False
+                          for other in direct_group:
+                              if other is state:
+                                  continue
+                              _h7_frontier_group_diag["grouped_pair_checks_actual"] += 1
+                              other_meta = meta_by_token[other[5]]
+                              # Exact non-maximizing branch of dominates(other, state):
+                              # same direct set is guaranteed by the group key.
+                              if (
+                                  other_meta["direct"] == state_meta["direct"]
+                                  and state_meta["lineage"].issubset(other_meta["lineage"])
+                                  and other_meta["ast_depth"] <= state_meta["ast_depth"]
+                                  and other_meta["depth"] <= state_meta["depth"]
+                                  and other_meta["nodes"] <= state_meta["nodes"]
+                              ):
+                                  dominated = True
+                                  break
+                          if not dominated:
+                              frontier.append(state)
+              return tuple(sorted(frontier, key=rank))""").strip(), "        ")
+          grouped_block=grouped_block[:a]+new_loop+grouped_block[b:]
+
+          # Install both implementation arms beside the unmodified original function.
+          # The dispatcher retains the original path for the opt-in cardinality objective.
+          additions = (
+              '    _h7_frontier_group_diag = {"grouped_frontier_calls": 0, "candidate_states": 0, '
+              '"direct_vocab_groups": 0, "ungrouped_pair_upper_bound": 0, "grouped_pair_upper_bound": 0, '
+              '"potential_pair_checks_removed": 0, "grouped_pair_checks_actual": 0}\n'
+              '    _h7_frontier_cache128 = {}\n'
+              '    _h7_frontier_cache128_diag = {"hits": 0, "misses": 0, "evictions": 0}\n\n'
+          )
+          original_named=original_block.replace(start_marker,
+              "    def _h7_lineage_frontier_original(states: Sequence[tuple]) -> tuple[tuple, ...]:",1)
+          wrapper=textwrap.dedent("""
+              def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:
+                  if not states:
+                      return ()
+                  cache_enabled = __import__("os").environ.get("ACSIE_DISABLE_LF_CACHE") != "1"
+                  cache_key = tuple(sorted(
+                      (int(state[5]), tuple(sorted(structural_lineage_by_key.get(str(state[4]), set()))))
+                      for state in states
+                  )) if cache_enabled else None
+                  cached = _h7_frontier_cache128.get(cache_key) if cache_enabled else None
+                  if cached is not None:
+                      _h7_frontier_cache128_diag["hits"] += 1
+                      return cached
+                  if cache_enabled:
+                      _h7_frontier_cache128_diag["misses"] += 1
+
+                  grouped_enabled = __import__("os").environ.get("ACSIE_DISABLE_DIRECT_GROUPING") != "1"
+                  if grouped_enabled and selection_objective != "maximize_direct_vocabulary":
+                      result = _h7_lineage_frontier_grouped(states)
+                  else:
+                      result = _h7_lineage_frontier_original(states)
+
+                  if cache_enabled:
+                      if len(_h7_frontier_cache128) >= 128:
+                          del _h7_frontier_cache128[next(iter(_h7_frontier_cache128))]
+                          _h7_frontier_cache128_diag["evictions"] += 1
+                      _h7_frontier_cache128[cache_key] = result
+                  return result
+
+          """).strip("\n")
+          # The generated blocks are already at nested-function indentation (4 spaces).
+          wrapper=textwrap.indent(wrapper, "    ")
+          replacement=additions+original_named+"\n"+grouped_block+"\n"+wrapper+"\n\n"
+          source=source[:start]+replacement+source[end:]
+
+          ret="    return BehavioralSearchResult("
+          pos=source.rfind(ret)
+          if pos<0: raise SystemExit("successful find_exact_expression return marker missing")
+          exports=(
+              '    find_exact_expression._H7_LAST_GROUP_DIAG = dict(_h7_frontier_group_diag)\n'
+              '    find_exact_expression._H7_LAST_CACHE128_DIAG = dict(_h7_frontier_cache128_diag)\n'
+          )
+          source=source[:pos]+exports+source[pos:]
+          path.write_text(source)
+          print("ORIGINAL_SOURCE_SHA256="+original_sha)
+          print("GROUP_PLUS_CACHE128_DIAGNOSTIC_SHA256="+hashlib.sha256(source.encode()).hexdigest())
+          PY
+          python -m py_compile acsie/cognitive_core/behavioral_search.py
+          sha256sum acsie/cognitive_core/behavioral_search.py | tee evidence/gen6-group-cache128/diagnostic-source-sha256.txt
+
+      - name: Create exact-signature probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > evidence/gen6-group-cache128/signature_probe.py <<'PY'
+          import json,os,sys
+          from cognitive_core.behavioral_search import find_exact_expression
+          from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
+          from cognitive_core.recursive_cognitive_compiler import ArchiveRecord,CognitivePrimitive,Trace
+          mode=sys.argv[1]
+          if mode=="none":
+              os.environ["ACSIE_DISABLE_DIRECT_GROUPING"]="1"; os.environ["ACSIE_DISABLE_LF_CACHE"]="1"
+          elif mode=="group":
+              os.environ.pop("ACSIE_DISABLE_DIRECT_GROUPING",None); os.environ["ACSIE_DISABLE_LF_CACHE"]="1"
+          elif mode=="cache":
+              os.environ["ACSIE_DISABLE_DIRECT_GROUPING"]="1"; os.environ.pop("ACSIE_DISABLE_LF_CACHE",None)
+          elif mode=="both":
+              os.environ.pop("ACSIE_DISABLE_DIRECT_GROUPING",None); os.environ.pop("ACSIE_DISABLE_LF_CACHE",None)
+          elif mode!="baseline":
+              raise SystemExit("unknown mode: "+mode)
+
+          def build(op):
+              c=OpenEndedRecursiveCognitiveCompiler(max_depth=4,seed=771221)
+              px=CognitivePrimitive("prim:x",{"op":"get","key":"x"},("x","y"),"delta",0,(),("opaque",),0.0,0.0,0.0,1,{})
+              py=CognitivePrimitive("prim:y",{"op":"get","key":"y"},("x","y"),"delta",0,(),("opaque",),0.0,0.0,0.0,1,{})
+              c.primitives={px.primitive_id:px,py.primitive_id:py}
+              c.archive={px.primitive_id:ArchiveRecord(px),py.primitive_id:ArchiveRecord(py)}
+              rows=[]
+              for i in range(8):
+                  x,y=float(i),float(i+1)
+                  target=max(x,y) if op=="max" else min(x,y) if op=="min" else x+y
+                  rows.append(Trace({"x":x,"y":y},target,"opaque",{},f"{op}-{i}"))
+              objective="maximize_direct_vocabulary" if op=="sum" else "minimize_expanded_cost"
+              return c,tuple(rows),2 if op=="sum" else 4,objective
+
+          def sig(r):
+              return None if r is None else {"expression":r.expression,"used_primitives":r.used_primitives,"alternatives":r.alternatives,"stats":dict(r.stats)}
+          result={}
+          for op in ("max","min","sum"):
+              c,traces,depth,obj=build(op)
+              r=find_exact_expression(c,traces,max_depth=depth,require_macro=True,selection_objective=obj,max_alternatives=8)
+              result[op]=sig(r)
+          print(json.dumps(result,sort_keys=True,separators=(",",":")))
+          PY
+
+      - name: Require four-arm exact signature parity against pristine source
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/baseline-acsie" PYTHONHASHSEED=0 python evidence/gen6-group-cache128/signature_probe.py baseline > evidence/gen6-group-cache128/pristine-signatures.json
+          for mode in none group cache both; do
+            PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 python evidence/gen6-group-cache128/signature_probe.py "$mode" > "evidence/gen6-group-cache128/$mode-signatures.json"
+          done
+          python - <<'PY'
+          import json,pathlib
+          root=pathlib.Path("evidence/gen6-group-cache128")
+          baseline=json.loads((root/"pristine-signatures.json").read_text())
+          modes=["none","group","cache","both"]
+          parsed={m:json.loads((root/f"{m}-signatures.json").read_text()) for m in modes}
+          report={"schema":"ACSIE.gen6_grouped_frontier_cache128_factorial_parity.v1",
+                  "fixtures":list(baseline),"arms":modes,
+                  "all_arms_match_pristine":all(parsed[m]==baseline for m in modes),
+                  "each_arm_matches_pristine":{m:parsed[m]==baseline for m in modes},
+                  "interpretation_guard":"Exact signature parity on three fixtures only; no claim of Gen6 completion."}
+          (root/"factorial-signature-parity.json").write_text(json.dumps(report,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(report,indent=2,sort_keys=True))
+          if not report["all_arms_match_pristine"]: raise SystemExit("one or more factorial arms differ from pristine signatures")
+          PY
+
+      - name: Run six-file cognitive regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pytest
+          PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 python -m pytest -q \
+            acsie/tests/test_open_ended_growth.py \
+            acsie/tests/test_core014_recursive_cognitive_compiler.py \
+            acsie/tests/test_core015_semantic_operator_discovery.py \
+            acsie/tests/test_core016_open_semantic_substrate.py \
+            acsie/tests/test_adaptive_capability_repair.py \
+            acsie/tests/test_asi_claim_gate.py 2>&1 | tee evidence/gen6-group-cache128/six-file-regression.txt
+
+      - name: Prepare external live-counter sampler
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > diagnostics/sitecustomize.py <<'PY'
+          import faulthandler,json,os,signal,sys,time
+          faulthandler.enable(file=sys.stderr,all_threads=True); t0=time.monotonic(); log=os.environ.get("ACSIE_GROUP_CACHE128_LOG")
+          def snap(sig,frame):
+              faulthandler.dump_traceback(file=sys.stderr,all_threads=True)
+              f=frame
+              while f is not None and f.f_code.co_name!="find_exact_expression": f=f.f_back
+              row={"elapsed_s":round(time.monotonic()-t0,3),"signal":int(sig)}
+              if f is not None:
+                  loc=f.f_locals; stats=loc.get("stats",{})
+                  row["search"]={k:stats.get(k) for k in ("rows","max_depth","primitive_count","generated_expressions","unique_states","dominance_pruned_states","dominance_frontier_max","status")}
+                  row["grouping"]=dict(loc.get("_h7_frontier_group_diag",{}))
+                  row["frontier_cache"]=dict(loc.get("_h7_frontier_cache128_diag",{}))
+                  row["frontier_cache_entries"]=len(loc.get("_h7_frontier_cache128",{}))
+              if log:
+                  with open(log,"a",buffering=1) as h:h.write(json.dumps(row,sort_keys=True)+"\n")
+          signal.signal(signal.SIGUSR1,snap)
+          PY
+          python -m py_compile diagnostics/sitecustomize.py
+          sha256sum diagnostics/sitecustomize.py | tee evidence/gen6-group-cache128/sampler-sha256.txt
+
+      - name: Run one actual Gen6 seed with grouping plus cache-128
+        timeout-minutes: 4
+        shell: bash
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          root="$GITHUB_WORKSPACE/evidence/gen6-group-cache128"; seed=2026100301
+          ACSIE_GROUP_CACHE128_LOG="$root/gen6-live-counters.jsonl" \
+          PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/lab:$GITHUB_WORKSPACE/acsie" \
+            python -c 'import json,sys,acsie_open_ended_self_extending_proving as g; print(json.dumps(g.run_seed(int(sys.argv[1]),7),sort_keys=True),flush=True)' \
+            "$seed" > "$root/gen6.stdout.jsonl" 2> "$root/gen6.stderr" &
+          child=$!; start=$(date +%s); next=$((start+10)); timed_out=0; rss_guard=0; max_rss=0
+          while kill -0 "$child" 2>/dev/null; do
+            if ps -p "$child" -o stat= 2>/dev/null | grep -q 'Z'; then break; fi
+            now=$(date +%s); elapsed=$((now-start)); rss=$(ps -p "$child" -o rss= 2>/dev/null | tr -d ' ' || echo 0)
+            case "$rss" in ''|*[!0-9]*) rss=0;; esac
+            if [ "$rss" -gt "$max_rss" ]; then max_rss=$rss; fi
+            if [ "$rss" -ge 2097152 ]; then rss_guard=1; kill -TERM "$child" 2>/dev/null || true; sleep 3; kill -KILL "$child" 2>/dev/null || true; break; fi
+            if [ "$now" -ge "$next" ]; then kill -USR1 "$child" 2>/dev/null || true; next=$((now+10)); fi
+            if [ "$elapsed" -ge 120 ]; then timed_out=1; kill -TERM "$child" 2>/dev/null || true; sleep 3; kill -KILL "$child" 2>/dev/null || true; break; fi
+            sleep 1
+          done
+          set +e; wait "$child"; rc=$?; set -e
+          if [ "$rss_guard" -eq 1 ]; then status=RESOURCE_GUARD_RSS_LIMIT; elif [ "$timed_out" -eq 1 ]; then status=INCONCLUSIVE_CHILD_WALL_TIMEOUT; elif [ "$rc" -eq 0 ] && [ -s "$root/gen6.stdout.jsonl" ]; then status=CHILD_RETURNED_RECORD; else status=CHILD_ERROR_OR_EMPTY_OUTPUT; fi
+          printf '{"seed":%s,"child_returncode":%s,"timeout_hit":%s,"rss_guard_hit":%s,"max_rss_kib":%s,"status":"%s"}\n' "$seed" "$rc" "$timed_out" "$rss_guard" "$max_rss" "$status" | tee "$root/gen6-child-status.json"
+          python - "$root" <<'PY'
+          import collections,json,pathlib,re,sys
+          root=pathlib.Path(sys.argv[1]); stderr=(root/"gen6.stderr").read_text(errors="replace")
+          stacks=[]
+          for block in re.split(r"(?=Current thread 0x)",stderr):
+              frames=re.findall(r'File "([^"]+)", line (\d+) in ([^\n]+)',block)
+              if frames: stacks.append([{"file":f,"line":int(n),"function":fn} for f,n,fn in frames])
+          samples=[]; q=root/"gen6-live-counters.jsonl"
+          if q.exists():
+              for line in q.read_text(errors="replace").splitlines():
+                  try:samples.append(json.loads(line))
+                  except Exception:pass
+          child=json.loads((root/"gen6-child-status.json").read_text())
+          summary={"schema":"ACSIE.gen6_grouped_frontier_cache128_diagnostic.v1",
+                   "source_commit":"d83cb60286f195eec02b4d7aa45a60539316d115","seed":2026100301,
+                   "child_status":child,"live_counter_samples":samples,"stack_snapshot_count":len(stacks),
+                   "stack_function_frequency":dict(collections.Counter(fr["function"] for st in stacks for fr in st)),
+                   "stdout_bytes":(root/"gen6.stdout.jsonl").stat().st_size,"stderr_bytes":len(stderr.encode()),
+                   "stderr_tail":stderr[-8000:],
+                   "interpretation_guard":"All four fixture arms matched pristine and six-file tests passed before the real diagnostic. Timeout remains inconclusive."}
+          (root/"gen6-summary.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n")
+          print(json.dumps({k:v for k,v in summary.items() if k!="stderr_tail"},indent=2,sort_keys=True))
+          PY
+
+      - name: Upload factorial and Gen6 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen6-grouped-frontier-cache128-${{ github.run_id }}
+          path: evidence/gen6-group-cache128/
+          if-no-files-found: error
