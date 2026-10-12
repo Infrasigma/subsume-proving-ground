@@ -66,6 +66,30 @@ def apply_frontier_cache(source: str) -> str:
     at=source.rfind("        return BehavioralSearchResult(")
     if at<0: raise SystemExit("frontier cache stats return marker missing")
     source=source[:at]+'        find_exact_expression._H7_LAST_LF_CACHE_STATS = dict(_h7_lf_cache_stats)\n'+source[at:]
+    # Shared low-overhead identity markers make per-search telemetry distinguishable
+    # across nested searches in the same Gen6 generation. Applied identically to both arms.
+    doc = '''    """Exact discovery-set synthesis with behavior/provenance quotienting.
+
+    OOD is intentionally not part of this function. The caller must verify OOD
+    only after a discovery-qualified candidate has been selected.
+    """
+'''
+    identity = '''    """Exact discovery-set synthesis with behavior/provenance quotienting.
+
+    OOD is intentionally not part of this function. The caller must verify OOD
+    only after a discovery-qualified candidate has been selected.
+    """
+    _H7_BUCKET_SEARCH_CALL_ID = int(getattr(find_exact_expression, "_H7_BUCKET_SEARCH_NEXT_CALL_ID", 0)) + 1
+    find_exact_expression._H7_BUCKET_SEARCH_NEXT_CALL_ID = _H7_BUCKET_SEARCH_CALL_ID
+    _H7_BUCKET_SEARCH_STARTED = __import__("time").perf_counter()
+    _H7_BUCKET_SEARCH_FRAME_ID = id(__import__("sys")._getframe())
+'''
+    source = replace_exact(
+        source,
+        doc,
+        identity,
+        label="insert shared per-search telemetry identity",
+    )
     return source
 
 
