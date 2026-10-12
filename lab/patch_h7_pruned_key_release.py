@@ -83,7 +83,7 @@ def apply_frontier_cache(source: str) -> str:
     at = source.rfind("        return BehavioralSearchResult(")
     if at < 0:
         raise SystemExit("frontier-cache stats return marker missing")
-    source = source[:at] + '        find_exact_expression._H7_LAST_LF_CACHE_STATS = dict(_h7_lf_cache_stats)\\n' + source[at:]
+    source = source[:at] + '        find_exact_expression._H7_LAST_LF_CACHE_STATS = dict(_h7_lf_cache_stats)\n' + source[at:]
     marker = "        find_exact_expression._H7_LAST_LF_CACHE_STATS = dict(_h7_lf_cache_stats)\n"
     source = replace_exact(
         source, marker,
