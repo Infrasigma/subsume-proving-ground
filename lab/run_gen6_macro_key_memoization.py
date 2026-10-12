@@ -319,7 +319,7 @@ def main() -> int:
         worktree.rmdir()
         subprocess.run(["git", "-C", str(acsie_root), "worktree", "add", "--detach", str(worktree), SOURCE_COMMIT], check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
-    helper = repo_root / "lab" / "patch_gen6_macro_key_memoization.py"
+    helper = repo_root / "lab" / "patch_gen6_structural_key_interning.py"
     macro_helper = repo_root / "lab" / "patch_gen6_macro_key_memoization.py"
     patch_reports = {}
     # Both arms share the exact same interned structural-ID transformation.
