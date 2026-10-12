@@ -44,7 +44,11 @@ jobs:
             echo "RSS_GUARD_MIB=2048 per child"
             echo "QUALIFICATION=single-seed diagnostic only; not frozen 5x12 qualification"
           } | tee evidence/gen6-exact-expression-id/initial-contract.txt
-          python -m py_compile             lab/patch_gen6_structural_key_interning.py             lab/patch_gen6_macro_key_memoization.py             lab/patch_gen6_exact_expression_id.py             lab/run_gen6_exact_expression_id.py
+          python -m py_compile \
+            lab/patch_gen6_structural_key_interning.py \
+            lab/patch_gen6_macro_key_memoization.py \
+            lab/patch_gen6_exact_expression_id.py \
+            lab/run_gen6_exact_expression_id.py
 
       - name: Checkout pinned private ACSIE source
         uses: actions/checkout@v4
@@ -62,7 +66,17 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check pytest
-          python lab/run_gen6_exact_expression_id.py             --repo-root "$GITHUB_WORKSPACE"             --acsie-root "$GITHUB_WORKSPACE/acsie"             --evidence "$GITHUB_WORKSPACE/evidence/gen6-exact-expression-id"             --seed 2026100301             --generations 7             --timeout-seconds 120             --rss-guard-bytes 2147483648             --executor-sha "$GITHUB_SHA"             --workflow-run-id "$GITHUB_RUN_ID"             2>&1 | tee evidence/gen6-exact-expression-id/runner-stdout.txt
+          python lab/run_gen6_exact_expression_id.py \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --acsie-root "$GITHUB_WORKSPACE/acsie" \
+            --evidence "$GITHUB_WORKSPACE/evidence/gen6-exact-expression-id" \
+            --seed 2026100301 \
+            --generations 7 \
+            --timeout-seconds 120 \
+            --rss-guard-bytes 2147483648 \
+            --executor-sha "$GITHUB_SHA" \
+            --workflow-run-id "$GITHUB_RUN_ID" \
+            2>&1 | tee evidence/gen6-exact-expression-id/runner-stdout.txt
 
       - name: Upload source-pinned diagnostic evidence
         if: always()
