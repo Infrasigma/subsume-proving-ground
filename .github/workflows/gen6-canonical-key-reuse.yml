@@ -178,7 +178,9 @@ jobs:
           s=s[:at]+'        find_exact_expression._H7_LAST_EXPR_KEY_CACHE_STATS = dict(_h7_expr_key_cache_stats)\n        find_exact_expression._H7_LAST_LF_CACHE_STATS = dict(_h7_lf_cache_stats)\n'+s[at:]
           p.write_text(s);print("FRONTIER_CACHE=128_FIFO")
           PY
-          python -m py_compile acsie/cognitive_core/behavioral_search.py      - name: Run six-file regression suite
+          python -m py_compile acsie/cognitive_core/behavioral_search.py
+
+      - name: Run six-file regression suite
         shell: bash
         run: |
           set -euo pipefail
