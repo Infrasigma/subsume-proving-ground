@@ -1,0 +1,270 @@
+name: Gen6 frontier-cache capacity 512 diagnostic
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-r3-exact-source-20261011
+    paths:
+      - ".github/workflows/gen6-frontier-capacity-512.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  frontier-capacity-512:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Pin next-notch hypothesis and fixed resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/gen6-frontier-512 diagnostics
+          {
+            echo "EXECUTOR_COMMIT=$GITHUB_SHA"
+            echo "WORKFLOW_RUN_ID=$GITHUB_RUN_ID"
+            echo "ACSIE_SOURCE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
+            echo "HYPOTHESIS=capacity 512 reduces repeated Pareto-frontier recomputation versus capacity 128"
+            echo "ONLY_VARIABLE=frontier cache capacity; structural expansion cache is absent/disabled"
+            echo "CACHE_KEY=state-token IDs plus mutable structural-lineage union"
+            echo "CACHE_CAPACITY=512 FIFO entries per find_exact_expression call"
+            echo "SEED=2026100301; generation indices 0..6"
+            echo "CHILD_WALL_LIMIT_SECONDS=120; RSS_GUARD_MIB=2048"
+          } | tee evidence/gen6-frontier-512/provenance.txt
+
+      - name: Checkout exact ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify source and apply counters plus 512-entry frontier cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C acsie rev-parse HEAD)" = "d83cb60286f195eec02b4d7aa45a60539316d115"
+          test "$(git -C acsie rev-parse 'HEAD^{tree}')" = "12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+          python - "$GITHUB_WORKSPACE/acsie/cognitive_core/behavioral_search.py" <<'PY'
+          import hashlib,pathlib,sys
+          path=pathlib.Path(sys.argv[1]); source=path.read_text()
+          base=hashlib.sha256(source.encode()).hexdigest()
+          expected="2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
+          if base!=expected: raise SystemExit(f"source hash mismatch: {base}")
+
+          def once(s,old,new,label):
+              n=s.count(old)
+              if n!=1: raise SystemExit(f"{label}: expected one marker, got {n}")
+              return s.replace(old,new,1)
+
+          diag_marker="    def free_keys(expr: Mapping[str, Any]) -> tuple[str, ...]:"
+          diag_decl=(
+              '    _h7_capacity_diag = {"dominates_calls": 0, "register_binary_calls": 0, '
+              '"lineage_frontier_calls": 0, "lineage_frontier_input_states": 0, '
+              '"pairwise_upper_bound": 0, "cache_hits": 0, "cache_misses": 0, "cache_evictions": 0}\n\n'
+          )
+          source=once(source,diag_marker,diag_decl+diag_marker,"diagnostic counters")
+
+          dstart="    def dominates(left: tuple, right: tuple) -> bool:\n"
+          if source.count(dstart)!=1: raise SystemExit("dominates function marker mismatch")
+          source=once(source,dstart,dstart+'        _h7_capacity_diag["dominates_calls"] += 1\n',"dominates counter")
+
+          rb_start="    def register_binary("
+          rb_end="\n    def "
+          a=source.index(rb_start); b=source.find(rb_end,a+len(rb_start))
+          if b<0: raise SystemExit("register_binary end missing")
+          block=source[a:b]
+          nl="        nonlocal next_state_token, target_candidate_found\n"
+          block=once(block,nl,nl+'        _h7_capacity_diag["register_binary_calls"] += 1\n',"binary registration counter")
+          source=source[:a]+block+source[b:]
+
+          lf_start="    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:"
+          lf_end="    def build_extreme_lookup("
+          if source.count(lf_start)!=1 or "_h7_frontier_cache_512" in source: raise SystemExit("frontier marker mismatch")
+          a=source.index(lf_start)
+          decl=(
+              '    _h7_frontier_cache_512 = {}\n'
+              '    _h7_frontier_cache_stats_512 = {"hits": 0, "misses": 0, "evictions": 0}\n\n'
+          )
+          source=source[:a]+decl+source[a:]
+          a=source.index(lf_start); b=source.index(lf_end,a+len(lf_start)); block=source[a:b]
+          empty="        if not states:\n            return ()"
+          lookup=(
+              '        _h7_capacity_diag["lineage_frontier_calls"] += 1\n'
+              '        _h7_capacity_diag["lineage_frontier_input_states"] += len(states)\n'
+              '        _h7_capacity_diag["pairwise_upper_bound"] += len(states) * max(0, len(states) - 1)\n'
+              '        if not states:\n            return ()\n'
+              '        cache_enabled = __import__("os").environ.get("ACSIE_DISABLE_LF_CACHE") != "1"\n'
+              '        cache_key = tuple(sorted((int(state[5]), tuple(sorted(structural_lineage_by_key.get(str(state[4]), set())))) for state in states)) if cache_enabled else None\n'
+              '        cached = _h7_frontier_cache_512.get(cache_key) if cache_enabled else None\n'
+              '        if cached is not None:\n'
+              '            _h7_capacity_diag["cache_hits"] += 1\n'
+              '            _h7_frontier_cache_stats_512["hits"] += 1\n'
+              '            return cached\n'
+              '        if cache_enabled:\n'
+              '            _h7_capacity_diag["cache_misses"] += 1\n'
+              '            _h7_frontier_cache_stats_512["misses"] += 1'
+          )
+          block=once(block,empty,lookup,"frontier cache lookup")
+          ret="        return tuple(sorted(frontier, key=rank))"
+          store=(
+              '        result = tuple(sorted(frontier, key=rank))\n'
+              '        if cache_enabled:\n'
+              '            if len(_h7_frontier_cache_512) >= 512:\n'
+              '                del _h7_frontier_cache_512[next(iter(_h7_frontier_cache_512))]\n'
+              '                _h7_capacity_diag["cache_evictions"] += 1\n'
+              '                _h7_frontier_cache_stats_512["evictions"] += 1\n'
+              '            _h7_frontier_cache_512[cache_key] = result\n'
+              '        return result'
+          )
+          block=once(block,ret,store,"frontier cache store")
+          source=source[:a]+block+source[b:]
+
+          finalret="        return BehavioralSearchResult("
+          pos=source.rfind(finalret)
+          if pos<0: raise SystemExit("final result return missing")
+          exports=(
+              '        find_exact_expression._H7_LAST_CAPACITY_DIAG = dict(_h7_capacity_diag)\n'
+              '        find_exact_expression._H7_LAST_FRONTIER_CACHE_STATS = dict(_h7_frontier_cache_stats_512)\n'
+          )
+          source=source[:pos]+exports+source[pos:]
+          path.write_text(source)
+          print("ORIGINAL_SOURCE_SHA256="+base)
+          print("DIAGNOSTIC_SOURCE_SHA256="+hashlib.sha256(source.encode()).hexdigest())
+          PY
+          python -m py_compile acsie/cognitive_core/behavioral_search.py
+          sha256sum acsie/cognitive_core/behavioral_search.py | tee evidence/gen6-frontier-512/diagnostic-source-sha256.txt
+
+      - name: Run six-file regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pytest
+          PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 python -m pytest -q \
+            acsie/tests/test_open_ended_growth.py \
+            acsie/tests/test_core014_recursive_cognitive_compiler.py \
+            acsie/tests/test_core015_semantic_operator_discovery.py \
+            acsie/tests/test_core016_open_semantic_substrate.py \
+            acsie/tests/test_adaptive_capability_repair.py \
+            acsie/tests/test_asi_claim_gate.py 2>&1 | tee evidence/gen6-frontier-512/six-file-regression.txt
+
+      - name: Require exact cached and uncached signature parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 python - "$GITHUB_WORKSPACE/evidence/gen6-frontier-512" <<'PY'
+          import json,os,pathlib,sys
+          from cognitive_core.behavioral_search import find_exact_expression
+          from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
+          from cognitive_core.recursive_cognitive_compiler import ArchiveRecord,CognitivePrimitive,Trace
+          out=pathlib.Path(sys.argv[1])
+          def build(op):
+              c=OpenEndedRecursiveCognitiveCompiler(max_depth=4,seed=771221)
+              px=CognitivePrimitive("prim:x",{"op":"get","key":"x"},("x","y"),"delta",0,(),("opaque",),0.0,0.0,0.0,1,{})
+              py=CognitivePrimitive("prim:y",{"op":"get","key":"y"},("x","y"),"delta",0,(),("opaque",),0.0,0.0,0.0,1,{})
+              c.primitives={px.primitive_id:px,py.primitive_id:py}; c.archive={px.primitive_id:ArchiveRecord(px),py.primitive_id:ArchiveRecord(py)}
+              rows=[]
+              for i in range(8):
+                  x,y=float(i),float(i+1); target=max(x,y) if op=="max" else min(x,y) if op=="min" else x+y
+                  rows.append(Trace({"x":x,"y":y},target,"opaque",{},f"{op}-{i}"))
+              return c,tuple(rows),2 if op=="sum" else 4,"maximize_direct_vocabulary" if op=="sum" else "minimize_expanded_cost"
+          def sig(r):
+              return None if r is None else {"expression":r.expression,"used_primitives":r.used_primitives,"alternatives":r.alternatives,"stats":dict(r.stats)}
+          rows=[]; total_hits=0
+          for case in ("max","min","sum"):
+              a,ra,da,oa=build(case); os.environ["ACSIE_DISABLE_LF_CACHE"]="1"
+              r0=find_exact_expression(a,ra,max_depth=da,require_macro=True,selection_objective=oa,max_alternatives=8)
+              s0=sig(r0)
+              b,rb,db,ob=build(case); os.environ.pop("ACSIE_DISABLE_LF_CACHE",None)
+              r1=find_exact_expression(b,rb,max_depth=db,require_macro=True,selection_objective=ob,max_alternatives=8)
+              st=dict(getattr(find_exact_expression,"_H7_LAST_CAPACITY_DIAG",{}))
+              same=s0==sig(r1); total_hits+=st.get("cache_hits",0)
+              row={"fixture":case,"exact_signature_equal":same,"cached_diagnostic_counters":st,
+                   "frontier_cache_stats":dict(getattr(find_exact_expression,"_H7_LAST_FRONTIER_CACHE_STATS",{}))}
+              rows.append(row); print(json.dumps(row,sort_keys=True))
+              if not same: raise SystemExit(f"cache parity failed on {case}")
+          summary={"schema":"ACSIE.gen6_frontier_capacity_512_parity.v1","capacity":512,"total_hits":total_hits,
+                   "all_exact_signatures_equal":all(r["exact_signature_equal"] for r in rows),"fixtures":rows,
+                   "interpretation_guard":"Fixture-level exact parity only; actual Gen6 is a separate bounded diagnostic."}
+          (out/"cache-parity.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n")
+          if total_hits<1: raise SystemExit("parity fixtures did not exercise cache hits")
+          PY
+
+      - name: Prepare live counter sampler
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > diagnostics/sitecustomize.py <<'PY'
+          import faulthandler,json,os,signal,sys,time
+          faulthandler.enable(file=sys.stderr,all_threads=True); t0=time.monotonic(); log=os.environ.get("ACSIE_FRONTIER_512_LOG")
+          def snap(sig,frame):
+              faulthandler.dump_traceback(file=sys.stderr,all_threads=True)
+              f=frame
+              while f is not None and f.f_code.co_name!="find_exact_expression": f=f.f_back
+              row={"elapsed_s":round(time.monotonic()-t0,3),"signal":int(sig)}
+              if f is not None:
+                  loc=f.f_locals; row["search"]={k:loc.get("stats",{}).get(k) for k in ("rows","max_depth","primitive_count","generated_expressions","unique_states","dominance_pruned_states","dominance_frontier_max","status")}
+                  row["diagnostics"]=dict(loc.get("_h7_capacity_diag",{})); row["cache_stats"]=dict(loc.get("_h7_frontier_cache_stats_512",{})); row["cache_entries"]=len(loc.get("_h7_frontier_cache_512",{}))
+              if log:
+                  with open(log,"a",buffering=1) as h:h.write(json.dumps(row,sort_keys=True)+"\n")
+          signal.signal(signal.SIGUSR1,snap)
+          PY
+          python -m py_compile diagnostics/sitecustomize.py
+
+      - name: Run one actual self-extending Gen6 seed with 512-entry frontier cache
+        timeout-minutes: 4
+        shell: bash
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          root="$GITHUB_WORKSPACE/evidence/gen6-frontier-512"; seed=2026100301
+          ACSIE_FRONTIER_512_LOG="$root/gen6-cache-snapshots.jsonl" \
+          PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/lab:$GITHUB_WORKSPACE/acsie" \
+            python -c 'import json,sys,acsie_open_ended_self_extending_proving as g; print(json.dumps(g.run_seed(int(sys.argv[1]),7),sort_keys=True),flush=True)' \
+            "$seed" > "$root/gen6.stdout.jsonl" 2> "$root/gen6.stderr" &
+          child=$!; start=$(date +%s); next=$((start+10)); timed_out=0; rss_guard=0; max_rss=0
+          while kill -0 "$child" 2>/dev/null; do
+            if ps -p "$child" -o stat= 2>/dev/null | grep -q 'Z'; then break; fi
+            now=$(date +%s); elapsed=$((now-start)); rss=$(ps -p "$child" -o rss= 2>/dev/null | tr -d ' ' || echo 0)
+            case "$rss" in ''|*[!0-9]*) rss=0;; esac
+            if [ "$rss" -gt "$max_rss" ]; then max_rss=$rss; fi
+            if [ "$rss" -ge 2097152 ]; then rss_guard=1; kill -TERM "$child" 2>/dev/null || true; sleep 3; kill -KILL "$child" 2>/dev/null || true; break; fi
+            if [ "$now" -ge "$next" ]; then kill -USR1 "$child" 2>/dev/null || true; next=$((now+10)); fi
+            if [ "$elapsed" -ge 120 ]; then timed_out=1; kill -TERM "$child" 2>/dev/null || true; sleep 3; kill -KILL "$child" 2>/dev/null || true; break; fi
+            sleep 1
+          done
+          set +e; wait "$child"; rc=$?; set -e
+          if [ "$rss_guard" -eq 1 ]; then status=RESOURCE_GUARD_RSS_LIMIT; elif [ "$timed_out" -eq 1 ]; then status=INCONCLUSIVE_CHILD_WALL_TIMEOUT; elif [ "$rc" -eq 0 ] && [ -s "$root/gen6.stdout.jsonl" ]; then status=CHILD_RETURNED_RECORD; else status=CHILD_ERROR_OR_EMPTY_OUTPUT; fi
+          printf '{"seed":%s,"child_returncode":%s,"timeout_hit":%s,"rss_guard_hit":%s,"max_rss_kib":%s,"status":"%s"}\n' "$seed" "$rc" "$timed_out" "$rss_guard" "$max_rss" "$status" | tee "$root/gen6-child-status.json"
+          python - "$root" <<'PY'
+          import json,pathlib,sys
+          root=pathlib.Path(sys.argv[1]); q=root/"gen6-cache-snapshots.jsonl"; samples=[]
+          if q.exists():
+              for line in q.read_text(errors="replace").splitlines():
+                  try:samples.append(json.loads(line))
+                  except Exception:pass
+          child=json.loads((root/"gen6-child-status.json").read_text())
+          summary={"schema":"ACSIE.gen6_frontier_capacity_512_diagnostic.v1","source_commit":"d83cb60286f195eec02b4d7aa45a60539316d115",
+                   "seed":2026100301,"child_status":child,"live_cache_samples":samples,
+                   "stdout_bytes":(root/"gen6.stdout.jsonl").stat().st_size,"stderr_bytes":(root/"gen6.stderr").stat().st_size,
+                   "stderr_tail":(root/"gen6.stderr").read_text(errors="replace")[-8000:],
+                   "guard":"Only frontier capacity changed; structural expansion cache absent. Timeout is inconclusive."}
+          (root/"gen6-summary.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n")
+          print(json.dumps({k:v for k,v in summary.items() if k!="stderr_tail"},indent=2,sort_keys=True))
+          PY
+
+      - name: Upload frontier-capacity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen6-frontier-capacity-512-${{ github.run_id }}
+          path: evidence/gen6-frontier-512/
+          if-no-files-found: error
