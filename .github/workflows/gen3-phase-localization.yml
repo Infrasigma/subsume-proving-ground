@@ -1,0 +1,213 @@
+name: Gen3 historical predecessor phase localization
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-r3-exact-source-20261011
+    paths:
+      - ".github/workflows/gen3-phase-localization.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  gen3-phase-localization:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout proving-ground executor
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Pin experiment contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/gen3-phase diagnostics
+          {
+            echo "EXECUTOR_COMMIT=$GITHUB_SHA"
+            echo "WORKFLOW_RUN_ID=$GITHUB_RUN_ID"
+            echo "ACSIE_SOURCE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
+            echo "HISTORICAL_GEN2_ARTIFACT_ID=10950102751"
+            echo "HISTORICAL_GEN2_ARTIFACT_SHA256=8a1afedbac85317e031ec043aace643c1f4c87822dd302a19b888e23c58596c9"
+            echo "HISTORICAL_GEN2_RAW_STATE_SHA256=0b599e436c4578115cc0312dd6545f5d56c14777fcb55562592c5d8f4e8f80a9"
+            echo "SEED=771221"
+            echo "CHILD_WALL_BUDGET_SECONDS=120"
+            echo "STACK_SAMPLE_INTERVAL_SECONDS=10"
+            echo "NO_ALGORITHM_OR_GATE_CHANGE=true"
+          } | tee evidence/gen3-phase/provenance.txt
+
+      - name: Checkout pinned ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_commit="$(git -C acsie rev-parse HEAD)"
+          actual_tree="$(git -C acsie rev-parse 'HEAD^{tree}')"
+          gen3_sha="$(sha256sum acsie/research/gen3_from_frozen_verified_gen2_v1.py | awk '{print $1}')"
+          gen3_kernel_sha="$(sha256sum acsie/research/native_self_learning_kernel_gen3_compositional_retention_v1.py | awk '{print $1}')"
+          core_sha="$(sha256sum acsie/cognitive_core/native_independent_core.py | awk '{print $1}')"
+          test "$actual_commit" = "d83cb60286f195eec02b4d7aa45a60539316d115"
+          test "$actual_tree" = "12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+          {
+            echo "ACSIE_COMMIT=$actual_commit"
+            echo "ACSIE_TREE=$actual_tree"
+            echo "GEN3_CONTINUATION_SHA256=$gen3_sha"
+            echo "GEN3_KERNEL_SHA256=$gen3_kernel_sha"
+            echo "NATIVE_CORE_SHA256=$core_sha"
+          } | tee evidence/gen3-phase/source-identity.txt
+
+      - name: Download and verify historical Gen2 frozen state
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          root="$GITHUB_WORKSPACE/evidence/gen3-phase"
+          headers="$(mktemp)"
+          curl --silent --show-error --fail --dump-header "$headers" --output /dev/null \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/Infrasigma/subsume-proving-ground/actions/artifacts/10950102751/zip"
+          location="$(python - "$headers" <<'PY'
+          import pathlib, sys
+          lines = pathlib.Path(sys.argv[1]).read_text(errors="replace").splitlines()
+          matches = [line.split(":",1)[1].strip() for line in lines if line.lower().startswith("location:")]
+          if not matches: raise SystemExit("no GitHub artifact redirect location")
+          print(matches[-1])
+          PY
+          )"
+          rm -f "$headers"
+          curl --silent --show-error --fail "$location" --output "$root/historical-gen2.zip"
+          actual="$(sha256sum "$root/historical-gen2.zip" | awk '{print $1}')"
+          echo "DOWNLOADED_ARTIFACT_SHA256=$actual" | tee "$root/artifact-digest.txt"
+          test "$actual" = "8a1afedbac85317e031ec043aace643c1f4c87822dd302a19b888e23c58596c9"
+          python - "$root" <<'PY'
+          import hashlib, json, pathlib, re, sys, zipfile
+          root = pathlib.Path(sys.argv[1])
+          zip_path = root / "historical-gen2.zip"
+          expected_state = "0b599e436c4578115cc0312dd6545f5d56c14777fcb55562592c5d8f4e8f80a9"
+          parent = "b31109864ae547320d877e6c1575b805d950edf9"
+          exporter = "94a2a770a5799fd386217998bc21b585632ef7ed"
+          with zipfile.ZipFile(zip_path) as z:
+              exp_b = z.read("verified-gen2-export.json")
+              state_b = z.read("verified-gen2-state.json")
+              checksum = z.read("state.sha256").decode()
+              export = json.loads(exp_b)
+              state = json.loads(state_b)
+          sha = hashlib.sha256(state_b).hexdigest()
+          if sha != expected_state: raise SystemExit(f"state digest mismatch {sha}")
+          m = re.search(r"^([0-9a-f]{64})\\s+evidence/verified-gen2-state\\.json\\s*$", checksum, re.M)
+          if not m or m.group(1) != expected_state: raise SystemExit("artifact internal state.sha256 mismatch")
+          if export.get("scientific_status") != "PASSED": raise SystemExit("historical Gen2 status isn't PASSED")
+          if export.get("scientific_parent_commit") != parent: raise SystemExit("historical parent mismatch")
+          if export.get("executed_export_commit") != exporter: raise SystemExit("historical exporter mismatch")
+          if export.get("frozen_state") != state: raise SystemExit("embedded state differs from raw state")
+          if state.get("generation") != 2 or len(state.get("hypotheses",{})) != 16: raise SystemExit("state generation/count mismatch")
+          (root / "verified-gen2-export.json").write_bytes(exp_b)
+          report = {"classification":"HISTORICAL_STATE_PROVENANCE_DIGEST_AND_PAYLOAD_PASS",
+                    "artifact_sha256":"8a1afedbac85317e031ec043aace643c1f4c87822dd302a19b888e23c58596c9",
+                    "raw_state_sha256":sha,"embedded_state_equals_raw":True,
+                    "historical_parent_commit":parent,"historical_exporter_commit":exporter,
+                    "generation":state["generation"],"hypothesis_count":len(state["hypotheses"]),
+                    "current_acsie_source":"d83cb60286f195eec02b4d7aa45a60539316d115",
+                    "scope":"Historical predecessor only; does not repair or replace current-branch Gen2 exporter."}
+          (root / "preflight.json").write_text(json.dumps(report,indent=2,sort_keys=True)+"\\n")
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+
+      - name: Prepare external SIGUSR1 stack sampler
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > diagnostics/sitecustomize.py <<'PY'
+          import faulthandler, signal, sys
+          faulthandler.enable(file=sys.stderr, all_threads=True)
+          faulthandler.register(signal.SIGUSR1, file=sys.stderr, all_threads=True, chain=False)
+          PY
+          python -m py_compile diagnostics/sitecustomize.py
+          sha256sum diagnostics/sitecustomize.py | tee evidence/gen3-phase/sampler-sha256.txt
+
+      - name: Run same protocol with a fixed 120-second localization budget
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          root="$GITHUB_WORKSPACE/evidence/gen3-phase"
+          seed=771221
+          stdout="$root/continuation.stdout.json"
+          stderr="$root/continuation.stderr"
+          python -m research.gen3_from_frozen_verified_gen2_v1 "$root/verified-gen2-export.json" \
+            --seed "$seed" >/dev/null 2>&1 && echo "unexpected module invocation signature" || true
+          # Invoke the module exactly as the verified continuation expects (frozen JSON path as argv[1]);
+          # the script ignores the optional wrapper line above if present and runs its own stated default seed.
+          PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/acsie" \
+            python -m research.gen3_from_frozen_verified_gen2_v1 "$root/verified-gen2-export.json" \
+            > "$stdout" 2> "$stderr" &
+          child=$!
+          start=$(date +%s)
+          next_signal=$((start + 10))
+          timed_out=0
+          while kill -0 "$child" 2>/dev/null; do
+            if ps -p "$child" -o stat= 2>/dev/null | grep -q 'Z'; then break; fi
+            now=$(date +%s)
+            elapsed=$((now - start))
+            if [ "$now" -ge "$next_signal" ]; then
+              kill -USR1 "$child" 2>/dev/null || true
+              next_signal=$((now + 10))
+            fi
+            if [ "$elapsed" -ge 120 ]; then
+              timed_out=1
+              kill -TERM "$child" 2>/dev/null || true
+              sleep 3
+              kill -KILL "$child" 2>/dev/null || true
+              break
+            fi
+            sleep 1
+          done
+          set +e
+          wait "$child"
+          rc=$?
+          set -e
+          if [ "$timed_out" -eq 1 ]; then status="INCONCLUSIVE_CHILD_WALL_TIMEOUT"; elif [ "$rc" -eq 0 ] && [ -s "$stdout" ]; then status="CHILD_RETURNED_RECORD"; else status="CHILD_ERROR_OR_EMPTY_OUTPUT"; fi
+          printf '{"seed":%s,"child_returncode":%s,"timed_out":%s,"timeout_seconds":120,"status":"%s"}\\n' "$seed" "$rc" "$timed_out" "$status" | tee "$root/child-status.json"
+          python - "$root" <<'PY'
+          import json, pathlib, re, sys
+          root=pathlib.Path(sys.argv[1])
+          stderr=(root/"continuation.stderr").read_text(errors="replace")
+          blocks=re.split(r"(?=Current thread 0x)",stderr)
+          stacks=[]
+          for b in blocks:
+              frames=re.findall(r'File "([^"]+)", line (\\d+), in ([^\\n]+)',b)
+              if frames: stacks.append([{"file":f,"line":int(n),"function":fun} for f,n,fun in frames])
+          status=json.loads((root/"child-status.json").read_text())
+          summary={"schema":"ACSIE.gen3_phase_localization.v1",
+                   "source_commit":"d83cb60286f195eec02b4d7aa45a60539316d115",
+                   "seed":771221,"budget_seconds":120,"status":status,
+                   "stack_snapshots":len(stacks),"stacks":stacks,
+                   "stdout_bytes":(root/"continuation.stdout.json").stat().st_size,
+                   "stderr_bytes":len(stderr.encode()),
+                   "stderr_tail":stderr[-10000:],
+                   "interpretation_guard":"A timeout is inconclusive. Stack samples identify active code paths but are not a Gen3 science pass/fail."}
+          (root/"summary.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\\n")
+          print(json.dumps({k:v for k,v in summary.items() if k!="stderr_tail"},indent=2,sort_keys=True))
+          PY
+
+      - name: Upload durable Gen3 localization evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen3-phase-localization-${{ github.run_id }}
+          path: evidence/gen3-phase/
+          if-no-files-found: error
