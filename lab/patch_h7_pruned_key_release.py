@@ -80,6 +80,10 @@ def apply_frontier_cache(source: str) -> str:
     _H7_KEY_SEARCH_FRAME_ID = id(__import__("sys")._getframe())
 '''
     source = replace_exact(source, doc, identity, label="insert shared search identity")
+    at = source.rfind("        return BehavioralSearchResult(")
+    if at < 0:
+        raise SystemExit("frontier-cache stats return marker missing")
+    source = source[:at] + '        find_exact_expression._H7_LAST_LF_CACHE_STATS = dict(_h7_lf_cache_stats)\\n' + source[at:]
     marker = "        find_exact_expression._H7_LAST_LF_CACHE_STATS = dict(_h7_lf_cache_stats)\n"
     source = replace_exact(
         source, marker,
