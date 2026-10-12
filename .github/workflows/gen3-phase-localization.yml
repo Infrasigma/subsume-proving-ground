@@ -148,11 +148,7 @@ jobs:
           seed=771221
           stdout="$root/continuation.stdout.json"
           stderr="$root/continuation.stderr"
-          python -m research.gen3_from_frozen_verified_gen2_v1 "$root/verified-gen2-export.json" \
-            --seed "$seed" >/dev/null 2>&1 && echo "unexpected module invocation signature" || true
-          # Invoke the module exactly as the verified continuation expects (frozen JSON path as argv[1]);
-          # the script ignores the optional wrapper line above if present and runs its own stated default seed.
-          PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/acsie" \
+          # Invoke exactly one fixed-seed continuation under the external 120-second wall guard.\n          PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/acsie" \
             python -m research.gen3_from_frozen_verified_gen2_v1 "$root/verified-gen2-export.json" \
             > "$stdout" 2> "$stderr" &
           child=$!
