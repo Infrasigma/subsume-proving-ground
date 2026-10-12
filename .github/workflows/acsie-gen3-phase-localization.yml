@@ -1,0 +1,128 @@
+name: Gen3 single-cell historical-predecessor phase localization
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  gen3-phase-localization:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout proving-ground harness
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Freeze one-cell diagnostic contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="evidence/gen3-phase-localization"
+          mkdir -p "$root/artifact" "$root/materialized"
+          {
+            echo "EXECUTOR_REPOSITORY=Infrasigma/subsume-proving-ground"
+            echo "EXECUTOR_BRANCH=${GITHUB_REF_NAME}"
+            echo "EXECUTOR_COMMIT=${GITHUB_SHA}"
+            echo "WORKFLOW_RUN_ID=${GITHUB_RUN_ID}"
+            echo "ARM=HISTORICAL_VERIFIED_GEN2_PREDECESSOR_CURRENT_GEN3_PHASE_LOCALIZATION"
+            echo "HISTORICAL_ARTIFACT_ID=10950102751"
+            echo "HISTORICAL_ARTIFACT_SHA256=8a1afedbac85317e031ec043aace643c1f4c87822dd302a19b888e23c58596c9"
+            echo "HISTORICAL_STATE_SHA256=0b599e436c4578115cc0312dd6545f5d56c14777fcb55562592c5d8f4e8f80a9"
+            echo "HISTORICAL_PARENT=b31109864ae547320d877e6c1575b805d950edf9"
+            echo "HISTORICAL_EXPORTER=94a2a770a5799fd386217998bc21b585632ef7ed"
+            echo "FAILED_CURRENT_GEN2_EXPORTER=0e9c2ad9a146775c162a278b0330c596d29055b9"
+            echo "ACSIE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
+            echo "ACSIE_TREE=12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+            echo "SEED=771221"
+            echo "GEN3_INNER_STREAMS=6"
+            echo "CANDIDATE_CAP=128"
+            echo "CHILD_WALL_LIMIT_SECONDS=180"
+            echo "RSS_GUARD_BYTES=2147483648"
+            echo "SAMPLING_INTERVAL_SECONDS=10"
+            echo "GATES=original Gen3 fresh-gain, historical regression, stored retention, deterministic replay; unchanged"
+            echo "DISPOSITION=diagnostic only; any child timeout is INCONCLUSIVE"
+          } | tee "$root/contract.txt"
+          python -m py_compile lab/run_gen3_phase_localization.py lab/verify_historical_gen2_predecessor.py
+
+      - name: Download historical verified-predecessor evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="evidence/gen3-phase-localization/artifact/protected-gen3-historical-pass-10950102751.zip"
+          curl --fail --location --retry 3 --retry-all-errors \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/Infrasigma/subsume-proving-ground/actions/artifacts/10950102751/zip" \
+            -o "$archive"
+          actual="$(sha256sum "$archive" | awk '{print $1}')"
+          echo "HISTORICAL_ARCHIVE_SHA256=$actual" | tee -a evidence/gen3-phase-localization/contract.txt
+          test "$actual" = "8a1afedbac85317e031ec043aace643c1f4c87822dd302a19b888e23c58596c9"
+
+      - name: Checkout exact ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify pinned ACSIE source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C acsie rev-parse HEAD)" = "d83cb60286f195eec02b4d7aa45a60539316d115"
+          test "$(git -C acsie rev-parse 'HEAD^{tree}')" = "12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+          {
+            echo "ACSIE_COMMIT=$(git -C acsie rev-parse HEAD)"
+            echo "ACSIE_TREE=$(git -C acsie rev-parse 'HEAD^{tree}')"
+            sha256sum acsie/cognitive_core/native_independent_core.py
+            sha256sum acsie/research/gen3_from_frozen_verified_gen2_v1.py
+            sha256sum acsie/research/native_self_learning_kernel_gen3_compositional_retention_v1.py
+          } | tee evidence/gen3-phase-localization/current-source-identity.txt
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify historical archive, exact state, and current schema compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          python lab/verify_historical_gen2_predecessor.py \
+            --archive "$GITHUB_WORKSPACE/evidence/gen3-phase-localization/artifact/protected-gen3-historical-pass-10950102751.zip" \
+            --materialized-dir "$GITHUB_WORKSPACE/evidence/gen3-phase-localization/materialized" \
+            --acsie-root "$GITHUB_WORKSPACE/acsie" \
+            --evidence "$GITHUB_WORKSPACE/evidence/gen3-phase-localization" \
+            2>&1 | tee evidence/gen3-phase-localization/predecessor-verification-stdout.txt
+
+      - name: Run one fixed Gen3 selection phase-localization cell
+        shell: bash
+        timeout-minutes: 4
+        run: |
+          set -euo pipefail
+          python lab/run_gen3_phase_localization.py \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --acsie-root "$GITHUB_WORKSPACE/acsie" \
+            --evidence "$GITHUB_WORKSPACE/evidence/gen3-phase-localization" \
+            --seed 771221 \
+            --timeout-seconds 180 \
+            --rss-guard-bytes 2147483648 \
+            2>&1 | tee evidence/gen3-phase-localization/runner-stdout.txt
+
+      - name: Upload Gen3 phase-localization evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen3-phase-localization-${{ github.run_id }}
+          path: evidence/gen3-phase-localization/
+          if-no-files-found: error
+          compression-level: 6
