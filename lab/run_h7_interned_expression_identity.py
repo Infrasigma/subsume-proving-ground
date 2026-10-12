@@ -69,7 +69,7 @@ def normalise_evidence(evidence: Path) -> dict:
                 status["arm"] = new
                 status["raw_telemetry_prefix"] = old
                 status_path.write_text(
-                    json.dumps(status, indent=2, sort_keys=True) + "\\n",
+                    json.dumps(status, indent=2, sort_keys=True) + "\n",
                     encoding="utf-8",
                 )
 
@@ -83,7 +83,7 @@ def normalise_evidence(evidence: Path) -> dict:
         "record; either child timing out remains INCONCLUSIVE."
     )
     summary_path.write_text(
-        json.dumps(summary, indent=2, sort_keys=True, allow_nan=True) + "\\n",
+        json.dumps(summary, indent=2, sort_keys=True, allow_nan=True) + "\n",
         encoding="utf-8",
     )
     return summary
