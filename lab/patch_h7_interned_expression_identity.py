@@ -128,6 +128,10 @@ class _H7ExpressionInterner:
         return len(self._ids)
 '''
 
+# Define the exact same class in this module so the independent identity self-test
+# exercises the implementation that will be injected into the pinned ACSIE source.
+exec(INTERCACHE_CLASS, globals())
+
 def replace_exact(source: str, old: str, new: str, *, count: int = 1, label: str) -> str:
     observed = source.count(old)
     if observed != count:
