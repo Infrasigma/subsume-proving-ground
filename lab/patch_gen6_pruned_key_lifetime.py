@@ -76,7 +76,7 @@ def main() -> int:
             **_H7_KEY_LIFETIME_STATS,
         }
         with open(log_path, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(row, sort_keys=True, separators=(",", ":")) + "\\n")
+            handle.write(json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n")
             handle.flush()
 
     def _H7_release_pruned_token(
