@@ -161,7 +161,7 @@ jobs:
           
           PY
           python -m py_compile acsie/cognitive_core/behavioral_search.py
-          sha256sum acsie/cognitive_core/behavioral_search.py | tee evidence/gen6-canonical-key-reuse/diagnostic-source-sha256.txt
+          sha256sum acsie/cognitive_core/behavioral_search.py | tee evidence/gen6-live-state-key-reuse/diagnostic-source-sha256.txt
           python - "$GITHUB_WORKSPACE/acsie/cognitive_core/behavioral_search.py" <<'PY'
           import pathlib,sys
           p=pathlib.Path(sys.argv[1]);s=p.read_text();start="    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:";end="    def build_extreme_lookup("
