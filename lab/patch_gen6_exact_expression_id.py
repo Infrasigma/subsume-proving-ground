@@ -170,68 +170,56 @@ def main() -> int:
     )
 
     seen_type_block = '''    class _H7_ExactSeenExpressionKeys:
-        """Set-like membership bridge for exact integer IDs and JSON-key test hooks."""
+        """Integer-only exact-key membership with lazy JSON-key test compatibility."""
         def __init__(self):
             self._ids = set()
-            self._order_keys = set()
-            self._id_by_order_key = {}
-            self._order_key_by_id = {}
+
+        def _id_for_json_key(self, value):
+            if not isinstance(value, str):
+                return None
+            try:
+                return _H7_exact_expr_id(json.loads(value))
+            except Exception:
+                return None
 
         def __contains__(self, value):
             if isinstance(value, int):
                 return value in self._ids
-            return value in self._order_keys
+            ident = self._id_for_json_key(value)
+            return ident in self._ids if ident is not None else False
 
         def __len__(self):
             return len(self._ids)
 
         def __iter__(self):
-            return iter(self._order_keys)
+            # This local search structure is queried for membership only.
+            # Expose the compact identities instead of re-retaining JSON strings.
+            return iter(self._ids)
 
         def add(self, value):
             if isinstance(value, int):
                 self._ids.add(value)
-            elif isinstance(value, str):
-                self._order_keys.add(value)
-                ident = self._id_by_order_key.get(value)
+            else:
+                ident = self._id_for_json_key(value)
                 if ident is not None:
                     self._ids.add(ident)
 
         def add_with_order_key(self, ident, order_key):
-            old_key = self._order_key_by_id.get(ident)
-            if old_key is not None and old_key != order_key:
-                self._id_by_order_key.pop(old_key, None)
-                self._order_keys.discard(old_key)
-            self._ids.add(ident)
-            self._order_keys.add(order_key)
-            self._order_key_by_id[ident] = order_key
-            self._id_by_order_key[order_key] = ident
+            # order_key is already owned by expression_key_by_state_token for
+            # active/registered states. Do not duplicate it in this membership set.
+            self._ids.add(int(ident))
 
         def discard(self, value):
             if isinstance(value, int):
                 self._ids.discard(value)
-                old_key = self._order_key_by_id.pop(value, None)
-                if old_key is not None:
-                    self._id_by_order_key.pop(old_key, None)
-                    self._order_keys.discard(old_key)
                 return
-            if isinstance(value, str):
-                self._order_keys.discard(value)
-                ident = self._id_by_order_key.pop(value, None)
-                if ident is None:
-                    try:
-                        ident = _H7_exact_expr_id(json.loads(value))
-                    except Exception:
-                        ident = None
-                if ident is not None:
-                    self._ids.discard(ident)
-                    old_key = self._order_key_by_id.pop(ident, None)
-                    if old_key is not None:
-                        self._id_by_order_key.pop(old_key, None)
-                        self._order_keys.discard(old_key)
+            ident = self._id_for_json_key(value)
+            if ident is not None:
+                self._ids.discard(ident)
 
     seen_expression_keys = _H7_ExactSeenExpressionKeys()
 '''
+
     source = replace_exact(
         source,
         "    seen_expression_keys: set[str] = set()\n",
@@ -354,6 +342,7 @@ def main() -> int:
     print(f"EXACT_EXPRESSION_ID_DIAGNOSTIC_SHA256={patched_sha}")
     print("EXACT_KEY=interned collision-free tuple signatures; macro IDs remain exact, not expanded")
     print("ID_OBJECT_CACHE=LRU capacity 8192")
+    print("SEEN_KEY_STORAGE=integer IDs only; JSON-key test hooks decode lazily; no duplicated JSON strings in seen set")
     print("JSON_ORDERING=preserved for canonicalization and final rank tie-break")
     print("PARENT_KEY_BUILD=integer child-ID composition before allocation; JSON order key deferred until candidate survives dominance preflight")
     print("OTHER_FACTORS_UNCHANGED=expanded structural IDs; cycle-safe macro-ID cache; frontier cache 128; expansion cache OFF; grouping OFF")
