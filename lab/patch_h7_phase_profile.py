@@ -491,9 +491,20 @@ def apply_profile_counters(source: str) -> str:
     )
     source = replace_exact(
         source,
-        '''        return tuple(sorted(frontier, key=rank))''',
+        '''        result = tuple(sorted(frontier, key=rank))
+        if cache_enabled:
+            if len(_h7_lf_cache) >= 128:
+                del _h7_lf_cache[next(iter(_h7_lf_cache))]
+                _h7_lf_cache_stats["evictions"] += 1
+            _h7_lf_cache[cache_key] = result
+        return result''',
         '''        result = tuple(sorted(frontier, key=rank))
         _H7_PHASE_PROFILE["frontier_output_state_total"] += len(result)
+        if cache_enabled:
+            if len(_h7_lf_cache) >= 128:
+                del _h7_lf_cache[next(iter(_h7_lf_cache))]
+                _h7_lf_cache_stats["evictions"] += 1
+            _h7_lf_cache[cache_key] = result
         return result''',
         label="count final frontier reduction outputs",
     )
