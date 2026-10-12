@@ -81,7 +81,7 @@ def apply_frontier_cache(source: str) -> str:
     """
     _H7_BUCKET_SEARCH_CALL_ID = int(getattr(find_exact_expression, "_H7_BUCKET_SEARCH_NEXT_CALL_ID", 0)) + 1
     find_exact_expression._H7_BUCKET_SEARCH_NEXT_CALL_ID = _H7_BUCKET_SEARCH_CALL_ID
-    _H7_BUCKET_SEARCH_STARTED = __import__("time").perf_counter()
+    _H7_BUCKET_SEARCH_CALL_STARTED = __import__("time").perf_counter()
     _H7_BUCKET_SEARCH_FRAME_ID = id(__import__("sys")._getframe())
 '''
     source = replace_exact(
