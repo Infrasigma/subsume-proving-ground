@@ -226,6 +226,10 @@ REGISTER_BINARY_START_NEW = '''        left_key = expression_key_by_state_token.
         if canonical_swap:
             left_key, right_key = right_key, left_key
             left_expression_id, right_expression_id = right_expression_id, left_expression_id
+        expression_ident = (
+            '{"left":' + left_key + ',"op":' + json.dumps(op)
+            + ',"right":' + right_key + '}'
+        )
         expression_id = expression_interner.intern_binary(
             op, left_expression_id, right_expression_id
         )
