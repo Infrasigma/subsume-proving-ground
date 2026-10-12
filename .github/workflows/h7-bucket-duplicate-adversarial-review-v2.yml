@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p evidence/h7-bucket-duplicate-review
+          mkdir -p evidence/h7-bucket-duplicate-review-v2
           {
             echo "EXECUTOR_REPOSITORY=Infrasigma/subsume-proving-ground"
             echo "EXECUTOR_BRANCH=${GITHUB_REF_NAME}"
