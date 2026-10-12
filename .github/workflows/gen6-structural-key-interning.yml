@@ -8,6 +8,7 @@ on:
       - ".github/workflows/gen6-structural-key-interning.yml"
       - "lab/patch_gen6_structural_key_interning.py"
       - "lab/run_gen6_structural_key_interning.py"
+      - "lab/run_gen6_structural_key_interning.py"
 
 permissions:
   contents: read
