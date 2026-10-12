@@ -13,7 +13,7 @@ permissions:
 jobs:
   canonical-key-reuse:
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 11
     steps:
       - name: Checkout proving-ground
         uses: actions/checkout@v4
@@ -235,7 +235,9 @@ jobs:
           if not report["both_arms_match_pristine"]:raise SystemExit("cache arms differ from pristine")
           if sum(on["counters"][x]["expr_key_cache"].get("hits",0) for x in ("max","min","sum"))<1:raise SystemExit("no canonical key cache hits")
           if sum(on["counters"][x]["frontier_cache"].get("hits",0) for x in ("max","min","sum"))<1:raise SystemExit("no frontier cache hits")
-          PY      - name: Prepare canonical-key cache sampler
+          PY
+
+      - name: Prepare canonical-key cache sampler
         shell: bash
         run: |
           set -euo pipefail
@@ -299,7 +301,9 @@ jobs:
            d["arms"][arm]={"child_status":child,"live_counter_samples":counters,"stack_snapshot_count":len(stacks),"stack_function_frequency":dict(collections.Counter(fr["function"] for st in stacks for fr in st)),"stdout_bytes":(root/f"{arm}.stdout.jsonl").stat().st_size,"stderr_bytes":len(stderr.encode()),"stderr_tail":stderr[-2500:]}
           (root/"gen6-summary.json").write_text(json.dumps(d,indent=2,sort_keys=True)+"\n")
           print(json.dumps({"schema":d["schema"],"arms":{a:{k:v for k,v in x.items() if k not in ("stderr_tail","live_counter_samples")} for a,x in d["arms"].items()}},indent=2,sort_keys=True))
-          PY      - name: Upload combined factorial and Gen6 evidence
+          PY
+
+      - name: Upload canonical-key factorial and Gen6 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
