@@ -1,0 +1,307 @@
+name: Gen3 historical verified-Gen2 predecessor arm
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-r3-exact-source-20261011
+    paths:
+      - ".github/workflows/gen3-historical-predecessor-arm.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  gen3-historical-predecessor-arm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout proving-ground harness
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Initialize evidence manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/gen3-historical-arm
+          {
+            echo "EXECUTOR_REPOSITORY=Infrasigma/subsume-proving-ground"
+            echo "EXECUTOR_BRANCH=${GITHUB_REF_NAME}"
+            echo "EXECUTOR_COMMIT=${GITHUB_SHA}"
+            echo "WORKFLOW_RUN_ID=${GITHUB_RUN_ID}"
+            echo "HISTORICAL_GEN2_ARTIFACT_ID=10950102751"
+            echo "EXPECTED_ARTIFACT_SHA256=8a1afedbac85317e031ec043aace643c1f4c87822dd302a19b888e23c58596c9"
+            echo "EXPECTED_RAW_STATE_SHA256=0b599e436c4578115cc0312dd6545f5d56c14777fcb55562592c5d8f4e8f80a9"
+            echo "CURRENT_ACSIE_SOURCE=d83cb60286f195eec02b4d7aa45a60539316d115"
+            echo "CURRENT_ACSIE_TREE=12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+            echo "HISTORICAL_PREDECESSOR_COMMIT=b31109864ae547320d877e6c1575b805d950edf9"
+            echo "HISTORICAL_EXPORTER_COMMIT=94a2a770a5799fd386217998bc21b585632ef7ed"
+            echo "ARM=historical_verified_gen2_state_compatibility_and_gen3_continuation"
+            echo "SEED=771221"
+            echo "GEN3_INNER_STREAMS=6 (unscaled compatibility/control arm)"
+            echo "CHILD_WALL_TIMEOUT_SECONDS=600"
+            echo "WORKFLOW_SHA256=$(sha256sum .github/workflows/gen3-historical-predecessor-arm.yml | awk '{print $1}')"
+          } | tee evidence/gen3-historical-arm/provenance.txt
+          python --version
+
+      - name: Checkout exact ACSIE research source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact ACSIE source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_commit="$(git -C acsie rev-parse HEAD)"
+          actual_tree="$(git -C acsie rev-parse 'HEAD^{tree}')"
+          core_sha="$(sha256sum acsie/cognitive_core/native_independent_core.py | awk '{print $1}')"
+          gen3_sha="$(sha256sum acsie/research/gen3_from_frozen_verified_gen2_v1.py | awk '{print $1}')"
+          gen3_kernel_sha="$(sha256sum acsie/research/native_self_learning_kernel_gen3_compositional_retention_v1.py | awk '{print $1}')"
+          test "$actual_commit" = "d83cb60286f195eec02b4d7aa45a60539316d115"
+          test "$actual_tree" = "12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+          {
+            echo "ACSIE_COMMIT=$actual_commit"
+            echo "ACSIE_TREE=$actual_tree"
+            echo "NATIVE_INDEPENDENT_CORE_SHA256=$core_sha"
+            echo "GEN3_FROZEN_CONTINUATION_SHA256=$gen3_sha"
+            echo "GEN3_COMPOSITIONAL_KERNEL_SHA256=$gen3_kernel_sha"
+            echo "SOURCE_IDENTITY=PASS"
+          } | tee evidence/gen3-historical-arm/acsie-source-identity.txt
+
+      - name: Download and authenticate the historical Gen2 artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          root="$GITHUB_WORKSPACE/evidence/gen3-historical-arm"
+          headers="$(mktemp)"
+          api="https://api.github.com/repos/Infrasigma/subsume-proving-ground/actions/artifacts/10950102751/zip"
+          curl --silent --show-error --fail --dump-header "$headers" --output /dev/null \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" "$api"
+          location="$(python - "$headers" <<'PY'
+          import pathlib, sys
+          lines = pathlib.Path(sys.argv[1]).read_text(errors="replace").splitlines()
+          matches = [line.split(":", 1)[1].strip() for line in lines
+                     if line.lower().startswith("location:")]
+          if not matches:
+              raise SystemExit("GitHub artifact API did not return a redirect location")
+          print(matches[-1])
+          PY
+          )"
+          rm -f "$headers"
+          curl --silent --show-error --fail "$location" --output "$root/historical-gen2-10950102751.zip"
+          unset location
+          actual_zip="$(sha256sum "$root/historical-gen2-10950102751.zip" | awk '{print $1}')"
+          echo "DOWNLOADED_ARTIFACT_SHA256=$actual_zip" | tee evidence/gen3-historical-arm/artifact-verification.txt
+          test "$actual_zip" = "8a1afedbac85317e031ec043aace643c1f4c87822dd302a19b888e23c58596c9"
+
+      - name: Verify frozen state, provenance, and current-core schema compatibility
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/acsie
+        run: |
+          set -euo pipefail
+          root="$GITHUB_WORKSPACE/evidence/gen3-historical-arm"
+          python - "$root" <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import re
+          import sys
+          import zipfile
+
+          from cognitive_core.native_independent_core import NativeCognitiveCore
+
+          root = pathlib.Path(sys.argv[1])
+          archive = root / "historical-gen2-10950102751.zip"
+          expected_state_sha = "0b599e436c4578115cc0312dd6545f5d56c14777fcb55562592c5d8f4e8f80a9"
+          expected_parent = "b31109864ae547320d877e6c1575b805d950edf9"
+          expected_exporter = "94a2a770a5799fd386217998bc21b585632ef7ed"
+
+          with zipfile.ZipFile(archive) as z:
+              names = set(z.namelist())
+              required = {
+                  "verified-gen2-export.json", "verified-gen2-state.json",
+                  "state.sha256", "execution-provenance.txt", "recovery-provenance.txt",
+                  "gen3-final.json",
+              }
+              missing = sorted(required - names)
+              if missing:
+                  raise SystemExit(f"historical artifact missing required entries: {missing}")
+              export_bytes = z.read("verified-gen2-export.json")
+              state_bytes = z.read("verified-gen2-state.json")
+              checksum_file = z.read("state.sha256").decode("utf-8")
+              execution_provenance = z.read("execution-provenance.txt").decode("utf-8")
+              recovery_provenance = z.read("recovery-provenance.txt").decode("utf-8")
+              previous_final = json.loads(z.read("gen3-final.json"))
+
+          state_sha = hashlib.sha256(state_bytes).hexdigest()
+          if state_sha != expected_state_sha:
+              raise SystemExit(f"historical raw-state digest mismatch: {state_sha}")
+          checksum_match = re.search(r"^([0-9a-f]{64})\s+evidence/verified-gen2-state\.json\s*$",
+                                     checksum_file, flags=re.M)
+          if not checksum_match or checksum_match.group(1) != expected_state_sha:
+              raise SystemExit("artifact-internal state.sha256 does not match pinned raw-state digest")
+
+          frozen = json.loads(export_bytes)
+          state = json.loads(state_bytes)
+          if frozen.get("schema") != "ACSIE.verified-gen2-state-export.v1":
+              raise SystemExit(f"unexpected export schema: {frozen.get('schema')!r}")
+          if frozen.get("scientific_status") != "PASSED":
+              raise SystemExit("historical Gen2 export is not PASSED")
+          if frozen.get("scientific_parent_commit") != expected_parent:
+              raise SystemExit("historical predecessor source commit mismatch")
+          if frozen.get("executed_export_commit") != expected_exporter:
+              raise SystemExit("historical exporter commit mismatch")
+          protocol = frozen.get("verified_gen2_protocol", {})
+          if protocol.get("status") != "PASSED" or protocol.get("deterministic_replay") is not True:
+              raise SystemExit("historical Gen2 protocol status/replay gate failed")
+          if protocol.get("holdout_gain", -1) < 0.05 or protocol.get("transfer_gain", -1) < 0.05:
+              raise SystemExit("historical Gen2 gains do not clear their recorded gate")
+          if protocol.get("stored_retention_ratio") != 1.0:
+              raise SystemExit("historical Gen2 stored-retention ratio mismatch")
+          if frozen.get("frozen_state") != state:
+              raise SystemExit("embedded frozen_state is not structurally equal to raw state JSON")
+          invariants = frozen.get("state_invariants", {})
+          if not all(invariants.get(k) is True for k in (
+              "state_roundtrip_hypothesis_count_equal",
+              "state_roundtrip_learning_kernel_equal",
+              "state_roundtrip_protected_count_equal",
+          )):
+              raise SystemExit("archived Gen2 state round-trip invariants are not all true")
+          if "scientific_core_source=eced0c7ed816b0baa15769fd841abde62fcccbd5" not in execution_provenance:
+              raise SystemExit("archived scientific Gen3 core provenance did not match the evidence record")
+          if f"VERIFIED_PARENT={expected_parent}" not in recovery_provenance:
+              raise SystemExit("archived recovery provenance parent mismatch")
+          if state.get("generation") != 2 or len(state.get("hypotheses", {})) != 16:
+              raise SystemExit("frozen state generation/hypothesis-count invariant failed")
+
+          # Current pinned ACSIE NativeCognitiveCore must deserialize and reserialize the
+          # archived state consistently before the scientific continuation is attempted.
+          loaded = NativeCognitiveCore.from_state(state)
+          roundtrip = loaded.export_state()
+          reloaded = NativeCognitiveCore.from_state(roundtrip)
+          roundtrip2 = reloaded.export_state()
+          if len(loaded.hypotheses) != 16 or len(reloaded.hypotheses) != 16:
+              raise SystemExit("current core did not preserve the archived 16-hypothesis state")
+          if roundtrip != roundtrip2:
+              raise SystemExit("current-core deserialize/serialize round-trip is not idempotent")
+          if loaded.learning_kernel != reloaded.learning_kernel:
+              raise SystemExit("current-core learning kernel changed during round-trip")
+
+          # Write a frozen export using the byte-verified archived structure, with no
+          # substituted/reconstructed state or source relabeling.
+          (root / "verified-gen2-export.json").write_bytes(export_bytes)
+          (root / "verified-gen2-state.json").write_bytes(state_bytes)
+          report = {
+              "classification": "HISTORICAL_PREDECESSOR_PROVENANCE_AND_SCHEMA_COMPATIBILITY_PASS",
+              "artifact_id": 10950102751,
+              "artifact_sha256": "8a1afedbac85317e031ec043aace643c1f4c87822dd302a19b888e23c58596c9",
+              "raw_state_sha256": state_sha,
+              "state_sha256_entry_matches": True,
+              "embedded_state_equals_raw_state": True,
+              "historical_gen2_status": frozen["scientific_status"],
+              "historical_parent_commit": expected_parent,
+              "historical_exporter_commit": expected_exporter,
+              "historical_gen2_holdout_gain": protocol["holdout_gain"],
+              "historical_gen2_transfer_gain": protocol["transfer_gain"],
+              "historical_state_generation": state["generation"],
+              "historical_state_hypothesis_count": len(state["hypotheses"]),
+              "current_core_roundtrip_idempotent": True,
+              "current_core_deserialized_hypothesis_count": len(loaded.hypotheses),
+              "current_acsie_commit": "d83cb60286f195eec02b4d7aa45a60539316d115",
+              "prior_protected_gen3_record_status": previous_final.get("scientific_status"),
+              "interpretation_guard": "This validates a separately labeled historical predecessor against the pinned current core. It does not rerun or repair the failed current-branch Gen2 exporter.",
+          }
+          (root / "historical-predecessor-preflight.json").write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
+          print(json.dumps(report, sort_keys=True, indent=2))
+          PY
+
+      - name: Run one fixed-seed Gen3 continuation from the verified historical predecessor
+        timeout-minutes: 12
+        shell: bash
+        run: |
+          set -uo pipefail
+          root="$GITHUB_WORKSPACE/evidence/gen3-historical-arm"
+          set +e
+          (
+            cd "$GITHUB_WORKSPACE/acsie"
+            PYTHONPATH="$GITHUB_WORKSPACE/acsie" timeout 600s \
+              python -m research.gen3_from_frozen_verified_gen2_v1 \
+              "$root/verified-gen2-export.json"
+          ) > "$root/gen3-continuation.stdout.json" 2> "$root/gen3-continuation.stderr"
+          rc=$?
+          set -e
+          echo "GEN3_CHILD_RETURN_CODE=$rc" | tee "$root/gen3-child-status.txt"
+          if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            echo "classification=INCONCLUSIVE_CHILD_WALL_TIMEOUT" >> "$root/gen3-child-status.txt"
+          elif [ "$rc" -ne 0 ]; then
+            echo "classification=CRASHED_CHILD_NONZERO_EXIT" >> "$root/gen3-child-status.txt"
+          else
+            python - "$root" <<'PY'
+          import json, pathlib, sys
+          root = pathlib.Path(sys.argv[1])
+          out = root / "gen3-continuation.stdout.json"
+          text = out.read_text().strip()
+          try:
+              result = json.loads(text)
+          except Exception as exc:
+              (root / "gen3-child-status.txt").open("a").write(
+                  f"classification=INVALID_CHILD_JSON:{type(exc).__name__}:{exc}\n")
+              raise SystemExit(0)
+          status = result.get("scientific_status")
+          integrity = result.get("integrity", {})
+          parent = result.get("provenance", {}).get("frozen_predecessor_commit")
+          executed = result.get("provenance", {}).get("executed_source_commit")
+          valid = (
+              result.get("schema") == "ACSIE.gen3-frozen-verified-gen2-continuation.v1"
+              and parent == "b31109864ae547320d877e6c1575b805d950edf9"
+              and executed == "d83cb60286f195eec02b4d7aa45a60539316d115"
+              and integrity.get("holdout_contamination") is False
+              and integrity.get("task_routing") is False
+              and integrity.get("external_model") is False
+              and integrity.get("network_dependency") is False
+          )
+          classification = (
+              "GEN3_HISTORICAL_PREDECESSOR_CONTINUATION_PASS" if valid and status == "PASSED"
+              else "GEN3_HISTORICAL_PREDECESSOR_CONTINUATION_SCIENTIFIC_FAILURE" if valid and status == "FAILED"
+              else "INVALID_OR_UNEXPECTED_GEN3_CONTINUATION_RECORD"
+          )
+          summary = {
+              "classification": classification,
+              "scientific_status": status,
+              "schema": result.get("schema"),
+              "candidate_count": result.get("candidate_count"),
+              "eligible_count": result.get("eligible_count"),
+              "gen3": result.get("gen3"),
+              "retention": result.get("retention"),
+              "integrity": integrity,
+              "provenance": result.get("provenance"),
+              "failure_boundary": result.get("failure_boundary"),
+              "source_scope": result.get("scientific_scope"),
+              "interpretation_guard": "One fixed-seed Gen3 continuation from an independently verified historical Gen2 state; not the current-branch Gen2 protocol and not a scale matrix or ASI qualification."
+          }
+          (root / "gen3-continuation-summary.json").write_text(json.dumps(summary, sort_keys=True, indent=2) + "\n")
+          print(json.dumps(summary, sort_keys=True, indent=2))
+          (root / "gen3-child-status.txt").open("a").write(f"classification={classification}\n")
+          PY
+          fi
+
+      - name: Upload historical predecessor-arm evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen3-historical-predecessor-arm-${{ github.run_id }}
+          path: evidence/gen3-historical-arm/
+          if-no-files-found: error
