@@ -168,7 +168,7 @@ jobs:
           )
           source = source[:regbin_start] + regbin + source[next_def:]
 
-          once(
+          source = once(
               source,
               '        return BehavioralSearchResult(\\n            best_target[0],',
               '        find_exact_expression._H7_LAST_DIAGNOSTIC_COUNTERS = dict(_h7_diag["counters"])\\n'
