@@ -1,0 +1,319 @@
+name: Gen6 expansion cache 8192 plus frontier cache 128
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-r3-exact-source-20261011
+    paths:
+      - ".github/workflows/gen6-expansion8192-frontier128.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  expansion8192-frontier128:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Predeclare factorial and resource contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/gen6-expansion8192-frontier128 diagnostics
+          {
+            echo "EXECUTOR_COMMIT=$GITHUB_SHA"
+            echo "WORKFLOW_RUN_ID=$GITHUB_RUN_ID"
+            echo "ACSIE_SOURCE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
+            echo "FACTORS=frontier memoization OFF/ON x structural expansion memoization OFF/ON"
+            echo "FRONTIER_CACHE_KEY=state-token ID plus current structural-lineage union"
+            echo "FRONTIER_CACHE_CAPACITY=128 FIFO entries per search call"
+            echo "EXPANSION_CACHE_KEY=(id(expr), active macro stack), strong source reference retained"
+            echo "EXPANSION_CACHE_CAPACITY=8192 FIFO entries per search call"
+            echo "REQUIRED_GATE=all four fixture signatures equal before real Gen6 launch"
+            echo "REAL_GEN6_SEED=2026100301; generations=7 (indices 0..6)"
+            echo "CHILD_WALL_LIMIT_SECONDS=120; RSS_GUARD_MIB=2048"
+          } | tee evidence/gen6-expansion8192-frontier128/provenance.txt
+
+      - name: Checkout pinned ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact source before diagnostic patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C acsie rev-parse HEAD)" = "d83cb60286f195eec02b4d7aa45a60539316d115"
+          test "$(git -C acsie rev-parse 'HEAD^{tree}')" = "12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+          src="$(sha256sum acsie/cognitive_core/behavioral_search.py | awk '{print $1}')"
+          test "$src" = "2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
+          echo "ACSIE_SOURCE_SHA256=$src" | tee evidence/gen6-expansion8192-frontier128/source-identity.txt
+
+      - name: Apply both caches in hosted workspace only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$GITHUB_WORKSPACE/acsie/cognitive_core/behavioral_search.py" <<'PY'
+          import hashlib, pathlib, sys
+          path = pathlib.Path(sys.argv[1])
+          source = path.read_text()
+          base_sha = hashlib.sha256(source.encode()).hexdigest()
+
+          # First cache: strong-reference object-identity memoization of pure expansion.
+          expand_start = "    def structural_expand(\n"
+          expand_end = "    def structural_key("
+          if source.count(expand_start) != 1 or "_h7_expand_cache" in source:
+              raise SystemExit("structural expansion source marker mismatch")
+          cache_declaration = (
+              '    _h7_expand_cache_enabled = __import__("os").environ.get("ACSIE_DISABLE_EXPAND_CACHE") != "1"\n'
+              '    _h7_expand_cache = {}\n'
+              '    _h7_expand_cache_stats = {"hits": 0, "misses": 0, "evictions": 0}\n\n'
+          )
+          at = source.index(expand_start)
+          source = source[:at] + cache_declaration + source[at:]
+          at = source.index(expand_start)
+          stop = source.index(expand_end, at + len(expand_start))
+          expand_block = source[at:stop]
+          expand_wrapper = (
+              "    def structural_expand(\n"
+              "        expr: Mapping[str, Any],\n"
+              "        active: tuple[str, ...] = (),\n"
+              "    ) -> Mapping[str, Any]:\n"
+              "        if not _h7_expand_cache_enabled:\n"
+              "            return _structural_expand_uncached(expr, active)\n"
+              "        cache_key = (id(expr), active)\n"
+              "        entry = _h7_expand_cache.get(cache_key)\n"
+              "        if entry is not None and entry[0] is expr:\n"
+              "            _h7_expand_cache_stats['hits'] += 1\n"
+              "            return entry[1]\n"
+              "        _h7_expand_cache_stats['misses'] += 1\n"
+              "        result = _structural_expand_uncached(expr, active)\n"
+              "        if len(_h7_expand_cache) >= 8192:\n"
+              "            del _h7_expand_cache[next(iter(_h7_expand_cache))]\n"
+              "            _h7_expand_cache_stats['evictions'] += 1\n"
+              "        _h7_expand_cache[cache_key] = (expr, result)\n"
+              "        return result\n\n"
+              "    def _structural_expand_uncached(\n"
+          )
+          expand_block = expand_block.replace(expand_start, expand_wrapper, 1)
+          source = source[:at] + expand_block + source[stop:]
+
+          # Second cache: Pareto frontier output is keyed by state IDs and the current
+          # lineage union used by the ranking function. Keep it independent and bounded.
+          frontier_start = "    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:"
+          frontier_end = "    def build_extreme_lookup("
+          if source.count(frontier_start) != 1 or "_h7_lf_cache" in source:
+              raise SystemExit("lineage frontier source marker mismatch")
+          at = source.index(frontier_start)
+          source = (
+              source[:at]
+              + '    _h7_lf_cache = {}\n'
+              + '    _h7_lf_cache_stats = {"hits": 0, "misses": 0, "evictions": 0}\n\n'
+              + source[at:]
+          )
+          at = source.index(frontier_start)
+          stop = source.index(frontier_end, at + len(frontier_start))
+          frontier = source[at:stop]
+          empty = "        if not states:\n            return ()"
+          if frontier.count(empty) != 1:
+              raise SystemExit(f"frontier empty marker count={frontier.count(empty)}")
+          lookup = (
+              "        if not states:\n            return ()\n"
+              "        cache_enabled = __import__(\"os\").environ.get(\"ACSIE_DISABLE_LF_CACHE\") != \"1\"\n"
+              "        cache_key = tuple(sorted((int(state[5]), tuple(sorted(structural_lineage_by_key.get(str(state[4]), set())))) for state in states)) if cache_enabled else None\n"
+              "        cached_frontier = _h7_lf_cache.get(cache_key) if cache_enabled else None\n"
+              "        if cached_frontier is not None:\n"
+              "            _h7_lf_cache_stats['hits'] += 1\n"
+              "            return cached_frontier\n"
+              "        if cache_enabled:\n"
+              "            _h7_lf_cache_stats['misses'] += 1"
+          )
+          frontier = frontier.replace(empty, lookup, 1)
+          ret = "        return tuple(sorted(frontier, key=rank))"
+          if frontier.count(ret) != 1:
+              raise SystemExit(f"frontier result marker count={frontier.count(ret)}")
+          store = (
+              "        result = tuple(sorted(frontier, key=rank))\n"
+              "        if cache_enabled:\n"
+              "            if len(_h7_lf_cache) >= 128:\n"
+              "                del _h7_lf_cache[next(iter(_h7_lf_cache))]\n"
+              "                _h7_lf_cache_stats['evictions'] += 1\n"
+              "            _h7_lf_cache[cache_key] = result\n"
+              "        return result"
+          )
+          frontier = frontier.replace(ret, store, 1)
+          source = source[:at] + frontier + source[stop:]
+
+          # Diagnostic cache counters stay out of the scientific result structure.
+          ret = "        return BehavioralSearchResult("
+          ret_at = source.rfind(ret)
+          if ret_at < 0:
+              raise SystemExit("final search-result return marker missing")
+          export_stats = (
+              '        find_exact_expression._H7_LAST_EXPAND_CACHE_STATS = dict(_h7_expand_cache_stats)\n'
+              '        find_exact_expression._H7_LAST_LF_CACHE_STATS = dict(_h7_lf_cache_stats)\n'
+          )
+          source = source[:ret_at] + export_stats + source[ret_at:]
+          path.write_text(source)
+          print("ORIGINAL_SOURCE_SHA256=" + base_sha)
+          print("COMBINED_DIAGNOSTIC_SOURCE_SHA256=" + hashlib.sha256(source.encode()).hexdigest())
+          PY
+          python -m py_compile acsie/cognitive_core/behavioral_search.py
+          sha256sum acsie/cognitive_core/behavioral_search.py | tee evidence/gen6-expansion8192-frontier128/diagnostic-source-sha256.txt
+
+      - name: Run six-file regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pytest
+          PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 python -m pytest -q \
+            acsie/tests/test_open_ended_growth.py \
+            acsie/tests/test_core014_recursive_cognitive_compiler.py \
+            acsie/tests/test_core015_semantic_operator_discovery.py \
+            acsie/tests/test_core016_open_semantic_substrate.py \
+            acsie/tests/test_adaptive_capability_repair.py \
+            acsie/tests/test_asi_claim_gate.py 2>&1 | tee evidence/gen6-expansion8192-frontier128/six-file-regression.txt
+
+      - name: Require four-arm exact signature parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 python - "$GITHUB_WORKSPACE/evidence/gen6-expansion8192-frontier128" <<'PY'
+          import json, os, pathlib, sys
+          from cognitive_core.behavioral_search import find_exact_expression
+          from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
+          from cognitive_core.recursive_cognitive_compiler import ArchiveRecord, CognitivePrimitive, Trace
+          out=pathlib.Path(sys.argv[1])
+
+          def build(op):
+              c=OpenEndedRecursiveCognitiveCompiler(max_depth=4,seed=771221)
+              px=CognitivePrimitive("prim:x",{"op":"get","key":"x"},("x","y"),"delta",0,(),("opaque",),0.0,0.0,0.0,1,{})
+              py=CognitivePrimitive("prim:y",{"op":"get","key":"y"},("x","y"),"delta",0,(),("opaque",),0.0,0.0,0.0,1,{})
+              c.primitives={px.primitive_id:px,py.primitive_id:py}
+              c.archive={px.primitive_id:ArchiveRecord(px),py.primitive_id:ArchiveRecord(py)}
+              rows=[]
+              for i in range(8):
+                  x,y=float(i),float(i+1)
+                  target=max(x,y) if op=="max" else min(x,y) if op=="min" else x+y
+                  rows.append(Trace({"x":x,"y":y},target,"opaque",{},f"{op}-{i}"))
+              return c,tuple(rows),2 if op=="sum" else 4,"maximize_direct_vocabulary" if op=="sum" else "minimize_expanded_cost"
+
+          def sig(r):
+              return None if r is None else {"expression":r.expression,"used_primitives":r.used_primitives,"alternatives":r.alternatives,"stats":dict(r.stats)}
+
+          modes={
+            "none":{"ACSIE_DISABLE_LF_CACHE":"1","ACSIE_DISABLE_EXPAND_CACHE":"1"},
+            "frontier_only":{"ACSIE_DISABLE_LF_CACHE":None,"ACSIE_DISABLE_EXPAND_CACHE":"1"},
+            "expand_only":{"ACSIE_DISABLE_LF_CACHE":"1","ACSIE_DISABLE_EXPAND_CACHE":None},
+            "both":{"ACSIE_DISABLE_LF_CACHE":None,"ACSIE_DISABLE_EXPAND_CACHE":None},
+          }
+          rows=[]
+          for case in ("max","min","sum"):
+              case_results={}
+              for mode,env in modes.items():
+                  for key,value in env.items():
+                      if value is None: os.environ.pop(key,None)
+                      else: os.environ[key]=value
+                  c,traces,depth,obj=build(case)
+                  result=find_exact_expression(c,traces,max_depth=depth,require_macro=True,selection_objective=obj,max_alternatives=8)
+                  case_results[mode]={
+                      "signature":sig(result),
+                      "expand_cache":dict(getattr(find_exact_expression,"_H7_LAST_EXPAND_CACHE_STATS",{})),
+                      "frontier_cache":dict(getattr(find_exact_expression,"_H7_LAST_LF_CACHE_STATS",{})),
+                      "result_found":result is not None
+                  }
+              base=case_results["none"]["signature"]
+              equal=all(case_results[m]["signature"]==base for m in modes)
+              row={"fixture":case,"all_four_arms_equal":equal,"arms":{m:{k:v for k,v in d.items() if k!="signature"} for m,d in case_results.items()}}
+              rows.append(row)
+              print(json.dumps(row,sort_keys=True))
+              if not equal: raise SystemExit(f"four-arm exact signature mismatch in {case}")
+          summary={"schema":"ACSIE.gen6_expansion8192_frontier128_factorial_parity.v1","arms":list(modes),
+                   "fixtures":rows,"all_four_arm_signatures_equal":all(x["all_four_arms_equal"] for x in rows),
+                   "guard":"Fixture-level interaction/parity evidence only; actual Gen6 is a separate bounded diagnostic."}
+          (out/"four-arm-parity.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n")
+          PY
+
+      - name: Prepare live cache-counter sampler
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > diagnostics/sitecustomize.py <<'PY'
+          import faulthandler,json,os,signal,sys,time
+          faulthandler.enable(file=sys.stderr,all_threads=True); t0=time.monotonic(); log=os.environ.get("ACSIE_EXP8192_FRONTIER128_LOG")
+          def snap(sig,frame):
+              faulthandler.dump_traceback(file=sys.stderr,all_threads=True)
+              f=frame
+              while f is not None and f.f_code.co_name!="find_exact_expression": f=f.f_back
+              row={"elapsed_s":round(time.monotonic()-t0,3),"signal":int(sig)}
+              if f is not None:
+                  loc=f.f_locals
+                  row["search"]={k:loc.get("stats",{}).get(k) for k in ("rows","max_depth","primitive_count","generated_expressions","unique_states","dominance_pruned_states","dominance_frontier_max","status")}
+                  row["expand_cache"]=dict(loc.get("_h7_expand_cache_stats",{})); row["expand_entries"]=len(loc.get("_h7_expand_cache",{}))
+                  row["frontier_cache"]=dict(loc.get("_h7_lf_cache_stats",{})); row["frontier_entries"]=len(loc.get("_h7_lf_cache",{}))
+              if log:
+                  with open(log,"a",buffering=1) as h:h.write(json.dumps(row,sort_keys=True)+"\n")
+          signal.signal(signal.SIGUSR1,snap)
+          PY
+          python -m py_compile diagnostics/sitecustomize.py
+
+      - name: Run one actual Gen6 seed with the expansion-8192/frontier-128 cache arm
+        timeout-minutes: 4
+        shell: bash
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          root="$GITHUB_WORKSPACE/evidence/gen6-expansion8192-frontier128"
+          seed=2026100301
+          ACSIE_EXP8192_FRONTIER128_LOG="$root/gen6-cache-snapshots.jsonl" \
+          PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/lab:$GITHUB_WORKSPACE/acsie" \
+            python -c 'import json,sys,acsie_open_ended_self_extending_proving as g; print(json.dumps(g.run_seed(int(sys.argv[1]),7),sort_keys=True),flush=True)' \
+            "$seed" > "$root/gen6.stdout.jsonl" 2> "$root/gen6.stderr" &
+          child=$!; start=$(date +%s); next=$((start+10)); timed_out=0; rss_guard=0; max_rss=0
+          while kill -0 "$child" 2>/dev/null; do
+            if ps -p "$child" -o stat= 2>/dev/null | grep -q 'Z'; then break; fi
+            now=$(date +%s); elapsed=$((now-start)); rss=$(ps -p "$child" -o rss= 2>/dev/null | tr -d ' ' || echo 0)
+            case "$rss" in ''|*[!0-9]*) rss=0;; esac
+            if [ "$rss" -gt "$max_rss" ]; then max_rss=$rss; fi
+            if [ "$rss" -ge 2097152 ]; then rss_guard=1; kill -TERM "$child" 2>/dev/null || true; sleep 3; kill -KILL "$child" 2>/dev/null || true; break; fi
+            if [ "$now" -ge "$next" ]; then kill -USR1 "$child" 2>/dev/null || true; next=$((now+10)); fi
+            if [ "$elapsed" -ge 120 ]; then timed_out=1; kill -TERM "$child" 2>/dev/null || true; sleep 3; kill -KILL "$child" 2>/dev/null || true; break; fi
+            sleep 1
+          done
+          set +e; wait "$child"; rc=$?; set -e
+          if [ "$rss_guard" -eq 1 ]; then status=RESOURCE_GUARD_RSS_LIMIT; elif [ "$timed_out" -eq 1 ]; then status=INCONCLUSIVE_CHILD_WALL_TIMEOUT; elif [ "$rc" -eq 0 ] && [ -s "$root/gen6.stdout.jsonl" ]; then status=CHILD_RETURNED_RECORD; else status=CHILD_ERROR_OR_EMPTY_OUTPUT; fi
+          printf '{"seed":%s,"child_returncode":%s,"timeout_hit":%s,"rss_guard_hit":%s,"max_rss_kib":%s,"status":"%s"}\n' "$seed" "$rc" "$timed_out" "$rss_guard" "$max_rss" "$status" | tee "$root/gen6-child-status.json"
+          python - "$root" <<'PY'
+          import json,pathlib,sys
+          root=pathlib.Path(sys.argv[1]); q=root/"gen6-cache-snapshots.jsonl"; samples=[]
+          if q.exists():
+              for line in q.read_text(errors="replace").splitlines():
+                  try:samples.append(json.loads(line))
+                  except Exception:pass
+          child=json.loads((root/"gen6-child-status.json").read_text())
+          summary={"schema":"ACSIE.gen6_expansion8192_frontier128_diagnostic.v1","source_commit":"d83cb60286f195eec02b4d7aa45a60539316d115",
+                   "seed":2026100301,"child_status":child,"live_cache_samples":samples,
+                   "stdout_bytes":(root/"gen6.stdout.jsonl").stat().st_size,"stderr_bytes":(root/"gen6.stderr").stat().st_size,
+                   "stderr_tail":(root/"gen6.stderr").read_text(errors="replace")[-8000:],
+                   "guard":"Both caches passed four-arm fixture signature parity and six-file regression first. Timeouts remain inconclusive."}
+          (root/"gen6-summary.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n")
+          print(json.dumps({k:v for k,v in summary.items() if k!="stderr_tail"},indent=2,sort_keys=True))
+          PY
+
+      - name: Upload combined factorial and Gen6 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen6-expansion8192-frontier128-diagnostic-${{ github.run_id }}
+          path: evidence/gen6-expansion8192-frontier128/
+          if-no-files-found: error
