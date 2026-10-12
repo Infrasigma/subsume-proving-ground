@@ -225,19 +225,54 @@ def main() -> int:
         core = NativeCognitiveCore.from_state(state_obj)
         roundtrip = normalized(core.export_state())
         normalized_state = normalized(state_obj)
+        # The current v4 loader adds an optional context_program=None field
+        # that predates the archived frozen state's serialized kernel shape.
+        # Permit only that explicit additive null default; retain exact equality
+        # for every historical kernel field and all other state fields.
+        historical_kernel = normalized_state.get("learning_kernel") or {}
+        current_kernel = roundtrip.get("learning_kernel") or {}
+        kernel_missing = sorted(set(historical_kernel) - set(current_kernel))
+        kernel_added = sorted(set(current_kernel) - set(historical_kernel))
+        kernel_changed = sorted(
+            key for key, value in historical_kernel.items()
+            if key not in current_kernel or current_kernel[key] != value
+        )
+        optional_context_program_default = (
+            "context_program" not in historical_kernel
+            and current_kernel.get("context_program") is None
+        )
+        kernel_semantically_compatible = (
+            not kernel_missing
+            and not kernel_changed
+            and (
+                not kernel_added
+                or (kernel_added == ["context_program"] and optional_context_program_default)
+            )
+        )
         mismatches = [
             key for key, value in normalized_state.items()
-            if key not in roundtrip or roundtrip[key] != value
+            if key != "learning_kernel" and (key not in roundtrip or roundtrip[key] != value)
         ]
         added = sorted(set(roundtrip) - set(normalized_state))
         checks["current_state_compatibility"].update({
-            "roundtrip_existing_fields_match": not mismatches,
+            "roundtrip_existing_fields_match": not mismatches and kernel_semantically_compatible,
             "mismatched_fields": mismatches,
             "added_current_fields": added,
             "loaded_hypothesis_count": len(core.hypotheses),
             "loaded_generation": core.generation,
             "loaded_seed": core.seed,
-            "loaded_learning_kernel_matches": roundtrip.get("learning_kernel") == normalized_state.get("learning_kernel"),
+            "loaded_learning_kernel_semantically_compatible": kernel_semantically_compatible,
+            "learning_kernel_schema_adapter": {
+                "mode": "ADDITIVE_OPTIONAL_NULL_DEFAULT" if kernel_added else "EXACT_FIELD_SHAPE",
+                "historical_keys": sorted(historical_kernel),
+                "current_keys": sorted(current_kernel),
+                "missing_historical_fields": kernel_missing,
+                "added_current_fields": kernel_added,
+                "changed_historical_fields": kernel_changed,
+                "context_program_was_absent_historically": "context_program" not in historical_kernel,
+                "current_context_program_value": current_kernel.get("context_program", "__absent__"),
+                "accepted_only_if_context_program_is_null": optional_context_program_default,
+            },
             "loaded_state_counts_match": (
                 len(core.hypotheses) == len(state_obj.get("hypotheses", {}))
                 and len(core.experience) == len(state_obj.get("experience", []))
@@ -247,10 +282,13 @@ def main() -> int:
         })
         if mismatches:
             raise ValueError(f"current NativeCognitiveCore roundtrip differs on historical fields: {mismatches}")
+        if not kernel_semantically_compatible:
+            raise ValueError(
+                "current learning-kernel schema has non-additive or non-null-default differences: "
+                f"missing={kernel_missing}, added={kernel_added}, changed={kernel_changed}"
+            )
         if not checks["current_state_compatibility"]["loaded_state_counts_match"]:
             raise ValueError("current NativeCognitiveCore did not preserve historical state counts")
-        if not checks["current_state_compatibility"]["loaded_learning_kernel_matches"]:
-            raise ValueError("current NativeCognitiveCore changed the historical learning kernel in roundtrip")
 
         # Materialize the exact verified export envelope consumed by the Gen3 runner.
         for name, raw in payload.items():
