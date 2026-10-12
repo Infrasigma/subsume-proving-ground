@@ -13,14 +13,14 @@ permissions:
 jobs:
   gen6-phase-localization:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
     steps:
       - name: Checkout proving-ground executor
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Record experiment contract
+      - name: Record predeclared experiment contract
         shell: bash
         run: |
           set -euo pipefail
@@ -31,9 +31,12 @@ jobs:
             echo "ACSIE_SOURCE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
             echo "SEED=2026100301"
             echo "GENERATION_INDICES=0..6"
-            echo "PAIRED_RUNS=plain control then faulthandler-only sampling"
-            echo "CHILD_TIMEOUT_SECONDS=120 per run"
-            echo "OBSERVER=faulthandler only; no method wrappers, profile hooks, or algorithm changes"
+            echo "PAIRED_RUNS=plain control then SIGUSR1-triggered faulthandler stacks"
+            echo "CHILD_WALL_BUDGET_SECONDS=120 per run"
+            echo "STACK_SAMPLE_INTERVAL_SECONDS=10"
+            echo "NO_METHOD_WRAPPERS=true"
+            echo "NO_PROFILE_OR_TRACE_HOOKS=true"
+            echo "NO_ACSIE_ALGORITHM_CHANGE=true"
           } | tee evidence/gen6-phase/provenance.txt
 
       - name: Checkout pinned ACSIE source
@@ -64,49 +67,91 @@ jobs:
             echo "SELF_EXTENDING_HARNESS_SHA256=$growth_sha"
           } | tee evidence/gen6-phase/source-identity.txt
 
-      - name: Prepare stack sampler
+      - name: Prepare externally-triggered stack sampler
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p diagnostics
           cat > diagnostics/sitecustomize.py <<'PY'
           import faulthandler
+          import signal
           import sys
+
+          # No timer thread and no profiling hooks. The parent sends SIGUSR1 to
+          # the exact child Python PID every 10s; faulthandler writes a snapshot.
           faulthandler.enable(file=sys.stderr, all_threads=True)
-          faulthandler.dump_traceback_later(10, repeat=True, file=sys.stderr)
+          faulthandler.register(signal.SIGUSR1, file=sys.stderr, all_threads=True, chain=False)
           PY
           python -m py_compile diagnostics/sitecustomize.py
           sha256sum diagnostics/sitecustomize.py | tee evidence/gen6-phase/observer-sha256.txt
 
-      - name: Run same-seed plain control and low-overhead stack sample
+      - name: Run plain and sampled same-seed child with durable timeout status
         timeout-minutes: 6
         shell: bash
         run: |
-          set -uo pipefail
+          set -euo pipefail
+          ulimit -c 0
           root="$GITHUB_WORKSPACE/evidence/gen6-phase"
           seed=2026100301
 
-          echo "CONTROL seed=$seed generations=7 wall=120s"
-          set +e
-          PYTHONPATH="$GITHUB_WORKSPACE/lab:$GITHUB_WORKSPACE/acsie" \
-            timeout --signal=TERM --kill-after=5s 120s \
-            python -c 'import json,sys,acsie_open_ended_self_extending_proving as g; print(json.dumps(g.run_seed(int(sys.argv[1]),7),sort_keys=True),flush=True)' \
-            "$seed" > "$root/plain.stdout.jsonl" 2> "$root/plain.stderr"
-          plain_rc=$?
-          set -e
-          if [ "$plain_rc" -eq 0 ]; then plain_status=COMPLETED; elif [ "$plain_rc" -eq 124 ] || [ "$plain_rc" -eq 137 ]; then plain_status=WALL_TIMEOUT; else plain_status=CHILD_ERROR; fi
-          printf '{"seed":%s,"child_returncode":%s,"timeout_seconds":120,"status":"%s"}\n' "$seed" "$plain_rc" "$plain_status" > "$root/plain.status.json"
+          run_child() {
+            local mode="$1"
+            local timeout_seconds=120
+            local stdout="$root/$mode.stdout.jsonl"
+            local stderr="$root/$mode.stderr"
+            local status_file="$root/$mode.status.json"
+            local child timed_out=0 rc start now elapsed next_signal
+            echo "GEN6_PHASE mode=$mode seed=$seed generations=7 budget=${timeout_seconds}s"
+            if [ "$mode" = "sampled" ]; then
+              PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/lab:$GITHUB_WORKSPACE/acsie" \
+                python -c 'import json,sys,acsie_open_ended_self_extending_proving as g; print(json.dumps(g.run_seed(int(sys.argv[1]),7),sort_keys=True),flush=True)' \
+                "$seed" > "$stdout" 2> "$stderr" &
+            else
+              PYTHONPATH="$GITHUB_WORKSPACE/lab:$GITHUB_WORKSPACE/acsie" \
+                python -c 'import json,sys,acsie_open_ended_self_extending_proving as g; print(json.dumps(g.run_seed(int(sys.argv[1]),7),sort_keys=True),flush=True)' \
+                "$seed" > "$stdout" 2> "$stderr" &
+            fi
+            child=$!
+            start=$(date +%s)
+            next_signal=$((start + 10))
+            while kill -0 "$child" 2>/dev/null; do
+              # A completed child can briefly remain a zombie until wait().
+              if ps -p "$child" -o stat= 2>/dev/null | grep -q 'Z'; then break; fi
+              now=$(date +%s)
+              elapsed=$((now - start))
+              if [ "$mode" = "sampled" ] && [ "$now" -ge "$next_signal" ]; then
+                kill -USR1 "$child" 2>/dev/null || true
+                next_signal=$((now + 10))
+              fi
+              if [ "$elapsed" -ge "$timeout_seconds" ]; then
+                timed_out=1
+                kill -TERM "$child" 2>/dev/null || true
+                sleep 3
+                kill -KILL "$child" 2>/dev/null || true
+                break
+              fi
+              sleep 1
+            done
+            set +e
+            wait "$child"
+            rc=$?
+            set -e
+            if [ "$timed_out" -eq 1 ]; then
+              status="WALL_TIMEOUT"
+            elif [ "$rc" -eq 0 ] && [ -s "$stdout" ]; then
+              status="CHILD_COMPLETED_RECORD_AVAILABLE"
+            elif [ "$rc" -eq 0 ]; then
+              status="CHILD_EXIT_0_WITH_EMPTY_STDOUT"
+            else
+              status="CHILD_ERROR"
+            fi
+            printf '{"mode":"%s","seed":%s,"child_returncode":%s,"timed_out":%s,"timeout_seconds":%s,"status":"%s"}\n' \
+              "$mode" "$seed" "$rc" "$timed_out" "$timeout_seconds" "$status" > "$status_file"
+            echo "GEN6_PHASE_RESULT mode=$mode rc=$rc status=$status stderr_bytes=$(wc -c < "$stderr") stdout_bytes=$(wc -c < "$stdout")"
+          }
 
-          echo "FAULTHANDLER_ONLY seed=$seed generations=7 wall=120s interval=10s"
-          set +e
-          PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/lab:$GITHUB_WORKSPACE/acsie" \
-            timeout --signal=TERM --kill-after=5s 120s \
-            python -c 'import json,sys,acsie_open_ended_self_extending_proving as g; print(json.dumps(g.run_seed(int(sys.argv[1]),7),sort_keys=True),flush=True)' \
-            "$seed" > "$root/sampled.stdout.jsonl" 2> "$root/sampled.stderr"
-          sample_rc=$?
-          set -e
-          if [ "$sample_rc" -eq 0 ]; then sample_status=COMPLETED; elif [ "$sample_rc" -eq 124 ] || [ "$sample_rc" -eq 137 ]; then sample_status=WALL_TIMEOUT; else sample_status=CHILD_ERROR; fi
-          printf '{"seed":%s,"child_returncode":%s,"timeout_seconds":120,"status":"%s"}\n' "$seed" "$sample_rc" "$sample_status" > "$root/sampled.status.json"
+          run_child plain
+          run_child sampled
 
           python - "$root" <<'PY'
           import collections, json, pathlib, re, sys
@@ -114,34 +159,40 @@ jobs:
           plain = json.loads((root / "plain.status.json").read_text())
           sampled = json.loads((root / "sampled.status.json").read_text())
           stderr = (root / "sampled.stderr").read_text(errors="replace")
-          sections = re.split(r"(?=Timeout \\(0:00:10\\)!|Timeout \\(0:00:20\\)!|Timeout \\(0:00:30\\)!)", stderr)
+          blocks = re.split(r"(?=Current thread 0x|Thread 0x)", stderr)
           snapshots = []
-          for section in sections:
-              if "most recent call first" not in section:
+          for block in blocks:
+              if "most recent call first" not in block:
                   continue
-              frames = re.findall(r'File "([^"]+)", line (\\d+), in ([^\\n]+)', section)
-              snapshots.append({"frames": [{"file": f, "line": int(line), "function": fun} for f,line,fun in frames]})
-          top_frames = collections.Counter()
-          for sample in snapshots:
-              if sample["frames"]:
-                  frame = sample["frames"][0]
-                  top_frames[(frame["file"], frame["line"], frame["function"])] += 1
+              frames = re.findall(r'File "([^"]+)", line (\d+), in ([^\n]+)', block)
+              if frames:
+                  snapshots.append([
+                    {"file": f, "line": int(line), "function": function}
+                    for f, line, function in frames
+                  ])
+          counts = collections.Counter()
+          for stack in snapshots:
+              # Count all frames per stack, not just the top frame, to expose
+              # repeating search/dominance functions lower in the call chain.
+              for frame in stack:
+                  counts[(frame["file"], frame["line"], frame["function"])] += 1
           summary = {
-              "schema": "ACSIE.gen6_faulthandler_phase_localization.v1",
-              "source_commit": "d83cb60286f195eec02b4d7aa45a60539316d115",
-              "seed": 2026100301, "generation_indices_requested": list(range(7)),
-              "plain_control": plain, "faulthandler_only": sampled,
-              "stack_snapshot_count": len(snapshots),
-              "stack_sample_count_from_banner": stderr.count("Timeout (0:00:10)!"),
-              "most_common_top_frames": [
-                  {"file": k[0], "line": k[1], "function": k[2], "samples": n}
-                  for k,n in top_frames.most_common(15)
-              ],
-              "stderr_tail": stderr[-12000:],
-              "plain_stdout_bytes": (root / "plain.stdout.jsonl").stat().st_size,
-              "sampled_stdout_bytes": (root / "sampled.stdout.jsonl").stat().st_size,
-              "observer_scope": "faulthandler only; no method wrapping, sys.setprofile, or sys.settrace",
-              "interpretation_guard": "Timeout means INCONCLUSIVE, not scientific failure. Stack samples localize the active Python path but do not prove a unique root cause."
+            "schema": "ACSIE.gen6_faulthandler_phase_localization.v2",
+            "source_commit": "d83cb60286f195eec02b4d7aa45a60539316d115",
+            "seed": 2026100301,
+            "generation_indices_requested": list(range(7)),
+            "plain_control": plain,
+            "sampled_control": sampled,
+            "stack_snapshot_count": len(snapshots),
+            "most_repeated_frames": [
+              {"file": key[0], "line": key[1], "function": key[2], "frame_occurrences": n}
+              for key,n in counts.most_common(25)
+            ],
+            "stderr_tail": stderr[-16000:],
+            "plain_stdout_bytes": (root / "plain.stdout.jsonl").stat().st_size,
+            "sampled_stdout_bytes": (root / "sampled.stdout.jsonl").stat().st_size,
+            "observer_scope": "External SIGUSR1-triggered faulthandler snapshots only; no timer thread, monkeypatch, sys.setprofile, or sys.settrace.",
+            "interpretation_guard": "Child timeout is INCONCLUSIVE, not a science failure. Stacks localize repeated active code paths but do not prove a unique root cause."
           }
           (root / "summary.json").write_text(json.dumps(summary, sort_keys=True, indent=2) + "\n")
           print(json.dumps({k:v for k,v in summary.items() if k != "stderr_tail"}, sort_keys=True, indent=2))
