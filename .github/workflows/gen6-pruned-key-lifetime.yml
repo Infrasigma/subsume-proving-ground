@@ -67,30 +67,30 @@ jobs:
           python lab/patch_gen6_pruned_key_lifetime.py "$GITHUB_WORKSPACE/acsie/cognitive_core/behavioral_search.py" | tee evidence/gen6-pruned-key-lifetime/pruned-key-patch.txt
           python -m py_compile acsie/cognitive_core/behavioral_search.py
           sha256sum acsie/cognitive_core/behavioral_search.py | tee evidence/gen6-pruned-key-lifetime/diagnostic-source-sha256.txt
-                    python - "$GITHUB_WORKSPACE/acsie/cognitive_core/behavioral_search.py" <<'PY'
-                    import pathlib,sys
-                    p=pathlib.Path(sys.argv[1]);s=p.read_text();start="    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:";end="    def build_extreme_lookup("
-                    if s.count(start)!=1 or "_h7_lf_cache" in s: raise SystemExit("frontier markers mismatch")
-                    s=s.replace(start,'    _h7_lf_cache = {}\n    _h7_lf_cache_stats = {"hits": 0, "misses": 0, "evictions": 0}\n\n'+start,1)
-                    a=s.index(start);b=s.index(end,a+len(start));block=s[a:b];old="        if not states:\n            return ()"
-                    if block.count(old)!=1: raise SystemExit("frontier empty marker mismatch")
-                    new=('        if not states:\n            return ()\n'
-                    '        cache_enabled = __import__("os").environ.get("ACSIE_DISABLE_LF_CACHE") != "1"\n'
-                    '        cache_key = tuple(sorted((int(st[5]), tuple(sorted(structural_lineage_by_key.get(str(st[4]), set())))) for st in states)) if cache_enabled else None\n'
-                    '        cached = _h7_lf_cache.get(cache_key) if cache_enabled else None\n'
-                    '        if cached is not None:\n            _h7_lf_cache_stats["hits"] += 1\n            return cached\n'
-                    '        if cache_enabled: _h7_lf_cache_stats["misses"] += 1')
-                    block=block.replace(old,new,1);old="        return tuple(sorted(frontier, key=rank))"
-                    if block.count(old)!=1: raise SystemExit("frontier return marker mismatch")
-                    store=('        result = tuple(sorted(frontier, key=rank))\n'
-                    '        if cache_enabled:\n            if len(_h7_lf_cache) >= 128:\n                del _h7_lf_cache[next(iter(_h7_lf_cache))]\n                _h7_lf_cache_stats["evictions"] += 1\n'
-                    '            _h7_lf_cache[cache_key] = result\n        return result')
-                    block=block.replace(old,store,1);s=s[:a]+block+s[b:]
-                    at=s.rfind('        return BehavioralSearchResult(')
-                    if at<0: raise SystemExit("final result marker missing")
-                    s=s[:at]+'        find_exact_expression._H7_LAST_LF_CACHE_STATS = dict(_h7_lf_cache_stats)\n'+s[at:]
-                    p.write_text(s);print("FRONTIER_CACHE=128_FIFO")
-                    PY
+          python - "$GITHUB_WORKSPACE/acsie/cognitive_core/behavioral_search.py" <<'PY'
+          import pathlib,sys
+          p=pathlib.Path(sys.argv[1]);s=p.read_text();start="    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:";end="    def build_extreme_lookup("
+          if s.count(start)!=1 or "_h7_lf_cache" in s: raise SystemExit("frontier markers mismatch")
+          s=s.replace(start,'    _h7_lf_cache = {}\n    _h7_lf_cache_stats = {"hits": 0, "misses": 0, "evictions": 0}\n\n'+start,1)
+          a=s.index(start);b=s.index(end,a+len(start));block=s[a:b];old="        if not states:\n            return ()"
+          if block.count(old)!=1: raise SystemExit("frontier empty marker mismatch")
+          new=('        if not states:\n            return ()\n'
+          '        cache_enabled = __import__("os").environ.get("ACSIE_DISABLE_LF_CACHE") != "1"\n'
+          '        cache_key = tuple(sorted((int(st[5]), tuple(sorted(structural_lineage_by_key.get(str(st[4]), set())))) for st in states)) if cache_enabled else None\n'
+          '        cached = _h7_lf_cache.get(cache_key) if cache_enabled else None\n'
+          '        if cached is not None:\n            _h7_lf_cache_stats["hits"] += 1\n            return cached\n'
+          '        if cache_enabled: _h7_lf_cache_stats["misses"] += 1')
+          block=block.replace(old,new,1);old="        return tuple(sorted(frontier, key=rank))"
+          if block.count(old)!=1: raise SystemExit("frontier return marker mismatch")
+          store=('        result = tuple(sorted(frontier, key=rank))\n'
+          '        if cache_enabled:\n            if len(_h7_lf_cache) >= 128:\n                del _h7_lf_cache[next(iter(_h7_lf_cache))]\n                _h7_lf_cache_stats["evictions"] += 1\n'
+          '            _h7_lf_cache[cache_key] = result\n        return result')
+          block=block.replace(old,store,1);s=s[:a]+block+s[b:]
+          at=s.rfind('        return BehavioralSearchResult(')
+          if at<0: raise SystemExit("final result marker missing")
+          s=s[:at]+'        find_exact_expression._H7_LAST_LF_CACHE_STATS = dict(_h7_lf_cache_stats)\n'+s[at:]
+          p.write_text(s);print("FRONTIER_CACHE=128_FIFO")
+          PY
           python -m py_compile acsie/cognitive_core/behavioral_search.py
 
       - name: Run six-file regression suite with cleanup OFF and ON
@@ -173,7 +173,7 @@ jobs:
             "counters":{"release_off":off["counters"],"release_on":on["counters"]},
             "interpretation_guard":"Exact selected expression, alternatives, capability IDs and science statistics compared with pristine source; no target-specific routing or thresholds altered."
           }
-          (root/"pruned-key-lifetime-parity.json").write_text(json.dumps(report,indent=2,sort_keys=True)+"\\n")
+          (root/"pruned-key-lifetime-parity.json").write_text(json.dumps(report,indent=2,sort_keys=True)+"\n")
           print(json.dumps({k:v for k,v in report.items() if k!="counters"},indent=2,sort_keys=True))
           if not report["both_arms_match_pristine"]: raise SystemExit("cleanup arm differs from pristine source")
           if removed_expr < 1 or removed_depth < 1: raise SystemExit("cleanup did not exercise both stale maps")
@@ -206,7 +206,7 @@ jobs:
             row["frontier_cache"]=dict(loc.get("_h7_lf_cache_stats",{}))
             row["frontier_cache_entries"]=len(loc.get("_h7_lf_cache",{}))
            if log:
-            with open(log,"a",buffering=1,encoding="utf-8") as h:h.write(json.dumps(row,sort_keys=True)+"\\n")
+            with open(log,"a",buffering=1,encoding="utf-8") as h:h.write(json.dumps(row,sort_keys=True)+"\n")
           signal.signal(signal.SIGUSR1,snap)
           PY
           python -m py_compile diagnostics/sitecustomize.py
@@ -265,7 +265,7 @@ jobs:
            stderr=(root/f"{arm}.stderr").read_text(errors="replace")
            stacks=[]
            for chunk in re.split(r"(?=Current thread 0x)",stderr):
-            frames=re.findall(r'File "([^"]+)", line (\\d+) in ([^\\n]+)',chunk)
+            frames=re.findall(r'File "([^"]+)", line (\d+) in ([^\n]+)',chunk)
             if frames: stacks.append([{"file":f,"line":int(n),"function":fn} for f,n,fn in frames])
            def read_rows(path):
             rows=[]
@@ -293,7 +293,7 @@ jobs:
              "live_snapshot_count":len(live),"live_snapshots":live,
              "stack_snapshot_count":len(stacks),"stack_function_frequency":dict(freqs),
              "stderr_tail":stderr[-3000:]}
-          (root/"gen6-pruned-key-lifetime-summary.json").write_text(json.dumps(d,indent=2,sort_keys=True)+"\\n")
+          (root/"gen6-pruned-key-lifetime-summary.json").write_text(json.dumps(d,indent=2,sort_keys=True)+"\n")
           compact={"schema":d["schema"],"arms":{}}
           for arm,entry in d["arms"].items():
            compact["arms"][arm]={k:entry[k] for k in ("child_status","record_parse_status","counter_sample_count","live_snapshot_count","stack_snapshot_count","stack_function_frequency")}
