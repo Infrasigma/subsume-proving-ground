@@ -60,7 +60,7 @@ def worker(acsie_root: Path, frozen_path: Path, evidence: Path, seed: int) -> in
     core_type = importlib.import_module("cognitive_core.native_independent_core").NativeCognitiveCore
     original_variants = core_type._compositional_kernel_variants
     original_eval = core_type._evaluate_kernel
-    original_regression = gen3._candidate_regression_scores
+    original_regression = gen3._regression
     state = {
         "candidate_index_by_id": {},
         "candidate_fingerprints": {},
@@ -130,7 +130,7 @@ def worker(acsie_root: Path, frozen_path: Path, evidence: Path, seed: int) -> in
                 state["last_finished_candidate_index"]=idx
             state["eval_in_flight"]=None
 
-    def regression_wrapper(pre_state, candidate, regression_sets):
+    def regression_wrapper(core, candidate, regression_sets):
         started=time.monotonic()
         idx=state["candidate_index_by_id"].get(id(candidate))
         state["regression_calls"]+=1
@@ -146,7 +146,7 @@ def worker(acsie_root: Path, frozen_path: Path, evidence: Path, seed: int) -> in
         error=None
         result=None
         try:
-            result=original_regression(pre_state,candidate,regression_sets)
+            result=original_regression(core,candidate,regression_sets)
             return result
         except BaseException as exc:
             error=f"{type(exc).__name__}: {exc}"
@@ -169,13 +169,13 @@ def worker(acsie_root: Path, frozen_path: Path, evidence: Path, seed: int) -> in
         select_frame=None
         f=frame
         while f is not None:
-            if f.f_code.co_name == "_select_candidate":
+            if (f.f_code.co_name == "run" and Path(f.f_code.co_filename).name == "gen3_from_frozen_verified_gen2_v1.py" and "variants" in f.f_locals and "diagnostics" in f.f_locals):
                 select_frame=f
                 break
             f=f.f_back
         loc=select_frame.f_locals if select_frame is not None else {}
         candidate=loc.get("candidate")
-        idx=loc.get("idx")
+        idx=loc.get("i")
         diag=loc.get("diagnostics",[])
         eligible=loc.get("candidates",[])
         row={
