@@ -129,17 +129,26 @@ class _H7ExpressionInterner:
 
 
 class _H7SeenExpressionIds(set):
-    """Store only integer IDs but accept legacy JSON-key discard in tests."""
+    """Store integer IDs while adapting legacy string-key test mutations."""
     def __init__(self):
         super().__init__()
         self.interner = None
 
-    def discard(self, value):
+    def _coerce(self, value):
         if isinstance(value, str):
             if self.interner is None:
                 raise RuntimeError("identity interner is not initialized")
             value = self.interner.intern_expr(json.loads(value))
-        super().discard(value)
+        return value
+
+    def add(self, value):
+        super().add(self._coerce(value))
+
+    def discard(self, value):
+        super().discard(self._coerce(value))
+
+    def __contains__(self, value):
+        return super().__contains__(self._coerce(value))
 '''
 
 # Define the exact same class in this module so the independent identity self-test
@@ -328,18 +337,9 @@ def apply_interned_identity(source: str) -> str:
     compile(source, "cognitive_core/behavioral_search.py", "exec")
     return source
 
-def _canonical(expr: Mapping[str, Any]) -> dict:
-    """Recursively canonicalize just the raw AST's commutative child order."""
-    out = {}
-    for key, value in expr.items():
-        if key == "left" or key == "right" or key == "arg":
-            out[key] = _canonical(value) if isinstance(value, Mapping) else value
-        elif isinstance(value, Mapping):
-            out[key] = _canonical(value)
-        elif isinstance(value, list):
-            out[key] = [_canonical(x) if isinstance(x, Mapping) else x for x in value]
-        else:
-            out[key] = value
+def _canonical_root(expr: Mapping[str, Any]) -> dict:
+    """Mirror ACSIE canonical(): sort commutative children at the root only."""
+    out = dict(expr)
     op = str(out.get("op", ""))
     if op in COMMUTATIVE and "left" in out and "right" in out:
         left_key = json.dumps(out["left"], sort_keys=True, separators=(",", ":"))
@@ -384,7 +384,10 @@ def run_self_test() -> dict:
         {"op": "macro", "id": "missing:ø"},
     ]
     corpus.extend(_make_expression(rng, 5) for _ in range(4099))
-    canonical_corpus = [_canonical(expr) for expr in corpus]
+    # The reference implementation's canonical() normalizes only the current root.
+    # Nested children may be noncanonical in externally supplied ASTs and must
+    # not be silently reordered by the identity interner.
+    canonical_corpus = [_canonical_root(expr) for expr in corpus]
     interner = _H7ExpressionInterner()
     raw_to_id = {}
     id_to_raw = {}
@@ -428,7 +431,7 @@ def run_self_test() -> dict:
         "interner_size_after_composition_checks": interner.size,
         "incremental_composition_cases": compositions,
         "exact_equivalence_partition": "PASSED",
-        "json_reference": "json.dumps(sort_keys=True,separators=(',',':'))",
+        "json_reference": "json.dumps(canonical_root_only(expr),sort_keys=True,separators=(',',':'))",
         "production_source_modified": False,
     }
 
