@@ -41,7 +41,6 @@ def apply_profile_counters(source: str) -> str:
         "register_new_states": 0,
         "register_pruned_existing_states": 0,
         "register_binary_calls": 0,
-        "register_binary_exact_seen_bails": 0,
         "register_binary_bucket_hits": 0,
         "register_binary_preflight_dominator_hits": 0,
         "register_binary_parent_materializations": 0,
@@ -427,25 +426,6 @@ def apply_profile_counters(source: str) -> str:
         _H7_PHASE_PROFILE["register_binary_parent_key_chars"] += len(expression_ident)
         if expression_ident in seen_expression_keys:''',
         label="count binary expression-key serialization length",
-    )
-    source = replace_exact(
-        source,
-        '''        if expression_ident in seen_expression_keys:
-            _H7_PHASE_PROFILE["exact_seen_duplicate_returns"] += 1
-            stats["duplicate_states"] += 1
-            stats["exact_expression_duplicates_skipped"] += 1
-            return None
-
-        lvec, rvec = left[1], right[1]''',
-        '''        if expression_ident in seen_expression_keys:
-            _H7_PHASE_PROFILE["exact_seen_duplicate_returns"] += 1
-            _H7_PHASE_PROFILE["register_binary_exact_seen_bails"] += 1
-            stats["duplicate_states"] += 1
-            stats["exact_expression_duplicates_skipped"] += 1
-            return None
-
-        lvec, rvec = left[1], right[1]''',
-        label="count binary exact-key bails",
     )
     source = replace_exact(
         source,
