@@ -1,4 +1,4 @@
-name: Gen6 exact-search counter localization
+name: Gen6 bounded lineage-frontier memoization hypothesis
 
 on:
   push:
@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p evidence/gen6-counters diagnostics
+          mkdir -p evidence/gen6-frontier-cache diagnostics
           {
             echo "EXECUTOR_COMMIT=$GITHUB_SHA"
             echo "WORKFLOW_RUN_ID=$GITHUB_RUN_ID"
@@ -33,8 +33,8 @@ jobs:
             echo "GENERATION_INDICES=0..6"
             echo "CHILD_WALL_BUDGET_SECONDS=120"
             echo "SIGNAL_INTERVAL_SECONDS=10"
-            echo "CHANGE_CLASS=diagnostic counters only; no search ordering, thresholds, or gates changed"
-          } | tee evidence/gen6-counters/provenance.txt
+            echo "HYPOTHESIS=bounded exact-result memoization for identical lineage_frontier state-token inputs"\n            echo "CACHE_BOUND=128 FIFO entries per find_exact_expression invocation"\n            echo "SCIENTIFIC_GATES_AND_SELECTION_ORDER_UNCHANGED=true"
+          } | tee evidence/gen6-frontier-cache/provenance.txt
 
       - name: Checkout exact ACSIE source
         uses: actions/checkout@v4
@@ -172,7 +172,62 @@ jobs:
           print(f"DIAGNOSTIC_PATCHED_BYTES={len(source.encode())}")
           PY
           python -m py_compile acsie/cognitive_core/behavioral_search.py
-          sha256sum acsie/cognitive_core/behavioral_search.py | tee evidence/gen6-counters/instrumented-source-sha256.txt
+          sha256sum acsie/cognitive_core/behavioral_search.py | tee evidence/gen6-frontier-cache/instrumented-source-sha256.txt
+
+      - name: Apply bounded exact lineage-frontier memoization hypothesis
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$GITHUB_WORKSPACE/acsie/cognitive_core/behavioral_search.py"
+          cp evidence/gen6-frontier-cache/instrumented-source-sha256.txt evidence/gen6-frontier-cache/counter-only-source-sha256.txt
+          counter_sha="$(sha256sum "$src" | awk '{print $1}')"
+          test "$counter_sha" = "49a9ae01123549d6b4873e8bde4305a5a4ddde40d7437e1bc733f05673ccd0f6"
+          echo "COUNTER_ONLY_SOURCE_SHA256=$counter_sha" | tee evidence/gen6-frontier-cache/source-diff-contract.txt
+          python - "$src" <<'PY'
+          import hashlib, pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          s = p.read_text()
+
+          def once(old, new, label):
+              global s
+              n = s.count(old)
+              if n != 1:
+                  raise SystemExit(f"{label}: expected one source marker, found {n}")
+              s = s.replace(old, new, 1)
+
+          once(
+              '    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:',
+              '    lineage_frontier_cache: dict[tuple[int, ...], tuple[tuple, ...]] = {}\n\n'
+              '    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:',
+              'bounded cache declaration'
+          )
+          once(
+              '        if not states:\n            return ()',
+              '        if not states:\n            return ()\n'
+              '        cache_key = tuple(sorted(int(state[5]) for state in states))\n'
+              '        cached_frontier = lineage_frontier_cache.get(cache_key)\n'
+              '        if cached_frontier is not None:\n'
+              '            _h7_inc("lineage_frontier_cache_hits")\n'
+              '            return cached_frontier\n'
+              '        _h7_inc("lineage_frontier_cache_misses")',
+              'exact state-token cache lookup'
+          )
+          once(
+              '        return tuple(sorted(frontier, key=rank))',
+              '        result = tuple(sorted(frontier, key=rank))\n'
+              '        if len(lineage_frontier_cache) >= 128:\n'
+              '            oldest_key = next(iter(lineage_frontier_cache))\n'
+              '            del lineage_frontier_cache[oldest_key]\n'
+              '            _h7_inc("lineage_frontier_cache_evictions")\n'
+              '        lineage_frontier_cache[cache_key] = result\n'
+              '        return result',
+              'bounded cache store'
+          )
+          p.write_text(s)
+          print("COUNTER_PLUS_CACHE_SOURCE_SHA256="+hashlib.sha256(s.encode()).hexdigest())
+          PY
+          python -m py_compile "$src"
+          sha256sum "$src" | tee evidence/gen6-frontier-cache/instrumented-source-sha256.txt
 
       - name: Install test dependency and run targeted semantics regression
         shell: bash
@@ -181,7 +236,7 @@ jobs:
           python -m pip install --disable-pip-version-check pytest
           PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 \
             python -m pytest -q acsie/tests/test_open_ended_growth.py \
-            2>&1 | tee evidence/gen6-counters/open-ended-growth-tests.txt
+            2>&1 | tee evidence/gen6-frontier-cache/open-ended-growth-tests.txt
 
       - name: Prepare counter snapshot signal handler
         shell: bash
@@ -243,7 +298,7 @@ jobs:
           signal.signal(signal.SIGUSR1, _snapshot)
           PY
           python -m py_compile diagnostics/sitecustomize.py
-          sha256sum diagnostics/sitecustomize.py | tee evidence/gen6-counters/snapshot-handler-sha256.txt
+          sha256sum diagnostics/sitecustomize.py | tee evidence/gen6-frontier-cache/snapshot-handler-sha256.txt
 
       - name: Run one fixed-seed real self-extending path with 120s budget
         timeout-minutes: 3
@@ -251,7 +306,7 @@ jobs:
         run: |
           set -euo pipefail
           ulimit -c 0
-          root="$GITHUB_WORKSPACE/evidence/gen6-counters"
+          root="$GITHUB_WORKSPACE/evidence/gen6-frontier-cache"
           seed=2026100301
           stdout="$root/child.stdout.jsonl"
           stderr="$root/child.stderr"
@@ -297,7 +352,7 @@ jobs:
                   try: rows.append(json.loads(line))
                   except Exception: pass
           summary = {
-              "schema": "ACSIE.gen6_search_counters_diagnostic.v1",
+              "schema": "ACSIE.gen6_frontier_cache_hypothesis.v1",
               "source_commit": "d83cb60286f195eec02b4d7aa45a60539316d115",
               "instrumented_source_sha256": (root / "instrumented-source-sha256.txt").read_text().split()[-1],
               "seed": 2026100301,
@@ -306,7 +361,7 @@ jobs:
               "snapshots": rows,
               "stdout_bytes": (root / "child.stdout.jsonl").stat().st_size,
               "stderr_bytes": (root / "child.stderr").stat().st_size,
-              "interpretation_guard": "Counters are diagnostic instrumentation and can add overhead. A timeout remains inconclusive. No search decisions or gates were altered."
+              "hypothesis": "Bounded FIFO cache keyed by sorted state tokens; only exact repeated lineage_frontier inputs can hit.",\n              "interpretation_guard": "Counters are diagnostic instrumentation and can add overhead. A timeout remains inconclusive. Cache hits return the previously computed identical frontier; no thresholds or gates changed."
           }
           (root / "summary.json").write_text(json.dumps(summary, sort_keys=True, indent=2) + "\n")
           print(json.dumps(summary, sort_keys=True, indent=2))
@@ -316,6 +371,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gen6-search-counter-localization-${{ github.run_id }}
-          path: evidence/gen6-counters/
+          name: gen6-frontier-cache-hypothesis-${{ github.run_id }}
+          path: evidence/gen6-frontier-cache/
           if-no-files-found: error
