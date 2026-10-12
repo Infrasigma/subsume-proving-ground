@@ -94,7 +94,8 @@ jobs:
           loop_start = fn.index(old_start)
           loop_end = fn.index(old_end, loop_start) + len(old_end)
 
-          new_loop = textwrap.dedent("""                  frontier = []
+          new_loop = textwrap.indent(textwrap.dedent("""
+                  frontier = []
                   _h7_frontier_group_diag["frontier_function_calls"] += 1
                   for representatives in contexts.values():
                       candidates = tuple(representatives.values())
@@ -156,7 +157,8 @@ jobs:
                                       break
                               if not dominated:
                                   frontier.append(state)
-                  return tuple(sorted(frontier, key=rank))""")
+                  return tuple(sorted(frontier, key=rank))
+                  """).strip(), "        ")
 
           fn = fn[:loop_start] + new_loop + fn[loop_end:]
 
