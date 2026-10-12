@@ -1,0 +1,321 @@
+name: Gen6 exact-search counter localization
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-r3-exact-source-20261011
+    paths:
+      - ".github/workflows/gen6-search-counters.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  gen6-search-counter-localization:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout proving-ground executor
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Record diagnostic contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/gen6-counters diagnostics
+          {
+            echo "EXECUTOR_COMMIT=$GITHUB_SHA"
+            echo "WORKFLOW_RUN_ID=$GITHUB_RUN_ID"
+            echo "ACSIE_BASE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
+            echo "SEED=2026100301"
+            echo "GENERATION_INDICES=0..6"
+            echo "CHILD_WALL_BUDGET_SECONDS=120"
+            echo "SIGNAL_INTERVAL_SECONDS=10"
+            echo "CHANGE_CLASS=diagnostic counters only; no search ordering, thresholds, or gates changed"
+          } | tee evidence/gen6-counters/provenance.txt
+
+      - name: Checkout exact ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Apply deterministic counters-only diagnostic patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$GITHUB_WORKSPACE/acsie/cognitive_core/behavioral_search.py" <<'PY'
+          import hashlib, pathlib, sys
+
+          path = pathlib.Path(sys.argv[1])
+          source = path.read_text()
+          original_sha = hashlib.sha256(source.encode()).hexdigest()
+
+          def once(text, old, new, label):
+              n = text.count(old)
+              if n != 1:
+                  raise SystemExit(f"patch marker {label!r} matched {n} times, expected exactly one")
+              return text.replace(old, new, 1)
+
+          def block(text, start, end, pairs, label):
+              i = text.index(start)
+              j = text.index(end, i + len(start))
+              part = text[i:j]
+              for old, new, sublabel in pairs:
+                  part = once(part, old, new, label + ":" + sublabel)
+              return text[:i] + part + text[j:]
+
+          source = once(
+              source,
+              '    }\n\n    def free_keys(expr: Mapping[str, Any]) -> tuple[str, ...]:',
+              '''    }
+
+              # Instrumentation-only counters. These values never participate in
+              # search decisions and are not added to the returned scientific stats.
+              _h7_diag = {"counters": {}}
+
+              def _h7_inc(name: str, amount: int = 1) -> None:
+                  counters = _h7_diag["counters"]
+                  counters[name] = int(counters.get(name, 0)) + amount
+
+              def free_keys(expr: Mapping[str, Any]) -> tuple[str, ...]:
+                  _h7_inc("free_keys_calls")
+                  _h7_inc("free_keys_key_serializations")''',
+              "initialize counters")
+          
+          source = block(source, "    def free_keys(", "    def eval_vector(", [
+              ('        cached = free_cache.get(ident)\n        if cached is not None:\n            return cached',
+               '        cached = free_cache.get(ident)\n        if cached is not None:\n            _h7_inc("free_keys_cache_hits")\n            return cached\n        _h7_inc("free_keys_cache_misses")',
+               "free cache"),
+          ], "free_keys")
+
+          source = block(source, "    def executable_cost(", "    def structural_expand(", [
+              (') -> tuple[int, int]:\n        ident = json.dumps(expr, sort_keys=True, separators=(",", ":"))',
+               ') -> tuple[int, int]:\n        _h7_inc("executable_cost_calls")\n        _h7_inc("executable_cost_key_serializations")\n        ident = json.dumps(expr, sort_keys=True, separators=(",", ":"))',
+               "cost entry"),
+              ('        if not active and ident in executable_cost_cache:\n            return executable_cost_cache[ident]',
+               '        if not active and ident in executable_cost_cache:\n            _h7_inc("executable_cost_cache_hits")\n            return executable_cost_cache[ident]\n        if not active:\n            _h7_inc("executable_cost_cache_misses")',
+               "cost cache"),
+          ], "executable_cost")
+
+          source = block(source, "    def structural_expand(", "    def structural_key(", [
+              (') -> Mapping[str, Any]:\n        op = str(expr["op"])',
+               ') -> Mapping[str, Any]:\n        _h7_inc("structural_expand_calls")\n        op = str(expr["op"])',
+               "expand entry"),
+              ('        if op == "macro":\n            mid = str(expr["id"])',
+               '        if op == "macro":\n            _h7_inc("structural_expand_macro_nodes")\n            mid = str(expr["id"])',
+               "macro node"),
+              ('            left_key = json.dumps(left, sort_keys=True, separators=(",", ":"))\n            right_key = json.dumps(right, sort_keys=True, separators=(",", ":"))',
+               '            _h7_inc("structural_expand_sort_key_dumps", 2)\n            left_key = json.dumps(left, sort_keys=True, separators=(",", ":"))\n            right_key = json.dumps(right, sort_keys=True, separators=(",", ":"))',
+               "commutative serializations"),
+          ], "structural_expand")
+
+          source = block(source, "    def structural_key(", "    def structural_lineage(", [
+              ('    def structural_key(expr: Mapping[str, Any]) -> str:\n        return json.dumps(',
+               '    def structural_key(expr: Mapping[str, Any]) -> str:\n        _h7_inc("structural_key_calls")\n        _h7_inc("structural_key_outer_dumps")\n        return json.dumps(',
+               "key entry"),
+          ], "structural_key")
+
+          source = block(source, "    def dominates(", "    def discard_pruned_state(", [
+              ('    def dominates(left: tuple, right: tuple) -> bool:\n',
+               '    def dominates(left: tuple, right: tuple) -> bool:\n        _h7_inc("dominates_calls")\n',
+               "dominance entry"),
+          ], "dominates")
+
+          source = block(source, "    def _H7_meta(", "    def _H7_new_index(", [
+              ('    def _H7_meta(state: tuple) -> dict:\n        token = state[5]\n',
+               '    def _H7_meta(state: tuple) -> dict:\n        _h7_inc("h7_meta_calls")\n        token = state[5]\n',
+               "meta entry"),
+              ('        if cached is not None:\n            return cached\n        direct = frozenset(state[2])',
+               '        if cached is not None:\n            _h7_inc("h7_meta_cache_hits")\n            return cached\n        _h7_inc("h7_meta_cache_misses")\n        direct = frozenset(state[2])',
+               "meta cache"),
+          ], "H7_meta")
+
+          source = block(source, "    def lineage_frontier(", "    def build_extreme_lookup(", [
+              ('    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:\n        """Return context-local Pareto frontiers without collapsing search-budget trade-offs."""\n',
+               '    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:\n        """Return context-local Pareto frontiers without collapsing search-budget trade-offs."""\n        _h7_inc("lineage_frontier_calls")\n        _h7_inc("lineage_frontier_input_states", len(states))\n',
+               "frontier entry"),
+              ('            candidates = tuple(representatives.values())\n            for state in candidates:',
+               '            candidates = tuple(representatives.values())\n            _h7_inc("lineage_frontier_candidate_groups")\n            _h7_inc("lineage_frontier_candidate_count", len(candidates))\n            _h7_inc("lineage_frontier_pairwise_upper_bound", len(candidates) * max(0, len(candidates) - 1))\n            for state in candidates:',
+               "frontier pair budget"),
+          ], "lineage_frontier")
+
+          source = block(source, "    def register(", "    def register_binary(", [
+              ('        nonlocal next_state_token, target_candidate_found\n',
+               '        nonlocal next_state_token, target_candidate_found\n        _h7_inc("register_calls")\n',
+               "register entry"),
+          ], "register")
+
+          regbin_start = source.index("    def register_binary(")
+          next_def = source.find("\n    def ", regbin_start + len("    def register_binary("))
+          if next_def < 0:
+              raise SystemExit("could not find end boundary for register_binary")
+          regbin = source[regbin_start:next_def]
+          regbin = once(
+              regbin,
+              '        nonlocal next_state_token, target_candidate_found\n',
+              '        nonlocal next_state_token, target_candidate_found\n        _h7_inc("register_binary_calls")\n',
+              "register_binary entry",
+          )
+          source = source[:regbin_start] + regbin + source[next_def:]
+
+          new_sha = hashlib.sha256(source.encode()).hexdigest()
+          path.write_text(source)
+          print(f"ACSIE_BASE_BEHAVIORAL_SEARCH_SHA256={original_sha}")
+          print(f"ACSIE_DIAGNOSTIC_BEHAVIORAL_SEARCH_SHA256={new_sha}")
+          print(f"DIAGNOSTIC_PATCHED_BYTES={len(source.encode())}")
+          PY
+          python -m py_compile acsie/cognitive_core/behavioral_search.py
+          sha256sum acsie/cognitive_core/behavioral_search.py | tee evidence/gen6-counters/instrumented-source-sha256.txt
+
+      - name: Install test dependency and run targeted semantics regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pytest
+          PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 \
+            python -m pytest -q acsie/tests/test_open_ended_growth.py \
+            2>&1 | tee evidence/gen6-counters/open-ended-growth-tests.txt
+
+      - name: Prepare counter snapshot signal handler
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > diagnostics/sitecustomize.py <<'PY'
+          import faulthandler
+          import json
+          import os
+          import signal
+          import sys
+          import time
+
+          faulthandler.enable(file=sys.stderr, all_threads=True)
+          _start = time.monotonic()
+          _log_path = os.environ.get("ACSIE_SEARCH_DIAG_LOG")
+
+          def _snapshot(signum, frame):
+              faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+              cur = frame
+              while cur is not None:
+                  if cur.f_code.co_name == "find_exact_expression":
+                      loc = cur.f_locals
+                      stats = loc.get("stats", {})
+                      diag = loc.get("_h7_diag", {})
+                      row = {
+                          "elapsed_s": round(time.monotonic() - _start, 3),
+                          "signal": int(signum),
+                          "active_search": {
+                              "rows": stats.get("rows"),
+                              "max_depth": stats.get("max_depth"),
+                              "primitive_count": stats.get("primitive_count"),
+                              "status": stats.get("status"),
+                              "generated_expressions": stats.get("generated_expressions"),
+                              "unique_states": stats.get("unique_states"),
+                              "duplicate_states": stats.get("duplicate_states"),
+                              "dominance_pruned_states": stats.get("dominance_pruned_states"),
+                              "dominance_frontier_max": stats.get("dominance_frontier_max"),
+                              "generic_binary_pairs_evaluated": stats.get("generic_binary_pairs_evaluated"),
+                          },
+                          "counters": dict(diag.get("counters", {})),
+                      }
+                      if _log_path:
+                          with open(_log_path, "a", buffering=1) as f:
+                              f.write(json.dumps(row, sort_keys=True) + "\n")
+                              f.flush()
+                      return
+                  cur = cur.f_back
+              if _log_path:
+                  with open(_log_path, "a", buffering=1) as f:
+                      f.write(json.dumps({
+                          "elapsed_s": round(time.monotonic() - _start, 3),
+                          "signal": int(signum),
+                          "active_search": None,
+                          "note": "signal received outside find_exact_expression frame"
+                      }, sort_keys=True) + "\n")
+                      f.flush()
+
+          signal.signal(signal.SIGUSR1, _snapshot)
+          PY
+          python -m py_compile diagnostics/sitecustomize.py
+          sha256sum diagnostics/sitecustomize.py | tee evidence/gen6-counters/snapshot-handler-sha256.txt
+
+      - name: Run one fixed-seed real self-extending path with 120s budget
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          root="$GITHUB_WORKSPACE/evidence/gen6-counters"
+          seed=2026100301
+          stdout="$root/child.stdout.jsonl"
+          stderr="$root/child.stderr"
+          log="$root/search-counter-snapshots.jsonl"
+          ACSIE_SEARCH_DIAG_LOG="$log" \
+          PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/lab:$GITHUB_WORKSPACE/acsie" \
+            python -c 'import json,sys,acsie_open_ended_self_extending_proving as g; print(json.dumps(g.run_seed(int(sys.argv[1]),7),sort_keys=True),flush=True)' \
+            "$seed" > "$stdout" 2> "$stderr" &
+          child=$!
+          start=$(date +%s)
+          next_signal=$((start + 10))
+          timed_out=0
+          while kill -0 "$child" 2>/dev/null; do
+            if ps -p "$child" -o stat= 2>/dev/null | grep -q 'Z'; then break; fi
+            now=$(date +%s)
+            elapsed=$((now - start))
+            if [ "$now" -ge "$next_signal" ]; then
+              kill -USR1 "$child" 2>/dev/null || true
+              next_signal=$((now + 10))
+            fi
+            if [ "$elapsed" -ge 120 ]; then
+              timed_out=1
+              kill -TERM "$child" 2>/dev/null || true
+              sleep 3
+              kill -KILL "$child" 2>/dev/null || true
+              break
+            fi
+            sleep 1
+          done
+          set +e
+          wait "$child"
+          rc=$?
+          set -e
+          if [ "$timed_out" -eq 1 ]; then status="INCONCLUSIVE_CHILD_WALL_TIMEOUT"; elif [ "$rc" -eq 0 ] && [ -s "$stdout" ]; then status="CHILD_COMPLETED_RECORD_AVAILABLE"; else status="CHILD_ERROR"; fi
+          printf '{"seed":%s,"child_returncode":%s,"timed_out":%s,"timeout_seconds":120,"status":"%s"}\n' "$seed" "$rc" "$timed_out" "$status" | tee "$root/child-status.json"
+          python - "$root" <<'PY'
+          import json, pathlib, sys
+          root = pathlib.Path(sys.argv[1])
+          log = root / "search-counter-snapshots.jsonl"
+          rows = []
+          if log.exists():
+              for line in log.read_text(errors="replace").splitlines():
+                  try: rows.append(json.loads(line))
+                  except Exception: pass
+          summary = {
+              "schema": "ACSIE.gen6_search_counters_diagnostic.v1",
+              "source_commit": "d83cb60286f195eec02b4d7aa45a60539316d115",
+              "instrumented_source_sha256": (root / "instrumented-source-sha256.txt").read_text().split()[-1],
+              "seed": 2026100301,
+              "child_status": json.loads((root / "child-status.json").read_text()),
+              "snapshot_count": len(rows),
+              "snapshots": rows,
+              "stdout_bytes": (root / "child.stdout.jsonl").stat().st_size,
+              "stderr_bytes": (root / "child.stderr").stat().st_size,
+              "interpretation_guard": "Counters are diagnostic instrumentation and can add overhead. A timeout remains inconclusive. No search decisions or gates were altered."
+          }
+          (root / "summary.json").write_text(json.dumps(summary, sort_keys=True, indent=2) + "\n")
+          print(json.dumps(summary, sort_keys=True, indent=2))
+          PY
+
+      - name: Upload exact-source and counter sidecars
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen6-search-counter-localization-${{ github.run_id }}
+          path: evidence/gen6-counters/
+          if-no-files-found: error
