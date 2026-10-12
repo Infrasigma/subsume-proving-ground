@@ -34,7 +34,7 @@ def apply_profile_counters(source: str) -> str:
     # decisions or alter the scientific stats/result signature.
     _H7_PHASE_PROFILE = {
         "register_calls": 0,
-        "register_exact_seen_duplicates": 0,
+        "exact_seen_duplicate_returns": 0,
         "register_eval_exceptions": 0,
         "register_same_bucket_duplicates": 0,
         "register_dominator_rejections": 0,
@@ -334,19 +334,21 @@ def apply_profile_counters(source: str) -> str:
         if metadata_hint is None:''',
         label="instrument register calls",
     )
+    duplicate_bail = '''        if expression_ident in seen_expression_keys:
+            stats["duplicate_states"] += 1
+            stats["exact_expression_duplicates_skipped"] += 1
+            return None'''
+    duplicate_bail_profiled = '''        if expression_ident in seen_expression_keys:
+            _H7_PHASE_PROFILE["exact_seen_duplicate_returns"] += 1
+            stats["duplicate_states"] += 1
+            stats["exact_expression_duplicates_skipped"] += 1
+            return None'''
+    # The same short bail appears in register() and register_binary(); count
+    # each returned duplicate here, while also recording the binary subset in
+    # register_binary's dedicated counter below.
     source = replace_exact(
-        source,
-        '''        if expression_ident in seen_expression_keys:
-            stats["duplicate_states"] += 1
-            stats["exact_expression_duplicates_skipped"] += 1
-            return None''',
-        '''        if expression_ident in seen_expression_keys:
-            _H7_PHASE_PROFILE["register_exact_seen_duplicates"] += 1
-            stats["duplicate_states"] += 1
-            stats["exact_expression_duplicates_skipped"] += 1
-            return None''',
-        label="count register exact-key bails",
-        count=1,
+        source, duplicate_bail, duplicate_bail_profiled, count=2,
+        label="count exact-key duplicate returns in both registration paths",
     )
     source = replace_exact(
         source,
