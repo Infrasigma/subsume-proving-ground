@@ -1,0 +1,73 @@
+name: Gen6 cycle-safe macro structural-ID memoization
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-r3-exact-source-20261011
+    paths:
+      - ".github/workflows/gen6-macro-key-memoization.yml"
+      - "lab/patch_gen6_structural_key_interning.py"
+      - "lab/patch_gen6_macro_key_memoization.py"
+      - "lab/run_gen6_macro_key_memoization.py"
+
+permissions:
+  contents: read
+
+jobs:
+  macro-key-memoization:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Predeclare experiment and verify harness syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/gen6-macro-key-memoization
+          {
+            echo "EXECUTOR_COMMIT=$GITHUB_SHA"
+            echo "WORKFLOW_RUN_ID=$GITHUB_RUN_ID"
+            echo "ACSIE_SOURCE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
+            echo "ACSIE_SOURCE_TREE=12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+            echo "FACTOR=identical exact interned structural IDs in both arms; treatment memoizes per-primitive expanded structural IDs only if whole primitive dependency graph is acyclic"
+            echo "FIXED_FRONTIER_CACHE=FIFO capacity 128 in both arms"
+            echo "OTHER_FACTORS=structural expansion cache OFF; arbitrary/direct AST-key cache OFF; grouping OFF"
+            echo "CYCLE_POLICY=if any dependency cycle exists, disable macro-body ID cache for the whole search"
+            echo "PREDECLARED_SEED=2026100301"
+            echo "GENERATIONS=0..6 (7 total)"
+            echo "CHILD_TIMEOUT_SECONDS=120 per arm"
+            echo "RSS_GUARD_MIB=2048 per child"
+            echo "QUALIFICATION=single-seed diagnostic only; not frozen 5x12 qualification"
+          } | tee evidence/gen6-macro-key-memoization/initial-contract.txt
+          python -m py_compile             lab/patch_gen6_structural_key_interning.py             lab/patch_gen6_macro_key_memoization.py             lab/run_gen6_macro_key_memoization.py
+
+      - name: Checkout pinned private ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run parity-gated paired Gen6 diagnostic
+        shell: bash
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pytest
+          python lab/run_gen6_macro_key_memoization.py             --repo-root "$GITHUB_WORKSPACE"             --acsie-root "$GITHUB_WORKSPACE/acsie"             --evidence "$GITHUB_WORKSPACE/evidence/gen6-macro-key-memoization"             --seed 2026100301             --generations 7             --timeout-seconds 120             --rss-guard-bytes 2147483648             --executor-sha "$GITHUB_SHA"             --workflow-run-id "$GITHUB_RUN_ID"             2>&1 | tee evidence/gen6-macro-key-memoization/runner-stdout.txt
+
+      - name: Upload source-pinned diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen6-macro-key-memoization-${{ github.run_id }}
+          path: evidence/gen6-macro-key-memoization/
+          if-no-files-found: error
+          compression-level: 6
