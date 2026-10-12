@@ -1,0 +1,283 @@
+name: Gen6 frontier-cache exact-signature parity
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-r3-exact-source-20261011
+    paths:
+      - ".github/workflows/gen6-frontier-cache-parity.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  frontier-cache-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout proving-ground harness
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Record predeclared contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/gen6-cache-parity
+          {
+            echo "EXECUTOR_COMMIT=$GITHUB_SHA"
+            echo "WORKFLOW_RUN_ID=$GITHUB_RUN_ID"
+            echo "ACSIE_SOURCE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
+            echo "ACSIE_TREE=12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+            echo "CACHE_CAPACITY=128 FIFO entries per find_exact_expression invocation"
+            echo "CACHE_KEY=state-token ID plus current structural-lineage union for every input state"
+            echo "COMPARISON=exact result + alternatives + returned scientific stats, cache disabled versus enabled"
+            echo "NO_THRESHOLD_SPLIT_SELECTION_OR_SOURCE_COMMIT_CHANGE=true"
+          } | tee evidence/gen6-cache-parity/provenance.txt
+
+      - name: Checkout exact ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify original source identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_commit="$(git -C acsie rev-parse HEAD)"
+          actual_tree="$(git -C acsie rev-parse 'HEAD^{tree}')"
+          source_sha="$(sha256sum acsie/cognitive_core/behavioral_search.py | awk '{print $1}')"
+          growth_test_sha="$(sha256sum acsie/tests/test_open_ended_growth.py | awk '{print $1}')"
+          test "$actual_commit" = "d83cb60286f195eec02b4d7aa45a60539316d115"
+          test "$actual_tree" = "12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+          test "$source_sha" = "2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
+          test "$growth_test_sha" = "685c92ee3a825013323ea92d40a45e8e684a0867f7e72cd1317f5db72e9ced53"
+          {
+            echo "ACSIE_COMMIT=$actual_commit"
+            echo "ACSIE_TREE=$actual_tree"
+            echo "BEHAVIORAL_SEARCH_ORIGINAL_SHA256=$source_sha"
+            echo "TEST_OPEN_ENDED_GROWTH_SHA256=$growth_test_sha"
+            echo "SOURCE_IDENTITY=PASS"
+          } | tee evidence/gen6-cache-parity/source-identity.txt
+
+      - name: Apply bounded cache only as an uncommitted diagnostic patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$GITHUB_WORKSPACE/acsie/cognitive_core/behavioral_search.py" <<'PY'
+          import hashlib
+          import pathlib
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          source = path.read_text()
+          base_sha = hashlib.sha256(source.encode()).hexdigest()
+          start_marker = "    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:"
+          end_marker = "    def build_extreme_lookup("
+          if source.count(start_marker) != 1:
+              raise SystemExit(f"expected one lineage_frontier function, got {source.count(start_marker)}")
+          if "lineage_frontier_cache" in source:
+              raise SystemExit("unexpected pre-existing cache marker in pinned source")
+
+          start = source.index(start_marker)
+          end = source.index(end_marker, start + len(start_marker))
+          function = source[start:end]
+
+          cache_declaration = (
+              '    _h7_lf_cache: dict[tuple[tuple[int, tuple[str, ...]], ...], tuple[tuple, ...]] = {}\n'
+              '    _h7_lf_cache_stats = {"hits": 0, "misses": 0, "evictions": 0}\n\n'
+          )
+          source = source[:start] + cache_declaration + source[start:]
+          start = source.index(start_marker)
+          end = source.index(end_marker, start + len(start_marker))
+          function = source[start:end]
+
+          empty_marker = "        if not states:\n            return ()"
+          if function.count(empty_marker) != 1:
+              raise SystemExit(f"frontier empty-marker count={function.count(empty_marker)}")
+          lookup = (
+              "        if not states:\n            return ()\n"
+              "        cache_enabled = __import__(\"os\").environ.get(\"ACSIE_DISABLE_LF_CACHE\") != \"1\"\n"
+              "        cache_key = tuple(sorted((int(state[5]), tuple(sorted(structural_lineage_by_key.get(str(state[4]), set())))) for state in states))\n"
+              "        cached_frontier = _h7_lf_cache.get(cache_key) if cache_enabled else None\n"
+              "        if cached_frontier is not None:\n"
+              "            _h7_lf_cache_stats[\"hits\"] += 1\n"
+              "            return cached_frontier\n"
+              "        if cache_enabled:\n"
+              "            _h7_lf_cache_stats[\"misses\"] += 1"
+          )
+          function = function.replace(empty_marker, lookup, 1)
+
+          result_marker = "        return tuple(sorted(frontier, key=rank))"
+          if function.count(result_marker) != 1:
+              raise SystemExit(f"frontier return-marker count={function.count(result_marker)}")
+          store = (
+              "        result = tuple(sorted(frontier, key=rank))\n"
+              "        if cache_enabled:\n"
+              "            if len(_h7_lf_cache) >= 128:\n"
+              "                del _h7_lf_cache[next(iter(_h7_lf_cache))]\n"
+              "                _h7_lf_cache_stats[\"evictions\"] += 1\n"
+              "            _h7_lf_cache[cache_key] = result\n"
+              "        return result"
+          )
+          function = function.replace(result_marker, store, 1)
+          source = source[:start] + function + source[end:]
+
+          # Export only diagnostic counters, not into BehavioralSearchResult.stats,
+          # so the parity comparison remains about scientific outputs.
+          return_marker = "        return BehavioralSearchResult("
+          return_pos = source.rfind(return_marker)
+          if return_pos < 0:
+              raise SystemExit("final successful result return marker missing")
+          source = (
+              source[:return_pos]
+              + '        find_exact_expression._H7_LAST_LF_CACHE_STATS = dict(_h7_lf_cache_stats)\n'
+              + source[return_pos:]
+          )
+          path.write_text(source)
+          print("ORIGINAL_SOURCE_SHA256=" + base_sha)
+          print("DIAGNOSTIC_PATCHED_SOURCE_SHA256=" + hashlib.sha256(source.encode()).hexdigest())
+          print("PATCH_SCOPE=one nested function; cache key includes current mutable structural-lineage metadata")
+          PY
+          python -m py_compile acsie/cognitive_core/behavioral_search.py
+          sha256sum acsie/cognitive_core/behavioral_search.py | tee evidence/gen6-cache-parity/diagnostic-source-sha256.txt
+
+      - name: Run six-file source regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pytest
+          PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 \
+            python -m pytest -q \
+              acsie/tests/test_open_ended_growth.py \
+              acsie/tests/test_core014_recursive_cognitive_compiler.py \
+              acsie/tests/test_core015_semantic_operator_discovery.py \
+              acsie/tests/test_core016_open_semantic_substrate.py \
+              acsie/tests/test_adaptive_capability_repair.py \
+              acsie/tests/test_asi_claim_gate.py \
+            2>&1 | tee evidence/gen6-cache-parity/six-file-regression.txt
+
+      - name: Compare uncached and cached exact scientific signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 \
+            python - "$GITHUB_WORKSPACE/evidence/gen6-cache-parity" <<'PY'
+          import json
+          import os
+          import pathlib
+          import sys
+
+          from cognitive_core.behavioral_search import find_exact_expression
+          from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
+          from cognitive_core.recursive_cognitive_compiler import (
+              ArchiveRecord, CognitivePrimitive, Trace
+          )
+
+          evidence = pathlib.Path(sys.argv[1])
+
+          def build_case(op):
+              c = OpenEndedRecursiveCognitiveCompiler(max_depth=4, seed=771221)
+              px = CognitivePrimitive(
+                  "prim:x", {"op": "get", "key": "x"}, ("x", "y"), "delta", 0,
+                  (), ("opaque",), 0.0, 0.0, 0.0, 1, {},
+              )
+              py = CognitivePrimitive(
+                  "prim:y", {"op": "get", "key": "y"}, ("x", "y"), "delta", 0,
+                  (), ("opaque",), 0.0, 0.0, 0.0, 1, {},
+              )
+              c.primitives = {px.primitive_id: px, py.primitive_id: py}
+              c.archive = {
+                  px.primitive_id: ArchiveRecord(px),
+                  py.primitive_id: ArchiveRecord(py),
+              }
+              rows = []
+              for i in range(8):
+                  x, y = float(i), float(i + 1)
+                  target = max(x, y) if op == "max" else min(x, y) if op == "min" else x + y
+                  rows.append(Trace({"x": x, "y": y}, target, "opaque", {}, f"{op}-{i}"))
+              objective = "maximize_direct_vocabulary" if op == "sum" else "minimize_expanded_cost"
+              depth = 2 if op == "sum" else 4
+              return c, tuple(rows), depth, objective
+
+          def result_signature(result):
+              if result is None:
+                  return None
+              return {
+                  "expression": result.expression,
+                  "used_primitives": result.used_primitives,
+                  "alternatives": result.alternatives,
+                  "stats": dict(result.stats),
+              }
+
+          rows = []
+          total_hits = 0
+          for case in ("max", "min", "sum"):
+              compiler_off, traces_off, depth_off, objective_off = build_case(case)
+              os.environ["ACSIE_DISABLE_LF_CACHE"] = "1"
+              uncached_result = find_exact_expression(
+                  compiler_off, traces_off, max_depth=depth_off,
+                  require_macro=True, selection_objective=objective_off,
+                  max_alternatives=8,
+              )
+              uncached_signature = result_signature(uncached_result)
+              uncached_stats = dict(getattr(find_exact_expression, "_H7_LAST_LF_CACHE_STATS", {}))
+
+              compiler_on, traces_on, depth_on, objective_on = build_case(case)
+              os.environ.pop("ACSIE_DISABLE_LF_CACHE", None)
+              cached_result = find_exact_expression(
+                  compiler_on, traces_on, max_depth=depth_on,
+                  require_macro=True, selection_objective=objective_on,
+                  max_alternatives=8,
+              )
+              cached_signature = result_signature(cached_result)
+              cached_stats = dict(getattr(find_exact_expression, "_H7_LAST_LF_CACHE_STATS", {}))
+              equal = uncached_signature == cached_signature
+              hits = int(cached_stats.get("hits", 0))
+              total_hits += hits
+              row = {
+                  "fixture": case,
+                  "exact_signature_equal": equal,
+                  "uncached_signature": uncached_signature,
+                  "cached_signature": cached_signature,
+                  "uncached_cache_stats": uncached_stats,
+                  "cached_cache_stats": cached_stats,
+                  "result_found": cached_result is not None,
+              }
+              rows.append(row)
+              print(json.dumps({
+                  "fixture": case, "exact_signature_equal": equal,
+                  "cached_cache_stats": cached_stats,
+                  "uncached_cache_stats": uncached_stats,
+                  "result_found": cached_result is not None,
+              }, sort_keys=True))
+              if not equal:
+                  raise SystemExit(f"cached/uncached signature mismatch on fixture {case}")
+
+          summary = {
+              "schema": "ACSIE.gen6_frontier_cache_exact_signature_parity.v1",
+              "cache_capacity": 128,
+              "key_includes_mutable_structural_lineage": True,
+              "fixtures": rows,
+              "all_exact_signatures_equal": all(r["exact_signature_equal"] for r in rows),
+              "total_cached_frontier_hits": total_hits,
+              "interpretation_guard": "Bounded fixture-level semantic parity only; no Gen6 science pass or scalability claim."
+          }
+          (evidence / "cache-parity.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+          if total_hits < 1:
+              raise SystemExit("parity fixtures completed but did not exercise any cache hit")
+          PY
+
+      - name: Upload parity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen6-frontier-cache-parity-${{ github.run_id }}
+          path: evidence/gen6-cache-parity/
+          if-no-files-found: error
