@@ -306,16 +306,16 @@ def apply_interned_identity(source: str) -> str:
         label="release identity when frontier representative is pruned",
     )
 
-    hook_marker = "    def rank(state: tuple) -> tuple[Any, ...]:\n"
+    hook_marker = "    expression_interner = _H7ExpressionInterner()\\n"
     hook_text = (
-        "    find_exact_expression._H7_EXPR_IDENTITY_FN = expression_interner.intern_expr\n"
-        "    find_exact_expression._H7_EXPR_BINARY_ID_FN = expression_interner.intern_binary\n\n"
+        "    find_exact_expression._H7_EXPR_IDENTITY_FN = expression_interner.intern_expr\\n"
+        "    find_exact_expression._H7_EXPR_BINARY_ID_FN = expression_interner.intern_binary\\n\\n"
     )
     source = replace_exact(
         source,
         hook_marker,
-        hook_text + hook_marker,
-        label="expose private diagnostic hooks",
+        hook_marker + hook_text,
+        label="expose private diagnostic hooks after interner initialization",
     )
 
     if "expression_ident in seen_expression_keys" in source:
