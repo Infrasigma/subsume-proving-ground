@@ -16,14 +16,20 @@ permissions:
   contents: read
 jobs:
   open-ended-self-extending:
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100301, 2026100302, 2026100303, 2026100304, 2026100305]
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+    env:
+      ACSIE_REF: "04f959e06a813aeba1c2c7a74f5841333354b27a"
     steps:
       - uses: actions/checkout@v4
       - name: Clone exact ACSIE research commit
         env:
           ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
-          ACSIE_REF: "e7b0acdc38a89542a5bc05ad649f9406ed80c7c7"
+          ACSIE_REF: "04f959e06a813aeba1c2c7a74f5841333354b27a"
         run: |
           set -euo pipefail
           test -n "$ACSIE_READ_TOKEN"
@@ -41,17 +47,21 @@ jobs:
           PYTHONPATH=/tmp/acsie-open-ended-self-extending:. pytest -q lab/test_open_ended_bootstrap_language.py
       - name: Initialize scientific evidence file
         run: |
+          set -euo pipefail
+          ACTUAL_PROVING_SHA="$(git rev-parse HEAD)"
+          test "$ACTUAL_PROVING_SHA" = "$GITHUB_SHA"
           : > open-ended-self-extending-result.txt
           {
-            echo "WORKFLOW_SHA=${{ github.sha }}"
-            echo "ACSIE_REF=ff525043d641fc312db33843457e86adf690bca1"
+            echo "WORKFLOW_SHA=$GITHUB_SHA"
+            echo "PROVING_SHA=$ACTUAL_PROVING_SHA"
+            echo "ACSIE_REF=$ACSIE_REF"
             echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> open-ended-self-extending-result.txt
       - name: Run five-seed open-ended growth gate
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONPATH: /tmp/acsie-open-ended-self-extending
-          ACSIE_REF: "e7b0acdc38a89542a5bc05ad649f9406ed80c7c7"
+          ACSIE_REF: "04f959e06a813aeba1c2c7a74f5841333354b27a"
         run: |
           set +e
           . /tmp/open-ended-venv/bin/activate
