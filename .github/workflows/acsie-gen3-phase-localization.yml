@@ -1,7 +1,12 @@
 name: Gen3 single-cell historical-predecessor phase localization
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - research/acsie-gen3-historical-state-arm-20261012
+    paths:
+      - ".github/workflows/acsie-gen3-phase-localization.yml"
+      - "lab/run_gen3_phase_localization.py"
 
 permissions:
   contents: read
