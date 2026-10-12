@@ -1,0 +1,74 @@
+name: Gen6 exact executable-AST key interning
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-r3-exact-source-20261011
+    paths:
+      - ".github/workflows/gen6-exact-expression-id.yml"
+      - "lab/patch_gen6_structural_key_interning.py"
+      - "lab/patch_gen6_macro_key_memoization.py"
+      - "lab/patch_gen6_exact_expression_id.py"
+      - "lab/run_gen6_exact_expression_id.py"
+
+permissions:
+  contents: read
+
+jobs:
+  exact-expression-ids:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Predeclare factor and verify scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/gen6-exact-expression-id
+          {
+            echo "EXECUTOR_COMMIT=$GITHUB_SHA"
+            echo "WORKFLOW_RUN_ID=$GITHUB_RUN_ID"
+            echo "ACSIE_SOURCE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
+            echo "ACSIE_SOURCE_TREE=12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+            echo "COMMON_BASE=exact interned expanded structural IDs + cycle-safe primitive macro-ID cache + frontier FIFO capacity 128"
+            echo "FACTOR=control retains JSON-string exact-AST duplicate keys; candidate adds exact unexpanded executable-AST integer IDs"
+            echo "CANONICAL_ORDERING=original JSON lexical order retained for canonical operand ordering and final rank tie-break"
+            echo "CACHES=exact-ID object LRU capacity 8192; structural expansion cache OFF; grouping OFF"
+            echo "PREDECLARED_SEED=2026100301"
+            echo "GENERATIONS=0..6 (7 total)"
+            echo "CHILD_TIMEOUT_SECONDS=120 per arm"
+            echo "RSS_GUARD_MIB=2048 per child"
+            echo "QUALIFICATION=single-seed diagnostic only; not frozen 5x12 qualification"
+          } | tee evidence/gen6-exact-expression-id/initial-contract.txt
+          python -m py_compile             lab/patch_gen6_structural_key_interning.py             lab/patch_gen6_macro_key_memoization.py             lab/patch_gen6_exact_expression_id.py             lab/run_gen6_exact_expression_id.py
+
+      - name: Checkout pinned private ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run parity-gated paired Gen6 diagnostic
+        shell: bash
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pytest
+          python lab/run_gen6_exact_expression_id.py             --repo-root "$GITHUB_WORKSPACE"             --acsie-root "$GITHUB_WORKSPACE/acsie"             --evidence "$GITHUB_WORKSPACE/evidence/gen6-exact-expression-id"             --seed 2026100301             --generations 7             --timeout-seconds 120             --rss-guard-bytes 2147483648             --executor-sha "$GITHUB_SHA"             --workflow-run-id "$GITHUB_RUN_ID"             2>&1 | tee evidence/gen6-exact-expression-id/runner-stdout.txt
+
+      - name: Upload source-pinned diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen6-exact-expression-id-${{ github.run_id }}
+          path: evidence/gen6-exact-expression-id/
+          if-no-files-found: error
+          compression-level: 6
