@@ -107,7 +107,7 @@ jobs:
               state = json.loads(state_b)
           sha = hashlib.sha256(state_b).hexdigest()
           if sha != expected_state: raise SystemExit(f"state digest mismatch {sha}")
-          m = re.search(r"^([0-9a-f]{64})\\s+evidence/verified-gen2-state\\.json\\s*$", checksum, re.M)
+          m = re.search(r"^([0-9a-f]{64})\s+evidence/verified-gen2-state\.json\s*$", checksum, re.M)
           if not m or m.group(1) != expected_state: raise SystemExit("artifact internal state.sha256 mismatch")
           if export.get("scientific_status") != "PASSED": raise SystemExit("historical Gen2 status isn't PASSED")
           if export.get("scientific_parent_commit") != parent: raise SystemExit("historical parent mismatch")
@@ -122,7 +122,7 @@ jobs:
                     "generation":state["generation"],"hypothesis_count":len(state["hypotheses"]),
                     "current_acsie_source":"d83cb60286f195eec02b4d7aa45a60539316d115",
                     "scope":"Historical predecessor only; does not repair or replace current-branch Gen2 exporter."}
-          (root / "preflight.json").write_text(json.dumps(report,indent=2,sort_keys=True)+"\\n")
+          (root / "preflight.json").write_text(json.dumps(report,indent=2,sort_keys=True)+"\n")
           print(json.dumps(report,indent=2,sort_keys=True))
           PY
 
@@ -148,7 +148,8 @@ jobs:
           seed=771221
           stdout="$root/continuation.stdout.json"
           stderr="$root/continuation.stderr"
-          # Invoke exactly one fixed-seed continuation under the external 120-second wall guard.\n          PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/acsie" \
+          # Invoke exactly one fixed-seed continuation under the external 120-second wall guard.
+          PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/acsie" \
             python -m research.gen3_from_frozen_verified_gen2_v1 "$root/verified-gen2-export.json" \
             > "$stdout" 2> "$stderr" &
           child=$!
@@ -177,7 +178,7 @@ jobs:
           rc=$?
           set -e
           if [ "$timed_out" -eq 1 ]; then status="INCONCLUSIVE_CHILD_WALL_TIMEOUT"; elif [ "$rc" -eq 0 ] && [ -s "$stdout" ]; then status="CHILD_RETURNED_RECORD"; else status="CHILD_ERROR_OR_EMPTY_OUTPUT"; fi
-          printf '{"seed":%s,"child_returncode":%s,"timed_out":%s,"timeout_seconds":120,"status":"%s"}\\n' "$seed" "$rc" "$timed_out" "$status" | tee "$root/child-status.json"
+          printf '{"seed":%s,"child_returncode":%s,"timed_out":%s,"timeout_seconds":120,"status":"%s"}\n' "$seed" "$rc" "$timed_out" "$status" | tee "$root/child-status.json"
           python - "$root" <<'PY'
           import json, pathlib, re, sys
           root=pathlib.Path(sys.argv[1])
@@ -185,7 +186,7 @@ jobs:
           blocks=re.split(r"(?=Current thread 0x)",stderr)
           stacks=[]
           for b in blocks:
-              frames=re.findall(r'File "([^"]+)", line (\\d+), in ([^\\n]+)',b)
+              frames=re.findall(r'File "([^"]+)", line (\d+), in ([^\n]+)',b)
               if frames: stacks.append([{"file":f,"line":int(n),"function":fun} for f,n,fun in frames])
           status=json.loads((root/"child-status.json").read_text())
           summary={"schema":"ACSIE.gen3_phase_localization.v1",
@@ -196,7 +197,7 @@ jobs:
                    "stderr_bytes":len(stderr.encode()),
                    "stderr_tail":stderr[-10000:],
                    "interpretation_guard":"A timeout is inconclusive. Stack samples identify active code paths but are not a Gen3 science pass/fail."}
-          (root/"summary.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\\n")
+          (root/"summary.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n")
           print(json.dumps({k:v for k,v in summary.items() if k!="stderr_tail"},indent=2,sort_keys=True))
           PY
 
