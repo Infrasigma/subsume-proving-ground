@@ -1,0 +1,114 @@
+name: H7 interned expression identity and paired Gen6 diagnostic
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-interned-expression-identity-20261013
+    paths:
+      - ".github/workflows/h7-interned-expression-identity.yml"
+      - "lab/patch_h7_interned_expression_identity.py"
+      - "lab/run_h7_interned_expression_identity.py"
+
+permissions:
+  contents: read
+
+jobs:
+  exact-identity-and-gen6:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout proving-ground experiment harness
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Freeze experiment contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/h7-interned-expression-identity
+          {
+            echo "EXECUTOR_REPOSITORY=Infrasigma/subsume-proving-ground"
+            echo "EXECUTOR_BRANCH=${GITHUB_REF_NAME}"
+            echo "EXECUTOR_COMMIT=${GITHUB_SHA}"
+            echo "WORKFLOW_RUN_ID=${GITHUB_RUN_ID}"
+            echo "ACSIE_SOURCE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
+            echo "ACSIE_SOURCE_TREE=12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+            echo "ACSIE_BEHAVIORAL_SEARCH_SHA256=2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
+            echo "FACTOR=replace per-generated-candidate canonical JSON identity strings with exact interned AST IDs"
+            echo "FIXED_FACTORS=compositional structural keys; lineage-frontier FIFO cache capacity 128"
+            echo "ARMS=control: compositional structural key plus canonical JSON identity; candidate: same key plus interned expression identity"
+            echo "SEED=2026100301"
+            echo "GENERATION_INDICES=0..6"
+            echo "CHILD_WALL_LIMIT_SECONDS=180 per arm"
+            echo "RSS_GUARD_BYTES=2147483648 per arm"
+            echo "PREFLIGHT=identity-partition equivalence on 4107-expression corpus; exact max/min/sum full-result parity; 61/61 regression suite per arm"
+            echo "SAMPLING=10-second stack/live-state only; no per-node counters or recursive timers"
+            echo "SCIENCE_GATE=complete child record required; timeout or empty stdout is INCONCLUSIVE"
+          } | tee evidence/h7-interned-expression-identity/initial-contract.txt
+          python -m py_compile \
+            lab/patch_h7_interned_expression_identity.py \
+            lab/run_h7_interned_expression_identity.py \
+            lab/patch_h7_compositional_structural_key.py \
+            lab/run_h7_compositional_structural_key.py
+
+      - name: Checkout exact private ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact source pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C acsie rev-parse HEAD)" = "d83cb60286f195eec02b4d7aa45a60539316d115"
+          test "$(git -C acsie rev-parse 'HEAD^{tree}')" = "12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+          test "$(sha256sum acsie/cognitive_core/behavioral_search.py | awk '{print $1}')" = "2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
+          {
+            echo "ACSIE_COMMIT=$(git -C acsie rev-parse HEAD)"
+            echo "ACSIE_TREE=$(git -C acsie rev-parse 'HEAD^{tree}')"
+            sha256sum acsie/cognitive_core/behavioral_search.py
+          } | tee evidence/h7-interned-expression-identity/acsie-source-identity.txt
+
+      - name: Setup Python 3.11 and pytest
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install regression test dependency
+        run: python -m pip install --disable-pip-version-check pytest
+
+      - name: Run independent identity-partition preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          python lab/patch_h7_interned_expression_identity.py --self-test 2>&1 | tee evidence/h7-interned-expression-identity/interned-identity-self-test.json
+
+      - name: Run exact key parity, regression, and paired Gen6 diagnostic
+        shell: bash
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          python lab/run_h7_interned_expression_identity.py \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --acsie-root "$GITHUB_WORKSPACE/acsie" \
+            --evidence "$GITHUB_WORKSPACE/evidence/h7-interned-expression-identity" \
+            --seed 2026100301 \
+            --generations 7 \
+            --timeout-seconds 180 \
+            --rss-guard-bytes 2147483648 \
+            2>&1 | tee evidence/h7-interned-expression-identity/runner-stdout.txt
+
+      - name: Upload exactness and Gen6 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h7-interned-expression-identity-${{ github.run_id }}
+          path: evidence/h7-interned-expression-identity/
+          if-no-files-found: error
+          compression-level: 6
