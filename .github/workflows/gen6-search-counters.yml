@@ -1,4 +1,4 @@
-name: Gen6 bounded lineage-frontier memoization hypothesis
+name: Gen6 bounded correctness-keyed lineage-frontier memoization hypothesis
 
 on:
   push:
@@ -33,7 +33,10 @@ jobs:
             echo "GENERATION_INDICES=0..6"
             echo "CHILD_WALL_BUDGET_SECONDS=120"
             echo "SIGNAL_INTERVAL_SECONDS=10"
-            echo "HYPOTHESIS=bounded exact-result memoization for identical lineage_frontier state-token inputs"\n            echo "CACHE_BOUND=128 FIFO entries per find_exact_expression invocation"\n            echo "SCIENTIFIC_GATES_AND_SELECTION_ORDER_UNCHANGED=true"
+            echo "HYPOTHESIS=bounded exact-result memoization for identical lineage_frontier inputs with mutable ranking state included"
+            echo "CACHE_BOUND=128 FIFO entries per find_exact_expression invocation"
+            echo "CACHE_KEY=sorted state-token IDs plus each state's current structural-lineage union"
+            echo "SCIENTIFIC_GATES_AND_SELECTION_ORDER_UNCHANGED=true"
           } | tee evidence/gen6-frontier-cache/provenance.txt
 
       - name: Checkout exact ACSIE source
@@ -197,14 +200,14 @@ jobs:
 
           once(
               '    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:',
-              '    lineage_frontier_cache: dict[tuple[int, ...], tuple[tuple, ...]] = {}\n\n'
+              '    lineage_frontier_cache: dict[tuple[tuple[int, tuple[str, ...]], ...], tuple[tuple, ...]] = {}\n\n'
               '    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:',
               'bounded cache declaration'
           )
           once(
               '        if not states:\n            return ()',
               '        if not states:\n            return ()\n'
-              '        cache_key = tuple(sorted(int(state[5]) for state in states))\n'
+              '        cache_key = tuple(sorted((int(state[5]), tuple(sorted(structural_lineage_by_key.get(str(state[4]), set())))) for state in states))\n'
               '        cached_frontier = lineage_frontier_cache.get(cache_key)\n'
               '        if cached_frontier is not None:\n'
               '            _h7_inc("lineage_frontier_cache_hits")\n'
@@ -361,7 +364,8 @@ jobs:
               "snapshots": rows,
               "stdout_bytes": (root / "child.stdout.jsonl").stat().st_size,
               "stderr_bytes": (root / "child.stderr").stat().st_size,
-              "hypothesis": "Bounded FIFO cache keyed by sorted state tokens; only exact repeated lineage_frontier inputs can hit.",\n              "interpretation_guard": "Counters are diagnostic instrumentation and can add overhead. A timeout remains inconclusive. Cache hits return the previously computed identical frontier; no thresholds or gates changed."
+              "hypothesis": "Bounded FIFO memoization keyed by state tokens and the current structural-lineage union that affects rank(state).",
+              "interpretation_guard": "Diagnostic instrumentation adds overhead and timeout is inconclusive. Cache key includes mutable lineage metadata; no search gates, thresholds, or objective changed."
           }
           (root / "summary.json").write_text(json.dumps(summary, sort_keys=True, indent=2) + "\n")
           print(json.dumps(summary, sort_keys=True, indent=2))
