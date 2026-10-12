@@ -1,0 +1,226 @@
+name: PR110 B full Gen7-Gen12 continuation from frozen Gen6 checkpoint
+
+# Laboratory-only end-to-end execution. This does not consume the frozen 5x12 gate.
+on:
+  push:
+    branches:
+      - research/pr110-gen7-to-12-continuation-20261013
+  workflow_dispatch:
+
+concurrency:
+  group: pr110-b-gen7-to-12-20261013
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  continue-b:
+    name: Resume original B state and execute remaining generations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    env:
+      SEED: "2026100305"
+      GENERATIONS: "12"
+      PROVING_SHA: "33259fc5c69d87b99c604f0050508c433a279daf"
+      RUNTIME_SHA: "af0c7ef503c51a5bc7872717b263a01f495c855f"
+      EXPECTED_START_STATE: "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b"
+      EXPECTED_INPUT_CHECKPOINT_SHA256: "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Retrieve completed Gen6 continuation artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pr110-exact-b-gen6-memoized-continuation
+          run-id: 38033213264
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: prior
+
+      - name: Verify checkpoint bytes, state, source snapshot and continuation boundary
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp prior/working-checkpoint.json evidence/input-gen6-checkpoint.json
+          cp prior/memoized-diagnostic.json evidence/prior-gen6-diagnostic.json
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" python3 - <<'PY'
+          import hashlib, json, subprocess
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+
+          seed = 2026100305
+          proving_sha = "33259fc5c69d87b99c604f0050508c433a279daf"
+          runtime_sha = "af0c7ef503c51a5bc7872717b263a01f495c855f"
+          expected_input_sha = "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4"
+          expected_state = "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b"
+          expected_lab_blobs = {
+              "cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
+              "cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
+              "cognitive_core/behavioral_search.py": "ab658a2e49adf479bf9ea4892dfef930624c6e7b",
+          }
+          checkpoint = Path("evidence/input-gen6-checkpoint.json")
+          raw_sha = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+          assert raw_sha == expected_input_sha, (raw_sha, expected_input_sha)
+
+          manifest = json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
+          patch = json.loads(Path("research/pr110_acsie_snapshot/lineage-memoization-manifest.json").read_text())
+          assert manifest["fixed_seed"] == seed
+          assert manifest["generations"] == 12
+          assert manifest["proving_harness_sha"] == proving_sha
+          assert manifest["B"]["runtime_sha"] == runtime_sha
+          assert patch["exact_original_snapshots"]["B_checkpoint_raw_sha256"] == "f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced"
+
+          for rel, expected in expected_lab_blobs.items():
+              actual = subprocess.check_output(
+                  ["git", "hash-object", str(Path("research/pr110_acsie_snapshot/B") / rel)],
+                  text=True,
+              ).strip()
+              assert actual == expected, f"{rel}: {actual} != {expected}"
+
+          envelope = load_checkpoint(
+              checkpoint,
+              expected_seed=seed,
+              expected_metadata={"proving_sha": proving_sha, "acsie_ref": runtime_sha},
+          )
+          assert envelope["generation_next"] == 7, envelope["generation_next"]
+          assert envelope["state_digest"] == expected_state, envelope["state_digest"]
+          assert len(envelope.get("generations_out", [])) == 7
+          out = {
+              "status": "PREFLIGHT_PASS",
+              "checkpoint_raw_sha256": raw_sha,
+              "checkpoint_state_digest": envelope["state_digest"],
+              "generation_next": envelope["generation_next"],
+              "completed_generation_rows": len(envelope["generations_out"]),
+              "seed": seed,
+              "runtime_sha": runtime_sha,
+              "proving_sha": proving_sha,
+              "lab_source_blobs": expected_lab_blobs,
+              "resume_hash_seed": 0,
+              "caveat": "The initial checkpoint process did not pin PYTHONHASHSEED; this continuation pins 0. It is a verified state continuation, not a byte-identical process replay."
+          }
+          Path("evidence/preflight.json").write_text(json.dumps(out, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(out, indent=2, sort_keys=True))
+          print("IMMUTABLE_GEN6_CHECKPOINT=PASS")
+          print("CONTINUATION_START=GEN7")
+          PY
+
+      - name: Resume frozen state and run through generation 11
+        id: trajectory
+        continue-on-error: true
+        run: |
+          set -u
+          cp evidence/input-gen6-checkpoint.json evidence/working-checkpoint.json
+          ARM_ROOT="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B"
+          export ARM_ROOT RUNTIME_SHA
+          set +e
+          timeout --signal=TERM --kill-after=60s 330m env \
+            PYTHONHASHSEED=0 \
+            PYTHONPATH="$ARM_ROOT:$GITHUB_WORKSPACE" \
+            python3 -u - <<'PY' > evidence/gen7-to-12-raw.txt 2>&1
+          import json, os, time
+          from pathlib import Path
+          from lab.acsie_open_ended_self_extending_proving import run_seed
+
+          checkpoint = "evidence/working-checkpoint.json"
+          start = time.perf_counter()
+          result = run_seed(
+              int(os.environ["SEED"]),
+              int(os.environ["GENERATIONS"]),
+              checkpoint_path=checkpoint,
+              resume_from=checkpoint,
+              stop_after=12,
+              checkpoint_metadata={
+                  "proving_sha": os.environ["PROVING_SHA"],
+                  "acsie_ref": os.environ["RUNTIME_SHA"],
+              },
+          )
+          result["continuation_wall_time_seconds"] = time.perf_counter() - start
+          result["runtime_sha"] = os.environ["RUNTIME_SHA"]
+          result["proving_sha"] = os.environ["PROVING_SHA"]
+          result["hash_seed_at_resume_boundary"] = 0
+          Path("evidence/completed-result.json").write_text(
+              json.dumps(result, indent=2, sort_keys=True) + "\n"
+          )
+          print("GEN7_TO_GEN12_CONTINUATION_RETURNED=PASS", flush=True)
+          PY
+          rc=$?
+          set -e
+          printf "%s\n" "$rc" > evidence/process-exit-code.txt
+          echo "GEN7_TO_GEN12_PROCESS_EXIT_CODE=$rc"
+
+      - name: Validate final checkpoint and classify trajectory outcome
+        if: always()
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+
+          checkpoint = Path("evidence/working-checkpoint.json")
+          raw = Path("evidence/gen7-to-12-raw.txt")
+          raw_text = raw.read_text(errors="replace") if raw.exists() else ""
+          rc_path = Path("evidence/process-exit-code.txt")
+          rc = int(rc_path.read_text()) if rc_path.exists() else None
+          summary = {
+              "schema": "ACSIE.PR110.BGen7To12Continuation.v1",
+              "seed": 2026100305,
+              "source_runtime_sha": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+              "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+              "start_checkpoint_state_digest": "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b",
+              "process_exit_code": rc,
+              "raw_log_bytes": len(raw_text.encode()),
+              "checkpoint_present": checkpoint.exists(),
+              "frozen_5x12_budget": "UNTOUCHED",
+              "promotion_status": "DO_NOT_PROMOTE",
+          }
+          if checkpoint.exists():
+              env = load_checkpoint(
+                  checkpoint,
+                  expected_seed=2026100305,
+                  expected_metadata={
+                      "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+                      "acsie_ref": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+                  },
+              )
+              rows = env.get("generations_out", [])
+              summary.update({
+                  "checkpoint_validation": "PASS",
+                  "final_checkpoint_raw_sha256": hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
+                  "final_state_digest": env.get("state_digest"),
+                  "generation_next": env.get("generation_next"),
+                  "completed_generation_rows": len(rows),
+                  "generation_ids": [row.get("generation") for row in rows],
+                  "latest_generation_row": rows[-1] if rows else None,
+              })
+              if env.get("generation_next") == 12 and len(rows) == 12 and rc == 0:
+                  summary["classification"] = "COMPLETE_12_GENERATION_SINGLE_SEED_TRAJECTORY"
+              elif rc == 124 or rc == 137:
+                  summary["classification"] = "INCONCLUSIVE_WALL_TIMEOUT_CHECKPOINT_PRESERVED"
+              else:
+                  summary["classification"] = "PARTIAL_OR_FAILED_CONTINUATION_CHECKPOINT_PRESERVED"
+          else:
+              summary["checkpoint_validation"] = "MISSING"
+              summary["classification"] = "INVALID_NO_DURABLE_CHECKPOINT"
+
+          if Path("evidence/completed-result.json").exists():
+              summary["completed_result"] = json.loads(Path("evidence/completed-result.json").read_text())
+          Path("evidence/continuation-summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload trajectory, checkpoint and forensic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-b-gen7-to-12-continuation
+          path: evidence/
+          retention-days: 90
