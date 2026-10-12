@@ -20,6 +20,8 @@ import random
 from pathlib import Path
 from typing import Any, Mapping
 
+from patch_h7_compositional_structural_key import apply_source as _apply_compositional
+
 SOURCE_COMMIT = "d83cb60286f195eec02b4d7aa45a60539316d115"
 SOURCE_TREE = "12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
 SOURCE_SHA256 = "2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
@@ -426,8 +428,7 @@ def run_self_test() -> dict:
 def apply_source(source: str, mode: str) -> str:
     # Install the same compositional structural key and fixed frontier cache in
     # both arms. The only between-arm factor is representation of seen syntax.
-    from patch_h7_compositional_structural_key import apply_source as apply_compositional
-    source = apply_compositional(source, "candidate")
+    source = _apply_compositional(source, "candidate")
     if mode == "candidate":
         source = apply_interned_identity(source)
     elif mode != "control":
