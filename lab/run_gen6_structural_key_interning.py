@@ -341,7 +341,7 @@ def main() -> int:
         out = evidence / f"six-file-regression-{mode}.txt"
         run_checked(cmd, cwd=repo_root, env=env, out_path=out)
         text = out.read_text(errors="replace")
-        m = re.search(r"(\\d+) passed(?:,|\\s)", text)
+        m = re.search(r"(\d+) passed(?:,|\s)", text)
         if not m:
             raise RuntimeError(f"could not verify pytest pass count in {out}")
         tests_by_mode[mode] = {"passed": int(m.group(1)), "output_file": out.name, "output_tail": text[-500:]}
@@ -403,7 +403,7 @@ def main() -> int:
         freq = collections.Counter()
         stack_count = 0
         for block in blocks:
-            frames = re.findall(r'File "([^"]+)", line (\\d+) in ([^\\n]+)', block)
+            frames = re.findall(r'File "([^"]+)", line (\d+) in ([^\n]+)', block)
             if frames:
                 stack_count += 1
                 freq.update(frame[2] for frame in frames)
