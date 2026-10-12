@@ -169,13 +169,12 @@ jobs:
           source = source[:regbin_start] + regbin + source[next_def:]
 
           marker = "        return BehavioralSearchResult("
-          if source.count(marker) != 1:
-              raise SystemExit(f"counter export marker matched {source.count(marker)} times, expected one")
-          source = source.replace(
-              marker,
-              '        find_exact_expression._H7_LAST_DIAGNOSTIC_COUNTERS = dict(_h7_diag["counters"])' + chr(10) + marker,
-              1,
-          )
+          if marker not in source:
+              raise SystemExit("counter export marker not present")
+          # Attach metrics immediately before the final successful return; some
+          # source variants may contain earlier return sites in the same function.
+          pos = source.rfind(marker)
+          source = source[:pos] + '        find_exact_expression._H7_LAST_DIAGNOSTIC_COUNTERS = dict(_h7_diag["counters"])' + chr(10) + source[pos:]
 
           new_sha = hashlib.sha256(source.encode()).hexdigest()
           path.write_text(source)
