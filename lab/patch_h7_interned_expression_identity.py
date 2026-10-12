@@ -126,6 +126,20 @@ class _H7ExpressionInterner:
     @property
     def size(self):
         return len(self._ids)
+
+
+class _H7SeenExpressionIds(set):
+    """Store only integer IDs but accept legacy JSON-key discard in tests."""
+    def __init__(self):
+        super().__init__()
+        self.interner = None
+
+    def discard(self, value):
+        if isinstance(value, str):
+            if self.interner is None:
+                raise RuntimeError("identity interner is not initialized")
+            value = self.interner.intern_expr(json.loads(value))
+        super().discard(value)
 '''
 
 # Define the exact same class in this module so the independent identity self-test
@@ -227,16 +241,17 @@ def apply_interned_identity(source: str) -> str:
     source = replace_exact(
         source,
         "    seen_expression_keys: set[str] = set()\n",
-        "    seen_expression_keys: set[int] = set()\n",
-        label="change seen set to interned identities",
+        "    seen_expression_keys: set[int] = _H7SeenExpressionIds()\n",
+        label="change seen set to interned identities with test compatibility",
     )
     source = replace_exact(
         source,
         "    expression_key_by_state_token: dict[int, str] = {}\n",
         "    expression_key_by_state_token: dict[int, str] = {}\n"
         "    expression_id_by_state_token: dict[int, int] = {}\n"
-        "    expression_interner = _H7ExpressionInterner()\n",
-        label="add per-invocation expression IDs",
+        "    expression_interner = _H7ExpressionInterner()\n"
+        "    seen_expression_keys.interner = expression_interner\n",
+        label="add per-invocation expression IDs and test compatibility",
     )
 
     source = replace_exact(
