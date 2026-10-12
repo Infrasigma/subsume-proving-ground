@@ -5,7 +5,7 @@ on:
     branches:
       - research/acsie-h7-r3-exact-source-20261011
     paths:
-      - ".github/workflows/gen6-live-state-key-reuse.yml"
+      - ".github/workflows/gen6-canonical-key-reuse.yml"
 
 permissions:
   contents: read
@@ -246,7 +246,7 @@ jobs:
           if sum(on["counters"][x]["frontier_cache"].get("hits",0) for x in ("max","min","sum"))<1:raise SystemExit("no frontier cache hits")
           PY
 
-      - name: Prepare live-state-live-state key reuse sampler
+      - name: Prepare live-state-key reuse sampler
         shell: bash
         run: |
           set -euo pipefail
