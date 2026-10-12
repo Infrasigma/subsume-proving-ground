@@ -179,11 +179,11 @@ jobs:
 
           # Export the diagnostic counters at successful return; not part of
           # BehavioralSearchResult.stats or any search decision.
-          return_marker = "        return BehavioralSearchResult("
+          return_marker = "    return BehavioralSearchResult("
           return_pos = source.rfind(return_marker)
           if return_pos < 0:
               raise SystemExit("successful result-return marker missing")
-          export = '        find_exact_expression._H7_LAST_FRONTIER_GROUP_DIAG = dict(_h7_frontier_group_diag)\n'
+          export = '    find_exact_expression._H7_LAST_FRONTIER_GROUP_DIAG = dict(_h7_frontier_group_diag)\n'
           source = source[:return_pos] + export + source[return_pos:]
 
           path.write_text(source)
