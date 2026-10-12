@@ -1,0 +1,81 @@
+name: Gen6 exact structural-key interning diagnostic
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-r3-exact-source-20261011
+    paths:
+      - ".github/workflows/gen6-structural-key-interning.yml"
+      - "lab/patch_gen6_structural_key_interning.py"
+      - "lab/run_gen6_structural_key_interning.py"
+
+permissions:
+  contents: read
+
+jobs:
+  structural-key-interning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Initialize evidence and verify harness syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/gen6-structural-key-interning
+          {
+            echo "EXECUTOR_COMMIT=$GITHUB_SHA"
+            echo "WORKFLOW_RUN_ID=$GITHUB_RUN_ID"
+            echo "ACSIE_SOURCE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
+            echo "ACSIE_SOURCE_TREE=12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+            echo "FACTOR=original expanded JSON structural identity vs exact collision-safe interned integer structural IDs"
+            echo "CONSTANT_FACTOR=lineage_frontier FIFO cache capacity 128 in both arms"
+            echo "OTHER_FACTORS=structural-expansion cache OFF; arbitrary/direct AST-key cache OFF; candidate grouping OFF"
+            echo "PREDECLARED_SEED=2026100301"
+            echo "GENERATIONS=0..6 (7 total)"
+            echo "CHILD_TIMEOUT_SECONDS=120 per arm"
+            echo "RSS_GUARD_MIB=2048 per child"
+            echo "QUALIFICATION=not a 5x12 promotion run; diagnostic only"
+          } | tee evidence/gen6-structural-key-interning/initial-contract.txt
+          python -m py_compile lab/patch_gen6_structural_key_interning.py lab/run_gen6_structural_key_interning.py
+
+      - name: Checkout pinned private ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run preflight and matched actual Gen6 diagnostic
+        shell: bash
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pytest
+          python lab/run_gen6_structural_key_interning.py \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --acsie-root "$GITHUB_WORKSPACE/acsie" \
+            --evidence "$GITHUB_WORKSPACE/evidence/gen6-structural-key-interning" \
+            --seed 2026100301 \
+            --generations 7 \
+            --timeout-seconds 120 \
+            --rss-guard-bytes 2147483648 \
+            --executor-sha "$GITHUB_SHA" \
+            --workflow-run-id "$GITHUB_RUN_ID" \
+            2>&1 | tee evidence/gen6-structural-key-interning/runner-stdout.txt
+
+      - name: Upload source-pinned diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen6-structural-key-interning-${{ github.run_id }}
+          path: evidence/gen6-structural-key-interning/
+          if-no-files-found: error
+          compression-level: 6
