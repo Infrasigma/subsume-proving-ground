@@ -1,0 +1,310 @@
+name: Gen6 pruned-state key lifetime diagnostic
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-r3-exact-source-20261011
+    paths:
+      - ".github/workflows/gen6-pruned-key-lifetime.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pruned-key-lifetime-reuse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 11
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Predeclare factorial and resource contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/gen6-pruned-key-lifetime diagnostics
+          {
+            echo "EXECUTOR_COMMIT=$GITHUB_SHA"
+            echo "WORKFLOW_RUN_ID=$GITHUB_RUN_ID"
+            echo "ACSIE_SOURCE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
+            echo "FACTORS=stale per-state key-map cleanup OFF/ON; frontier cache fixed ON at 128; expansion/direct-key caches OFF; grouping OFF"
+            echo "FRONTIER_CACHE_KEY=state-token ID plus current structural-lineage union"
+            echo "FRONTIER_CACHE_CAPACITY=128 FIFO entries per search call"
+            echo "CLEANUP_ON=release expression_key_by_state_token and ast_depth_by_state_token entries for dominance-rejected candidates and states pruned from levels/frontier"
+            echo "CLEANUP_INVARIANT=removed token is absent from active frontier and its level bucket; composition reads live level buckets only"
+            echo "REQUIRED_GATE=release OFF and ON exact signatures match pristine; six-file suite passes 61/61 in both modes before Gen6"
+            echo "REAL_GEN6_SEED=2026100301; generations=7 (indices 0..6)"
+            echo "CHILD_WALL_LIMIT_SECONDS=120; RSS_GUARD_MIB=2048"
+          } | tee evidence/gen6-pruned-key-lifetime/provenance.txt
+
+      - name: Checkout pinned ACSIE source
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact source before diagnostic patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C acsie rev-parse HEAD)" = "d83cb60286f195eec02b4d7aa45a60539316d115"
+          test "$(git -C acsie rev-parse 'HEAD^{tree}')" = "12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+          src="$(sha256sum acsie/cognitive_core/behavioral_search.py | awk '{print $1}')"
+          test "$src" = "2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
+          echo "ACSIE_SOURCE_SHA256=$src" | tee evidence/gen6-pruned-key-lifetime/source-identity.txt
+
+      - name: Apply isolated pruned-key lifetime patch and fixed frontier cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C acsie worktree add --detach "$GITHUB_WORKSPACE/baseline-acsie" d83cb60286f195eec02b4d7aa45a60539316d115
+          python lab/patch_gen6_pruned_key_lifetime.py "$GITHUB_WORKSPACE/acsie/cognitive_core/behavioral_search.py" | tee evidence/gen6-pruned-key-lifetime/pruned-key-patch.txt
+          python -m py_compile acsie/cognitive_core/behavioral_search.py
+          sha256sum acsie/cognitive_core/behavioral_search.py | tee evidence/gen6-pruned-key-lifetime/diagnostic-source-sha256.txt
+                    python - "$GITHUB_WORKSPACE/acsie/cognitive_core/behavioral_search.py" <<'PY'
+                    import pathlib,sys
+                    p=pathlib.Path(sys.argv[1]);s=p.read_text();start="    def lineage_frontier(states: Sequence[tuple]) -> tuple[tuple, ...]:";end="    def build_extreme_lookup("
+                    if s.count(start)!=1 or "_h7_lf_cache" in s: raise SystemExit("frontier markers mismatch")
+                    s=s.replace(start,'    _h7_lf_cache = {}\n    _h7_lf_cache_stats = {"hits": 0, "misses": 0, "evictions": 0}\n\n'+start,1)
+                    a=s.index(start);b=s.index(end,a+len(start));block=s[a:b];old="        if not states:\n            return ()"
+                    if block.count(old)!=1: raise SystemExit("frontier empty marker mismatch")
+                    new=('        if not states:\n            return ()\n'
+                    '        cache_enabled = __import__("os").environ.get("ACSIE_DISABLE_LF_CACHE") != "1"\n'
+                    '        cache_key = tuple(sorted((int(st[5]), tuple(sorted(structural_lineage_by_key.get(str(st[4]), set())))) for st in states)) if cache_enabled else None\n'
+                    '        cached = _h7_lf_cache.get(cache_key) if cache_enabled else None\n'
+                    '        if cached is not None:\n            _h7_lf_cache_stats["hits"] += 1\n            return cached\n'
+                    '        if cache_enabled: _h7_lf_cache_stats["misses"] += 1')
+                    block=block.replace(old,new,1);old="        return tuple(sorted(frontier, key=rank))"
+                    if block.count(old)!=1: raise SystemExit("frontier return marker mismatch")
+                    store=('        result = tuple(sorted(frontier, key=rank))\n'
+                    '        if cache_enabled:\n            if len(_h7_lf_cache) >= 128:\n                del _h7_lf_cache[next(iter(_h7_lf_cache))]\n                _h7_lf_cache_stats["evictions"] += 1\n'
+                    '            _h7_lf_cache[cache_key] = result\n        return result')
+                    block=block.replace(old,store,1);s=s[:a]+block+s[b:]
+                    at=s.rfind('        return BehavioralSearchResult(')
+                    if at<0: raise SystemExit("final result marker missing")
+                    s=s[:at]+'        find_exact_expression._H7_LAST_LF_CACHE_STATS = dict(_h7_lf_cache_stats)\n'+s[at:]
+                    p.write_text(s);print("FRONTIER_CACHE=128_FIFO")
+                    PY
+          python -m py_compile acsie/cognitive_core/behavioral_search.py
+
+      - name: Run six-file regression suite with cleanup OFF and ON
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pytest
+          for mode in release_off release_on; do
+            if [ "$mode" = "release_on" ]; then export ACSIE_RELEASE_PRUNED_KEYS=1; else export ACSIE_RELEASE_PRUNED_KEYS=0; fi
+            PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 python -m pytest -q \
+              acsie/tests/test_open_ended_growth.py \
+              acsie/tests/test_core014_recursive_cognitive_compiler.py \
+              acsie/tests/test_core015_semantic_operator_discovery.py \
+              acsie/tests/test_core016_open_semantic_substrate.py \
+              acsie/tests/test_adaptive_capability_repair.py \
+              acsie/tests/test_asi_claim_gate.py \
+              2>&1 | tee "evidence/gen6-pruned-key-lifetime/six-file-regression-$mode.txt"
+          done
+
+      - name: Require cleanup OFF and ON signatures to equal pristine
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > evidence/gen6-pruned-key-lifetime/signature_probe.py <<'PY'
+          import json,os,sys
+          from cognitive_core.behavioral_search import find_exact_expression
+          from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
+          from cognitive_core.recursive_cognitive_compiler import ArchiveRecord,CognitivePrimitive,Trace
+          mode=sys.argv[1]
+          if mode=="release_off": os.environ["ACSIE_RELEASE_PRUNED_KEYS"]="0"
+          elif mode=="release_on": os.environ["ACSIE_RELEASE_PRUNED_KEYS"]="1"
+          elif mode!="baseline": raise SystemExit("unknown mode "+mode)
+          if mode!="baseline": os.environ.pop("ACSIE_DISABLE_LF_CACHE",None)
+          def build(op):
+           c=OpenEndedRecursiveCognitiveCompiler(max_depth=4,seed=771221)
+           px=CognitivePrimitive("prim:x",{"op":"get","key":"x"},("x","y"),"delta",0,(),("opaque",),0.0,0.0,0.0,1,{})
+           py=CognitivePrimitive("prim:y",{"op":"get","key":"y"},("x","y"),"delta",0,(),("opaque",),0.0,0.0,0.0,1,{})
+           c.primitives={px.primitive_id:px,py.primitive_id:py};c.archive={px.primitive_id:ArchiveRecord(px),py.primitive_id:ArchiveRecord(py)}
+           rows=[]
+           for i in range(8):
+            x,y=float(i),float(i+1);target=max(x,y) if op=="max" else min(x,y) if op=="min" else x+y
+            rows.append(Trace({"x":x,"y":y},target,"opaque",{},f"{op}-{i}"))
+           return c,tuple(rows),2 if op=="sum" else 4,"maximize_direct_vocabulary" if op=="sum" else "minimize_expanded_cost"
+          def sig(r):return None if r is None else {"expression":r.expression,"used_primitives":r.used_primitives,"alternatives":r.alternatives,"stats":dict(r.stats)}
+          signatures={};counters={}
+          for op in ("max","min","sum"):
+           c,rows,depth,obj=build(op);r=find_exact_expression(c,rows,max_depth=depth,require_macro=True,selection_objective=obj,max_alternatives=8)
+           signatures[op]=sig(r);counters[op]={"key_lifetime":dict(getattr(find_exact_expression,"_H7_LAST_PRUNED_KEY_LIFETIME_STATS",{})),"frontier_cache":dict(getattr(find_exact_expression,"_H7_LAST_LF_CACHE_STATS",{})),"found":r is not None}
+          print(json.dumps({"mode":mode,"signatures":signatures,"counters":counters},sort_keys=True,separators=(",",":")))
+          PY
+          PYTHONPATH="$GITHUB_WORKSPACE/baseline-acsie" PYTHONHASHSEED=0 python evidence/gen6-pruned-key-lifetime/signature_probe.py baseline > evidence/gen6-pruned-key-lifetime/pristine-signatures.json
+          ACSIE_RELEASE_PRUNED_KEYS=0 PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 python evidence/gen6-pruned-key-lifetime/signature_probe.py release_off > evidence/gen6-pruned-key-lifetime/release_off-signatures.json
+          ACSIE_RELEASE_PRUNED_KEYS=1 PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 python evidence/gen6-pruned-key-lifetime/signature_probe.py release_on > evidence/gen6-pruned-key-lifetime/release_on-signatures.json
+          python - <<'PY'
+          import json,pathlib
+          root=pathlib.Path("evidence/gen6-pruned-key-lifetime")
+          base=json.loads((root/"pristine-signatures.json").read_text())["signatures"]
+          off=json.loads((root/"release_off-signatures.json").read_text())
+          on=json.loads((root/"release_on-signatures.json").read_text())
+          on_lifetime=[on["counters"][name]["key_lifetime"] for name in ("max","min","sum")]
+          off_lifetime=[off["counters"][name]["key_lifetime"] for name in ("max","min","sum")]
+          removed_expr=sum(int(x.get("expression_key_entries_removed",0)) for x in on_lifetime)
+          removed_depth=sum(int(x.get("ast_depth_entries_removed",0)) for x in on_lifetime)
+          assertions=sum(int(x.get("assertion_checks",0)) for x in on_lifetime)
+          failures=sum(int(x.get("assertion_failures",0)) for x in on_lifetime)
+          report={
+            "schema":"ACSIE.gen6_pruned_key_lifetime_parity.v1",
+            "source_commit":"d83cb60286f195eec02b4d7aa45a60539316d115",
+            "frontier_cache_capacity":128,
+            "expansion_cache":"OFF","direct_key_cache":"OFF","grouping":"OFF",
+            "release_off_matches_pristine":off["signatures"]==base,
+            "release_on_matches_pristine":on["signatures"]==base,
+            "both_arms_match_pristine":off["signatures"]==base and on["signatures"]==base,
+            "cleanup_on_removed_expression_key_entries":removed_expr,
+            "cleanup_on_removed_ast_depth_entries":removed_depth,
+            "cleanup_invariant_assertion_checks":assertions,
+            "cleanup_invariant_assertion_failures":failures,
+            "off_arm_would_remove_expression_key_entries":sum(int(x.get("expression_key_entries_would_remove",0)) for x in off_lifetime),
+            "off_arm_would_remove_ast_depth_entries":sum(int(x.get("ast_depth_entries_would_remove",0)) for x in off_lifetime),
+            "counters":{"release_off":off["counters"],"release_on":on["counters"]},
+            "interpretation_guard":"Exact selected expression, alternatives, capability IDs and science statistics compared with pristine source; no target-specific routing or thresholds altered."
+          }
+          (root/"pruned-key-lifetime-parity.json").write_text(json.dumps(report,indent=2,sort_keys=True)+"\\n")
+          print(json.dumps({k:v for k,v in report.items() if k!="counters"},indent=2,sort_keys=True))
+          if not report["both_arms_match_pristine"]: raise SystemExit("cleanup arm differs from pristine source")
+          if removed_expr < 1 or removed_depth < 1: raise SystemExit("cleanup did not exercise both stale maps")
+          if failures != 0: raise SystemExit("pruned-token lifecycle assertions failed")
+          PY
+
+      - name: Prepare low-overhead Gen6 map and stack sampler
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > diagnostics/sitecustomize.py <<'PY'
+          import faulthandler,json,os,signal,time,sys
+          faulthandler.enable(file=sys.stderr,all_threads=True)
+          t0=time.monotonic()
+          log=os.environ.get("ACSIE_PRUNED_KEY_LIFETIME_SNAPSHOT_LOG")
+          def snap(sig,frame):
+           faulthandler.dump_traceback(file=sys.stderr,all_threads=True)
+           f=frame
+           while f is not None and f.f_code.co_name!="find_exact_expression":f=f.f_back
+           row={"elapsed_s":round(time.monotonic()-t0,3),"signal":int(sig)}
+           if f is not None:
+            loc=f.f_locals
+            st=loc.get("stats",{})
+            row["search"]={k:st.get(k) for k in ("rows","max_depth","primitive_count","generated_expressions","unique_states","duplicate_states","dominance_pruned_states","dominance_frontier_max","status")}
+            row["key_lifetime"]=dict(loc.get("_H7_KEY_LIFETIME_STATS",{}))
+            row["expression_key_entries"]=len(loc.get("expression_key_by_state_token",{}))
+            row["ast_depth_entries"]=len(loc.get("ast_depth_by_state_token",{}))
+            row["seen_expression_keys"]=len(loc.get("seen_expression_keys",()))
+            row["online_metadata_entries"]=len(loc.get("_H7_online_metadata",{}))
+            row["frontier_cache"]=dict(loc.get("_h7_lf_cache_stats",{}))
+            row["frontier_cache_entries"]=len(loc.get("_h7_lf_cache",{}))
+           if log:
+            with open(log,"a",buffering=1,encoding="utf-8") as h:h.write(json.dumps(row,sort_keys=True)+"\\n")
+          signal.signal(signal.SIGUSR1,snap)
+          PY
+          python -m py_compile diagnostics/sitecustomize.py
+
+      - name: Run matched actual Gen6 cleanup OFF and ON arms
+        timeout-minutes: 9
+        shell: bash
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          root="$GITHUB_WORKSPACE/evidence/gen6-pruned-key-lifetime"
+          seed=2026100301
+          for arm in release_off_frontier128 release_on_frontier128; do
+           stdout="$root/$arm.stdout.jsonl"
+           stderr="$root/$arm.stderr"
+           counters="$root/$arm-key-lifetime.jsonl"
+           snapshots="$root/$arm-live-snapshots.jsonl"
+           status_file="$root/$arm-status.json"
+           rm -f "$stdout" "$stderr" "$counters" "$snapshots"
+           if [ "$arm" = "release_off_frontier128" ]; then release=0; else release=1; fi
+           env ACSIE_RELEASE_PRUNED_KEYS="$release" \
+             ACSIE_PRUNED_KEY_LIFETIME_LOG="$counters" \
+             ACSIE_PRUNED_KEY_LIFETIME_SNAPSHOT_LOG="$snapshots" \
+             PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/lab:$GITHUB_WORKSPACE/acsie" \
+             python -c 'import json,sys,acsie_open_ended_self_extending_proving as g; print(json.dumps(g.run_seed(int(sys.argv[1]),7),sort_keys=True),flush=True)' "$seed" > "$stdout" 2> "$stderr" &
+           child=$!
+           start=$(date +%s);next=$((start+10));timed_out=0;rss_guard=0;max_rss=0
+           while kill -0 "$child" 2>/dev/null; do
+            if ps -p "$child" -o stat= 2>/dev/null | grep -q 'Z'; then break; fi
+            now=$(date +%s);elapsed=$((now-start))
+            rss=$(ps -p "$child" -o rss= 2>/dev/null | tr -d ' ' || echo 0)
+            case "$rss" in ''|*[!0-9]*) rss=0;; esac
+            if [ "$rss" -gt "$max_rss" ]; then max_rss=$rss; fi
+            if [ "$rss" -ge 2097152 ]; then rss_guard=1;kill -TERM "$child" 2>/dev/null || true;sleep 3;kill -KILL "$child" 2>/dev/null || true;break;fi
+            if [ "$now" -ge "$next" ]; then kill -USR1 "$child" 2>/dev/null || true;next=$((now+10));fi
+            if [ "$elapsed" -ge 120 ]; then timed_out=1;kill -TERM "$child" 2>/dev/null || true;sleep 3;kill -KILL "$child" 2>/dev/null || true;break;fi
+            sleep 1
+           done
+           set +e;wait "$child";rc=$?;set -e
+           if [ "$rss_guard" -eq 1 ]; then status=RESOURCE_GUARD_RSS_LIMIT
+           elif [ "$timed_out" -eq 1 ]; then status=INCONCLUSIVE_CHILD_WALL_TIMEOUT
+           elif [ "$rc" -eq 0 ] && [ -s "$stdout" ]; then status=CHILD_RETURNED_RECORD
+           else status=CHILD_ERROR_OR_EMPTY_OUTPUT;fi
+           printf '{"arm":"%s","seed":%s,"child_returncode":%s,"timeout_hit":%s,"rss_guard_hit":%s,"max_rss_kib":%s,"status":"%s"}\\n' "$arm" "$seed" "$rc" "$timed_out" "$rss_guard" "$max_rss" "$status" | tee "$status_file"
+          done
+          python - "$root" <<'PY'
+          import collections,json,pathlib,re,sys
+          root=pathlib.Path(sys.argv[1])
+          d={"schema":"ACSIE.gen6_pruned_key_lifetime_diagnostic.v1",
+             "source_commit":"d83cb60286f195eec02b4d7aa45a60539316d115",
+             "source_tree":"12d2fa8fc1f1e34d3d7c442eef85aa6a71380420",
+             "seed":2026100301,"generation_indices":list(range(7)),
+             "frontier_cache_capacity":128,"expansion_cache":"OFF",
+             "direct_key_cache":"OFF","grouping":"OFF","arms":{}}
+          for arm in ("release_off_frontier128","release_on_frontier128"):
+           stderr=(root/f"{arm}.stderr").read_text(errors="replace")
+           stacks=[]
+           for chunk in re.split(r"(?=Current thread 0x)",stderr):
+            frames=re.findall(r'File "([^"]+)", line (\\d+) in ([^\\n]+)',chunk)
+            if frames: stacks.append([{"file":f,"line":int(n),"function":fn} for f,n,fn in frames])
+           def read_rows(path):
+            rows=[]
+            if path.exists():
+             for line in path.read_text(errors="replace").splitlines():
+              try: rows.append(json.loads(line))
+              except Exception: pass
+            return rows
+           samples=read_rows(root/f"{arm}-key-lifetime.jsonl")
+           live=read_rows(root/f"{arm}-live-snapshots.jsonl")
+           child=json.loads((root/f"{arm}-status.json").read_text())
+           out_path=root/f"{arm}.stdout.jsonl"
+           stdout=out_path.read_text(errors="replace") if out_path.exists() else ""
+           record=None;record_parse="NO_COMPLETE_RECORD"
+           lines=[x for x in stdout.splitlines() if x.strip()]
+           if child["status"]=="CHILD_RETURNED_RECORD" and len(lines)==1:
+            try: record=json.loads(lines[0]);record_parse="PASS"
+            except Exception as exc: record_parse=f"INVALID_JSON:{type(exc).__name__}:{exc}"
+           elif child["status"]=="CHILD_RETURNED_RECORD": record_parse="EXPECTED_ONE_JSON_RECORD"
+           freqs=collections.Counter(fr["function"] for stack in stacks for fr in stack)
+           d["arms"][arm]={
+             "child_status":child,"record_parse_status":record_parse,"complete_record":record,
+             "stdout_bytes":len(stdout.encode()),"stderr_bytes":len(stderr.encode()),
+             "counter_sample_count":len(samples),"counter_samples":samples,
+             "live_snapshot_count":len(live),"live_snapshots":live,
+             "stack_snapshot_count":len(stacks),"stack_function_frequency":dict(freqs),
+             "stderr_tail":stderr[-3000:]}
+          (root/"gen6-pruned-key-lifetime-summary.json").write_text(json.dumps(d,indent=2,sort_keys=True)+"\\n")
+          compact={"schema":d["schema"],"arms":{}}
+          for arm,entry in d["arms"].items():
+           compact["arms"][arm]={k:entry[k] for k in ("child_status","record_parse_status","counter_sample_count","live_snapshot_count","stack_snapshot_count","stack_function_frequency")}
+           compact["arms"][arm]["latest_key_lifetime_sample"]=entry["counter_samples"][-1] if entry["counter_samples"] else None
+          print(json.dumps(compact,indent=2,sort_keys=True))
+          PY
+
+      - name: Upload pruned-key lifetime and Gen6 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gen6-pruned-key-lifetime-${{ github.run_id }}
+          path: evidence/gen6-pruned-key-lifetime/
+          if-no-files-found: error
