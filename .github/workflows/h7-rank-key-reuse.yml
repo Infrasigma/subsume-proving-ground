@@ -1,0 +1,82 @@
+name: H7 exact rank-key reuse Gen6 diagnostic
+
+on:
+  push:
+    branches:
+      - research/acsie-h7-r3-exact-source-20261011
+    paths:
+      - ".github/workflows/h7-rank-key-reuse.yml"
+      - "lab/patch_h7_rank_key_reuse.py"
+      - "lab/run_h7_rank_key_reuse.py"
+
+permissions:
+  contents: read
+
+jobs:
+  rank-key-reuse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - name: Checkout proving-ground
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Predeclare factor and validate harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/h7-rank-key-reuse
+          {
+            echo "EXECUTOR_COMMIT=$GITHUB_SHA"
+            echo "WORKFLOW_RUN_ID=$GITHUB_RUN_ID"
+            echo "ACSIE_SOURCE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
+            echo "ACSIE_SOURCE_TREE=12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
+            echo "FACTOR=rank() reuses exact JSON string already stored in expression_key_by_state_token instead of serializing the same registered AST again"
+            echo "FIXED_FACTOR=lineage-frontier FIFO cache capacity 128 in both arms"
+            echo "CANDIDATE_FALLBACK=if state has no registered key, call original json.dumps exactly"
+            echo "OTHER_FACTORS=structural-key IDs OFF; macro-ID memoization OFF; structural-expansion cache OFF; grouping OFF"
+            echo "SEED=2026100301"
+            echo "GENERATIONS=0..6"
+            echo "CHILD_TIMEOUT_SECONDS=120 each"
+            echo "RSS_GUARD_MIB=2048 each"
+            echo "STATUS_RULE=empty stdout/timeouts are INCONCLUSIVE; green wrapper is not science pass"
+          } | tee evidence/h7-rank-key-reuse/initial-contract.txt
+          python -m py_compile lab/patch_h7_rank_key_reuse.py lab/run_h7_rank_key_reuse.py
+
+      - name: Checkout pinned private ACSIE
+        uses: actions/checkout@v4
+        with:
+          repository: Infrasigma/ACSIE
+          ref: d83cb60286f195eec02b4d7aa45a60539316d115
+          token: ${{ secrets.ACSIE_READ_TOKEN }}
+          path: acsie
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run parity-gated rank-key reuse comparison
+        shell: bash
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pytest
+          python lab/run_h7_rank_key_reuse.py \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --acsie-root "$GITHUB_WORKSPACE/acsie" \
+            --evidence "$GITHUB_WORKSPACE/evidence/h7-rank-key-reuse" \
+            --seed 2026100301 \
+            --generations 7 \
+            --timeout-seconds 120 \
+            --rss-guard-bytes 2147483648 \
+            --executor-sha "$GITHUB_SHA" \
+            --workflow-run-id "$GITHUB_RUN_ID" \
+            2>&1 | tee evidence/h7-rank-key-reuse/runner-stdout.txt
+
+      - name: Upload source-pinned rank-key evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h7-rank-key-reuse-${{ github.run_id }}
+          path: evidence/h7-rank-key-reuse/
+          if-no-files-found: error
+          compression-level: 6
