@@ -1,17 +1,17 @@
-name: Gen6 canonical expression-key reuse diagnostic
+name: Gen6 live-state canonical-key reuse diagnostic
 
 on:
   push:
     branches:
       - research/acsie-h7-r3-exact-source-20261011
     paths:
-      - ".github/workflows/gen6-canonical-key-reuse.yml"
+      - ".github/workflows/gen6-live-state-key-reuse.yml"
 
 permissions:
   contents: read
 
 jobs:
-  canonical-key-reuse:
+  live-state-key-reuse:
     runs-on: ubuntu-latest
     timeout-minutes: 11
     steps:
@@ -24,20 +24,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p evidence/gen6-canonical-key-reuse diagnostics
+          mkdir -p evidence/gen6-live-state-key-reuse diagnostics
           {
             echo "EXECUTOR_COMMIT=$GITHUB_SHA"
             echo "WORKFLOW_RUN_ID=$GITHUB_RUN_ID"
             echo "ACSIE_SOURCE_COMMIT=d83cb60286f195eec02b4d7aa45a60539316d115"
-            echo "FACTORS=canonical expression-key reuse OFF/ON; frontier cache fixed ON at 128; expansion cache OFF"
+            echo "FACTORS=live-state live-state-key reuse OFF/ON; frontier cache fixed ON at 128; no expansion cache or arbitrary-expression cache"
             echo "FRONTIER_CACHE_KEY=state-token ID plus current structural-lineage union"
             echo "FRONTIER_CACHE_CAPACITY=128 FIFO entries per search call"
-            echo "EXPR_KEY_CACHE_KEY=exact canonical JSON by AST identity; strong object refs retained to prevent id reuse"
-            echo "EXPR_KEY_CACHE_CAPACITY=8192 FIFO entries per find_exact_expression invocation"
-            echo "REQUIRED_GATE=both key-cache arms match pristine signatures and six-file suite passes before matched Gen6 runs"
+            echo "DIRECT_KEY_REUSE=retain canonical JSON only for AST roots currently in the active frontier; remove on frontier deletion"
+            echo "DIRECT_KEY_REUSE_BOUND=entries track active state roots only; no FIFO/cache of ephemeral ASTs"
+            echo "REQUIRED_GATE=both live-state-key arms match pristine signatures and six-file suite passes before matched Gen6 runs"
             echo "REAL_GEN6_SEED=2026100301; generations=7 (indices 0..6)"
             echo "CHILD_WALL_LIMIT_SECONDS=120; RSS_GUARD_MIB=2048"
-          } | tee evidence/gen6-canonical-key-reuse/provenance.txt
+          } | tee evidence/gen6-live-state-key-reuse/provenance.txt
 
       - name: Checkout pinned ACSIE source
         uses: actions/checkout@v4
@@ -57,9 +57,9 @@ jobs:
           test "$(git -C acsie rev-parse 'HEAD^{tree}')" = "12d2fa8fc1f1e34d3d7c442eef85aa6a71380420"
           src="$(sha256sum acsie/cognitive_core/behavioral_search.py | awk '{print $1}')"
           test "$src" = "2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
-          echo "ACSIE_SOURCE_SHA256=$src" | tee evidence/gen6-canonical-key-reuse/source-identity.txt
+          echo "ACSIE_SOURCE_SHA256=$src" | tee evidence/gen6-live-state-key-reuse/source-identity.txt
 
-      - name: Apply canonical key reuse and frontier cache in isolated workspace
+      - name: Apply live-frontier key reuse and frontier cache in isolated workspace
         shell: bash
         run: |
           set -euo pipefail
@@ -69,11 +69,11 @@ jobs:
           p=pathlib.Path(sys.argv[1]); s=p.read_text(); original_sha=hashlib.sha256(s.encode()).hexdigest()
           expected="2ff981875397b7d0edb2fef1c33c655b0a15b8c404b13c50d13a804f77535aea"
           if original_sha!=expected: raise SystemExit(f"unexpected original source SHA {original_sha}")
-          if "_h7_expr_key_cache" in s: raise SystemExit("cache marker already present")
+          if "_h7_state_expr_keys" in s: raise SystemExit("live-state map marker already present")
           def rep(old,new,count=1):
            global s
            n=s.count(old)
-           if n!=count: raise SystemExit(f"expected {count} occurrences, found {n}: {old[:70]!r}")
+           if n!=count: raise SystemExit(f"expected {count} occurrences, saw {n}: {old[:80]!r}")
            s=s.replace(old,new)
           rep('ident = json.dumps(expr, sort_keys=True, separators=(",", ":"))','ident = expr_key(expr)',3)
           rep('left_key = json.dumps(left, sort_keys=True, separators=(",", ":"))','left_key = expr_key(left)')
@@ -92,64 +92,72 @@ jobs:
           rep('json.dumps(x, sort_keys=True, separators=(",", ":")),','expr_key(x),')
           rep('lk = json.dumps(left[0], sort_keys=True, separators=(",", ":"))','lk = expr_key(left[0])')
           rep('rk = json.dumps(right[0], sort_keys=True, separators=(",", ":"))','rk = expr_key(right[0])')
-          a=s.index("    def rank(state: tuple)");b=s.index("    levels:",a);rb=s[a:b]
-          old='json.dumps(expr, sort_keys=True, separators=(",", ":")),'
-          if rb.count(old)!=1: raise SystemExit("rank key marker mismatch")
-          rb=rb.replace(old,'''(
-                          expression_key_by_state_token.get(state[5]) or expr_key(expr)
-                      ) if _h7_expr_key_cache_enabled else expr_key(expr),''',1);s=s[:a]+rb+s[b:]
+          
+          # Only active frontier state roots get retained keys. Arbitrary/expanded temporary nodes
+          # use ordinary json.dumps and never enter a cache.
           old='''    def expr_key(expr: Mapping[str, Any]) -> str:
                   return json.dumps(expr, sort_keys=True, separators=(",", ":"))'''
           if s.count(old)!=1: raise SystemExit("expr_key helper marker mismatch")
-          helper='''    _h7_expr_key_cache_enabled = __import__("os").environ.get("ACSIE_DISABLE_EXPR_KEY_CACHE") != "1"
-              _h7_expr_key_cache_capacity = 8192
-              _h7_expr_key_cache = {}
-              _h7_expr_key_cache_stats = {"hits": 0, "misses": 0, "evictions": 0, "seeded": 0, "serializations": 0}
+          new='''    _h7_direct_key_reuse_enabled = __import__("os").environ.get("ACSIE_DISABLE_DIRECT_KEY_REUSE") != "1"
+              _h7_state_expr_keys = {}
+              _h7_direct_key_reuse_stats = {"hits": 0, "misses": 0, "seeded": 0, "removed": 0, "serializations": 0, "rank_key_reuses": 0}
           
               def expr_key(expr: Mapping[str, Any]) -> str:
-                  if _h7_expr_key_cache_enabled:
-                      entry = _h7_expr_key_cache.get(id(expr))
+                  if _h7_direct_key_reuse_enabled:
+                      entry = _h7_state_expr_keys.get(id(expr))
                       if entry is not None and entry[0] is expr:
-                          _h7_expr_key_cache_stats["hits"] += 1
+                          _h7_direct_key_reuse_stats["hits"] += 1
                           return entry[1]
-                  _h7_expr_key_cache_stats["misses"] += 1
-                  value = json.dumps(expr, sort_keys=True, separators=(",", ":"))
-                  _h7_expr_key_cache_stats["serializations"] += 1
-                  if _h7_expr_key_cache_enabled:
-                      if len(_h7_expr_key_cache) >= _h7_expr_key_cache_capacity:
-                          del _h7_expr_key_cache[next(iter(_h7_expr_key_cache))]
-                          _h7_expr_key_cache_stats["evictions"] += 1
-                      _h7_expr_key_cache[id(expr)] = (expr, value)
-                  return value
+                  _h7_direct_key_reuse_stats["misses"] += 1
+                  _h7_direct_key_reuse_stats["serializations"] += 1
+                  return json.dumps(expr, sort_keys=True, separators=(",", ":"))
           
-              def remember_expr_key(expr: Mapping[str, Any], value: str) -> None:
-                  if not _h7_expr_key_cache_enabled:
-                      return
-                  ident=id(expr); entry=_h7_expr_key_cache.get(ident)
-                  if entry is not None and entry[0] is expr:
-                      if entry[1] != value:
-                          raise AssertionError("precomputed canonical expression key mismatch")
-                      return
-                  if len(_h7_expr_key_cache) >= _h7_expr_key_cache_capacity:
-                      del _h7_expr_key_cache[next(iter(_h7_expr_key_cache))]
-                      _h7_expr_key_cache_stats["evictions"] += 1
-                  _h7_expr_key_cache[ident]=(expr,value)
-                  _h7_expr_key_cache_stats["seeded"] += 1'''
-          s=s.replace(old,helper,1)
-          a=s.index("    def register(expr:");b=s.index("    def register_binary(",a);rb=s[a:b]
-          old='''        else:
-                      expression_ident = str(metadata_hint["expression_ident"])
-                  if expression_ident in seen_expression_keys:'''
-          new='''        else:
-                      expression_ident = str(metadata_hint["expression_ident"])
-                  remember_expr_key(expr, expression_ident)
-                  if expression_ident in seen_expression_keys:'''
-          if rb.count(old)!=1: raise SystemExit("register precomputed-key marker mismatch")
-          rb=rb.replace(old,new,1);s=s[:a]+rb+s[b:]
+              def _h7_rank_expression_key(state: tuple, expr: Mapping[str, Any]) -> str:
+                  if _h7_direct_key_reuse_enabled:
+                      key = expression_key_by_state_token.get(state[5])
+                      if key is not None:
+                          _h7_direct_key_reuse_stats["rank_key_reuses"] += 1
+                          return key
+                  return expr_key(expr)'''
+          s=s.replace(old,new,1)
+          
+          # Rank uses its exact previously registered key, without any object-cache lookup for a miss.
+          a=s.index("    def rank(state: tuple)");b=s.index("    levels:",a);rb=s[a:b]
+          old='json.dumps(expr, sort_keys=True, separators=(",", ":")),'
+          if rb.count(old)!=1: raise SystemExit("rank serializer marker mismatch")
+          rb=rb.replace(old,'_h7_rank_expression_key(state, expr),',1);s=s[:a]+rb+s[b:]
+          
+          # Add a key to the map only after the state has successfully entered the active frontier.
+          marker='''        _H7_add(frontier_index, state)
+                  stats["dominance_frontier_max"]'''
+          if s.count(marker)!=1: raise SystemExit("frontier acceptance marker mismatch")
+          replace='''        _H7_add(frontier_index, state)
+                  if _h7_direct_key_reuse_enabled:
+                      _h7_state_expr_keys[id(expr)] = (expr, expression_ident)
+                      _h7_direct_key_reuse_stats["seeded"] += 1
+                  stats["dominance_frontier_max"]'''
+          s=s.replace(marker,replace,1)
+          
+          # Forget removed roots to prevent retaining pruned expressions.
+          a=s.index("    def _H7_remove(");b=s.index("    def _H7_find_dominator(",a);rb=s[a:b]
+          marker='''        token = state[5]
+                  meta = _H7_online_metadata.get(token)'''
+          if rb.count(marker)!=1: raise SystemExit("frontier removal marker mismatch")
+          replace='''        token = state[5]
+                  root_expr = state[0]
+                  entry = _h7_state_expr_keys.get(id(root_expr))
+                  if entry is not None and entry[0] is root_expr:
+                      _h7_state_expr_keys.pop(id(root_expr), None)
+                      _h7_direct_key_reuse_stats["removed"] += 1
+                  meta = _H7_online_metadata.get(token)'''
+          rb=rb.replace(marker,replace,1);s=s[:a]+rb+s[b:]
+          
+          # Export counters only in diagnostic metadata, not BehavioralSearchResult.stats.
           at=s.rfind('        return BehavioralSearchResult(')
-          if at<0: raise SystemExit("final result marker missing")
-          s=s[:at]+'        find_exact_expression._H7_LAST_EXPR_KEY_CACHE_STATS = dict(_h7_expr_key_cache_stats)\n'+s[at:]
-          p.write_text(s);print("ORIGINAL_SOURCE_SHA256="+original_sha);print("CANONICAL_KEY_REUSE_PATCH_SHA256="+hashlib.sha256(s.encode()).hexdigest());print("KEY_CACHE_CAPACITY=8192; FRONTIER_CACHE=128; STRUCTURAL_EXPANSION_CACHE=OFF")
+          if at<0: raise SystemExit("final result return marker missing")
+          s=s[:at]+'        _h7_direct_key_reuse_stats["active_entries_at_return"] = len(_h7_state_expr_keys)\n        find_exact_expression._H7_LAST_DIRECT_KEY_REUSE_STATS = dict(_h7_direct_key_reuse_stats)\n'+s[at:]
+          p.write_text(s);print("ORIGINAL_SOURCE_SHA256="+original_sha);print("LIVE_STATE_KEY_REUSE_PATCH_SHA256="+hashlib.sha256(s.encode()).hexdigest())
+          print("CACHE_POLICY=only currently active frontier state AST roots; evicted on frontier removal")
           
           PY
           python -m py_compile acsie/cognitive_core/behavioral_search.py
@@ -161,13 +169,13 @@ jobs:
           s=s.replace(start,'    _h7_lf_cache = {}\n    _h7_lf_cache_stats = {"hits": 0, "misses": 0, "evictions": 0}\n\n'+start,1)
           a=s.index(start);b=s.index(end,a+len(start));block=s[a:b];old="        if not states:\n            return ()"
           if block.count(old)!=1: raise SystemExit("frontier empty marker mismatch")
-          lookup=('        if not states:\n            return ()\n'
+          new=('        if not states:\n            return ()\n'
           '        cache_enabled = __import__("os").environ.get("ACSIE_DISABLE_LF_CACHE") != "1"\n'
           '        cache_key = tuple(sorted((int(st[5]), tuple(sorted(structural_lineage_by_key.get(str(st[4]), set())))) for st in states)) if cache_enabled else None\n'
           '        cached = _h7_lf_cache.get(cache_key) if cache_enabled else None\n'
           '        if cached is not None:\n            _h7_lf_cache_stats["hits"] += 1\n            return cached\n'
           '        if cache_enabled: _h7_lf_cache_stats["misses"] += 1')
-          block=block.replace(old,lookup,1);old="        return tuple(sorted(frontier, key=rank))"
+          block=block.replace(old,new,1);old="        return tuple(sorted(frontier, key=rank))"
           if block.count(old)!=1: raise SystemExit("frontier return marker mismatch")
           store=('        result = tuple(sorted(frontier, key=rank))\n'
           '        if cache_enabled:\n            if len(_h7_lf_cache) >= 128:\n                del _h7_lf_cache[next(iter(_h7_lf_cache))]\n                _h7_lf_cache_stats["evictions"] += 1\n'
@@ -175,11 +183,10 @@ jobs:
           block=block.replace(old,store,1);s=s[:a]+block+s[b:]
           at=s.rfind('        return BehavioralSearchResult(')
           if at<0: raise SystemExit("final result marker missing")
-          s=s[:at]+'        find_exact_expression._H7_LAST_EXPR_KEY_CACHE_STATS = dict(_h7_expr_key_cache_stats)\n        find_exact_expression._H7_LAST_LF_CACHE_STATS = dict(_h7_lf_cache_stats)\n'+s[at:]
+          s=s[:at]+'        find_exact_expression._H7_LAST_DIRECT_KEY_REUSE_STATS = dict(_h7_direct_key_reuse_stats)\n        find_exact_expression._H7_LAST_LF_CACHE_STATS = dict(_h7_lf_cache_stats)\n'+s[at:]
           p.write_text(s);print("FRONTIER_CACHE=128_FIFO")
           PY
           python -m py_compile acsie/cognitive_core/behavioral_search.py
-
       - name: Run six-file regression suite
         shell: bash
         run: |
@@ -191,20 +198,20 @@ jobs:
             acsie/tests/test_core015_semantic_operator_discovery.py \
             acsie/tests/test_core016_open_semantic_substrate.py \
             acsie/tests/test_adaptive_capability_repair.py \
-            acsie/tests/test_asi_claim_gate.py 2>&1 | tee evidence/gen6-canonical-key-reuse/six-file-regression.txt
+            acsie/tests/test_asi_claim_gate.py 2>&1 | tee evidence/gen6-live-state-key-reuse/six-file-regression.txt
 
-      - name: Require canonical-key ON/OFF signatures to equal pristine
+      - name: Require live-state-key ON/OFF signatures to equal pristine
         shell: bash
         run: |
           set -euo pipefail
-          cat > evidence/gen6-canonical-key-reuse/signature_probe.py <<'PY'
+          cat > evidence/gen6-live-state-key-reuse/signature_probe.py <<'PY'
           import json,os,sys
           from cognitive_core.behavioral_search import find_exact_expression
           from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
           from cognitive_core.recursive_cognitive_compiler import ArchiveRecord,CognitivePrimitive,Trace
           mode=sys.argv[1]
-          if mode=="key_off": os.environ["ACSIE_DISABLE_EXPR_KEY_CACHE"]="1"
-          elif mode=="key_on": os.environ.pop("ACSIE_DISABLE_EXPR_KEY_CACHE",None)
+          if mode=="key_off": os.environ["ACSIE_DISABLE_DIRECT_KEY_REUSE"]="1"
+          elif mode=="key_on": os.environ.pop("ACSIE_DISABLE_DIRECT_KEY_REUSE",None)
           elif mode!="baseline": raise SystemExit("unknown mode "+mode)
           if mode!="baseline": os.environ.pop("ACSIE_DISABLE_LF_CACHE",None)
           def build(op):
@@ -221,56 +228,56 @@ jobs:
           signatures={};counters={}
           for op in ("max","min","sum"):
            c,rows,depth,obj=build(op);r=find_exact_expression(c,rows,max_depth=depth,require_macro=True,selection_objective=obj,max_alternatives=8)
-           signatures[op]=sig(r);counters[op]={"expr_key_cache":dict(getattr(find_exact_expression,"_H7_LAST_EXPR_KEY_CACHE_STATS",{})),"frontier_cache":dict(getattr(find_exact_expression,"_H7_LAST_LF_CACHE_STATS",{})),"found":r is not None}
+           signatures[op]=sig(r);counters[op]={"direct_key_reuse":dict(getattr(find_exact_expression,"_H7_LAST_DIRECT_KEY_REUSE_STATS",{})),"frontier_cache":dict(getattr(find_exact_expression,"_H7_LAST_LF_CACHE_STATS",{})),"found":r is not None}
           print(json.dumps({"mode":mode,"signatures":signatures,"counters":counters},sort_keys=True,separators=(",",":")))
           
           PY
-          PYTHONPATH="$GITHUB_WORKSPACE/baseline-acsie" PYTHONHASHSEED=0 python evidence/gen6-canonical-key-reuse/signature_probe.py baseline > evidence/gen6-canonical-key-reuse/pristine-signatures.json
-          PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 python evidence/gen6-canonical-key-reuse/signature_probe.py key_off > evidence/gen6-canonical-key-reuse/key_off-signatures.json
-          PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 python evidence/gen6-canonical-key-reuse/signature_probe.py key_on > evidence/gen6-canonical-key-reuse/key_on-signatures.json
+          PYTHONPATH="$GITHUB_WORKSPACE/baseline-acsie" PYTHONHASHSEED=0 python evidence/gen6-live-state-key-reuse/signature_probe.py baseline > evidence/gen6-live-state-key-reuse/pristine-signatures.json
+          PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 python evidence/gen6-live-state-key-reuse/signature_probe.py key_off > evidence/gen6-live-state-key-reuse/key_off-signatures.json
+          PYTHONPATH="$GITHUB_WORKSPACE/acsie" PYTHONHASHSEED=0 python evidence/gen6-live-state-key-reuse/signature_probe.py key_on > evidence/gen6-live-state-key-reuse/key_on-signatures.json
           python - <<'PY'
           import json,pathlib
-          r=pathlib.Path("evidence/gen6-canonical-key-reuse");base=json.loads((r/"pristine-signatures.json").read_text())["signatures"]
+          r=pathlib.Path("evidence/gen6-live-state-key-reuse");base=json.loads((r/"pristine-signatures.json").read_text())["signatures"]
           off=json.loads((r/"key_off-signatures.json").read_text());on=json.loads((r/"key_on-signatures.json").read_text())
-          report={"schema":"ACSIE.gen6_canonical_key_reuse_parity.v1","key_cache_capacity":8192,"frontier_cache_capacity":128,"expansion_cache":"OFF","key_off_arm_matches_pristine":off["signatures"]==base,"key_on_arm_matches_pristine":on["signatures"]==base,"both_arms_match_pristine":off["signatures"]==base and on["signatures"]==base,"counters":{"key_off":off["counters"],"key_on":on["counters"]},"interpretation_guard":"Exact returned science signatures compared with pristine source on max/min/sum fixtures."}
+          report={"schema":"ACSIE.gen6_canonical_key_reuse_parity.v1","live_state_key_map":8192,"frontier_cache_capacity":128,"expansion_cache":"OFF","key_off_arm_matches_pristine":off["signatures"]==base,"key_on_arm_matches_pristine":on["signatures"]==base,"both_arms_match_pristine":off["signatures"]==base and on["signatures"]==base,"counters":{"key_off":off["counters"],"key_on":on["counters"]},"interpretation_guard":"Exact returned science signatures compared with pristine source on max/min/sum fixtures."}
           (r/"key-reuse-parity.json").write_text(json.dumps(report,indent=2,sort_keys=True)+"\n");print(json.dumps(report,indent=2,sort_keys=True))
           if not report["both_arms_match_pristine"]:raise SystemExit("cache arms differ from pristine")
-          if sum(on["counters"][x]["expr_key_cache"].get("hits",0) for x in ("max","min","sum"))<1:raise SystemExit("no canonical key cache hits")
+          if sum(on["counters"][x]["direct_key_reuse"].get("hits",0) for x in ("max","min","sum"))<1:raise SystemExit("no canonical live-state key reuse hits")
           if sum(on["counters"][x]["frontier_cache"].get("hits",0) for x in ("max","min","sum"))<1:raise SystemExit("no frontier cache hits")
           PY
 
-      - name: Prepare canonical-key cache sampler
+      - name: Prepare live-state-live-state key reuse sampler
         shell: bash
         run: |
           set -euo pipefail
           cat > diagnostics/sitecustomize.py <<'PY'
           import faulthandler,json,os,signal,time,sys
-          faulthandler.enable(file=sys.stderr,all_threads=True);t0=time.monotonic();log=os.environ.get("ACSIE_EXPR_KEY_CACHE_LOG")
+          faulthandler.enable(file=sys.stderr,all_threads=True);t0=time.monotonic();log=os.environ.get("ACSIE_EXPR_DIRECT_KEY_REUSE_LOG")
           def snap(sig,frame):
            faulthandler.dump_traceback(file=sys.stderr,all_threads=True);f=frame
            while f is not None and f.f_code.co_name!="find_exact_expression":f=f.f_back
            row={"elapsed_s":round(time.monotonic()-t0,3),"signal":int(sig)}
            if f is not None:
             loc=f.f_locals;row["search"]={k:loc.get("stats",{}).get(k) for k in ("rows","max_depth","primitive_count","generated_expressions","unique_states","dominance_pruned_states","dominance_frontier_max","status")}
-            row["expr_key_cache"]=dict(loc.get("_h7_expr_key_cache_stats",{}));row["expr_key_entries"]=len(loc.get("_h7_expr_key_cache",{}))
+            row["direct_key_reuse"]=dict(loc.get("_h7_direct_key_reuse_stats",{}));row["live_state_key_entries"]=len(loc.get("_h7_direct_key_reuse",{}))
             row["frontier_cache"]=dict(loc.get("_h7_lf_cache_stats",{}));row["frontier_entries"]=len(loc.get("_h7_lf_cache",{}))
            if log:
             with open(log,"a",buffering=1) as h:h.write(json.dumps(row,sort_keys=True)+"\n")
           signal.signal(signal.SIGUSR1,snap)
           PY
           python -m py_compile diagnostics/sitecustomize.py
-      - name: Run matched actual Gen6 control and canonical-key reuse arms
+      - name: Run matched actual Gen6 control and live-state-key reuse arms
         timeout-minutes: 9
         shell: bash
         run: |
           set -euo pipefail
-          ulimit -c 0;root="$GITHUB_WORKSPACE/evidence/gen6-canonical-key-reuse";seed=2026100301
-          for arm in key_cache_off_frontier128 key_cache_on_frontier128; do
+          ulimit -c 0;root="$GITHUB_WORKSPACE/evidence/gen6-live-state-key-reuse";seed=2026100301
+          for arm in key_reuse_off_frontier128 key_reuse_on_frontier128; do
            stdout="$root/$arm.stdout.jsonl";stderr="$root/$arm.stderr";counters="$root/$arm-counters.jsonl";status_file="$root/$arm-status.json";rm -f "$stdout" "$stderr" "$counters"
-           if [ "$arm" = "key_cache_off_frontier128" ]; then
-            env ACSIE_DISABLE_EXPR_KEY_CACHE=1 ACSIE_EXPR_KEY_CACHE_LOG="$counters" PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/lab:$GITHUB_WORKSPACE/acsie" python -c 'import json,sys,acsie_open_ended_self_extending_proving as g; print(json.dumps(g.run_seed(int(sys.argv[1]),7),sort_keys=True),flush=True)' "$seed" > "$stdout" 2> "$stderr" &
+           if [ "$arm" = "key_reuse_off_frontier128" ]; then
+            env ACSIE_DISABLE_DIRECT_KEY_REUSE=1 ACSIE_EXPR_DIRECT_KEY_REUSE_LOG="$counters" PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/lab:$GITHUB_WORKSPACE/acsie" python -c 'import json,sys,acsie_open_ended_self_extending_proving as g; print(json.dumps(g.run_seed(int(sys.argv[1]),7),sort_keys=True),flush=True)' "$seed" > "$stdout" 2> "$stderr" &
            else
-            env -u ACSIE_DISABLE_EXPR_KEY_CACHE ACSIE_EXPR_KEY_CACHE_LOG="$counters" PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/lab:$GITHUB_WORKSPACE/acsie" python -c 'import json,sys,acsie_open_ended_self_extending_proving as g; print(json.dumps(g.run_seed(int(sys.argv[1]),7),sort_keys=True),flush=True)' "$seed" > "$stdout" 2> "$stderr" &
+            env -u ACSIE_DISABLE_DIRECT_KEY_REUSE ACSIE_EXPR_DIRECT_KEY_REUSE_LOG="$counters" PYTHONPATH="$GITHUB_WORKSPACE/diagnostics:$GITHUB_WORKSPACE/lab:$GITHUB_WORKSPACE/acsie" python -c 'import json,sys,acsie_open_ended_self_extending_proving as g; print(json.dumps(g.run_seed(int(sys.argv[1]),7),sort_keys=True),flush=True)' "$seed" > "$stdout" 2> "$stderr" &
            fi
            child=$!;start=$(date +%s);next=$((start+10));timed_out=0;rss_guard=0;max_rss=0
            while kill -0 "$child" 2>/dev/null;do
@@ -288,8 +295,8 @@ jobs:
           done
           python - "$root" <<'PY'
           import collections,json,pathlib,re,sys
-          root=pathlib.Path(sys.argv[1]);d={"schema":"ACSIE.gen6_canonical_key_reuse_diagnostic.v1","source_commit":"d83cb60286f195eec02b4d7aa45a60539316d115","seed":2026100301,"key_cache_capacity":8192,"frontier_cache_capacity":128,"expansion_cache":"OFF","arms":{}}
-          for arm in ("key_cache_off_frontier128","key_cache_on_frontier128"):
+          root=pathlib.Path(sys.argv[1]);d={"schema":"ACSIE.gen6_canonical_key_reuse_diagnostic.v1","source_commit":"d83cb60286f195eec02b4d7aa45a60539316d115","seed":2026100301,"live_state_key_map":8192,"frontier_cache_capacity":128,"expansion_cache":"OFF","arms":{}}
+          for arm in ("key_reuse_off_frontier128","key_reuse_on_frontier128"):
            stderr=(root/f"{arm}.stderr").read_text(errors="replace");stacks=[]
            for block in re.split(r"(?=Current thread 0x)",stderr):
             fs=re.findall(r'File "([^"]+)", line (\d+) in ([^\n]+)',block)
@@ -305,10 +312,10 @@ jobs:
           print(json.dumps({"schema":d["schema"],"arms":{a:{k:v for k,v in x.items() if k not in ("stderr_tail","live_counter_samples")} for a,x in d["arms"].items()}},indent=2,sort_keys=True))
           PY
 
-      - name: Upload canonical-key factorial and Gen6 evidence
+      - name: Upload live-state-key factorial and Gen6 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gen6-canonical-key-reuse-${{ github.run_id }}
-          path: evidence/gen6-canonical-key-reuse/
+          name: gen6-live-state-key-reuse-${{ github.run_id }}
+          path: evidence/gen6-live-state-key-reuse/
           if-no-files-found: error
