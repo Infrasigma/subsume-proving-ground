@@ -168,12 +168,13 @@ jobs:
           )
           source = source[:regbin_start] + regbin + source[next_def:]
 
-          source = once(
-              source,
-              '        return BehavioralSearchResult(\\n            best_target[0],',
-              '        find_exact_expression._H7_LAST_DIAGNOSTIC_COUNTERS = dict(_h7_diag["counters"])\\n'
-              '        return BehavioralSearchResult(\\n            best_target[0],',
-              "export diagnostic counters for exact parity check",
+          marker = "        return BehavioralSearchResult("
+          if source.count(marker) != 1:
+              raise SystemExit(f"counter export marker matched {source.count(marker)} times, expected one")
+          source = source.replace(
+              marker,
+              '        find_exact_expression._H7_LAST_DIAGNOSTIC_COUNTERS = dict(_h7_diag["counters"])' + chr(10) + marker,
+              1,
           )
 
           new_sha = hashlib.sha256(source.encode()).hexdigest()
