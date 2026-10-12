@@ -6,6 +6,7 @@ on:
       - research/acsie-h7-r3-exact-source-20261011
     paths:
       - ".github/workflows/gen6-pruned-key-lifetime.yml"
+      - "lab/patch_gen6_pruned_key_lifetime.py"
 
 permissions:
   contents: read
@@ -25,6 +26,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p evidence/gen6-pruned-key-lifetime diagnostics
+          python -m py_compile lab/patch_gen6_pruned_key_lifetime.py
           {
             echo "EXECUTOR_COMMIT=$GITHUB_SHA"
             echo "WORKFLOW_RUN_ID=$GITHUB_RUN_ID"
