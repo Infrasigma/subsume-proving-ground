@@ -774,7 +774,7 @@ def run_seed(
                         "candidate_expressions": [proc.expression for proc in cprocs],
                         "candidate_policies": [dict(proc.policy) for proc in cprocs],
                         "frontier_signature_payload": frontier_signature_payload,
-                        "frontier_signature_sha256": hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest(),
+                        "frontier_signature_sha256": sha256(canonical_payload.encode("utf-8")).hexdigest(),
                         "legacy_discovery_qualified_count": int(
                             getattr(learner, "last_process_candidate_selection_summary", {}).get("discovery_qualified", -1)
                         ),
@@ -782,6 +782,7 @@ def run_seed(
                             getattr(learner, "last_process_candidate_selection_summary", {}).get("post_selection_validation_ignored", False)
                         ),
                         "frontier_search_method": frontier_search_method,
+                        "closure_synthesis_elapsed_seconds": round(perf_counter() - closure_synthesis_started, 6),
                         "source_selection": "discovery_and_selection_only",
                         "holdout_transfer_ood_used_for_selection": False,
                         "promotion_status": "DO_NOT_PROMOTE",
