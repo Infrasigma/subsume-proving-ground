@@ -84,6 +84,7 @@ class Capture:
         self.selected_call_id = None
         self.selected_call_index = None
         self.search_call_counter = 0
+        self.status = "CAPTURE_PENDING"
 
     def _resolve_role(self, caller, compiler):
         name = caller.f_code.co_name
@@ -226,10 +227,14 @@ class Capture:
             "capture_semantics": "post_choose_target_in_depth; existing live frontier only",
             "invocation": dict(self.current_invocation),
         }
+        if depth == 4:
+            self.done = True
+            self.status = "CAPTURE_COMPLETE_DEPTH4"
         self.captured.append(payload)
         source_path = Path(behavioral_search.__file__).resolve()
         self.output.write_text(json.dumps({
             "schema": "ACSIE.PR110.H7.offline-frontier-capture.v4",
+            "status": self.status,
             "runtime_sha": RUNTIME_SHA,
             "proving_sha": PROVING_SHA,
             "seed": SEED,
@@ -248,7 +253,6 @@ class Capture:
             "captures": self.captured,
         }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         if depth == 4:
-            self.done = True
             raise SystemExit(0)
 
     def install(self):
@@ -276,7 +280,60 @@ class Capture:
         behavioral_search._H7_CAPTURE_ENTER = self.enter
         behavioral_search._H7_CAPTURE_HOOK = self.hook
         exec(compile(instrumented, behavioral_search.__file__, "exec"), behavioral_search.__dict__)
-        growth.find_exact_expression = behavioral_search.find_exact_expression
+        selected_function = behavioral_search.find_exact_expression
+
+        def bounded_wrapper(*args, **kwargs):
+            result = None
+            try:
+                result = selected_function(*args, **kwargs)
+                return result
+            finally:
+                # Stop immediately after the selected call returns if the search
+                # terminated before depth 4. This avoids running the remaining
+                # generations just to wait for a depth that this invocation
+                # cannot produce. A partial capture remains explicitly partial.
+                if (
+                    self.selected_call_id is not None
+                    and self.current_call_id == self.selected_call_id
+                    and self.current_call_role == self.capture_role
+                    and not self.done
+                ):
+                    self.done = True
+                    self.status = (
+                        "CAPTURE_PARTIAL_SEARCH_RETURNED"
+                        if self.captured else "NO_TARGET_DEPTH_CAPTURE"
+                    )
+                    source_path = Path(behavioral_search.__file__).resolve()
+                    payload = {
+                        "schema": "ACSIE.PR110.H7.offline-frontier-capture.v4",
+                        "status": self.status,
+                        "runtime_sha": RUNTIME_SHA,
+                        "proving_sha": PROVING_SHA,
+                        "seed": SEED,
+                        "generation": GENERATION,
+                        "requested_depths": sorted(TARGET_DEPTHS),
+                        "requested_capture_role": self.capture_role,
+                        "selected_search_call_index": self.selected_call_index,
+                        "observer": {
+                            "mode": "single-invocation-local-callback",
+                            "trace_function_enabled": False,
+                            "hook_point": "after depth-local selection; wrapper stops after the selected search returns",
+                            "original_behavioral_search_file": str(source_path),
+                            "original_behavioral_search_sha256": sha256(source_path.read_bytes()).hexdigest(),
+                            "instrumented_function_source_sha256": self.instrumented_source_sha256,
+                        },
+                        "captures": self.captured,
+                        "selected_search_completion": {
+                            "returned_normally": result is not None or result is None,
+                            "result_is_none": result is None,
+                            "result_stats": dict(getattr(result, "stats", {})) if result is not None else {},
+                            "hook_elapsed_seconds_from_run_seed_start": time.perf_counter() - self.started,
+                        },
+                    }
+                    self.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+                    raise SystemExit(0 if self.captured else 86)
+
+        growth.find_exact_expression = bounded_wrapper
         return original
 
 
@@ -327,9 +384,11 @@ def main():
             "sha256": sha256(path.read_bytes()).hexdigest(),
         }
     print(json.dumps({
-        "capture": "PASSED",
+        "capture": capture.status,
         "generation": GENERATION,
         "depths": sorted({item["depth"] for item in capture.captured}),
+        "capture_status": capture.status,
+        "selected_search_call_index": capture.selected_call_index,
         "exit_code": exit_code,
         "python_version": sys.version,
         "pythonhashseed": os.environ.get("PYTHONHASHSEED", "unset"),
