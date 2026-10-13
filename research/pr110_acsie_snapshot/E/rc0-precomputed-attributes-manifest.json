@@ -13,8 +13,8 @@
       "file_sha256": "recorded_from_imported_bytes_in_preflight.json"
     },
     "cognitive_core/behavioral_search.py": {
-      "parent_D_git_blob_sha1": "9e722f9f803adfe70aa6ea934c8c848d2da7d799",
-      "rc0_E_git_blob_sha1": "97c771efbbde76602bad29a06276c11aead90881",
+      "parent_D_git_blob_sha1": "8b36ca913cd13e43691a5a64fdfb27994e25438f",
+      "rc0_E_git_blob_sha1": "7f95ee634a4bd836cb6412cdc7d2f88b0995dbbd",
       "file_sha256": "recorded_from_imported_bytes_in_preflight.json"
     }
   },
@@ -54,6 +54,6 @@
       "state_feature_computations",
       "elapsed_seconds"
     ],
-    "note": "Compare these at matching dominance-comparison snapshots. Candidate remains diagnostic-only until complete function-output and decision-trace parity are established."
+    "note": "Compare these at matching completed-dominance-comparison snapshots. The E implementation adds opt-in length-prefixed SHA-256 decision traces. A bounded prefix is exact only when trace event counts, trace digests, and all logical counters match."
   }
 }
