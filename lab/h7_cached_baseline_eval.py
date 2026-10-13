@@ -16,12 +16,18 @@ from cognitive_core.recursive_cognitive_compiler import ProcessCandidate
 Expression = Mapping[str, Any]
 
 
-def _expr_key(expr: Expression, key_cache: MutableMapping[int, str]) -> str:
+def _expr_key(
+    expr: Expression,
+    key_cache: MutableMapping[int, tuple[Expression, str]],
+) -> str:
     ident = id(expr)
-    key = key_cache.get(ident)
-    if key is None:
-        key = json.dumps(expr, sort_keys=True, separators=(",", ":"))
-        key_cache[ident] = key
+    entry = key_cache.get(ident)
+    if entry is not None and entry[0] is expr:
+        return entry[1]
+    key = json.dumps(expr, sort_keys=True, separators=(",", ":"))
+    # Retain the object alongside its key so CPython cannot reuse the id for a
+    # different expression while this invocation-local cache remains alive.
+    key_cache[ident] = (expr, key)
     return key
 
 
@@ -30,7 +36,7 @@ def eval_expr_cached(
     inputs: Mapping[str, float],
     macros: Mapping[str, Expression],
     row_cache: MutableMapping[str, float],
-    key_cache: MutableMapping[int, str],
+    key_cache: MutableMapping[int, tuple[Expression, str]],
     counters: MutableMapping[str, int],
 ) -> float:
     """Evaluate the exact scalar semantics with a cache scoped to one input row."""
@@ -97,7 +103,7 @@ def synthesize_discovery_only_cached(
     candidates = []
     pmap = compiler._pmap()
     row_caches: list[dict[str, float]] = [dict() for _ in rows]
-    key_cache: dict[int, str] = {}
+    key_cache: dict[int, tuple[Expression, str]] = {}
     counters: dict[str, int] = {
         "candidate_expression_count_seen": 0,
         "row_evaluation_requests": 0,
