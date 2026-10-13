@@ -8,6 +8,13 @@ on:
       - ".github/workflows/h7-gen5-stage-profiler.yml"
       - "lab/pr110_h7_offline_capture.py"
       - "lab/pr110_h7_offline_counterfactual.py"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/h7-gen5-stage-profiler.yml"
+      - "lab/pr110_h7_offline_capture.py"
+      - "lab/pr110_h7_offline_counterfactual.py"
   workflow_dispatch:
 
 permissions:
@@ -71,7 +78,7 @@ jobs:
           assert manifest["proving_harness_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
           for rel, expected in manifest["B"]["files"].items():
               data = Path("research/pr110_acsie_snapshot/B", rel).read_bytes()
-              actual = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\\0" + data).hexdigest()
+              actual = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
               assert actual == expected, (rel, actual, expected)
           checkpoint = Path("evidence/pr110-phase6-scalability-forensics/B-checkpoint.json")
           assert checkpoint.exists(), "pinned Phase6 checkpoint file missing"
