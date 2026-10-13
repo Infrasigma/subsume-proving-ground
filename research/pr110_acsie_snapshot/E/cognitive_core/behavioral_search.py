@@ -548,6 +548,16 @@ def find_exact_expression(
         if old is not None:
             stats["duplicate_states"] += 1
             if rank(state) < rank(old):
+                # A better-ranked equivalent can replace the depth-bucket
+                # representative without entering the dominance frontier. It
+                # may still be inspected by target-frontier extraction later,
+                # so its exact dominance features must be available too.
+                state_feature_cache[state[5]] = (
+                    frozenset(state_used),
+                    frozenset(direct_lineage),
+                    executable_cost(expr),
+                )
+                stats["state_feature_computations"] = int(stats.get("state_feature_computations", 0)) + 1
                 bucket[state_key] = state
                 if best_any.get(outputs) == old:
                     best_any[outputs] = state
