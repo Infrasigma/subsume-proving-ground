@@ -119,6 +119,14 @@ class Capture:
             return
         if self.selected_call_id is not None:
             return
+        if self.probe_index is not None and role == "secondary_process_synthesis":
+            run_seed_frame = caller.f_back
+            actual_probe_index = (
+                run_seed_frame.f_locals.get("probe_idx")
+                if run_seed_frame is not None else None
+            )
+            if actual_probe_index != self.probe_index:
+                return
         self.selected_call_id = self.current_call_id
         self.selected_call_index = self.search_call_counter
         self.current_invocation = {
