@@ -1,13 +1,12 @@
 name: ACSIE H7 PR111-112 exact-source hosted validation
 
 on:
-  # Temporary snapshot-build trigger: source-data commits do not relaunch tests.
-  # The pull_request trigger is restored after the complete snapshot set is pinned.
-  push:
+  pull_request:
     branches:
-      - research/acsie-pr112-hosted-validation-20261013
+      - main
     paths:
       - ".github/workflows/acsie-h7-pr111-112-hosted-validation.yml"
+      - "research/acsie-h7-pr112-validation/**"
   workflow_dispatch:
 
 concurrency:
@@ -108,6 +107,33 @@ jobs:
           }, sort_keys=True))
           PY
 
+      - name: Materialize complete exact-source package overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$GITHUB_WORKSPACE/research/acsie-h7-pr112-validation"
+          # The three branch-specific modules remain exact files in each arm.
+          # All other ACSIE package modules are pinned once in shared_support and
+          # symlinked into each isolated package after integrity hashing.
+          for variant in baseline candidate; do
+            pkg="$base/$variant/cognitive_core"
+            cp "$base/shared_support/cognitive_core/__init__.py" "$pkg/__init__.py"
+            for source in "$base"/shared_support/cognitive_core/*.py; do
+              name="$(basename "$source")"
+              case "$name" in
+                __init__.py|behavioral_search.py|open_ended_growth.py|recursive_cognitive_compiler.py)
+                  continue
+                  ;;
+              esac
+              test ! -e "$pkg/$name"
+              ln -s "$source" "$pkg/$name"
+            done
+          done
+          echo "EXACT_SOURCE_OVERLAY=PASS"
+          for variant in baseline candidate; do
+            echo "$variant core module count=$(find "$base/$variant/cognitive_core" -maxdepth 1 -type f -o -type l | wc -l)"
+          done
+
       - name: Verify runtime import provenance
         shell: bash
         run: |
@@ -121,19 +147,37 @@ jobs:
               variant_root = base / variant
               env_path = str(variant_root)
               env = os.environ.copy()
-              env["PYTHONPATH"] = env_path
+              env["PYTHONPATH"] = env_path + os.pathsep + str(base / "shared_support")
               # Use isolated child processes so sys.modules cannot cross-contaminate the variants.
               import subprocess, sys
               code = r'''
           import hashlib, importlib, json
           from pathlib import Path
-          expected = Path(__import__("sys").argv[1]).resolve()
+          base = Path(__import__("sys").argv[1]).resolve()
+          shared = base.parent / "shared_support"
+          variant_names = (
+              "cognitive_core.recursive_cognitive_compiler",
+              "cognitive_core.behavioral_search",
+              "cognitive_core.open_ended_growth",
+          )
+          shared_names = (
+              "cognitive_core.general_engine",
+              "cognitive_core.semantic_operator_discovery",
+              "cognitive_core.open_semantic_substrate",
+              "cognitive_core.native_independent_core",
+              "cognitive_core.adaptive_capability_repair",
+          )
           modules = {}
-          for name in ("cognitive_core.recursive_cognitive_compiler", "cognitive_core.behavioral_search", "cognitive_core.open_ended_growth"):
+          for name in variant_names:
               module = importlib.import_module(name)
               path = Path(module.__file__).resolve()
-              assert expected in path.parents, (name, path, expected)
-              modules[name] = {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+              assert base in path.parents, (name, path, base)
+              modules[name] = {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "source_role":"variant"}
+          for name in shared_names:
+              module = importlib.import_module(name)
+              path = Path(module.__file__).resolve()
+              assert shared in path.parents, (name, path, shared)
+              modules[name] = {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "source_role":"shared_exact_source"}
           print(json.dumps(modules, sort_keys=True))
           '''
               p = subprocess.run(
@@ -149,33 +193,48 @@ jobs:
           print(json.dumps({"status":"PASS","variants":len(rows),"modules_per_variant":3}, sort_keys=True))
           PY
 
-      - name: Run PR111 policy-baseline tests
+      - name: Run full six-file PR111 policy-baseline regression suite
         shell: bash
         run: |
           set -euo pipefail
-          export PYTHONPATH="$GITHUB_WORKSPACE/research/acsie-h7-pr112-validation/baseline"
+          base="$GITHUB_WORKSPACE/research/acsie-h7-pr112-validation"
+          export PYTHONPATH="$base/baseline:$base/shared_support"
+          cd "$RUNNER_TEMP"
           set +e
-          python -m pytest -q research/acsie-h7-pr112-validation/baseline/tests/test_open_ended_growth.py \
-            > research/acsie-h7-pr112-validation/evidence/baseline-pytest.log 2>&1
+          python -m pytest -q \
+            "$base/baseline/tests/test_open_ended_growth.py" \
+            "$base/shared_support/tests/test_core014_recursive_cognitive_compiler.py" \
+            "$base/shared_support/tests/test_core015_semantic_operator_discovery.py" \
+            "$base/shared_support/tests/test_core016_open_semantic_substrate.py" \
+            "$base/shared_support/tests/test_adaptive_capability_repair.py" \
+            "$base/shared_support/tests/test_asi_claim_gate.py"
+          > "$base/evidence/baseline-pytest.log" 2>&1
           rc=$?
           set -e
-          cat research/acsie-h7-pr112-validation/evidence/baseline-pytest.log
+          cat "$base/evidence/baseline-pytest.log"
           echo "BASELINE_PYTEST_EXIT=$rc"
           exit "$rc"
 
-      - name: Run PR112 candidate tests plus restored PR111 regression
+      - name: Run full six-file PR112 candidate suite plus restored PR111 regression
         shell: bash
         run: |
           set -euo pipefail
-          export PYTHONPATH="$GITHUB_WORKSPACE/research/acsie-h7-pr112-validation/candidate"
+          base="$GITHUB_WORKSPACE/research/acsie-h7-pr112-validation"
+          export PYTHONPATH="$base/candidate:$base/shared_support"
+          cd "$RUNNER_TEMP"
           set +e
           python -m pytest -q \
-            research/acsie-h7-pr112-validation/candidate/tests/test_open_ended_growth.py \
-            research/acsie-h7-pr112-validation/candidate/tests/test_h7_preserved_lineage_frontier_regression.py \
-            > research/acsie-h7-pr112-validation/evidence/candidate-pytest.log 2>&1
+            "$base/candidate/tests/test_open_ended_growth.py" \
+            "$base/candidate/tests/test_h7_preserved_lineage_frontier_regression.py" \
+            "$base/shared_support/tests/test_core014_recursive_cognitive_compiler.py" \
+            "$base/shared_support/tests/test_core015_semantic_operator_discovery.py" \
+            "$base/shared_support/tests/test_core016_open_semantic_substrate.py" \
+            "$base/shared_support/tests/test_adaptive_capability_repair.py" \
+            "$base/shared_support/tests/test_asi_claim_gate.py"
+          > "$base/evidence/candidate-pytest.log" 2>&1
           rc=$?
           set -e
-          cat research/acsie-h7-pr112-validation/evidence/candidate-pytest.log
+          cat "$base/evidence/candidate-pytest.log"
           echo "CANDIDATE_PYTEST_EXIT=$rc"
           exit "$rc"
 
