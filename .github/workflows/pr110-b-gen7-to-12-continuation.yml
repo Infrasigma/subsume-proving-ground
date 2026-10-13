@@ -5,10 +5,11 @@ on:
   push:
     branches:
       - research/pr110-gen7-to-12-continuation-20261013
+      - research/pr110-lineage-mismatch-observer-fix-20261013
   workflow_dispatch:
 
 concurrency:
-  group: pr110-b-gen7-to-12-20261013
+  group: pr110-b-gen7-to-12-20261013-${{ github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -46,13 +47,15 @@ jobs:
           path: prior
 
       - name: Verify checkpoint bytes, state, source snapshot and continuation boundary
+        env:
+          PYTHONHASHSEED: "0"
         run: |
           set -euo pipefail
           mkdir -p evidence
           cp prior/working-checkpoint.json evidence/input-gen6-checkpoint.json
           cp prior/memoized-diagnostic.json evidence/prior-gen6-diagnostic.json
           PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" python3 - <<'PY'
-          import hashlib, json, subprocess
+          import hashlib, importlib, json, os, subprocess, sys
           from pathlib import Path
           from lab.exact_checkpoint import load_checkpoint
 
@@ -85,6 +88,12 @@ jobs:
               ).strip()
               assert actual == expected, f"{rel}: {actual} != {expected}"
 
+          expected_runtime_path = (Path("research/pr110_acsie_snapshot/B") / "cognitive_core/behavioral_search.py").resolve()
+          runtime_module = importlib.import_module("cognitive_core.behavioral_search")
+          imported_runtime_path = Path(runtime_module.__file__).resolve()
+          assert imported_runtime_path == expected_runtime_path, (str(imported_runtime_path), str(expected_runtime_path))
+          imported_runtime_sha256 = hashlib.sha256(imported_runtime_path.read_bytes()).hexdigest()
+
           envelope = load_checkpoint(
               checkpoint,
               expected_seed=seed,
@@ -104,6 +113,12 @@ jobs:
               "proving_sha": proving_sha,
               "lab_source_blobs": expected_lab_blobs,
               "resume_hash_seed": 0,
+              "pythonhashseed_environment": os.environ.get("PYTHONHASHSEED"),
+              "hash_randomization_flag": sys.flags.hash_randomization,
+              "sys_path": sys.path,
+              "imported_behavioral_search_file": str(imported_runtime_path),
+              "imported_behavioral_search_sha256": imported_runtime_sha256,
+              "evaluator_file_sha256": hashlib.sha256(Path("lab/acsie_open_ended_self_extending_proving.py").read_bytes()).hexdigest(),
               "caveat": "The initial checkpoint process did not pin PYTHONHASHSEED; this continuation pins 0. It is a verified state continuation, not a byte-identical process replay."
           }
           Path("evidence/preflight.json").write_text(json.dumps(out, indent=2, sort_keys=True) + "\n")
@@ -113,6 +128,7 @@ jobs:
           PY
 
       - name: Resume frozen state and run through generation 11
+        if: github.ref_name == 'research/pr110-gen7-to-12-continuation-20261013'
         id: trajectory
         continue-on-error: true
         run: |
@@ -155,6 +171,24 @@ jobs:
           set -e
           printf "%s\n" "$rc" > evidence/process-exit-code.txt
           echo "GEN7_TO_GEN12_PROCESS_EXIT_CODE=$rc"
+
+
+      - name: Replay Gen7 and stop after the first corrected lineage mismatch
+        if: github.ref_name == 'research/pr110-lineage-mismatch-observer-fix-20261013'
+        continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/B:${{ github.workspace }}
+          PYTHONHASHSEED: "0"
+          ACSIE_DIAGNOSTIC_STOP_AFTER_LINEAGE_MISMATCH: "1"
+        run: |
+          set -u
+          cp evidence/input-gen6-checkpoint.json evidence/working-checkpoint.json
+          set +e
+          timeout --signal=TERM --kill-after=30s 15m python3 -u lab/pr110_gen7_lineage_mismatch_observer.py > evidence/gen7-to-12-raw.txt 2>&1
+          rc=$?
+          set -e
+          printf "%s\\n" "$rc" > evidence/process-exit-code.txt
+          echo "GEN7_OBSERVER_DIAGNOSTIC_PROCESS_EXIT_CODE=$rc"
 
       - name: Validate final checkpoint and classify trajectory outcome
         if: always()
@@ -201,7 +235,11 @@ jobs:
                   "generation_ids": [row.get("generation") for row in rows],
                   "latest_generation_row": rows[-1] if rows else None,
               })
-              if env.get("generation_next") == 12 and len(rows) == 12 and rc == 0:
+              if "OBSERVER_DIAGNOSTIC_STOP_CAUGHT" in raw_text and rc == 0:
+                  summary["classification"] = "OBSERVER_DIAGNOSTIC_CAPTURED"
+              elif "DIAGNOSTIC_RETURNED_WITHOUT_MISMATCH_STOP" in raw_text and rc == 0:
+                  summary["classification"] = "DIAGNOSTIC_COMPLETED_WITHOUT_MISMATCH"
+              elif env.get("generation_next") == 12 and len(rows) == 12 and rc == 0:
                   summary["classification"] = "COMPLETE_12_GENERATION_SINGLE_SEED_TRAJECTORY"
               elif rc == 124 or rc == 137:
                   summary["classification"] = "INCONCLUSIVE_WALL_TIMEOUT_CHECKPOINT_PRESERVED"
