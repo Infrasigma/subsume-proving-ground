@@ -11,6 +11,7 @@ from hashlib import sha256
 from pathlib import Path
 
 from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
+from cognitive_core.behavioral_search import find_exact_expression
 from cognitive_core.recursive_cognitive_compiler import ast_depth, ast_nodes
 from lab.exact_checkpoint import load_checkpoint, restore_checkpoint
 import lab.acsie_open_ended_self_extending_proving as proving
