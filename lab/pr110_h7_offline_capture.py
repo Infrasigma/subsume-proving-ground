@@ -88,6 +88,7 @@ class Capture:
         self.selected_call_index = None
         self.search_call_counter = 0
         self.status = "CAPTURE_PENDING"
+        self.postselection_validation_bundle = None
 
     def _resolve_role(self, caller, compiler):
         name = caller.f_code.co_name
@@ -132,6 +133,54 @@ class Capture:
             "caller_stack": self._caller_stack(caller),
             "hook_elapsed_seconds_from_run_seed_start": time.perf_counter() - self.started,
         }
+        if role == "secondary_process_synthesis":
+            # Validation data are serialized for a later, independent analysis.
+            # No selector reads this bundle; the counterfactual operates only
+            # on the already-captured discovery frontier.
+            run_seed_frame = caller.f_back
+            run_seed_locals = run_seed_frame.f_locals if run_seed_frame is not None else {}
+            learner = caller.f_locals.get("self", compiler)
+
+            def serialize_rows(rows, split_name):
+                payload = []
+                for idx, row in enumerate(rows or ()):
+                    payload.append({
+                        "row_index": idx,
+                        "task_id": str(getattr(row, "task_id", "")),
+                        "family": str(getattr(row, "family", "")),
+                        "inputs": {str(k): float(v) for k, v in dict(getattr(row, "inputs", {})).items()},
+                        "target": float(getattr(row, "target")),
+                    })
+                return payload
+
+            validation_splits = {
+                "holdout": serialize_rows(run_seed_locals.get("pholdout", ()), "holdout"),
+                "transfer": serialize_rows(caller.f_locals.get("transfer", ()), "transfer"),
+                "ood": serialize_rows(caller.f_locals.get("ood", ()), "ood"),
+            }
+            primitive_archive = {
+                str(pid): dict(primitive.expression)
+                for pid, primitive in getattr(learner, "primitives", {}).items()
+            }
+            self.postselection_validation_bundle = {
+                "schema": "ACSIE.PR110.H7.postselection-validation-inputs.v1",
+                "selection_boundary": {
+                    "holdout_transfer_ood_used_for_frontier_selection": False,
+                    "postselection_validation_bundle_used_by_frontier_selector": False,
+                    "frontier_selector_input": "captured depth-local non-dominated discovery frontier only",
+                    "target_values_are_postselection_only": True,
+                },
+                "source_invocation": {
+                    "role": role,
+                    "caller_method": caller.f_code.co_name,
+                    "generation": int(getattr(compiler, "generation", -1)),
+                    "probe_idx": run_seed_locals.get("probe_idx"),
+                    "seed": SEED,
+                },
+                "primitive_expression_archive": primitive_archive,
+                "splits": validation_splits,
+                "split_counts": {name: len(rows) for name, rows in validation_splits.items()},
+            }
 
     @staticmethod
     def _caller_stack(caller):
@@ -257,6 +306,7 @@ class Capture:
                 "instrumented_function_source_sha256": self.instrumented_source_sha256,
             },
             "captures": self.captured,
+            "postselection_validation_bundle": self.postselection_validation_bundle,
         }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         if depth == self.stop_at_depth:
             raise SystemExit(0)
@@ -341,6 +391,7 @@ class Capture:
                             "instrumented_function_source_sha256": self.instrumented_source_sha256,
                         },
                         "captures": self.captured,
+                        "postselection_validation_bundle": self.postselection_validation_bundle,
                         "selected_search_completion": {
                             "returned_normally": completed_normally,
                             "result_is_none": result is None,
