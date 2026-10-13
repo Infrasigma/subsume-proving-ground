@@ -1,15 +1,7 @@
 name: PR110 Gen7 D-versus-RC0 decision trace parity
 
 on:
-  push:
-    branches:
-      - research/pr110-gen7-primary-search-profile-20261013
-    paths:
-      - ".github/workflows/pr110-gen7-primary-search-parity.yml"
-      - "lab/pr110_gen7_primary_search_profile.py"
-      - "lab/pr110_gen7_primary_search_rc0.py"
-      - "research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py"
-      - "research/pr110_acsie_snapshot/E/cognitive_core/behavioral_search.py"
+  # Manual-only after 500k bounded parity was established; avoid duplicate runner spend.
   workflow_dispatch:
 
 permissions:
@@ -103,7 +95,7 @@ jobs:
           Path("evidence/preflight.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
           print(json.dumps(report, indent=2, sort_keys=True))
           PY
-      - name: Run reference D from the immutable state with a 150k-comparison cutoff
+      - name: Run reference D from the immutable state with a 500k-comparison cutoff
         continue-on-error: true
         env:
           PYTHONHASHSEED: "0"
@@ -126,7 +118,7 @@ jobs:
           sha256sum evidence/working-checkpoint.json > evidence/D-final-checkpoint.sha256
           cp prior/working-checkpoint.json evidence/working-checkpoint.json
           echo "REFERENCE_D_EXIT_CODE=$rc"
-      - name: Run RC0 E from identical immutable state and work cutoff
+      - name: Run RC0 E from identical immutable state and 500k-comparison cutoff
         continue-on-error: true
         env:
           PYTHONHASHSEED: "0"
@@ -217,11 +209,20 @@ jobs:
               not x["logical_counter_mismatches"] and x["trace_digest_equal"] and x["trace_event_count_equal"]
               for x in comparisons
           )
-          d_start = next((e for e in d_events if e.get("event") == "SEARCH_PROFILE_PROGRESS"), None)
-          e_start = next((e for e in e_events if e.get("event") == "SEARCH_PROFILE_PROGRESS"), None)
+          d_reached_cutoff = any(e.get("event") == "SEARCH_PROFILE_WORK_BUDGET_REACHED" for e in d_events)
+          e_reached_cutoff = any(e.get("event") == "SEARCH_PROFILE_WORK_BUDGET_REACHED" for e in e_events)
+          full_cutoff_parity = parity and d_reached_cutoff and e_reached_cutoff
           summary = {
               "schema": "ACSIE.PR110.Gen7DecisionTraceParity.v1",
-              "classification": "DECISION_TRACE_PARITY_ON_BOUNDED_PREFIX" if parity else "DIVERGENCE_OR_INCOMPLETE_PARITY_EVIDENCE",
+              "classification": (
+                  "DECISION_TRACE_PARITY_THROUGH_500K_COMPARISON_CUTOFF"
+                  if full_cutoff_parity
+                  else "DECISION_TRACE_PARITY_ON_COMMON_PREFIX_ONLY"
+                  if parity
+                  else "DIVERGENCE_OR_INCOMPLETE_PARITY_EVIDENCE"
+              ),
+              "D_reached_work_cutoff": d_reached_cutoff,
+              "E_reached_work_cutoff": e_reached_cutoff,
               "D_exit_code": d_rc,
               "E_exit_code": e_rc,
               "D_event_count": len(d_events),
