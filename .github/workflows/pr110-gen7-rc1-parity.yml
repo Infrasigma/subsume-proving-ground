@@ -217,11 +217,20 @@ jobs:
               not x["logical_counter_mismatches"] and x["trace_digest_equal"] and x["trace_event_count_equal"]
               for x in comparisons
           )
-          d_start = next((e for e in d_events if e.get("event") == "SEARCH_PROFILE_PROGRESS"), None)
-          f_start = next((e for e in f_events if e.get("event") == "SEARCH_PROFILE_PROGRESS"), None)
+          d_reached_cutoff = any(e.get("event") == "SEARCH_PROFILE_WORK_BUDGET_REACHED" for e in d_events)
+          f_reached_cutoff = any(e.get("event") == "SEARCH_PROFILE_WORK_BUDGET_REACHED" for e in f_events)
+          full_cutoff_parity = parity and d_reached_cutoff and f_reached_cutoff
           summary = {
               "schema": "ACSIE.PR110.Gen7RC1DecisionTraceParity.v1",
-              "classification": "DECISION_TRACE_PARITY_ON_BOUNDED_PREFIX" if parity else "DIVERGENCE_OR_INCOMPLETE_PARITY_EVIDENCE",
+              "classification": (
+                  "DECISION_TRACE_PARITY_THROUGH_150K_COMPARISON_CUTOFF"
+                  if full_cutoff_parity
+                  else "DECISION_TRACE_PARITY_ON_COMMON_PREFIX_ONLY"
+                  if parity
+                  else "DIVERGENCE_OR_INCOMPLETE_PARITY_EVIDENCE"
+              ),
+              "D_reached_work_cutoff": d_reached_cutoff,
+              "F_reached_work_cutoff": f_reached_cutoff,
               "D_exit_code": d_rc,
               "F_exit_code": f_rc,
               "D_event_count": len(d_events),
