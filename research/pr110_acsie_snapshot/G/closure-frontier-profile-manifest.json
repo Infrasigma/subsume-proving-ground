@@ -1,0 +1,56 @@
+{
+  "schema": "ACSIE.PR110.Gen7ClosureFrontierProfile.v1",
+  "research_question": "What work is actually performed by the closure candidate frontier used in the Gen7 observer loop, without misattributing the last behavioral-search counters?",
+  "key_correction": "The live closure path dispatches to RecursiveCognitiveCompiler.synthesize_process_frontier(), which enumerates with _exprs() and evaluates each expression against discovery rows. It does not call behavioral_search.find_exact_expression(). Profiling only ACSIE_SEARCH_PROFILE inside behavioral_search would therefore observe the wrong routine and could accidentally continue to the expensive primary search.",
+  "snapshot": "research/pr110_acsie_snapshot/G",
+  "source_files": {
+    "cognitive_core/open_ended_growth.py": {
+      "git_blob_sha1": "ec94fc545badde972510f2db9cbf008cc214e705",
+      "purpose": "unchanged open-ended compiler wrapper"
+    },
+    "cognitive_core/behavioral_search.py": {
+      "git_blob_sha1": "8b36ca913cd13e43691a5a64fdfb27994e25438f",
+      "purpose": "unchanged D diagnostic source"
+    },
+    "cognitive_core/recursive_cognitive_compiler.py": {
+      "parent_blob_sha1": "284d4abd5ab467d465be21973090bc24cee26e69",
+      "diagnostic_blob_sha1": "8e7f6bcc6efdf432bcaa75cc008008ffc462a232",
+      "changes": [
+        "opt-in CLOSURE_FRONTIER_PROFILE events scoped to ACSIE_ACTIVE_SYNTHESIS_PHASE=closure_synthesis",
+        "counts attempted _exprs candidate evaluations, exact discovery-qualified candidates, and caught expression errors",
+        "emits per-policy candidate-list size and fixed-work progress snapshots",
+        "raises SystemExit(76) after the configured expression-attempt budget, before evaluating the next expression",
+        "original loop remains separate and unchanged when profiling is disabled"
+      ]
+    },
+    "lab/acsie_open_ended_self_extending_proving.py": {
+      "git_blob_sha1": "1dc1fd5f115948eff14dd5ba357ef7a1e2b75c6e",
+      "purpose": "phase observer; explicitly labels missing last_search_stats as unavailable rather than reusing stale stats"
+    }
+  },
+  "checkpoint": {
+    "producer_run": 38033213264,
+    "raw_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
+    "state_digest": "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b",
+    "generation_next": 7,
+    "seed": 2026100305,
+    "pythonhashseed": 0
+  },
+  "bounded_work_protocol": {
+    "ACSIE_CLOSURE_FRONTIER_PROFILE": "1",
+    "ACSIE_CLOSURE_FRONTIER_MAX_EXPRESSIONS": 2500,
+    "ACSIE_CLOSURE_FRONTIER_PROGRESS_INTERVAL": 500,
+    "outer_timeout_minutes": 15,
+    "scope": "first closure synthesis call reached after restoring Gen7 state",
+    "expected_outcome": "SystemExit(76) converted by the diagnostic driver to a captured fixed-work result; checkpoint remains unchanged"
+  },
+  "scientific_controls": [
+    "No target expression, target identity, holdout, transfer or OOD labels are added to candidate generation.",
+    "Only enumeration attempts and discovery-only fit outcomes already used by the live frontier are counted.",
+    "The cutoff is explicit and occurs before the next expression is evaluated.",
+    "Do not use this bounded profiler as a science-pass result."
+  ],
+  "frozen_5x12_budget": "UNTOUCHED",
+  "qualification_status": "NOT_RUN",
+  "promotion_status": "DO_NOT_PROMOTE"
+}
