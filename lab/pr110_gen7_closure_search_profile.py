@@ -51,13 +51,13 @@ def main() -> int:
     if envelope.get("state_digest") != expected_state or envelope.get("generation_next") != 7:
         raise RuntimeError("wrong checkpoint state or continuation boundary")
 
-    module = importlib.import_module("cognitive_core.behavioral_search")
+    module = importlib.import_module("cognitive_core.recursive_cognitive_compiler")
     runtime_path = Path(module.__file__).resolve()
     expected_runtime_path = (
-        Path("research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py").resolve()
+        Path("research/pr110_acsie_snapshot/G/cognitive_core/recursive_cognitive_compiler.py").resolve()
     )
     if runtime_path != expected_runtime_path:
-        raise RuntimeError(f"wrong imported runtime: {runtime_path} != {expected_runtime_path}")
+        raise RuntimeError(f"wrong imported closure enumerator: {runtime_path} != {expected_runtime_path}")
 
     emit(
         "CLOSURE_SEARCH_PROFILE_START",
