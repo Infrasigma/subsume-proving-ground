@@ -181,7 +181,13 @@ class Capture:
             return False
         if not (1 <= line <= len(source)):
             return False
-        return source[line - 1].strip() == "best_at_depth = choose_target_in_depth(depth)"
+        # Python line trace events fire before executing the current line.
+        # Inspect the first line AFTER the assignment so best_at_depth is already
+        # bound and the capture is genuinely post-selection for this depth.
+        return (
+            source[line - 1].strip() == "if best_at_depth is not None:"
+            and "best_at_depth" in frame.f_locals
+        )
 
 
 def main():
@@ -211,17 +217,38 @@ def main():
             checkpoint_metadata={"proving_sha": PROVING_SHA, "acsie_ref": RUNTIME_SHA},
         )
     except SystemExit as exc:
-        exit_code = int(exc.code or 1)
+        exit_code = 0 if exc.code is None else int(exc.code)
     finally:
         sys.settrace(old)
 
     if not capture.done:
         raise RuntimeError("capture did not reach Gen5 depth4")
+    if exit_code != 0:
+        raise RuntimeError(f"instrumented resume exited unexpectedly: {exit_code}")
+    # Bind provenance to the actual loaded files, not just the requested Git refs.
+    def file_record(module):
+        path = Path(module.__file__).resolve()
+        return {
+            "path": str(path),
+            "sha256": sha256(path.read_bytes()).hexdigest(),
+        }
     print(json.dumps({
         "capture": "PASSED",
         "generation": GENERATION,
-        "depths": sorted({c["depth"] for c in capture.captured}),
+        "depths": sorted({item["depth"] for item in capture.captured}),
         "exit_code": exit_code,
+        "python_version": sys.version,
+        "pythonhashseed": os.environ.get("PYTHONHASHSEED", "unset"),
+        "hash_randomization": sys.flags.hash_randomization,
+        "modules": {
+            "behavioral_search": file_record(sys.modules["cognitive_core.behavioral_search"]),
+            "recursive_cognitive_compiler": file_record(sys.modules["cognitive_core.recursive_cognitive_compiler"]),
+            "open_ended_growth": file_record(sys.modules["cognitive_core.open_ended_growth"]),
+            "proving_evaluator": file_record(proving),
+        },
+        "checkpoint_sha256": sha256(Path(args.checkpoint).read_bytes()).hexdigest(),
+        "sys_path": sys.path,
+        "evidence_scope": "existing non-dominated frontier only; second-stage offline compression",
     }, sort_keys=True))
 
 
