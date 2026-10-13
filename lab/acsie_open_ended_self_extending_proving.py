@@ -931,12 +931,18 @@ def run_seed(
                     print(
                         json.dumps(
                             {
-                                "event": "CLOSURE_LINEAGE_MISMATCH",
+                                "event": "CLOSURE_SELECTED_PROCESS_REUSE_MISS",
                                 "seed": seed,
                                 "generation": generation,
                                 "expected_parent_ids": sorted(expected),
                                 **selected_lineage_audit,
                                 "frontier_candidate_audit": frontier_candidate_audit,
+                                "frontier_candidate_count": len(cprocs),
+                                "frontier_competent_candidate_count": sum(
+                                    bool(item["closure_competent"]) for item in frontier_candidate_audit
+                                ),
+                                "frontier_lineage_matching_candidate_count": frontier_lineage_matches,
+                                "frontier_contains_parent_faithful_candidate": frontier_lineage_matches > 0,
                                 "frontier_search_method": frontier_search_method,
                                 "search_stats_available": phase_stats_available,
                                 "search_stats": compact_search_stats(phase_stats) if phase_stats_available else {},
@@ -954,14 +960,14 @@ def run_seed(
                         flush=True,
                     )
                     closure_trap_count += 1
-                    if os.environ.get("ACSIE_DIAGNOSTIC_STOP_AFTER_LINEAGE_MISMATCH") == "1":
+                    if os.environ.get("ACSIE_DIAGNOSTIC_STOP_AFTER_CLOSURE_REUSE_MISS") == "1":
                         print(
                             json.dumps(
                                 {
-                                    "event": "DIAGNOSTIC_STOP_AFTER_LINEAGE_MISMATCH",
+                                    "event": "DIAGNOSTIC_STOP_AFTER_CLOSURE_REUSE_MISS",
                                     "seed": seed,
                                     "generation": generation,
-                                    "reason": "Observer-only replay stopped after emitting the corrected candidate-level audit.",
+                                    "reason": "Observer-only replay stopped after recording the selected process separately from the competent frontier alternatives.",
                                 },
                                 sort_keys=True,
                             ),
