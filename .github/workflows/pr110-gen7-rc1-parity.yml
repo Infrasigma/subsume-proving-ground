@@ -1,15 +1,7 @@
 name: PR110 Gen7 D-versus-RC1 bitmask decision trace parity
 
 on:
-  push:
-    branches:
-      - research/pr110-gen7-rc1-bitmask-dominance-20261013
-    paths:
-      - ".github/workflows/pr110-gen7-rc1-parity.yml"
-      - "lab/pr110_gen7_primary_search_profile.py"
-      - "lab/pr110_gen7_primary_search_rc1.py"
-      - "research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py"
-      - "research/pr110_acsie_snapshot/F/cognitive_core/behavioral_search.py"
+  # Manual-only after the first reproducible run; avoid duplicate costly parity jobs on every research commit.
   workflow_dispatch:
 
 permissions:
