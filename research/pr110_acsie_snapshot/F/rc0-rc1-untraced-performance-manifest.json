@@ -1,0 +1,50 @@
+{
+  "schema": "ACSIE.PR110.RC0.RC1.UntracedPerformanceProtocol.v1",
+  "purpose": "Compare reference D, RC0 E and RC1 F elapsed search time at the same deterministic dominance-comparison cutoff without streaming per-decision trace formatting.",
+  "checkpoint": {
+    "producer_run": 38033213264,
+    "raw_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
+    "state_digest": "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b",
+    "generation_next": 7,
+    "seed": 2026100305,
+    "pythonhashseed": 0
+  },
+  "arms": {
+    "D_reference": {
+      "module": "research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py",
+      "git_blob_sha1": "778447a631a4c016d75dfc408dce5b0a446a9bf4",
+      "meaning": "Same reference dominance predicate; trace-only DOM payload construction is skipped when trace hashing is off."
+    },
+    "E_rc0": {
+      "module": "research/pr110_acsie_snapshot/E/cognitive_core/behavioral_search.py",
+      "git_blob_sha1": "899c27ec90dbf281feb1e1e62a0e859acabb6e02",
+      "meaning": "Precompute exact direct macro, executable lineage and expanded cost attributes per candidate state."
+    },
+    "F_rc1": {
+      "module": "research/pr110_acsie_snapshot/F/cognitive_core/behavioral_search.py",
+      "git_blob_sha1": "ac4c108d1bf572614f536505f34965dd0c18951e",
+      "meaning": "RC0 plus stable per-search integer bitmask encodings for direct macro and executable-lineage set-inclusion tests."
+    }
+  },
+  "common_work_limit": {
+    "dominance_comparisons": 150000,
+    "register_calls": 50000,
+    "progress_interval": 25000,
+    "max_wall_per_arm_minutes": 12
+  },
+  "instrumentation_controls": {
+    "ACSIE_SEARCH_PROFILE": "1",
+    "ACSIE_SEARCH_PROFILE_PHASE": "primary_process_synthesis",
+    "ACSIE_SEARCH_TRACE_DIGEST": "unset",
+    "note": "Untraced comparison reports same logical counters and cutoff. Separate D-vs-RC0 and D-vs-RC1 traced workflows are required to establish exact decision trace parity."
+  },
+  "parity_gates": [
+    "All three arms must reach 150000 dominance comparisons with matching logical counters at the final shared point.",
+    "The same frozen checkpoint raw bytes and state digest must be loaded for each arm.",
+    "Actual imported behavioral_search.py path and file SHA-256 must match preflight pins.",
+    "This is one seed and one bounded prefix; performance ratios are descriptive and not a stable multi-seed claim."
+  ],
+  "frozen_5x12_budget": "UNTOUCHED",
+  "promotion_status": "DO_NOT_PROMOTE",
+  "scientific_status": "NOT_RUN"
+}
