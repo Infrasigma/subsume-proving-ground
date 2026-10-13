@@ -1,0 +1,123 @@
+{
+  "schema": "ACSIE.PR110.RC1.DecisionTraceEvidence.v1",
+  "classification": "DECISION_TRACE_PARITY_THROUGH_150K_COMPARISON_CUTOFF",
+  "experiment": {
+    "workflow_run_id": 38371412736,
+    "workflow_head_sha": "4125934f62e20989a84ecde6b44e2216883464b8",
+    "artifact_id": 11798988937,
+    "artifact_sha256": "dca26e99a15ca83a80253a4e3d6b987304df1046867fc8f057a5f44eda638e8c",
+    "artifact_zip": "pr110-gen7-rc1-decision-trace-parity-success.zip",
+    "additional_repeated_runs": [
+      {
+        "workflow_run_id": 38371463232,
+        "head_sha": "0f46e441362a54d682d786ee4350a99ef75d14d7",
+        "artifact_id": 11799044370,
+        "artifact_sha256": "2b21e4e7207ccc57c1c5179fa9d2767b32d8b0f6b2a286986e34ba5e795e2a3d"
+      },
+      {
+        "workflow_run_id": 38371486498,
+        "head_sha": "d69fd30912b2239fcfdf727d51d27f0af0e9ab19",
+        "artifact_id": 11800155912,
+        "artifact_sha256": "9dd7146c11c1ce5012442d322c7ce1e6929d8feab25ec4d54ede297db0d7918c"
+      }
+    ],
+    "runner": "ubuntu-24.04",
+    "python_version": "3.12.15",
+    "pythonhashseed": "0",
+    "seed": 2026100305
+  },
+  "provenance": {
+    "checkpoint_producer_run": 38033213264,
+    "checkpoint_raw_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
+    "checkpoint_state_digest": "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b",
+    "generation_next": 7,
+    "reference_D_behavioral_search_blob": "8b36ca913cd13e43691a5a64fdfb27994e25438f",
+    "candidate_F_behavioral_search_blob": "ac4c108d1bf572614f536505f34965dd0c18951e",
+    "shared_open_ended_growth_blob": "ec94fc545badde972510f2db9cbf008cc214e705",
+    "shared_recursive_compiler_blob": "284d4abd5ab467d465be21973090bc24cee26e69",
+    "imported_runtime_paths_checked": true
+  },
+  "deterministic_bounded_result": {
+    "max_dominance_comparisons": 150000,
+    "max_register_calls": 50000,
+    "trace_event_count_at_cutoff": 168197,
+    "decision_trace_sha256_at_cutoff": "3930510980b36d1ecc1108cd539d5345447b0589cfcdfa5420ea52a9e01f28ef",
+    "checkpoints": [
+      {
+        "dominance_comparisons": 25000,
+        "trace_events": 29079,
+        "trace_sha256": "57ad9694912eb82f568a902a7ad72fe294b5c7d7cffe56ce7026f3da341f5e48"
+      },
+      {
+        "dominance_comparisons": 50000,
+        "trace_events": 55930,
+        "trace_sha256": "21dada2f1a5b5ca8836d7e322d507eb61bf7abfc37525eaf0cd39a2321dee43d"
+      },
+      {
+        "dominance_comparisons": 75000,
+        "trace_events": 82667,
+        "trace_sha256": "7e4e06bf92a08e4865d3e14581d1ce60438472beda85a1b0c69f1dbd7ca4eeab"
+      },
+      {
+        "dominance_comparisons": 100000,
+        "trace_events": 113268,
+        "trace_sha256": "81d10dccc00efcdaa6572647edba7185656d6d3eac6112f62a4111d8cd943269"
+      },
+      {
+        "dominance_comparisons": 125000,
+        "trace_events": 140959,
+        "trace_sha256": "585881ddee5e82a57de6dab5d85d012892c958d61bdc0c33436fb75ca29578a4"
+      },
+      {
+        "dominance_comparisons": 150000,
+        "trace_events": 168197,
+        "trace_sha256": "3930510980b36d1ecc1108cd539d5345447b0589cfcdfa5420ea52a9e01f28ef"
+      }
+    ],
+    "logical_counter_mismatches": 0,
+    "all_trace_digests_match": true,
+    "all_trace_event_counts_match": true,
+    "final_shared_counters": {
+      "dominance_comparisons": 150000,
+      "register_calls": 6063,
+      "generated_expressions": 6063,
+      "unique_states": 4358,
+      "duplicate_states": 421,
+      "dominance_pruned_states": 1292,
+      "dominance_frontier_max": 126,
+      "max_states_in_depth": 2610,
+      "rows": 14,
+      "primitive_count": 23,
+      "max_depth": 10,
+      "require_macro": true
+    },
+    "checkpoint_unchanged": true
+  },
+  "traced_performance_observation": {
+    "primary_process_synthesis_seconds": {
+      "reference_D": 8.787912,
+      "candidate_RC1_F": 7.651584
+    },
+    "primary_search_speedup_ratio": 1.148508857773763,
+    "percent_reduction_in_primary_search_time": 12.930580096842126,
+    "entire_run_seed_to_cutoff_seconds": {
+      "reference_D": 161.391105,
+      "candidate_RC1_F": 159.345458
+    },
+    "entire_run_speedup_ratio": 1.0128378117937946,
+    "percent_reduction_in_entire_run_elapsed": 1.2675091356490809,
+    "note": "Single paired seed, single bounded prefix, with exact decision tracing enabled. This is a descriptive observation only, not a stable performance claim. The untraced D/RC0/RC1 3-arm experiment is separate and pending."
+  },
+  "limits": [
+    "The function did not return a BehavioralSearchResult: both arms intentionally stopped at the fixed 150,000 dominance-comparison cutoff.",
+    "This demonstrates exact decision-trace parity for the bounded prefix only; it does not prove unbounded behavioral_search function-output parity.",
+    "This is one seed and one checkpoint, not the frozen 5-seed by 12-generation scientific qualification.",
+    "The starting checkpoint is a verified state continuation created by the memoized B lab experiment, not a byte-identical replay of the original producing process."
+  ],
+  "promotion_status": "DO_NOT_PROMOTE",
+  "frozen_5x12_budget": "UNTOUCHED",
+  "open_ended_self_extension": "NOT_DEMONSTRATED",
+  "general_capability": "NOT_DEMONSTRATED",
+  "agi": "NOT_DEMONSTRATED",
+  "asi": "NOT_DEMONSTRATED"
+}
