@@ -14,13 +14,15 @@
     },
     "cognitive_core/behavioral_search.py": {
       "parent_B_git_blob_sha1": "ab658a2e49adf479bf9ea4892dfef930624c6e7b",
-      "diagnostic_D_git_blob_sha1": "9e722f9f803adfe70aa6ea934c8c848d2da7d799",
+      "diagnostic_D_git_blob_sha1": "8b36ca913cd13e43691a5a64fdfb27994e25438f",
       "file_sha256": "computed_from_imported_bytes_in_preflight.json",
       "changes": [
         "adds diagnostic-only register-call and dominance-comparison counters",
         "adds opt-in progress snapshots gated by ACSIE_SEARCH_PROFILE=1 and a named active phase",
         "adds opt-in deterministic register/comparison work cutoffs that raise SystemExit(76)",
-        "does not change search ranking, candidate generation, dominance predicate, or retained frontier before an explicit diagnostic cutoff"
+        "does not change search ranking, candidate generation, dominance predicate, or retained frontier before an explicit diagnostic cutoff",
+        "adds opt-in length-prefixed SHA-256 trace records for registration/frontier/dominance decisions",
+        "fixed comparison budgets count completed dominance predicates; the digest is emitted after the completed comparison checkpoint"
       ]
     }
   },
