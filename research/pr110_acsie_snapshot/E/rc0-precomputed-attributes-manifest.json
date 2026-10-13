@@ -1,0 +1,39 @@
+{
+  "schema": "ACSIE.PR110.RC0.PrecomputedDominanceAttributes.v1",
+  "purpose": "Exact-acceleration candidate: precompute each candidate state's direct macro set, executable transitive lineage set, and expanded depth/node cost once per state instead of recomputing them for each dominance comparison.",
+  "parent_snapshot": "research/pr110_acsie_snapshot/D",
+  "parent_B_runtime_blob_sha1": "ab658a2e49adf479bf9ea4892dfef930624c6e7b",
+  "source_files": {
+    "cognitive_core/open_ended_growth.py": {
+      "git_blob_sha1": "ec94fc545badde972510f2db9cbf008cc214e705",
+      "file_sha256": "recorded_from_imported_bytes_in_preflight.json"
+    },
+    "cognitive_core/recursive_cognitive_compiler.py": {
+      "git_blob_sha1": "284d4abd5ab467d465be21973090bc24cee26e69",
+      "file_sha256": "recorded_from_imported_bytes_in_preflight.json"
+    },
+    "cognitive_core/behavioral_search.py": {
+      "parent_D_git_blob_sha1": "9e722f9f803adfe70aa6ea934c8c848d2da7d799",
+      "rc0_E_git_blob_sha1": "61375625cfd906f3ff78f19a584b6fe997883007",
+      "file_sha256": "recorded_from_imported_bytes_in_preflight.json"
+    }
+  },
+  "exactness_contract": [
+    "No changes to candidate generation, rank order, expression canonicalization, dominance predicate, or frontiers before a diagnostic work cutoff.",
+    "The direct macro attribute is frozenset(state[2]); the lineage attribute reuses the exact executable lineage set already computed at state registration.",
+    "Expanded cost is computed with the same executable_cost(expr) routine already used by the reference predicate.",
+    "Decision-trace parity must be measured against D; fewer time/counter cost is not by itself sufficient."
+  ],
+  "bounded_protocol": {
+    "checkpoint_run": 38033213264,
+    "checkpoint_raw_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
+    "checkpoint_state_digest": "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b",
+    "generation_next": 7,
+    "max_dominance_comparisons": 150000,
+    "max_register_calls": 50000,
+    "progress_interval": 5000
+  },
+  "scientific_status": "NOT_RUN",
+  "frozen_5x12_budget": "UNTOUCHED",
+  "promotion_status": "DO_NOT_PROMOTE"
+}
