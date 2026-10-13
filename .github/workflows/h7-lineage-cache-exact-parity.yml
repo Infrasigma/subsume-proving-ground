@@ -79,7 +79,7 @@ jobs:
           for rel,expected in manifest["B"]["files"].items():
               source=Path("research/pr110_acsie_snapshot/B")/rel
               assert subprocess.check_output(["git","hash-object",str(source)],text=True).strip()==expected
-          baseline=Path("baseline-artifact/h7-offline-behavioral-search/probe-1/frontier.json")
+          baseline=Path("baseline-artifact/pr110-h7-secondary-frontier-counterfactual/h7-offline-behavioral-search/probe-1/frontier.json")
           assert baseline.exists(), str(baseline)
           b=json.loads(baseline.read_text())
           assert hashlib.sha256(baseline.read_bytes()).hexdigest()=="676fe88653c88332cb0265085104fa3d9d185e4a6e8e997e91a6e686bc2cb061"
@@ -146,7 +146,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 research/h7-experiments/lineage-cache/compare_exact_capture.py \
-            --baseline baseline-artifact/h7-offline-behavioral-search/probe-1/frontier.json \
+            --baseline baseline-artifact/pr110-h7-secondary-frontier-counterfactual/h7-offline-behavioral-search/probe-1/frontier.json \
             --candidate evidence/h7-lineage-cache/candidate-frontier.json \
             --candidate-module research/h7-experiments/lineage-cache/B/cognitive_core/behavioral_search.py \
             --output evidence/h7-lineage-cache/exact-parity-report.json \
