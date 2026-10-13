@@ -246,6 +246,7 @@ def main():
     finally:
         replay.restore()
         replay.stream.close()
+        replay.stream = None
         replay.finish(status)
 
 
