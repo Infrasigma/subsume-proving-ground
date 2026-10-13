@@ -1,3 +1,4 @@
+# Single bounded same-checkpoint comparison; this workflow does not touch production or the frozen 5x12 gate.
 name: PR110 Gen7 D RC0 RC1 untraced fixed-work performance comparison
 
 on:
