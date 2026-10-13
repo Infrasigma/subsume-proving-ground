@@ -10,6 +10,7 @@ on:
     paths:
       - ".github/workflows/pr110-h7-final-offline-counterfactual.yml"
       - "lab/pr110_h7_offline_capture.py"
+      - "lab/pr110_h7_process_frontier_profiler.py"
       - "lab/pr110_h7_offline_counterfactual.py"
       - "lab/test_pr110_h7_offline_counterfactual.py"
 
@@ -86,6 +87,7 @@ jobs:
           set -euo pipefail
           python3 -m py_compile \
             lab/pr110_h7_offline_capture.py \
+            lab/pr110_h7_process_frontier_profiler.py \
             lab/pr110_h7_offline_counterfactual.py \
             lab/test_pr110_h7_offline_counterfactual.py \
             lab/exact_checkpoint.py \
@@ -100,41 +102,60 @@ jobs:
           PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
             python3 -m unittest -v lab.test_pr110_h7_offline_counterfactual
 
-      - name: Capture first secondary Gen5 process-search frontier
+      - name: Profile first real Gen5 process frontier without tracer
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p evidence/h7-offline-process-frontier
+          checkpoint="evidence/pr110-phase6-scalability-forensics/B-checkpoint.json"
+          test -s "$checkpoint"
           set +e
           env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
             RUNTIME_SHA="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be" \
             PROVING_SHA="33259fc5c69d87b99c604f0050508c433a279daf" \
-            python3 -u lab/pr110_h7_offline_capture.py \
-              --capture-role secondary_process_synthesis \
-              --checkpoint evidence/pr110-phase6-scalability-forensics/B-checkpoint.json \
-              --output evidence/h7-offline-frontiers.json \
-              > evidence/h7-offline-capture.stdout.log \
-              2> evidence/h7-offline-capture.stderr.log
+            python3 -u lab/pr110_h7_process_frontier_profiler.py \
+              --checkpoint "$checkpoint" \
+              --output evidence/h7-offline-process-frontier/process-frontier-profile.json \
+              > evidence/h7-offline-process-frontier/capture.stdout.log \
+              2> evidence/h7-offline-process-frontier/capture.stderr.log
           rc=$?
           set -e
-          cat evidence/h7-offline-capture.stdout.log
-          cat evidence/h7-offline-capture.stderr.log >&2
+          cat evidence/h7-offline-process-frontier/capture.stdout.log
+          cat evidence/h7-offline-process-frontier/capture.stderr.log >&2
+          echo "PROCESS_FRONTIER_PROFILE_EXIT=$rc"
           exit "$rc"
 
-      - name: Compute separate direct-vocabulary and lineage counterfactuals
+      - name: Validate selected process-frontier profile
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
-          set +e
-          python3 -u lab/pr110_h7_offline_counterfactual.py \
-            --input evidence/h7-offline-frontiers.json \
-            --output evidence/h7-offline-counterfactual.json \
-            > evidence/h7-offline-counterfactual.stdout.log \
-            2> evidence/h7-offline-counterfactual.stderr.log
-          rc=$?
-          set -e
-          cat evidence/h7-offline-counterfactual.stdout.log
-          cat evidence/h7-offline-counterfactual.stderr.log >&2
-          exit "$rc"
+          input="evidence/h7-offline-process-frontier/process-frontier-profile.json"
+          if [ ! -s "$input" ]; then
+            echo "PROCESS_FRONTIER_PROFILE=BLOCKED_NO_CAPTURE_INPUT"
+            exit 1
+          fi
+          python3 - "$input" <<'PY'
+          import json, sys
+          from pathlib import Path
+          payload=json.loads(Path(sys.argv[1]).read_text())
+          assert payload["schema"] == "ACSIE.PR110.H7.process-frontier-profile.v1"
+          assert payload["seed"] == 2026100305 and payload["generation"] == 5
+          assert payload["status"] in {
+              "CAPTURED_FIRST_PROCESS_FRONTIER",
+              "PROCESS_FRONTIER_CAPTURED_ERROR",
+          }
+          call=payload.get("frontier_call", {})
+          print(json.dumps({
+              "profile_status":payload["status"],
+              "generation":payload["generation"],
+              "frontier_elapsed_seconds":call.get("elapsed_seconds"),
+              "exprs_invocations":len(payload.get("exprs_invocations", [])),
+              "exprs_seconds_total":sum(float(x.get("elapsed_seconds",0.0)) for x in payload.get("exprs_invocations", [])),
+              "retained_frontier_count":call.get("retained_frontier_count"),
+              "candidate_selection_summary":call.get("candidate_selection_summary_after"),
+          },sort_keys=True))
+          PY
 
       - name: Upload H7 offline evidence
         if: always()
