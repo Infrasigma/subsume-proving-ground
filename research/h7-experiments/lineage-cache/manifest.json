@@ -1,0 +1,39 @@
+{
+  "schema": "ACSIE.H7.lineage-cache.experiment.v1",
+  "hypothesis": "H7-LC1",
+  "source_runtime_sha": "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be",
+  "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+  "checkpoint_artifact_id": 11536026911,
+  "checkpoint_run_id": 37738748858,
+  "baseline_capture_artifact_id": 11818992278,
+  "baseline_capture_run_id": 38402536001,
+  "baseline_capture_path": "h7-offline-behavioral-search/probe-1/frontier.json",
+  "probe": {
+    "seed": 2026100305,
+    "generation": 5,
+    "pair_idx": 14,
+    "probe_idx": 1,
+    "search_call_index": 3,
+    "stop_at_depth": 3
+  },
+  "files": {
+    "baseline_behavioral_search_blob_sha1": "c126aa723b5c5f6013ac7ee53a9401875c2395ee",
+    "candidate_behavioral_search_blob_sha1": "de7c20f453afc9ca0cdb90dfc9625abe960fd957",
+    "open_ended_growth_blob_sha1": "ec94fc545badde972510f2db9cbf008cc214e705",
+    "recursive_cognitive_compiler_blob_sha1": "284d4abd5ab467d465be21973090bc24cee26e69"
+  },
+  "changes_only": [
+    "Invocation-local memoization of provenance_lineage_ids for an exact used_primitives tuple.",
+    "Invocation-local memoization of executable_lineage_ids for an exact used_primitives tuple."
+  ],
+  "invariant_claims": [
+    "No candidate generation, ordering, target evaluation, threshold, split, or dominance comparison is changed.",
+    "Compiler primitive/archive state is immutable for the duration of find_exact_expression.",
+    "A result is reported PASSED_PARITY only if captured classes, representatives, behavior keys, lineage/cost fields, frontier buckets, and all original search statistics match exactly."
+  ],
+  "not_claimed": [
+    "No proof of future compositional substitutability.",
+    "No full Gen5/Gen6 trajectory result.",
+    "No AGI/ASI/general-capability evidence."
+  ]
+}
