@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import copy, json, math, random
+import copy, json, math, random, os, time
 from dataclasses import dataclass, asdict, field
 from hashlib import sha256
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
@@ -372,22 +372,115 @@ class RecursiveCognitiveCompiler:
             "discovery_qualified": 0,
             "post_selection_validation_ignored": True,
         }
-        for pol in self.propose_search_policies():
-            for expr in self._exprs(keys,pids,min(3,int(pol["max_depth"]))):
-                try:
-                    tr=sum(abs(eval_expr(expr,t.inputs,self._pmap())-t.target) for t in rows)/len(rows)
-                    if tr>1e-9: continue
-                    used=tuple(sorted({str(x["id"]) for x in self._walk(expr) if x.get("op")=="macro"}))
-                    selection_key=(
-                        -len(used),
-                        ast_nodes(expr),
-                        len(json.dumps(expr,sort_keys=True)),
-                        json.dumps(expr,sort_keys=True),
-                    )
-                    self.last_process_candidate_selection_summary["discovery_qualified"] += 1
-                    candidates.append((selection_key,expr,used,pol))
-                except Exception:
-                    continue
+        profile_enabled = (
+            os.environ.get("ACSIE_CLOSURE_FRONTIER_PROFILE") == "1"
+            and os.environ.get("ACSIE_ACTIVE_SYNTHESIS_PHASE") == "closure_synthesis"
+        )
+        if profile_enabled:
+            profile_started = time.perf_counter()
+            profile_call_index = int(os.environ.get("ACSIE_CLOSURE_FRONTIER_CALL_INDEX", "0")) + 1
+            os.environ["ACSIE_CLOSURE_FRONTIER_CALL_INDEX"] = str(profile_call_index)
+            max_expression_attempts = max(0, int(os.environ.get("ACSIE_CLOSURE_FRONTIER_MAX_EXPRESSIONS", "0")))
+            profile_interval = max(1, int(os.environ.get("ACSIE_CLOSURE_FRONTIER_PROGRESS_INTERVAL", "500")))
+            expression_attempts = 0
+            expression_errors = 0
+            current_policy_index = 0
+            current_policy: Mapping[str, Any] = {}
+
+            def emit_closure_profile(event: str, *, force: bool = False) -> None:
+                if not force and expression_attempts % profile_interval != 0:
+                    return
+                print(json.dumps({
+                    "event": event,
+                    "phase": "closure_synthesis",
+                    "seed": os.environ.get("SEED"),
+                    "call_index": profile_call_index,
+                    "generation": int(self.generation),
+                    "policy_index": current_policy_index,
+                    "policy": dict(current_policy),
+                    "rows": len(rows),
+                    "primitive_count": len(pids),
+                    "available_expressions_in_policy": len(self._expr_cache.get(
+                        (tuple(sorted(keys)), tuple(sorted(pids)), min(3, int(current_policy.get("max_depth", 3)))),
+                        (),
+                    )),
+                    "max_candidates": int(max_candidates),
+                    "expression_attempts": expression_attempts,
+                    "discovery_qualified_candidates": int(self.last_process_candidate_selection_summary["discovery_qualified"]),
+                    "expression_errors": expression_errors,
+                    "elapsed_seconds": round(time.perf_counter() - profile_started, 6),
+                    "free_input_keys": list(keys),
+                }, sort_keys=True), flush=True)
+
+            print(json.dumps({
+                "event": "CLOSURE_FRONTIER_PROFILE_CALL_START",
+                "phase": "closure_synthesis",
+                "call_index": profile_call_index,
+                "generation": int(self.generation),
+                "rows": len(rows),
+                "primitive_count": len(pids),
+                "max_candidates": int(max_candidates),
+                "max_expression_attempts": max_expression_attempts,
+                "progress_interval": profile_interval,
+            }, sort_keys=True), flush=True)
+
+            for policy_index, pol in enumerate(self.propose_search_policies(), start=1):
+                current_policy_index = policy_index
+                current_policy = dict(pol)
+                expression_list = self._exprs(keys, pids, min(3, int(pol["max_depth"])))
+                print(json.dumps({
+                    "event": "CLOSURE_FRONTIER_PROFILE_POLICY_START",
+                    "phase": "closure_synthesis",
+                    "call_index": profile_call_index,
+                    "generation": int(self.generation),
+                    "policy_index": policy_index,
+                    "policy": dict(pol),
+                    "available_expressions_in_policy": len(expression_list),
+                    "expression_attempts_so_far": expression_attempts,
+                }, sort_keys=True), flush=True)
+                for expr in expression_list:
+                    if max_expression_attempts > 0 and expression_attempts >= max_expression_attempts:
+                        emit_closure_profile("CLOSURE_FRONTIER_PROFILE_FIXED_BUDGET_REACHED", force=True)
+                        raise SystemExit(76)
+                    expression_attempts += 1
+                    try:
+                        tr=sum(abs(eval_expr(expr,t.inputs,self._pmap())-t.target) for t in rows)/len(rows)
+                        if tr>1e-9:
+                            if expression_attempts % profile_interval == 0:
+                                emit_closure_profile("CLOSURE_FRONTIER_PROFILE_PROGRESS", force=True)
+                            continue
+                        used=tuple(sorted({str(x["id"]) for x in self._walk(expr) if x.get("op")=="macro"}))
+                        selection_key=(
+                            -len(used),
+                            ast_nodes(expr),
+                            len(json.dumps(expr,sort_keys=True)),
+                            json.dumps(expr,sort_keys=True),
+                        )
+                        self.last_process_candidate_selection_summary["discovery_qualified"] += 1
+                        candidates.append((selection_key,expr,used,pol))
+                    except Exception:
+                        expression_errors += 1
+                    if expression_attempts % profile_interval == 0:
+                        emit_closure_profile("CLOSURE_FRONTIER_PROFILE_PROGRESS", force=True)
+
+            emit_closure_profile("CLOSURE_FRONTIER_PROFILE_SEARCH_RETURNED", force=True)
+        else:
+            for pol in self.propose_search_policies():
+                for expr in self._exprs(keys,pids,min(3,int(pol["max_depth"]))):
+                    try:
+                        tr=sum(abs(eval_expr(expr,t.inputs,self._pmap())-t.target) for t in rows)/len(rows)
+                        if tr>1e-9: continue
+                        used=tuple(sorted({str(x["id"]) for x in self._walk(expr) if x.get("op")=="macro"}))
+                        selection_key=(
+                            -len(used),
+                            ast_nodes(expr),
+                            len(json.dumps(expr,sort_keys=True)),
+                            json.dumps(expr,sort_keys=True),
+                        )
+                        self.last_process_candidate_selection_summary["discovery_qualified"] += 1
+                        candidates.append((selection_key,expr,used,pol))
+                    except Exception:
+                        continue
         if not candidates:
             self.process_frontier=[]
             return ()
