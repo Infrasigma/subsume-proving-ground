@@ -91,6 +91,213 @@
       "git_blob_sha1": "generated-lab-test",
       "utf8_chars": 1611,
       "commit_sha": "89a250a61ae72200568533940ecfebc6764d2a11"
+    },
+    {
+      "variant": "shared-runtime-module",
+      "path": "research/acsie-h7-pr112-validation/shared_support/cognitive_core/__init__.py",
+      "acsie_path": "cognitive_core/__init__.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "63cbdfd86482df95e6f18ff49141c190b9cb4785",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-runtime-module",
+      "path": "research/acsie-h7-pr112-validation/shared_support/cognitive_core/general_engine.py",
+      "acsie_path": "cognitive_core/general_engine.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "48321d7f5a04b7a4eab71f9dbbc0dd67948cf0a8",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-runtime-module",
+      "path": "research/acsie-h7-pr112-validation/shared_support/cognitive_core/meta_language.py",
+      "acsie_path": "cognitive_core/meta_language.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "261b55006b26213826215f9926ee8ca88a928271",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-runtime-module",
+      "path": "research/acsie-h7-pr112-validation/shared_support/cognitive_core/open_language.py",
+      "acsie_path": "cognitive_core/open_language.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "1d6998128450f1ea79480aa315b163df34619109",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-runtime-module",
+      "path": "research/acsie-h7-pr112-validation/shared_support/cognitive_core/self_improvement.py",
+      "acsie_path": "cognitive_core/self_improvement.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "672f9d21cc3140050e520b253280ab415d5ab12a",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-runtime-module",
+      "path": "research/acsie-h7-pr112-validation/shared_support/cognitive_core/open_capability.py",
+      "acsie_path": "cognitive_core/open_capability.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "b3a919d364b7bf5395542ccd86c27d6c8dc1bf6f",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-runtime-module",
+      "path": "research/acsie-h7-pr112-validation/shared_support/cognitive_core/interactive_learning.py",
+      "acsie_path": "cognitive_core/interactive_learning.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "c91d02f56146c0857378a0034374fe48b9b1f14b",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-runtime-module",
+      "path": "research/acsie-h7-pr112-validation/shared_support/cognitive_core/continual_learning.py",
+      "acsie_path": "cognitive_core/continual_learning.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "9856f374dff96f015207995a069afb89ed2ea4df",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-runtime-module",
+      "path": "research/acsie-h7-pr112-validation/shared_support/cognitive_core/cognitive_evolution.py",
+      "acsie_path": "cognitive_core/cognitive_evolution.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "0030170d1f218fa7bd5082fda3f5b39d74cb721a",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-runtime-module",
+      "path": "research/acsie-h7-pr112-validation/shared_support/cognitive_core/semantic_operator_discovery.py",
+      "acsie_path": "cognitive_core/semantic_operator_discovery.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "32e898ef545f55bd4f76fc35d04e60060c04a744",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-runtime-module",
+      "path": "research/acsie-h7-pr112-validation/shared_support/cognitive_core/open_semantic_substrate.py",
+      "acsie_path": "cognitive_core/open_semantic_substrate.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "2bfaec90b44aa6a4cb139d8bd02ef3f9dbd24fe2",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-runtime-module",
+      "path": "research/acsie-h7-pr112-validation/shared_support/cognitive_core/native_independent_core.py",
+      "acsie_path": "cognitive_core/native_independent_core.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "5d27ecf76be2a0d7406a0df2c594f8d79e704597",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-runtime-module",
+      "path": "research/acsie-h7-pr112-validation/shared_support/cognitive_core/adaptive_capability_repair.py",
+      "acsie_path": "cognitive_core/adaptive_capability_repair.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "df915001605fc02a739463ceb0b490efa5588f23",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-runtime-module",
+      "path": "research/acsie-h7-pr112-validation/shared_support/cognitive_core/representation_engine.py",
+      "acsie_path": "cognitive_core/representation_engine.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "96522fc3cf196fdfa904d067939da67a643603af",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-runtime-module",
+      "path": "research/acsie-h7-pr112-validation/shared_support/cognitive_core/primitive_invention.py",
+      "acsie_path": "cognitive_core/primitive_invention.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "ab6266bd27c0cd7964657fba7886c8518f7c6a57",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-runtime-module",
+      "path": "research/acsie-h7-pr112-validation/shared_support/cognitive_core/program_synthesis.py",
+      "acsie_path": "cognitive_core/program_synthesis.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "4e9a60f65a494f4a30e98630a92edf541df66b4f",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-test",
+      "path": "research/acsie-h7-pr112-validation/shared_support/tests/test_core014_recursive_cognitive_compiler.py",
+      "acsie_path": "tests/test_core014_recursive_cognitive_compiler.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "2312d1d5aa7e6368e5a5b2c67787d5efa60dd83f",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-test",
+      "path": "research/acsie-h7-pr112-validation/shared_support/tests/test_core015_semantic_operator_discovery.py",
+      "acsie_path": "tests/test_core015_semantic_operator_discovery.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "30f840486a6a6ad7d55dc03176c1184a1f02e26f",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-test",
+      "path": "research/acsie-h7-pr112-validation/shared_support/tests/test_core016_open_semantic_substrate.py",
+      "acsie_path": "tests/test_core016_open_semantic_substrate.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "b707ea85686d53b4689c5275cfb0932a17c4d5eb",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-test",
+      "path": "research/acsie-h7-pr112-validation/shared_support/tests/test_adaptive_capability_repair.py",
+      "acsie_path": "tests/test_adaptive_capability_repair.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "7dd28c26cccddacf7ec2c352b322bbb17e39046f",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-test",
+      "path": "research/acsie-h7-pr112-validation/shared_support/tests/test_asi_claim_gate.py",
+      "acsie_path": "tests/test_asi_claim_gate.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "6ae92368b1592561c95544df9d1aa7b551891630",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-support",
+      "path": "research/acsie-h7-pr112-validation/shared_support/experiments/asi_core_011/arena.py",
+      "acsie_path": "experiments/asi_core_011/arena.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "83b611ba4036ed7019965289d7ae8fbbf1b6f055",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
+    },
+    {
+      "variant": "shared-support",
+      "path": "research/acsie-h7-pr112-validation/shared_support/research/asi_claim_gate_v1.py",
+      "acsie_path": "research/asi_claim_gate_v1.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "40dda9f05b8ccf85ec6e2474e2132f3bd08332a7",
+      "source_note": "Pinned from ACSIE PR112 head; these source paths are unchanged from PR111 unless explicitly noted.",
+      "source_commit_sha": null
     }
   ],
   "verification": {
