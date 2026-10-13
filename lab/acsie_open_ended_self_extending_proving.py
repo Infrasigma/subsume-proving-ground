@@ -710,20 +710,45 @@ def run_seed(
                     expected_parent_ids=sorted((left_parent.primitive_id, right_parent.primitive_id)),
                 )
                 closure_synthesis_started = perf_counter()
-                if hasattr(learner, "synthesize_process_frontier"):
-                    cprocs = tuple(
-                        learner.synthesize_process_frontier(
-                            closure_discovery_rows,
-                            cv,
-                            co,
-                            max_candidates=32,
+                # Inherited synthesize_process_frontier() does not populate
+                # last_search_stats. Clear the prior primitive-search counters so
+                # they cannot be misattributed to this closure phase.
+                search_stats_sentinel: dict[str, Any] = {}
+                if hasattr(learner, "last_search_stats"):
+                    learner.last_search_stats = search_stats_sentinel
+                previous_phase = os.environ.get("ACSIE_ACTIVE_SYNTHESIS_PHASE")
+                os.environ["ACSIE_ACTIVE_SYNTHESIS_PHASE"] = "closure_synthesis"
+                try:
+                    if hasattr(learner, "synthesize_process_frontier"):
+                        cprocs = tuple(
+                            learner.synthesize_process_frontier(
+                                closure_discovery_rows,
+                                cv,
+                                co,
+                                max_candidates=32,
+                            )
                         )
-                    )
-                else:
-                    fallback = learner.synthesize_process(closure_discovery_rows, cv, co)
-                    cprocs = (fallback,) if fallback is not None else ()
+                        frontier_search_method = (
+                            f"{type(learner).__module__}.{type(learner).__qualname__}.synthesize_process_frontier"
+                        )
+                    else:
+                        fallback = learner.synthesize_process(closure_discovery_rows, cv, co)
+                        cprocs = (fallback,) if fallback is not None else ()
+                        frontier_search_method = (
+                            f"{type(learner).__module__}.{type(learner).__qualname__}.synthesize_process"
+                        )
+                finally:
+                    if previous_phase is None:
+                        os.environ.pop("ACSIE_ACTIVE_SYNTHESIS_PHASE", None)
+                    else:
+                        os.environ["ACSIE_ACTIVE_SYNTHESIS_PHASE"] = previous_phase
 
-                phase_stats = getattr(learner, "last_search_stats", {})
+                phase_stats_value = getattr(learner, "last_search_stats", {})
+                phase_stats_available = (
+                    isinstance(phase_stats_value, dict)
+                    and phase_stats_value is not search_stats_sentinel
+                )
+                phase_stats = dict(phase_stats_value) if phase_stats_available else {}
                 emit_phase_timing(
                     "closure_synthesis",
                     closure_synthesis_started,
@@ -731,15 +756,32 @@ def run_seed(
                     generation,
                     expected_parent_ids=sorted((left_parent.primitive_id, right_parent.primitive_id)),
                     frontier_size=len(cprocs),
-                    generated_expressions=int(phase_stats.get("generated_expressions", 0)),
-                    unique_states=int(phase_stats.get("unique_states", 0)),
-                    max_states_in_depth=int(phase_stats.get("max_states_in_depth", 0)),
-                    dominance_frontier_max=int(phase_stats.get("dominance_frontier_max", 0)),
-                    target_candidate_count=int(phase_stats.get("target_candidate_count", 0)),
+                    frontier_search_method=frontier_search_method,
+                    search_stats_available=phase_stats_available,
+                    generated_expressions=(
+                        int(phase_stats["generated_expressions"])
+                        if phase_stats_available and "generated_expressions" in phase_stats else None
+                    ),
+                    unique_states=(
+                        int(phase_stats["unique_states"])
+                        if phase_stats_available and "unique_states" in phase_stats else None
+                    ),
+                    max_states_in_depth=(
+                        int(phase_stats["max_states_in_depth"])
+                        if phase_stats_available and "max_states_in_depth" in phase_stats else None
+                    ),
+                    dominance_frontier_max=(
+                        int(phase_stats["dominance_frontier_max"])
+                        if phase_stats_available and "dominance_frontier_max" in phase_stats else None
+                    ),
+                    target_candidate_count=(
+                        int(phase_stats["target_candidate_count"])
+                        if phase_stats_available and "target_candidate_count" in phase_stats else None
+                    ),
                 )
 
                 expected = {left_parent.primitive_id, right_parent.primitive_id}
-                search_stats_full = dict(getattr(learner, "last_search_stats", {}))
+                search_stats_full = dict(phase_stats) if phase_stats_available else {}
                 lineage_signatures = tuple(
                     str(sig)
                     for sig in search_stats_full.get("target_candidate_lineage_signatures", ())
@@ -895,7 +937,12 @@ def run_seed(
                                 "expected_parent_ids": sorted(expected),
                                 **selected_lineage_audit,
                                 "frontier_candidate_audit": frontier_candidate_audit,
-                                "search_stats": compact_search_stats(dict(getattr(learner, "last_search_stats", {}))),
+                                "frontier_search_method": frontier_search_method,
+                                "search_stats_available": phase_stats_available,
+                                "search_stats": compact_search_stats(phase_stats) if phase_stats_available else {},
+                                "search_stats_provenance": (
+                                    "phase-local" if phase_stats_available else "UNAVAILABLE_NOT_EXPOSED_BY_FRONTIER_METHOD"
+                                ),
                                 "target_candidate_frontier": list(
                                     getattr(learner, "last_search_stats", {}).get(
                                         "target_candidate_frontier", []
