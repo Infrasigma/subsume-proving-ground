@@ -220,6 +220,50 @@ jobs:
           cat evidence/h7-offline-behavioral-search/postselection-validation.stdout.log
           cat evidence/h7-offline-behavioral-search/postselection-validation.stderr.log >&2
 
+      - name: Capture remaining Gen5 probes as independent post-selection cases
+        if: always()
+        shell: bash
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          checkpoint="evidence/pr110-phase6-scalability-forensics/B-checkpoint.json"
+          test -s "$checkpoint"
+          for probe in 1 2 3; do
+            dir="evidence/h7-offline-behavioral-search/probe-$probe"
+            mkdir -p "$dir"
+            set +e
+            env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
+              RUNTIME_SHA="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be" \
+              PROVING_SHA="33259fc5c69d87b99c604f0050508c433a279daf" \
+              python3 -u lab/pr110_h7_offline_capture.py \
+                --capture-role secondary_process_synthesis \
+                --stop-at-depth 3 \
+                --probe-index "$probe" \
+                --checkpoint "$checkpoint" \
+                --output "$dir/frontier.json" \
+                > "$dir/capture.stdout.log" 2> "$dir/capture.stderr.log"
+            rc=$?
+            set -e
+            cat "$dir/capture.stdout.log"
+            cat "$dir/capture.stderr.log" >&2
+            echo "PROBE_${probe}_CAPTURE_EXIT=$rc"
+            if [ "$rc" -ne 0 ]; then
+              echo "PROBE_${probe}_CAPTURE=FAILED"
+              exit "$rc"
+            fi
+            python3 -u lab/pr110_h7_offline_counterfactual.py \
+              --input "$dir/frontier.json" \
+              --output "$dir/counterfactual.json" \
+              > "$dir/counterfactual.stdout.log" 2> "$dir/counterfactual.stderr.log"
+            env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
+              python3 -u lab/pr110_h7_postselection_validation.py \
+                --input "$dir/frontier.json" \
+                --output "$dir/postselection-validation.json" \
+                > "$dir/postselection-validation.stdout.log" \
+                2> "$dir/postselection-validation.stderr.log"
+            cat "$dir/postselection-validation.stdout.log"
+          done
+
       - name: Upload H7 offline evidence
         if: always()
         uses: actions/upload-artifact@v4
