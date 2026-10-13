@@ -182,7 +182,7 @@ jobs:
           '''
               p = subprocess.run(
                   [sys.executable, "-c", code, str(variant_root)],
-                  cwd=base.parents[1], env=env, text=True,
+                  cwd=Path(os.environ.get("RUNNER_TEMP", "/tmp")), env=env, text=True,
                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
               )
               records = json.loads(p.stdout.splitlines()[-1])
@@ -190,7 +190,7 @@ jobs:
           out = base / "evidence" / "runtime-import-provenance.json"
           out.parent.mkdir(parents=True, exist_ok=True)
           out.write_text(json.dumps({"schema":"ACSIE.H7.PR112.import-provenance.v1","variants":rows}, indent=2, sort_keys=True)+"\n")
-          print(json.dumps({"status":"PASS","variants":len(rows),"modules_per_variant":3}, sort_keys=True))
+          print(json.dumps({"status":"PASS","variants":len(rows),"modules_per_variant":8}, sort_keys=True))
           PY
 
       - name: Run full six-file PR111 policy-baseline regression suite
@@ -207,8 +207,8 @@ jobs:
             "$base/shared_support/tests/test_core015_semantic_operator_discovery.py" \
             "$base/shared_support/tests/test_core016_open_semantic_substrate.py" \
             "$base/shared_support/tests/test_adaptive_capability_repair.py" \
-            "$base/shared_support/tests/test_asi_claim_gate.py"
-          > "$base/evidence/baseline-pytest.log" 2>&1
+            "$base/shared_support/tests/test_asi_claim_gate.py" \
+            > "$base/evidence/baseline-pytest.log" 2>&1
           rc=$?
           set -e
           cat "$base/evidence/baseline-pytest.log"
@@ -230,8 +230,8 @@ jobs:
             "$base/shared_support/tests/test_core015_semantic_operator_discovery.py" \
             "$base/shared_support/tests/test_core016_open_semantic_substrate.py" \
             "$base/shared_support/tests/test_adaptive_capability_repair.py" \
-            "$base/shared_support/tests/test_asi_claim_gate.py"
-          > "$base/evidence/candidate-pytest.log" 2>&1
+            "$base/shared_support/tests/test_asi_claim_gate.py" \
+            > "$base/evidence/candidate-pytest.log" 2>&1
           rc=$?
           set -e
           cat "$base/evidence/candidate-pytest.log"
