@@ -35,5 +35,25 @@
   },
   "scientific_status": "NOT_RUN",
   "frozen_5x12_budget": "UNTOUCHED",
-  "promotion_status": "DO_NOT_PROMOTE"
+  "promotion_status": "DO_NOT_PROMOTE",
+  "validation_plan": {
+    "reference_snapshot_D_git_blob_sha1": "9e722f9f803adfe70aa6ea934c8c848d2da7d799",
+    "candidate_snapshot_E_git_blob_sha1": "97c771efbbde76602bad29a06276c11aead90881",
+    "required_parity_fields": [
+      "register_calls",
+      "generated_expressions",
+      "unique_states",
+      "duplicate_states",
+      "dominance_comparisons",
+      "dominance_pruned_states",
+      "dominance_frontier_max",
+      "max_states_in_depth"
+    ],
+    "implementation_specific_fields": [
+      "lineage_cache_counters",
+      "state_feature_computations",
+      "elapsed_seconds"
+    ],
+    "note": "Compare these at matching dominance-comparison snapshots. Candidate remains diagnostic-only until complete function-output and decision-trace parity are established."
+  }
 }
