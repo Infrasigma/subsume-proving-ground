@@ -1,14 +1,7 @@
 name: PR110 bounded Gen7 RC0 exact-acceleration profile
 
 on:
-  push:
-    branches:
-      - research/pr110-gen7-primary-search-profile-20261013
-    paths:
-      - ".github/workflows/pr110-gen7-primary-search-rc0.yml"
-      - "research/pr110_acsie_snapshot/E/**"
-      - "lab/acsie_open_ended_self_extending_proving.py"
-      - "lab/pr110_gen7_primary_search_rc0.py"
+  # Pause automatic runs while the RC0 parity and cache-lifetime audit is completed.
   workflow_dispatch:
 
 permissions:
