@@ -3,7 +3,9 @@
 
 Bounded primary-process synthesis profiler for the saved PR110 Gen7 state.
 
-Only the separate laboratory snapshot F is imported. The driver stops after a
+Only the separate laboratory snapshot F is imported.
+
+The paired parity workflow compares F against reference D from identical immutable checkpoint bytes with an exact decision-trace digest. The driver stops after a
 fixed number of deterministic search operations, preserving the generation-7
 checkpoint and leaving the frozen scientific gate untouched.
 """
