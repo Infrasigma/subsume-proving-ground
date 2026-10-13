@@ -325,6 +325,37 @@ def executable_lineage_ids(
     return lineage
 
 
+def selected_process_lineage_audit(
+    selected_process: Any,
+    expected_parent_ids: set[str],
+    lineage_resolver: Any,
+) -> dict[str, Any]:
+    """Build one self-consistent audit for the actually selected process.
+
+    The resolver receives exactly the selected process's used_primitives.
+    This helper makes the historical "last loop candidate" observer bug
+    regression-testable without running expensive synthesis.
+    """
+    if selected_process is None:
+        used_primitives: tuple[str, ...] = ()
+        lineage: set[str] = set()
+        process_id = None
+        expression = None
+    else:
+        used_primitives = tuple(str(x) for x in selected_process.used_primitives)
+        lineage = set(lineage_resolver(used_primitives))
+        process_id = selected_process.process_id
+        expression = selected_process.expression
+
+    return {
+        "selected_process_id": process_id,
+        "used_primitives": list(used_primitives),
+        "candidate_lineage": sorted(lineage),
+        "selected_candidate_contains_expected_parents": expected_parent_ids.issubset(lineage),
+        "expression": expression,
+    }
+
+
 def compact_search_stats(search_stats: dict[str, Any]) -> dict[str, Any]:
     """Keep evidence useful without serializing tens of thousands of lineage strings."""
     out = dict(search_stats)
@@ -783,7 +814,6 @@ def run_seed(
                             selected_candidate_lineage = set(candidate_lineage)
                     if candidate_competence and contains_expected_parents:
                         frontier_lineage_matches += 1
-                        reuse_ok = True
                 emit_phase_timing(
                     "closure_candidate_evaluation",
                     candidate_evaluation_started,
@@ -799,14 +829,18 @@ def run_seed(
                 # Recompute for the selected process. Do not reuse the loop's
                 # final candidate_lineage: that belongs to the last frontier item,
                 # not necessarily to cproc (the first competent candidate).
-                selected_candidate_lineage = (
-                    executable_lineage_ids(learner, tuple(cproc.used_primitives))
-                    if cproc is not None
-                    else set()
+                selected_lineage_audit = selected_process_lineage_audit(
+                    cproc,
+                    expected,
+                    lambda used: executable_lineage_ids(learner, used),
                 )
-                selected_candidate_contains_expected = expected.issubset(
-                    selected_candidate_lineage
+                selected_candidate_lineage = set(selected_lineage_audit["candidate_lineage"])
+                selected_candidate_contains_expected = bool(
+                    selected_lineage_audit["selected_candidate_contains_expected_parents"]
                 )
+                # The metric must describe cproc, the selected process, rather
+                # than any other competent member of the frontier.
+                reuse_ok = bool(competence and selected_candidate_contains_expected)
                 print(
                     json.dumps(
                         {
@@ -860,11 +894,7 @@ def run_seed(
                                 "seed": seed,
                                 "generation": generation,
                                 "expected_parent_ids": sorted(expected),
-                                "selected_process_id": cproc.process_id if cproc is not None else None,
-                                "used_primitives": list(cproc.used_primitives) if cproc is not None else [],
-                                "candidate_lineage": sorted(selected_candidate_lineage),
-                                "selected_candidate_contains_expected_parents": selected_candidate_contains_expected,
-                                "expression": cproc.expression if cproc is not None else None,
+                                **selected_lineage_audit,
                                 "frontier_candidate_audit": frontier_candidate_audit,
                                 "search_stats": compact_search_stats(dict(getattr(learner, "last_search_stats", {}))),
                                 "target_candidate_frontier": list(
