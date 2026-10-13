@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from lab.acsie_open_ended_self_extending_proving import selected_process_lineage_audit
 
 
-class SelectedProcessLineageAuditTests(unittest.TestCase):
+# This regression models selection of an earlier competent process while a later frontier item has different lineage.\nclass SelectedProcessLineageAuditTests(unittest.TestCase):
     def test_lineage_is_recomputed_for_selected_candidate_not_last_frontier_item(self) -> None:
         selected = SimpleNamespace(
             process_id="selected-first-competent",
