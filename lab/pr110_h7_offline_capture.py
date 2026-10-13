@@ -139,6 +139,7 @@ class Capture:
             "discovery_row_count": len(local_values.get("discovery_rows", local_values.get("rows", ()))),
             "require_macro": bool(local_values.get("require_macro", False)),
             "search_call_index": self.selected_call_index,
+            "requested_probe_index": self.probe_index,
             "caller_stack": self._caller_stack(caller),
             "hook_elapsed_seconds_from_run_seed_start": time.perf_counter() - self.started,
         }
@@ -304,6 +305,7 @@ class Capture:
             "generation": GENERATION,
             "requested_depths": sorted(TARGET_DEPTHS),
             "requested_capture_role": self.capture_role,
+            "requested_probe_index": self.probe_index,
             "stop_at_depth": self.stop_at_depth,
             "selected_search_call_index": self.selected_call_index,
             "observer": {
@@ -425,6 +427,7 @@ def main():
     ap.add_argument("--output", required=True)
     ap.add_argument("--capture-role", choices=("primary_primitive_invention", "secondary_process_synthesis"), default="primary_primitive_invention")
     ap.add_argument("--stop-at-depth", type=int, choices=(2, 3, 4), default=4)
+    ap.add_argument("--probe-index", type=int, choices=(0, 1, 2, 3), default=None)
     args = ap.parse_args()
 
     envelope = load_checkpoint(
@@ -436,7 +439,7 @@ def main():
     restored = restore_checkpoint(envelope, expected_metadata={"proving_sha": PROVING_SHA, "acsie_ref": RUNTIME_SHA})
     assert restored["learner"].generation is not None
 
-    capture = Capture(Path(args.output), args.capture_role, args.stop_at_depth)
+    capture = Capture(Path(args.output), args.capture_role, args.stop_at_depth, args.probe_index)
     original_search = capture.install()
     exit_code = 0
     try:
@@ -470,6 +473,7 @@ def main():
         "generation": GENERATION,
         "depths": sorted({item["depth"] for item in capture.captured}),
         "stop_at_depth": capture.stop_at_depth,
+        "requested_probe_index": capture.probe_index,
         "capture_status": capture.status,
         "selected_search_call_index": capture.selected_call_index,
         "exit_code": exit_code,
