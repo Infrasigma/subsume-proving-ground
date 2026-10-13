@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import os
 import sys
@@ -76,6 +77,20 @@ class Capture:
         self.next_id = 0
         self.captured = []
         self.done = False
+        # Resolve the post-assignment marker once. Reading/splitting the source
+        # file on every traced line would make this observer dominate the search.
+        self.search_code = find_exact_expression.__code__
+        source_lines, first_line = inspect.getsourcelines(find_exact_expression)
+        marker_lines = [
+            first_line + offset
+            for offset, source_line in enumerate(source_lines)
+            if source_line.strip() == "if best_at_depth is not None:"
+        ]
+        if len(marker_lines) != 1:
+            raise RuntimeError(
+                f"expected one post-selection marker, found {len(marker_lines)}"
+            )
+        self.post_choose_line = marker_lines[0]
 
     def _parent_stage(self, frame):
         parent = frame.f_back
@@ -171,21 +186,13 @@ class Capture:
             return self.trace
         return self.trace if id(frame) in self.active else None
 
-    @staticmethod
-    def _is_post_choose(frame):
-        line = frame.f_lineno
-        code = frame.f_code
-        try:
-            source = Path(code.co_filename).read_text(encoding="utf-8").splitlines()
-        except Exception:
-            return False
-        if not (1 <= line <= len(source)):
-            return False
-        # Python line trace events fire before executing the current line.
-        # Inspect the first line AFTER the assignment so best_at_depth is already
-        # bound and the capture is genuinely post-selection for this depth.
+    def _is_post_choose(self, frame):
+        # Python line events fire before the current line executes. This marker
+        # is the line after the assignment, so best_at_depth is already bound.
+        # Compare code object + line number; do not do file I/O in the trace loop.
         return (
-            source[line - 1].strip() == "if best_at_depth is not None:"
+            frame.f_code is self.search_code
+            and frame.f_lineno == self.post_choose_line
             and "best_at_depth" in frame.f_locals
         )
 
