@@ -460,19 +460,32 @@ def find_exact_expression(
         right_direct, right_lineage, right_cost = state_feature_cache[right[5]]
         left_depth, left_nodes = left_cost
         right_depth, right_nodes = right_cost
-        decision = (right_direct.issubset(left_direct) and right_lineage.issubset(left_lineage) and left_depth <= right_depth and left_nodes <= right_nodes)
-        record_decision(
-            "DOM",
-            left_token=int(left[5]),
-            right_token=int(right[5]),
-            left_direct=sorted(left_direct),
-            right_direct=sorted(right_direct),
-            left_lineage=sorted(left_lineage),
-            right_lineage=sorted(right_lineage),
-            left_cost=[left_depth, left_nodes],
-            right_cost=[right_depth, right_nodes],
-            result=bool(decision),
+        decision = (
+            right_direct.issubset(left_direct)
+            and right_lineage.issubset(left_lineage)
+            and left_depth <= right_depth
+            and left_nodes <= right_nodes
         )
+        if trace_enabled:
+            record_decision(
+                "DOM",
+                left_token=int(left[5]),
+                right_token=int(right[5]),
+                left_direct=sorted(left_direct),
+                right_direct=sorted(right_direct),
+                left_lineage=sorted(left_lineage),
+                right_lineage=sorted(right_lineage),
+                left_cost=[left_depth, left_nodes],
+                right_cost=[right_depth, right_nodes],
+                result=bool(decision),
+            )
+        else:
+            record_decision(
+                "DOM",
+                left_token=int(left[5]),
+                right_token=int(right[5]),
+                result=bool(decision),
+            )
         if profile_enabled and comparisons % profile_interval == 0:
             emit_profile("SEARCH_PROFILE_PROGRESS", force=True)
         return bool(decision)
