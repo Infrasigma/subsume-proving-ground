@@ -1,9 +1,7 @@
 name: PR110 bounded Gen7 primary search profile
 
 on:
-  push:
-    branches:
-      - research/pr110-gen7-primary-search-profile-20261013
+  # Run on demand only; the first push accidentally queued this diagnostic repeatedly.
   workflow_dispatch:
 
 permissions:
