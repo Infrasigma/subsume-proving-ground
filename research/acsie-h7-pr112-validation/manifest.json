@@ -1,0 +1,108 @@
+{
+  "schema": "ACSIE.H7.PR112.exact-source-validation.v1",
+  "purpose": "Run exact ACSIE PR111-policy baseline and PR112-indexed candidate tests on GitHub-hosted compute without private checkout credentials or phone compute.",
+  "source_repository": "Infrasigma/ACSIE",
+  "baseline": {
+    "ref": "4da70e2b85fa2589e5ad4e69e22979528d3247ef",
+    "pull_request": 111,
+    "label": "PR111 R2 policy baseline"
+  },
+  "candidate": {
+    "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+    "pull_request": 112,
+    "label": "PR112 R2 indexed frontier candidate"
+  },
+  "files": [
+    {
+      "variant": "baseline",
+      "path": "research/acsie-h7-pr112-validation/baseline/cognitive_core/behavioral_search.py",
+      "acsie_path": "cognitive_core/behavioral_search.py",
+      "ref": "4da70e2b85fa2589e5ad4e69e22979528d3247ef",
+      "git_blob_sha1": "792194786488515e66a3516756cbb7e29a487dcf"
+    },
+    {
+      "variant": "baseline",
+      "path": "research/acsie-h7-pr112-validation/baseline/cognitive_core/recursive_cognitive_compiler.py",
+      "acsie_path": "cognitive_core/recursive_cognitive_compiler.py",
+      "ref": "4da70e2b85fa2589e5ad4e69e22979528d3247ef",
+      "git_blob_sha1": "284d4abd5ab467d465be21973090bc24cee26e69",
+      "utf8_chars": 22104,
+      "commit_sha": "bedc39d4668d9ee7d84ae1a57f859f95f93526af"
+    },
+    {
+      "variant": "baseline",
+      "path": "research/acsie-h7-pr112-validation/baseline/cognitive_core/open_ended_growth.py",
+      "acsie_path": "cognitive_core/open_ended_growth.py",
+      "ref": "4da70e2b85fa2589e5ad4e69e22979528d3247ef",
+      "git_blob_sha1": "ec94fc545badde972510f2db9cbf008cc214e705",
+      "utf8_chars": 20032,
+      "commit_sha": "81d2d53c9c16fa4cff87c7b2a1a5a043c676905a"
+    },
+    {
+      "variant": "baseline",
+      "path": "research/acsie-h7-pr112-validation/baseline/tests/test_open_ended_growth.py",
+      "acsie_path": "tests/test_open_ended_growth.py",
+      "ref": "4da70e2b85fa2589e5ad4e69e22979528d3247ef",
+      "git_blob_sha1": "0e832ad714db808a014c7652e81ffd59b88aa036",
+      "utf8_chars": 35804,
+      "commit_sha": "ddc1d46a73a73d570b8b9ea5eeab705bc0a751d6"
+    },
+    {
+      "variant": "candidate",
+      "path": "research/acsie-h7-pr112-validation/candidate/cognitive_core/behavioral_search.py",
+      "acsie_path": "cognitive_core/behavioral_search.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "c311a5af18c0329ce8fc39a60f6ae31c66a91da7",
+      "utf8_chars": 56027,
+      "commit_sha": "19da20df7c5dbdf94a5524e1a6b008375d2e0693"
+    },
+    {
+      "variant": "candidate",
+      "path": "research/acsie-h7-pr112-validation/candidate/cognitive_core/recursive_cognitive_compiler.py",
+      "acsie_path": "cognitive_core/recursive_cognitive_compiler.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "284d4abd5ab467d465be21973090bc24cee26e69",
+      "utf8_chars": 22104,
+      "commit_sha": "bfb673a14d0925d06ce85efb2a531963c5423a41"
+    },
+    {
+      "variant": "candidate",
+      "path": "research/acsie-h7-pr112-validation/candidate/cognitive_core/open_ended_growth.py",
+      "acsie_path": "cognitive_core/open_ended_growth.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "ec94fc545badde972510f2db9cbf008cc214e705",
+      "utf8_chars": 20032,
+      "commit_sha": "976a6784f4ff30b9de1b15cb09d1fcc4e519cd78"
+    },
+    {
+      "variant": "candidate",
+      "path": "research/acsie-h7-pr112-validation/candidate/tests/test_open_ended_growth.py",
+      "acsie_path": "tests/test_open_ended_growth.py",
+      "ref": "5b6dc50d36a2584ab9c05525ed19047ca1792b3b",
+      "git_blob_sha1": "8f856d0ce85ecd58a655aac2d9d4c01ddd975561",
+      "utf8_chars": 41817,
+      "commit_sha": "d9d177c6e3204ac2648dba3ab6eaca3589b92661"
+    },
+    {
+      "variant": "candidate-extra-regression",
+      "path": "research/acsie-h7-pr112-validation/candidate/tests/test_h7_preserved_lineage_frontier_regression.py",
+      "acsie_path": "regression copied from tests/test_open_ended_growth.py",
+      "ref": "4da70e2b85fa2589e5ad4e69e22979528d3247ef",
+      "git_blob_sha1": "generated-lab-test",
+      "utf8_chars": 1611,
+      "commit_sha": "89a250a61ae72200568533940ecfebc6764d2a11"
+    }
+  ],
+  "verification": {
+    "git_blob_sha1": "must match each source ref's GitHub blob SHA exactly",
+    "sha256": "compute true SHA-256 for every materialized source file and retain in the run artifact; do not label Git blob SHA-1 as SHA-256",
+    "runtime_import_paths": "verify Python loaded expected baseline/candidate source files before testing"
+  },
+  "constraints": [
+    "No changes to ACSIE production/main or to its scientific acceptance criteria.",
+    "No evaluator, threshold, split, seed, or route weakening.",
+    "Only bounded unit tests run; no Gen5/Gen6 or frozen qualification in this workflow.",
+    "The deleted PR111 direct-vocabulary/shared-transitive-lineage regression is restored as a separate candidate-side test.",
+    "This validates code/tests in a laboratory snapshot, not AGI/ASI or full recursive scalability."
+  ]
+}
