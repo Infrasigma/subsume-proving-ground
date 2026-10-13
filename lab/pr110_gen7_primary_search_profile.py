@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Bounded primary-process synthesis profiler for the saved PR110 Gen7 state.
+"""Reference driver for D versus RC0 decision-trace parity on the saved PR110 Gen7 state.
+
+Bounded primary-process synthesis profiler for the saved PR110 Gen7 state.
 
 Only the separate laboratory snapshot D is imported. The driver stops after a
 fixed number of deterministic search operations, preserving the generation-7
