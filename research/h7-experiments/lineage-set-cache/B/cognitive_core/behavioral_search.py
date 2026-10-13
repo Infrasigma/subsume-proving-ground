@@ -174,7 +174,6 @@ def find_exact_expression(
     # for every comparison. Cache immutable membership sets per direct-macro tuple
     # so subset tests allocate no new sets in the hot dominance loop.
     direct_primitive_set_cache: dict[tuple[str, ...], frozenset[str]] = {}
-    provenance_lineage_set_cache: dict[tuple[str, ...], frozenset[str]] = {}
     executable_lineage_set_cache: dict[tuple[str, ...], frozenset[str]] = {}
 
     def direct_primitive_set(used_primitives: tuple[str, ...]) -> frozenset[str]:
@@ -183,14 +182,6 @@ def find_exact_expression(
             return cached
         result = frozenset(used_primitives)
         direct_primitive_set_cache[used_primitives] = result
-        return result
-
-    def provenance_lineage_set(used_primitives: tuple[str, ...]) -> frozenset[str]:
-        cached = provenance_lineage_set_cache.get(used_primitives)
-        if cached is not None:
-            return cached
-        result = frozenset(provenance_lineage_ids(used_primitives))
-        provenance_lineage_set_cache[used_primitives] = result
         return result
 
     def executable_lineage_set(used_primitives: tuple[str, ...]) -> frozenset[str]:
@@ -610,7 +601,7 @@ def find_exact_expression(
 
         by_signature: dict[tuple[str, ...], tuple] = {}
         for state in states:
-            signature = executable_lineage_ids(state[2])
+            signature = tuple(sorted(executable_lineage_ids(state[2])))
             old = by_signature.get(signature)
             if old is None or rank(state) < rank(old):
                 by_signature[signature] = state
