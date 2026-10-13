@@ -1,0 +1,194 @@
+name: PR110 Gen7 bounded closure-synthesis work profile
+
+on:
+  push:
+    branches:
+      - research/pr110-gen7-closure-search-profile-20261013
+    paths:
+      - "lab/pr110_gen7_closure_search_profile.py"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  profile-first-closure-search:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Retrieve immutable Gen6-produced checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: pr110-exact-b-gen6-memoized-continuation
+          run-id: 38033213264
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: prior
+      - name: Verify checkpoint, runtime imports, evaluator and driver
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/D:${{ github.workspace }}
+          PYTHONHASHSEED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          python3 -m py_compile \
+            research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py \
+            research/pr110_acsie_snapshot/D/cognitive_core/recursive_cognitive_compiler.py \
+            research/pr110_acsie_snapshot/D/cognitive_core/open_ended_growth.py \
+            lab/acsie_open_ended_self_extending_proving.py \
+            lab/pr110_gen7_closure_search_profile.py
+          python3 - <<'PY'
+          import hashlib, importlib, json, os, subprocess, sys
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+
+          expected_blobs = {
+              "research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py": "8b36ca913cd13e43691a5a64fdfb27994e25438f",
+              "research/pr110_acsie_snapshot/D/cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
+              "research/pr110_acsie_snapshot/D/cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
+              "lab/acsie_open_ended_self_extending_proving.py": "1dc1fd5f115948eff14dd5ba357ef7a1e2b75c6e",
+          }
+          identities = {}
+          for rel, want in expected_blobs.items():
+              p = Path(rel).resolve()
+              actual = subprocess.check_output(["git", "hash-object", str(p)], text=True).strip()
+              assert actual == want, (rel, actual, want)
+              identities[rel] = {
+                  "git_blob_sha1": actual,
+                  "file_sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+              }
+
+          imported = importlib.import_module("cognitive_core.behavioral_search")
+          expected_runtime = Path("research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py").resolve()
+          assert Path(imported.__file__).resolve() == expected_runtime
+          checkpoint = Path("evidence/working-checkpoint.json")
+          expected_checkpoint_sha = "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4"
+          assert hashlib.sha256(checkpoint.read_bytes()).hexdigest() == expected_checkpoint_sha
+          env = load_checkpoint(
+              checkpoint,
+              expected_seed=2026100305,
+              expected_metadata={
+                  "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+                  "acsie_ref": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+              },
+          )
+          assert env["state_digest"] == "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b"
+          assert env["generation_next"] == 7
+          driver = Path("lab/pr110_gen7_closure_search_profile.py")
+          out = {
+              "schema": "ACSIE.PR110.Gen7ClosureSearchProfilePreflight.v1",
+              "status": "PREFLIGHT_PASS",
+              "checkpoint_raw_sha256": expected_checkpoint_sha,
+              "checkpoint_state_digest": env["state_digest"],
+              "generation_next": env["generation_next"],
+              "seed": 2026100305,
+              "runtime_sources": identities,
+              "imported_behavioral_search_module": str(Path(imported.__file__).resolve()),
+              "driver_git_blob_sha1": subprocess.check_output(["git", "hash-object", str(driver)], text=True).strip(),
+              "driver_file_sha256": hashlib.sha256(driver.read_bytes()).hexdigest(),
+              "python_version": sys.version,
+              "pythonhashseed_environment": os.environ.get("PYTHONHASHSEED"),
+              "hash_randomization_flag": sys.flags.hash_randomization,
+              "fixed_work_budget": {"register_calls": 5000, "dominance_comparisons": 200000},
+              "frozen_5x12_budget": "UNTOUCHED",
+              "promotion_status": "DO_NOT_PROMOTE",
+          }
+          Path("evidence/preflight.json").write_text(json.dumps(out, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(out, indent=2, sort_keys=True))
+          PY
+      - name: Stop within a fixed closure-search work budget
+        continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/D:${{ github.workspace }}
+          PYTHONHASHSEED: "0"
+          ACSIE_SEARCH_PROFILE: "1"
+          ACSIE_SEARCH_PROFILE_PHASE: "closure_synthesis"
+          ACSIE_SEARCH_PROGRESS_INTERVAL: "1000"
+          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "200000"
+          ACSIE_SEARCH_MAX_REGISTER_CALLS: "5000"
+        run: |
+          set -u
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          set +e
+          timeout --signal=TERM --kill-after=30s 15m python3 -u lab/pr110_gen7_closure_search_profile.py > evidence/closure-search-raw.txt 2>&1
+          rc=$?
+          set -e
+          printf "%s\n" "$rc" > evidence/process-exit-code.txt
+          sha256sum evidence/working-checkpoint.json > evidence/final-checkpoint.sha256
+          echo "CLOSURE_SEARCH_PROFILE_PROCESS_EXIT_CODE=$rc"
+      - name: Classify bounded closure profile
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+
+          raw_path = Path("evidence/closure-search-raw.txt")
+          raw = raw_path.read_text(errors="replace") if raw_path.exists() else ""
+          rc_path = Path("evidence/process-exit-code.txt")
+          rc = int(rc_path.read_text()) if rc_path.exists() else None
+          structured = []
+          profile_events = []
+          for line in raw.splitlines():
+              try: item = json.loads(line)
+              except Exception: continue
+              if item.get("event") == "PROCESS_PHASE_START" and item.get("phase") == "closure_synthesis":
+                  structured.append({"kind": "closure_phase_start", **item})
+              elif str(item.get("event", "")).startswith("SEARCH_PROFILE_"):
+                  profile_events.append(item)
+              elif item.get("event") in {
+                  "CLOSURE_SEARCH_PROFILE_START",
+                  "CLOSURE_FIXED_WORK_BUDGET_REACHED",
+                  "CLOSURE_PROFILE_RETURNED_WITHOUT_WORK_CUTOFF",
+                  "DIAGNOSTIC_UNEXPECTED_SYSTEM_EXIT",
+              }:
+                  structured.append(item)
+
+          reached = "CLOSURE_FIXED_WORK_BUDGET_REACHED" in raw
+          if reached and rc == 0:
+              classification = "FIXED_WORK_BUDGET_CAPTURED"
+          elif rc == 124:
+              classification = "INCONCLUSIVE_WALL_TIMEOUT"
+          elif "CLOSURE_PROFILE_RETURNED_WITHOUT_WORK_CUTOFF" in raw and rc == 0:
+              classification = "CLOSURE_SEARCH_RETURNED_BEFORE_CUTOFF"
+          else:
+              classification = "CRASHED_OR_INVALID_DIAGNOSTIC"
+
+          initial_sha = "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4"
+          final_sidecar = Path("evidence/final-checkpoint.sha256")
+          final_hash = final_sidecar.read_text().split()[0] if final_sidecar.exists() else None
+          summary = {
+              "schema": "ACSIE.PR110.Gen7ClosureSearchProfile.v1",
+              "classification": classification,
+              "process_exit_code": rc,
+              "raw_log_sha256": hashlib.sha256(raw.encode()).hexdigest(),
+              "raw_log_bytes": len(raw.encode()),
+              "bounded_profile_event_count": len(profile_events),
+              "profile_events": profile_events[-60:],
+              "phase_and_driver_events": structured[-30:],
+              "input_checkpoint_sha256": initial_sha,
+              "final_checkpoint_sha256": final_hash,
+              "checkpoint_unchanged": final_hash == initial_sha,
+              "work_budget": {"register_calls": 5000, "dominance_comparisons": 200000},
+              "frozen_5x12_budget": "UNTOUCHED",
+              "promotion_status": "DO_NOT_PROMOTE",
+              "scientific_gate": "NOT_RUN",
+          }
+          Path("evidence/closure-profile-summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+      - name: Upload closure profile evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-gen7-closure-search-profile
+          path: evidence/
+          retention-days: 90
