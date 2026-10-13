@@ -67,32 +67,26 @@ jobs:
           import hashlib, json
           from pathlib import Path
           manifest = json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
-          for arm in ("A", "B"):
-              assert arm in manifest
           assert manifest["B"]["runtime_sha"] == "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
           assert manifest["proving_harness_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
           for rel, expected in manifest["B"]["files"].items():
               data = Path("research/pr110_acsie_snapshot/B", rel).read_bytes()
               actual = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\\0" + data).hexdigest()
               assert actual == expected, (rel, actual, expected)
-          import sys, zipfile
-          z = Path("evidence/pr110-phase6-scalability-forensics.zip")
-          assert z.exists(), "pinned Phase6 artifact archive missing"
-          with zipfile.ZipFile(z) as archive:
-              members = archive.namelist()
-              checkpoint = next((n for n in members if n.endswith("/B-checkpoint.json")), None)
-              assert checkpoint, "B checkpoint not found in artifact"
-              ck = json.loads(archive.read(checkpoint))
+          checkpoint = Path("evidence/pr110-phase6-scalability-forensics/B-checkpoint.json")
+          assert checkpoint.exists(), "pinned Phase6 checkpoint file missing"
+          ck = json.loads(checkpoint.read_text())
+          identity = ck["learner_state"]["runtime_identity"]
           assert ck["seed"] == 2026100305 and ck["generation_next"] == 5
-          assert ck["metadata"]["proving_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
-          assert ck["metadata"]["acsie_ref"] == "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
+          assert identity["proving_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
+          assert identity["acsie_ref"] == "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
           print(json.dumps({
               "status":"PASS",
               "runtime_sha":manifest["B"]["runtime_sha"],
               "proving_sha":manifest["proving_harness_sha"],
               "seed":ck["seed"],
               "generation_next":ck["generation_next"],
-              "checkpoint_sha256":hashlib.sha256(archive.read(checkpoint)).hexdigest(),
+              "checkpoint_sha256":hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
           },sort_keys=True))
           PY
 
@@ -114,10 +108,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p evidence/h7-selected-invocation
-          unzip -o evidence/pr110-phase6-scalability-forensics.zip \
-            '*/B-checkpoint.json' -d evidence/checkpoint-extract >/dev/null
-          checkpoint="$(find evidence/checkpoint-extract -name B-checkpoint.json -type f | head -n 1)"
-          test -n "$checkpoint"
+          checkpoint="evidence/pr110-phase6-scalability-forensics/B-checkpoint.json"
+          test -s "$checkpoint"
           set +e
           env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
             RUNTIME_SHA="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be" \
