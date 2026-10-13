@@ -1,0 +1,195 @@
+name: PR110 RC0 E-versus-F bitmask decision trace parity
+
+on:
+  push:
+    branches:
+      - research/pr110-gen7-primary-search-rc0-bitmask-20261013
+    paths:
+      - ".github/workflows/pr110-gen7-primary-search-rc0-bitmask-parity.yml"
+      - "research/pr110_acsie_snapshot/F/**"
+      - "lab/pr110_gen7_primary_search_rc0_bitmask.py"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  compare-bitmask:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Retrieve immutable Gen7 input state
+        uses: actions/download-artifact@v4
+        with:
+          name: pr110-exact-b-gen6-memoized-continuation
+          run-id: 38033213264
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: prior
+      - name: Verify checkpoint and E/F source identities
+        env:
+          PYTHONHASHSEED: "0"
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/E:${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          python3 -m py_compile \
+            research/pr110_acsie_snapshot/E/cognitive_core/behavioral_search.py \
+            research/pr110_acsie_snapshot/F/cognitive_core/behavioral_search.py \
+            lab/acsie_open_ended_self_extending_proving.py \
+            lab/pr110_gen7_primary_search_rc0.py \
+            lab/pr110_gen7_primary_search_rc0_bitmask.py
+          python3 - <<'PY'
+          import hashlib, importlib, json, os, subprocess, sys
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+
+          expected = {
+              "research/pr110_acsie_snapshot/E/cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
+              "research/pr110_acsie_snapshot/E/cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
+              "research/pr110_acsie_snapshot/E/cognitive_core/behavioral_search.py": "7f95ee634a4bd836cb6412cdc7d2f88b0995dbbd",
+              "research/pr110_acsie_snapshot/F/cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
+              "research/pr110_acsie_snapshot/F/cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
+              "research/pr110_acsie_snapshot/F/cognitive_core/behavioral_search.py": "996266e06d0235faabdf6b3bf8d9ef6bc6342324",
+          }
+          identities = {}
+          for rel, want in expected.items():
+              p = Path(rel).resolve()
+              actual = subprocess.check_output(["git", "hash-object", str(p)], text=True).strip()
+              assert actual == want, (rel, actual, want)
+              identities[rel] = {"git_blob_sha1": actual, "file_sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
+          module = importlib.import_module("cognitive_core.behavioral_search")
+          expected_import = Path("research/pr110_acsie_snapshot/E/cognitive_core/behavioral_search.py").resolve()
+          assert Path(module.__file__).resolve() == expected_import
+          checkpoint = Path("evidence/working-checkpoint.json")
+          input_sha = "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4"
+          assert hashlib.sha256(checkpoint.read_bytes()).hexdigest() == input_sha
+          envelope = load_checkpoint(
+              checkpoint, expected_seed=2026100305,
+              expected_metadata={"proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf", "acsie_ref": "af0c7ef503c51a5bc7872717b263a01f495c855f"},
+          )
+          assert envelope["state_digest"] == "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b"
+          assert envelope["generation_next"] == 7
+          report = {
+              "schema": "ACSIE.PR110.RC0bBitmaskParityPreflight.v1",
+              "status": "PREFLIGHT_PASS",
+              "checkpoint_raw_sha256": input_sha,
+              "checkpoint_state_digest": envelope["state_digest"],
+              "generation_next": envelope["generation_next"],
+              "source_identities": identities,
+              "imported_preflight_module": str(Path(module.__file__).resolve()),
+              "python_version": sys.version,
+              "pythonhashseed_environment": os.environ.get("PYTHONHASHSEED"),
+              "hash_randomization_flag": sys.flags.hash_randomization,
+              "frozen_5x12_budget": "UNTOUCHED",
+              "promotion_status": "DO_NOT_PROMOTE",
+          }
+          Path("evidence/preflight.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
+      - name: Run set-cache RC0 E with trace digest
+        continue-on-error: true
+        env:
+          PYTHONHASHSEED: "0"
+          ACSIE_SEARCH_PROFILE: "1"
+          ACSIE_SEARCH_PROFILE_PHASE: "primary_process_synthesis"
+          ACSIE_SEARCH_TRACE_DIGEST: "1"
+          ACSIE_SEARCH_PROGRESS_INTERVAL: "25000"
+          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "150000"
+          ACSIE_SEARCH_MAX_REGISTER_CALLS: "50000"
+        run: |
+          set -u
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          set +e
+          timeout --signal=TERM --kill-after=30s 12m env \
+            PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/E:$GITHUB_WORKSPACE" \
+            python3 -u lab/pr110_gen7_primary_search_rc0.py > evidence/E-raw.txt 2>&1
+          rc=$?
+          set -e
+          printf "%s\n" "$rc" > evidence/E-exit-code.txt
+          sha256sum evidence/working-checkpoint.json > evidence/E-final-checkpoint.sha256
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          echo "SET_CACHE_RC0_EXIT_CODE=$rc"
+      - name: Run bitmask RC0b F from identical state and budget
+        continue-on-error: true
+        env:
+          PYTHONHASHSEED: "0"
+          ACSIE_SEARCH_PROFILE: "1"
+          ACSIE_SEARCH_PROFILE_PHASE: "primary_process_synthesis"
+          ACSIE_SEARCH_TRACE_DIGEST: "1"
+          ACSIE_SEARCH_PROGRESS_INTERVAL: "25000"
+          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "150000"
+          ACSIE_SEARCH_MAX_REGISTER_CALLS: "50000"
+        run: |
+          set -u
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          set +e
+          timeout --signal=TERM --kill-after=30s 12m env \
+            PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/F:$GITHUB_WORKSPACE" \
+            python3 -u lab/pr110_gen7_primary_search_rc0_bitmask.py > evidence/F-raw.txt 2>&1
+          rc=$?
+          set -e
+          printf "%s\n" "$rc" > evidence/F-exit-code.txt
+          sha256sum evidence/working-checkpoint.json > evidence/F-final-checkpoint.sha256
+          echo "BITMASK_RC0B_EXIT_CODE=$rc"
+      - name: Compare E/F decision trace digests
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          KEYS=("register_calls","generated_expressions","unique_states","duplicate_states","dominance_comparisons","dominance_pruned_states","dominance_frontier_max","max_states_in_depth","primitive_count","rows","max_depth","require_macro")
+          def load(label):
+              p=Path(f"evidence/{label}-raw.txt")
+              raw=p.read_text(errors="replace") if p.exists() else ""
+              events=[]
+              for line in raw.splitlines():
+                  try: e=json.loads(line)
+                  except Exception: continue
+                  if str(e.get("event","")).startswith("SEARCH_PROFILE_"): events.append(e)
+              rp=Path(f"evidence/{label}-exit-code.txt")
+              return raw,events,(int(rp.read_text()) if rp.exists() else None)
+          er,ee,erc=load("E"); fr,fe,frc=load("F")
+          def idx(xs): return {int(e["dominance_comparisons"]):e for e in xs if e.get("dominance_comparisons") is not None}
+          ei,fi=idx(ee),idx(fe); common=sorted(set(ei)&set(fi)); rows=[]
+          for c in common:
+              a,b=ei[c],fi[c]
+              rows.append({
+                "dominance_comparisons":c,
+                "logical_mismatches":{k:{"E":a.get(k),"F":b.get(k)} for k in KEYS if a.get(k)!=b.get(k)},
+                "trace_digest_equal":a.get("decision_trace_sha256")==b.get("decision_trace_sha256"),
+                "trace_event_count_equal":a.get("decision_trace_events")==b.get("decision_trace_events"),
+                "E_trace_sha256":a.get("decision_trace_sha256"),
+                "F_trace_sha256":b.get("decision_trace_sha256"),
+                "E_elapsed_seconds":a.get("elapsed_seconds"),
+                "F_elapsed_seconds":b.get("elapsed_seconds"),
+              })
+          parity=bool(common) and all(not x["logical_mismatches"] and x["trace_digest_equal"] and x["trace_event_count_equal"] for x in rows)
+          summary={
+            "schema":"ACSIE.PR110.RC0bBitmaskParity.v1",
+            "classification":"DECISION_TRACE_PARITY_ON_BOUNDED_PREFIX" if parity else "DIVERGENCE_OR_INCOMPLETE_PARITY_EVIDENCE",
+            "E_exit_code":erc,"F_exit_code":frc,
+            "E_profile_event_count":len(ee),"F_profile_event_count":len(fe),
+            "common_comparison_checkpoints":common,"checkpoints":rows,
+            "E_raw_log_sha256":hashlib.sha256(er.encode()).hexdigest(),
+            "F_raw_log_sha256":hashlib.sha256(fr.encode()).hexdigest(),
+            "frozen_5x12_budget":"UNTOUCHED","promotion_status":"DO_NOT_PROMOTE",
+          }
+          Path("evidence/bitmask-parity-summary.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(summary,indent=2,sort_keys=True))
+          PY
+      - name: Upload RC0b parity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-gen7-rc0-bitmask-parity
+          path: evidence/
+          retention-days: 90
