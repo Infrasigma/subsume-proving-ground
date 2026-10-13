@@ -201,8 +201,19 @@ class FrontierProfiler:
         raise SystemExit(0)
 
     def install(self):
-        RecursiveCognitiveCompiler._exprs = self.exprs
-        RecursiveCognitiveCompiler.synthesize_process_frontier = self.frontier
+        profiler = self
+
+        # Install plain functions on the class so Python binds the runtime
+        # learner as the first argument. Assigning profiler.bound_method to a
+        # class would incorrectly bind every call to the profiler object.
+        def wrapped_exprs(runtime_self, keys, primitive_ids, depth_limit):
+            return profiler.exprs(runtime_self, keys, primitive_ids, depth_limit)
+
+        def wrapped_frontier(runtime_self, rows, transfer, ood, *args, **kwargs):
+            return profiler.frontier(runtime_self, rows, transfer, ood, *args, **kwargs)
+
+        RecursiveCognitiveCompiler._exprs = wrapped_exprs
+        RecursiveCognitiveCompiler.synthesize_process_frontier = wrapped_frontier
 
     def restore(self):
         RecursiveCognitiveCompiler._exprs = self.original_exprs
