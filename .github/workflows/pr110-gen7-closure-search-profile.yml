@@ -100,7 +100,7 @@ jobs:
               "python_version": sys.version,
               "pythonhashseed_environment": os.environ.get("PYTHONHASHSEED"),
               "hash_randomization_flag": sys.flags.hash_randomization,
-              "fixed_work_budget": {"register_calls": 5000, "dominance_comparisons": 200000},
+              "fixed_work_budget": {"closure_frontier_expression_attempts": 2500, "progress_interval": 500},
               "frozen_5x12_budget": "UNTOUCHED",
               "promotion_status": "DO_NOT_PROMOTE",
           }
@@ -186,7 +186,7 @@ jobs:
               "input_checkpoint_sha256": initial_sha,
               "final_checkpoint_sha256": final_hash,
               "checkpoint_unchanged": final_hash == initial_sha,
-              "work_budget": {"register_calls": 5000, "dominance_comparisons": 200000},
+              "work_budget": {"closure_frontier_expression_attempts": 2500, "progress_interval": 500},
               "frozen_5x12_budget": "UNTOUCHED",
               "promotion_status": "DO_NOT_PROMOTE",
               "scientific_gate": "NOT_RUN",
