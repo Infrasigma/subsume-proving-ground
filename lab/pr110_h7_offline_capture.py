@@ -72,9 +72,12 @@ def canonical(expr):
 
 
 class Capture:
-    def __init__(self, output: Path, capture_role: str):
+    def __init__(self, output: Path, capture_role: str, stop_at_depth: int = 4):
         self.output = output
         self.capture_role = capture_role
+        if stop_at_depth not in TARGET_DEPTHS:
+            raise ValueError(f"stop_at_depth must be one of {sorted(TARGET_DEPTHS)}")
+        self.stop_at_depth = int(stop_at_depth)
         self.started = time.perf_counter()
         self.captured = []
         self.done = False
@@ -229,9 +232,9 @@ class Capture:
             "capture_semantics": "post_choose_target_in_depth; existing live frontier only",
             "invocation": dict(self.current_invocation),
         }
-        if depth == 4:
+        if depth == self.stop_at_depth:
             self.done = True
-            self.status = "CAPTURE_COMPLETE_DEPTH4"
+            self.status = f"CAPTURE_COMPLETE_DEPTH{depth}"
         self.captured.append(payload)
         source_path = Path(behavioral_search.__file__).resolve()
         self.output.write_text(json.dumps({
@@ -243,6 +246,7 @@ class Capture:
             "generation": GENERATION,
             "requested_depths": sorted(TARGET_DEPTHS),
             "requested_capture_role": self.capture_role,
+            "stop_at_depth": self.stop_at_depth,
             "selected_search_call_index": self.selected_call_index,
             "observer": {
                 "mode": "single-invocation-local-callback",
@@ -254,7 +258,7 @@ class Capture:
             },
             "captures": self.captured,
         }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        if depth == 4:
+        if depth == self.stop_at_depth:
             raise SystemExit(0)
 
     def install(self):
@@ -360,6 +364,7 @@ def main():
     ap.add_argument("--checkpoint", required=True)
     ap.add_argument("--output", required=True)
     ap.add_argument("--capture-role", choices=("primary_primitive_invention", "secondary_process_synthesis"), default="primary_primitive_invention")
+    ap.add_argument("--stop-at-depth", type=int, choices=(2, 3, 4), default=4)
     args = ap.parse_args()
 
     envelope = load_checkpoint(
@@ -371,7 +376,7 @@ def main():
     restored = restore_checkpoint(envelope, expected_metadata={"proving_sha": PROVING_SHA, "acsie_ref": RUNTIME_SHA})
     assert restored["learner"].generation is not None
 
-    capture = Capture(Path(args.output), args.capture_role)
+    capture = Capture(Path(args.output), args.capture_role, args.stop_at_depth)
     original_search = capture.install()
     exit_code = 0
     try:
@@ -404,6 +409,7 @@ def main():
         "capture": capture.status,
         "generation": GENERATION,
         "depths": sorted({item["depth"] for item in capture.captured}),
+        "stop_at_depth": capture.stop_at_depth,
         "capture_status": capture.status,
         "selected_search_call_index": capture.selected_call_index,
         "exit_code": exit_code,
