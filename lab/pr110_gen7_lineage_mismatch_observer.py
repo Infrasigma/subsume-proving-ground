@@ -29,7 +29,7 @@ def emit(event: str, **payload: object) -> None:
 
 
 def main() -> int:
-    if os.environ.get("ACSIE_DIAGNOSTIC_STOP_AFTER_LINEAGE_MISMATCH") != "1":
+    if os.environ.get("ACSIE_DIAGNOSTIC_STOP_AFTER_CLOSURE_REUSE_MISS") != "1":
         raise RuntimeError("Refusing to run without the diagnostic stop guard enabled.")
     if not CHECKPOINT.is_file():
         raise FileNotFoundError(CHECKPOINT)
