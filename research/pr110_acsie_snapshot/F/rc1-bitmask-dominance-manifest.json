@@ -1,0 +1,35 @@
+{
+  "schema": "ACSIE.PR110.RC1.BitmaskDominance.v1",
+  "hypothesis": "Replace repeated frozenset subset checks in executable dominance with arbitrary-precision integer bitmask subset checks, while preserving the exact set membership and executable-cost predicate.",
+  "parent_snapshot": "research/pr110_acsie_snapshot/E",
+  "source_snapshot_E_behavioral_search_blob": "7f95ee634a4bd836cb6412cdc7d2f88b0995dbbd",
+  "rc1_F_behavioral_search_blob": "ac4c108d1bf572614f536505f34965dd0c18951e",
+  "implementation": {
+    "stable_mapping": "Per-search monotonic identifier-to-bit map; each newly encountered string ID is assigned the next bit and never renumbered.",
+    "direct_macro_attribute": "Convert state_used tuple to integer mask at state registration.",
+    "executable_lineage_attribute": "Convert the exact executable_lineage_ids result to integer mask at state registration.",
+    "dominance_subset_equivalent": "(right_mask & ~left_mask) == 0 is used in place of right_set.issubset(left_set).",
+    "expanded_execution_cost": "Uses the same executable_cost(expr) function, unchanged.",
+    "decision_trace": "When ACSIE_SEARCH_TRACE_DIGEST=1, masks decode back to the canonical sorted ID lists used by D/E trace schema. This decoding is skipped when tracing is disabled.",
+    "search_control": "No candidate-generation, target cutoff, rank-order, frontier-admission, or dominance-objective changes intended."
+  },
+  "checkpoint": {
+    "run_id": 38033213264,
+    "raw_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
+    "state_digest": "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b",
+    "generation_next": 7,
+    "hash_seed_at_resume": 0,
+    "caveat": "State continuation from the memoized B lab checkpoint; not a byte-identical original process replay."
+  },
+  "initial_validation": {
+    "decision_trace_against_D": "PENDING",
+    "work_budget": {
+      "dominance_comparisons": 150000,
+      "register_calls": 50000
+    },
+    "performance_status": "NOT_MEASURED",
+    "frozen_5x12_budget": "UNTOUCHED",
+    "promotion_status": "DO_NOT_PROMOTE"
+  },
+  "safety_note": "F is an isolated proving-ground snapshot, not production ACSIE source."
+}
