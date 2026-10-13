@@ -77,6 +77,7 @@ def find_exact_expression(
         "dominance_frontier_max": 0,
         "dominance_comparisons": 0,
         "register_calls": 0,
+        "state_feature_computations": 0,
         "profile_active_phase": active_phase,
         "exact_expression_duplicates_skipped": 0,
         "target_directed_candidates": 0,
@@ -387,6 +388,12 @@ def find_exact_expression(
         ],
     ] = {}
     dominated_state_tokens: set[int] = set()
+    # RC-0 exact acceleration: compute the exact dominance attributes once per
+    # candidate state, then read them by the state's immutable token.
+    state_feature_cache: dict[
+        int,
+        tuple[frozenset[str], frozenset[str], tuple[int, int]],
+    ] = {}
     seen_expression_keys: set[str] = set()
     next_state_token = 0
     target_candidate_found = False
@@ -413,6 +420,7 @@ def find_exact_expression(
             "unique_states": int(stats.get("unique_states", 0)),
             "duplicate_states": int(stats.get("duplicate_states", 0)),
             "dominance_comparisons": comparisons,
+            "state_feature_computations": int(stats.get("state_feature_computations", 0)),
             "dominance_pruned_states": int(stats.get("dominance_pruned_states", 0)),
             "dominance_frontier_max": int(stats.get("dominance_frontier_max", 0)),
             "max_states_in_depth": int(stats.get("max_states_in_depth", 0)),
@@ -438,12 +446,10 @@ def find_exact_expression(
         # an explicit multi-parent composition whose direct macro vocabulary
         # is richer. Transitive lineage remains necessary, but direct reuse is
         # also part of executable dominance.
-        left_direct = set(left[2])
-        right_direct = set(right[2])
-        left_lineage = set(executable_lineage_ids(left[2]))
-        right_lineage = set(executable_lineage_ids(right[2]))
-        left_depth, left_nodes = executable_cost(left[0])
-        right_depth, right_nodes = executable_cost(right[0])
+        left_direct, left_lineage, left_cost = state_feature_cache[left[5]]
+        right_direct, right_lineage, right_cost = state_feature_cache[right[5]]
+        left_depth, left_nodes = left_cost
+        right_depth, right_nodes = right_cost
         return (
             right_direct.issubset(left_direct)
             and right_lineage.issubset(left_lineage)
@@ -470,6 +476,7 @@ def find_exact_expression(
                 bucket.pop(state_key, None)
         vector_cache.pop(ident, None)
         free_cache.pop(ident, None)
+        state_feature_cache.pop(state[5], None)
 
     def register(expr: Mapping[str, Any]):
         nonlocal next_state_token, target_candidate_found
@@ -548,6 +555,16 @@ def find_exact_expression(
                     best_macro[outputs] = state
             return bucket[state_key]
 
+        # This tuple is exactly the information previously recomputed for each
+        # dominance pair. Frozen sets retain the same subset semantics and costs
+        # use the same executable_cost function as the reference implementation.
+        state_feature_cache[state[5]] = (
+            frozenset(state_used),
+            frozenset(direct_lineage),
+            executable_cost(expr),
+        )
+        stats["state_feature_computations"] = int(stats.get("state_feature_computations", 0)) + 1
+
         behavior_key = (outputs, state_keys)
         frontier = dominance_frontier.setdefault(behavior_key, [])
 
@@ -563,6 +580,7 @@ def find_exact_expression(
                 stats["dominance_pruned_states"] += 1
                 vector_cache.pop(expression_ident, None)
                 free_cache.pop(expression_ident, None)
+                state_feature_cache.pop(state[5], None)
                 return existing
 
         retained_frontier = []
