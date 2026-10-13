@@ -1,0 +1,31 @@
+name: PR110 selected lineage audit regression test
+
+on:
+  push:
+    branches:
+      - research/pr110-lineage-mismatch-observer-fix-20261013
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-selected-lineage-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Prove the patched code compiles
+        run: |
+          python3 -m py_compile lab/acsie_open_ended_self_extending_proving.py lab/test_pr110_selected_lineage_audit.py
+      - name: Run observer regression tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/B:${{ github.workspace }}
+          PYTHONHASHSEED: "0"
+        run: |
+          python3 -m unittest -v lab.test_pr110_selected_lineage_audit
