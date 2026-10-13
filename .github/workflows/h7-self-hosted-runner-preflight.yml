@@ -1,4 +1,4 @@
-name: H7 self-hosted runner preflight (no ACSIE workload)
+name: H7 GitHub-hosted runner preflight (no ACSIE workload)
 
 on:
   push:
@@ -11,9 +11,9 @@ permissions:
 
 jobs:
   runner-preflight:
-    # The phone is not a compute target. Only a separately registered runner
-    # with all four labels below can execute this lightweight preflight.
-    runs-on: [self-hosted, linux, x64, acsie-h7]
+    # Use GitHub-managed disposable compute; no phone or self-hosted runner required.
+    # This job only reports capacity and does not check out or execute repository code.
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Report minimal runner capacity
@@ -26,6 +26,7 @@ jobs:
           echo "RUNNER_NAME_PRESENT=$([ -n "${RUNNER_NAME:-}" ] && echo yes || echo no)"
           echo "KERNEL=$(uname -srm)"
           echo "PYTHON=$(python3 --version 2>&1 || true)"
+          echo "GIT=$(git --version 2>&1 || true)"
           echo "LOGICAL_CPUS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc || echo unknown)"
           if [ -r /proc/meminfo ]; then
             awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/ {print}' /proc/meminfo
