@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+from time import perf_counter
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
@@ -34,6 +36,15 @@ def find_exact_expression(
     if not discovery_rows:
         return None
 
+    search_started = perf_counter()
+    active_phase = os.environ.get("ACSIE_ACTIVE_SYNTHESIS_PHASE", "UNSPECIFIED")
+    diagnostic_phase = os.environ.get("ACSIE_SEARCH_PROFILE_PHASE", "primary_process_synthesis")
+    profile_enabled = (
+        os.environ.get("ACSIE_SEARCH_PROFILE") == "1"
+        and active_phase == diagnostic_phase
+    )
+    profile_interval = max(1, int(os.environ.get("ACSIE_SEARCH_PROGRESS_INTERVAL", "5000")))
+    comparison_budget = max(0, int(os.environ.get("ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS", "0")))
     target = tuple(float(row.target) for row in discovery_rows)
     primitive_ids = tuple(sorted(compiler.primitives))
     pmap = compiler._pmap()
@@ -63,6 +74,9 @@ def find_exact_expression(
         "max_structural_alias_coverage": 0,
         "dominance_pruned_states": 0,
         "dominance_frontier_max": 0,
+        "dominance_comparisons": 0,
+        "register_calls": 0,
+        "profile_active_phase": active_phase,
         "exact_expression_duplicates_skipped": 0,
         "target_directed_candidates": 0,
         "generic_binary_pairs_evaluated": 0,
@@ -378,6 +392,32 @@ def find_exact_expression(
     first_exact_target_depth: int | None = None
     target_continuation_budget = 2
 
+    def emit_profile(event: str, *, force: bool = False) -> None:
+        if not profile_enabled:
+            return
+        comparisons = int(stats.get("dominance_comparisons", 0))
+        register_calls = int(stats.get("register_calls", 0))
+        if not force and comparisons % profile_interval != 0 and register_calls % profile_interval != 0:
+            return
+        print(json.dumps({
+            "event": event,
+            "phase": active_phase,
+            "elapsed_seconds": round(perf_counter() - search_started, 6),
+            "rows": len(discovery_rows),
+            "primitive_count": len(primitive_ids),
+            "max_depth": int(max_depth),
+            "require_macro": bool(require_macro),
+            "generated_expressions": int(stats.get("generated_expressions", 0)),
+            "register_calls": register_calls,
+            "unique_states": int(stats.get("unique_states", 0)),
+            "duplicate_states": int(stats.get("duplicate_states", 0)),
+            "dominance_comparisons": comparisons,
+            "dominance_pruned_states": int(stats.get("dominance_pruned_states", 0)),
+            "dominance_frontier_max": int(stats.get("dominance_frontier_max", 0)),
+            "max_states_in_depth": int(stats.get("max_states_in_depth", 0)),
+            "lineage_cache_counters": dict(lineage_cache_counters),
+        }, sort_keys=True), flush=True)
+
     def expr_key(expr: Mapping[str, Any]) -> str:
         return json.dumps(expr, sort_keys=True, separators=(",", ":"))
 
@@ -385,6 +425,13 @@ def find_exact_expression(
         return state[5] in dominated_state_tokens
 
     def dominates(left: tuple, right: tuple) -> bool:
+        stats["dominance_comparisons"] = int(stats.get("dominance_comparisons", 0)) + 1
+        comparisons = int(stats["dominance_comparisons"])
+        if profile_enabled and comparisons % profile_interval == 0:
+            emit_profile("SEARCH_PROFILE_PROGRESS", force=True)
+        if profile_enabled and comparison_budget > 0 and comparisons >= comparison_budget:
+            emit_profile("SEARCH_PROFILE_WORK_BUDGET_REACHED", force=True)
+            raise SystemExit(76)
         # A composite alias may have a larger transitive lineage while
         # directly reusing fewer executable primitives. It must not dominate
         # an explicit multi-parent composition whose direct macro vocabulary
@@ -425,6 +472,12 @@ def find_exact_expression(
 
     def register(expr: Mapping[str, Any]):
         nonlocal next_state_token, target_candidate_found
+        stats["register_calls"] = int(stats.get("register_calls", 0)) + 1
+        if profile_enabled and int(stats["register_calls"]) % profile_interval == 0:
+            emit_profile("SEARCH_PROFILE_PROGRESS", force=True)
+        if profile_enabled and comparison_budget > 0 and int(stats.get("dominance_comparisons", 0)) >= comparison_budget:
+            emit_profile("SEARCH_PROFILE_WORK_BUDGET_REACHED", force=True)
+            raise SystemExit(76)
         expr = canonical(expr)
         expression_ident = expr_key(expr)
         if expression_ident in seen_expression_keys:
@@ -924,6 +977,8 @@ def find_exact_expression(
                     break
 
     stats["lineage_cache_counters"] = dict(lineage_cache_counters)
+    if profile_enabled:
+        emit_profile("SEARCH_PROFILE_SEARCH_RETURNED", force=True)
     if best_target is not None:
         stats["status"] = "TARGET_FOUND"
         stats["depths_completed"] = completed
