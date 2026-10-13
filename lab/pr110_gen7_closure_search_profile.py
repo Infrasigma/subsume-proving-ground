@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Profile one bounded PR110 Gen7 closure-synthesis search.
 
+Workflow-triggering revision: the runtime and evaluator are separately blob-pinned.
+
 Only lab snapshot D is imported. A deterministic register/comparison cutoff
 stops the diagnostic before closure synthesis can alter the frozen checkpoint.
 """
