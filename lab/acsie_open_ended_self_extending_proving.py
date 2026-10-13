@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import statistics
 from time import perf_counter
@@ -738,6 +739,8 @@ def run_seed(
                 reuse_ok = False
                 expected = {left_parent.primitive_id, right_parent.primitive_id}
                 selected_proc = None
+                selected_candidate_lineage: set[str] = set()
+                frontier_candidate_audit: list[dict[str, Any]] = []
                 frontier_lineage_matches = 0
                 emit_phase_start(
                     "closure_candidate_evaluation", seed, generation,
@@ -761,11 +764,24 @@ def run_seed(
                         tuple(candidate_proc.used_primitives),
                     )
                     lineage_elapsed_seconds += perf_counter() - lineage_started
+                    contains_expected_parents = expected.issubset(candidate_lineage)
+                    frontier_candidate_audit.append(
+                        {
+                            "process_id": candidate_proc.process_id,
+                            "used_primitives": list(candidate_proc.used_primitives),
+                            "expression": candidate_proc.expression,
+                            "closure_competent": candidate_competence,
+                            "ood_error": float(ceval.ood_error),
+                            "candidate_lineage": sorted(candidate_lineage),
+                            "contains_expected_parents": contains_expected_parents,
+                        }
+                    )
                     if candidate_competence:
                         competence = True
                         if selected_proc is None:
                             selected_proc = candidate_proc
-                    if candidate_competence and expected.issubset(candidate_lineage):
+                            selected_candidate_lineage = set(candidate_lineage)
+                    if candidate_competence and contains_expected_parents:
                         frontier_lineage_matches += 1
                         reuse_ok = True
                 emit_phase_timing(
@@ -780,6 +796,17 @@ def run_seed(
                 )
 
                 cproc = selected_proc
+                # Recompute for the selected process. Do not reuse the loop's
+                # final candidate_lineage: that belongs to the last frontier item,
+                # not necessarily to cproc (the first competent candidate).
+                selected_candidate_lineage = (
+                    executable_lineage_ids(learner, tuple(cproc.used_primitives))
+                    if cproc is not None
+                    else set()
+                )
+                selected_candidate_contains_expected = expected.issubset(
+                    selected_candidate_lineage
+                )
                 print(
                     json.dumps(
                         {
@@ -833,9 +860,12 @@ def run_seed(
                                 "seed": seed,
                                 "generation": generation,
                                 "expected_parent_ids": sorted(expected),
+                                "selected_process_id": cproc.process_id if cproc is not None else None,
                                 "used_primitives": list(cproc.used_primitives) if cproc is not None else [],
-                                "candidate_lineage": sorted(candidate_lineage),
+                                "candidate_lineage": sorted(selected_candidate_lineage),
+                                "selected_candidate_contains_expected_parents": selected_candidate_contains_expected,
                                 "expression": cproc.expression if cproc is not None else None,
+                                "frontier_candidate_audit": frontier_candidate_audit,
                                 "search_stats": compact_search_stats(dict(getattr(learner, "last_search_stats", {}))),
                                 "target_candidate_frontier": list(
                                     getattr(learner, "last_search_stats", {}).get(
@@ -848,6 +878,20 @@ def run_seed(
                         flush=True,
                     )
                     closure_trap_count += 1
+                    if os.environ.get("ACSIE_DIAGNOSTIC_STOP_AFTER_LINEAGE_MISMATCH") == "1":
+                        print(
+                            json.dumps(
+                                {
+                                    "event": "DIAGNOSTIC_STOP_AFTER_LINEAGE_MISMATCH",
+                                    "seed": seed,
+                                    "generation": generation,
+                                    "reason": "Observer-only replay stopped after emitting the corrected candidate-level audit.",
+                                },
+                                sort_keys=True,
+                            ),
+                            flush=True,
+                        )
+                        raise SystemExit(75)
 
                 bproc = synthesize_discovery_only(baseline, tuple(ctr) + tuple(cs), cv)
                 bcompetence = False
