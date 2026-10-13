@@ -8,6 +8,7 @@ on:
       - ".github/workflows/h7-cached-baseline-eval-tests.yml"
       - "lab/h7_cached_baseline_eval.py"
       - "lab/test_h7_cached_baseline_eval.py"
+      - "lab/h7_cached_baseline_stage_replay.py"
   workflow_dispatch:
 
 permissions:
@@ -39,7 +40,7 @@ jobs:
               assert actual==blob,(rel,actual,blob)
           print("H7_BASELINE_SNAPSHOT=PASS")
           PY
-          python3 -m py_compile lab/h7_cached_baseline_eval.py lab/test_h7_cached_baseline_eval.py
+          python3 -m py_compile lab/h7_cached_baseline_eval.py lab/test_h7_cached_baseline_eval.py lab/h7_cached_baseline_stage_replay.py
       - name: Run exact semantics and selector parity tests
         shell: bash
         run: |
