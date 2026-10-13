@@ -77,25 +77,51 @@ class Capture:
         self.started = time.perf_counter()
         self.captured = []
         self.done = False
+        self.current_invocation = {}
+        self.last_hook_elapsed = 0.0
 
     def hook(self, depth, local_values):
-        """Single callback after a search-depth selection; no line tracing."""
+        """Capture the primary Gen5 primitive-invention search at one source point."""
         caller = sys._getframe(2)
-        if caller.f_code.co_name != "synthesize_process":
-            return
+        call_site = caller.f_code.co_name
         compiler = local_values.get("compiler")
         if getattr(compiler, "generation", -1) != GENERATION:
             return
+        if call_site == "invent_primitive":
+            if type(compiler).__name__ != "OpenEndedRecursiveCognitiveCompiler":
+                return
+            role = "primary_primitive_invention"
+        elif call_site == "synthesize_process":
+            role = "secondary_process_synthesis"
+        else:
+            return
         if not isinstance(depth, int) or depth not in TARGET_DEPTHS:
             return
-        if any(item["depth"] == depth for item in self.captured):
+        if any(item["depth"] == depth and item.get("invocation", {}).get("role") == role for item in self.captured):
             return
+        self.current_invocation = {
+            "role": role,
+            "caller_method": call_site,
+            "compiler_class": type(compiler).__name__,
+            "generation": int(getattr(compiler, "generation", -1)),
+            "primitive_count": len(getattr(compiler, "primitives", {})),
+            "search_max_depth": local_values.get("max_depth"),
+            "discovery_row_count": len(local_values.get("discovery_rows", local_values.get("rows", ()))),
+            "require_macro": bool(local_values.get("require_macro", False)),
+            "hook_elapsed_seconds_from_run_seed_start": time.perf_counter() - self.started,
+        }
         self._snapshot(local_values, depth)
 
     def _snapshot(self, local_values, depth):
+        hook_entered = time.perf_counter()
         frontier_map = local_values.get("dominance_frontier", {})
         compiler = local_values.get("compiler")
         classes = []
+        frontiers_by_depth = {}
+        for _frontier in frontier_map.values():
+            for _state in _frontier:
+                _d = ast_depth(_state[0])
+                frontiers_by_depth[_d] = frontiers_by_depth.get(_d, 0) + 1
         dominated = local_values.get("dominated_state_tokens", set())
         for behavior_key, frontier in frontier_map.items():
             reps = []
@@ -128,18 +154,37 @@ class Capture:
                     },
                     "representatives": sorted(reps, key=lambda x: x["state_token"]),
                 })
+        stats = local_values.get("stats", {})
+        stat_keys = (
+            "schema", "status", "rows", "max_depth", "primitive_count",
+            "generated_expressions", "unique_states", "duplicate_states",
+            "inverse_hits", "target_matches", "max_states_in_depth",
+            "max_lineage_coverage", "best_target_depth", "dominance_pruned_states",
+            "dominance_frontier_max", "exact_expression_duplicates_skipped",
+            "target_directed_candidates", "generic_binary_pairs_evaluated",
+            "generic_binary_path_skipped_after_target", "target_cutoff_depth",
+            "target_cutoff_reason", "alternative_candidate_count",
+            "target_candidate_count",
+        )
         payload = {
             "generation": GENERATION,
             "depth": depth,
             "class_count": len(classes),
+            "representative_count": sum(len(item["representatives"]) for item in classes),
             "classes": classes,
+            "frontier_live_representatives_by_ast_depth": {str(k): v for k, v in sorted(frontiers_by_depth.items())},
+            "search_stats_at_capture": {k: stats.get(k) for k in stat_keys if k in stats},
+            "frontier_bucket_sizes_by_ast_depth": {str(k): len(v) for k, v in sorted(local_values.get("levels", {}).items())},
             "capture_elapsed_seconds": time.perf_counter() - self.started,
+            "capture_hook_entered_elapsed_seconds": hook_entered - self.started,
+            "capture_snapshot_cost_seconds": time.perf_counter() - hook_entered,
             "capture_semantics": "post_choose_target_in_depth; existing live frontier only",
+            "invocation": dict(self.current_invocation),
         }
         self.captured.append(payload)
         source_path = Path(behavioral_search.__file__).resolve()
         self.output.write_text(json.dumps({
-            "schema": "ACSIE.PR110.H7.offline-frontier-capture.v2",
+            "schema": "ACSIE.PR110.H7.offline-frontier-capture.v3",
             "runtime_sha": RUNTIME_SHA,
             "proving_sha": PROVING_SHA,
             "seed": SEED,
