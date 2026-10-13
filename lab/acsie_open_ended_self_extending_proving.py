@@ -774,7 +774,6 @@ def run_seed(
                 reuse_ok = False
                 expected = {left_parent.primitive_id, right_parent.primitive_id}
                 selected_proc = None
-                selected_candidate_lineage: set[str] = set()
                 frontier_candidate_audit: list[dict[str, Any]] = []
                 frontier_lineage_matches = 0
                 emit_phase_start(
@@ -815,7 +814,6 @@ def run_seed(
                         competence = True
                         if selected_proc is None:
                             selected_proc = candidate_proc
-                            selected_candidate_lineage = set(candidate_lineage)
                     if candidate_competence and contains_expected_parents:
                         frontier_lineage_matches += 1
                 emit_phase_timing(
@@ -838,10 +836,6 @@ def run_seed(
                     expected,
                     lambda used: executable_lineage_ids(learner, used),
                     competent=competence,
-                )
-                selected_candidate_lineage = set(selected_lineage_audit["candidate_lineage"])
-                selected_candidate_contains_expected = bool(
-                    selected_lineage_audit["selected_candidate_contains_expected_parents"]
                 )
                 # The metric must describe cproc, the selected process, rather
                 # than any other competent member of the frontier.
