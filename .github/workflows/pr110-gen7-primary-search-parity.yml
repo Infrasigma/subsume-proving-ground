@@ -110,8 +110,8 @@ jobs:
           ACSIE_SEARCH_PROFILE: "1"
           ACSIE_SEARCH_PROFILE_PHASE: "primary_process_synthesis"
           ACSIE_SEARCH_TRACE_DIGEST: "1"
-          ACSIE_SEARCH_PROGRESS_INTERVAL: "25000"
-          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "150000"
+          ACSIE_SEARCH_PROGRESS_INTERVAL: "100000"
+          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "500000"
           ACSIE_SEARCH_MAX_REGISTER_CALLS: "50000"
         run: |
           set -u
@@ -133,8 +133,8 @@ jobs:
           ACSIE_SEARCH_PROFILE: "1"
           ACSIE_SEARCH_PROFILE_PHASE: "primary_process_synthesis"
           ACSIE_SEARCH_TRACE_DIGEST: "1"
-          ACSIE_SEARCH_PROGRESS_INTERVAL: "25000"
-          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "150000"
+          ACSIE_SEARCH_PROGRESS_INTERVAL: "100000"
+          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "500000"
           ACSIE_SEARCH_MAX_REGISTER_CALLS: "50000"
         run: |
           set -u
@@ -232,7 +232,7 @@ jobs:
               "E_raw_log_sha256": hashlib.sha256(e_raw.encode()).hexdigest(),
               "D_input_checkpoint_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
               "E_input_checkpoint_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
-              "fixed_work_limit": {"dominance_comparisons": 150000, "register_calls": 50000},
+              "fixed_work_limit": {"dominance_comparisons": 500000, "register_calls": 50000},
               "frozen_5x12_budget": "UNTOUCHED",
               "promotion_status": "DO_NOT_PROMOTE",
           }
