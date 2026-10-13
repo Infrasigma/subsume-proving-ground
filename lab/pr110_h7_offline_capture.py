@@ -72,12 +72,13 @@ def canonical(expr):
 
 
 class Capture:
-    def __init__(self, output: Path, capture_role: str, stop_at_depth: int = 4):
+    def __init__(self, output: Path, capture_role: str, stop_at_depth: int = 4, probe_index: int | None = None):
         self.output = output
         self.capture_role = capture_role
         if stop_at_depth not in TARGET_DEPTHS:
             raise ValueError(f"stop_at_depth must be one of {sorted(TARGET_DEPTHS)}")
         self.stop_at_depth = int(stop_at_depth)
+        self.probe_index = probe_index
         self.started = time.perf_counter()
         self.captured = []
         self.done = False
