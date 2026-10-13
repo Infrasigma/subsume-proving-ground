@@ -45,6 +45,7 @@ def find_exact_expression(
     )
     profile_interval = max(1, int(os.environ.get("ACSIE_SEARCH_PROGRESS_INTERVAL", "5000")))
     comparison_budget = max(0, int(os.environ.get("ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS", "0")))
+    register_budget = max(0, int(os.environ.get("ACSIE_SEARCH_MAX_REGISTER_CALLS", "0")))
     target = tuple(float(row.target) for row in discovery_rows)
     primitive_ids = tuple(sorted(compiler.primitives))
     pmap = compiler._pmap()
@@ -476,7 +477,10 @@ def find_exact_expression(
         if profile_enabled and int(stats["register_calls"]) % profile_interval == 0:
             emit_profile("SEARCH_PROFILE_PROGRESS", force=True)
         if profile_enabled and comparison_budget > 0 and int(stats.get("dominance_comparisons", 0)) >= comparison_budget:
-            emit_profile("SEARCH_PROFILE_WORK_BUDGET_REACHED", force=True)
+            emit_profile("SEARCH_PROFILE_DOMINANCE_BUDGET_REACHED", force=True)
+            raise SystemExit(76)
+        if profile_enabled and register_budget > 0 and int(stats["register_calls"]) >= register_budget:
+            emit_profile("SEARCH_PROFILE_REGISTER_BUDGET_REACHED", force=True)
             raise SystemExit(76)
         expr = canonical(expr)
         expression_ident = expr_key(expr)
