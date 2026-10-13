@@ -1,0 +1,248 @@
+name: PR110 Gen7 D-versus-RC1 bitmask decision trace parity
+
+on:
+  push:
+    branches:
+      - research/pr110-gen7-rc1-bitmask-dominance-20261013
+    paths:
+      - ".github/workflows/pr110-gen7-rc1-parity.yml"
+      - "lab/pr110_gen7_primary_search_profile.py"
+      - "lab/pr110_gen7_primary_search_rc1.py"
+      - "research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py"
+      - "research/pr110_acsie_snapshot/F/cognitive_core/behavioral_search.py"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  compare-traces:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Retrieve immutable Gen6-produced checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: pr110-exact-b-gen6-memoized-continuation
+          run-id: 38033213264
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: prior
+      - name: Verify checkpoint and D/F source provenance
+        env:
+          PYTHONHASHSEED: "0"
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/D:${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          python3 -m py_compile \
+            research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py \
+            research/pr110_acsie_snapshot/F/cognitive_core/behavioral_search.py \
+            research/pr110_acsie_snapshot/D/cognitive_core/recursive_cognitive_compiler.py \
+            research/pr110_acsie_snapshot/F/cognitive_core/recursive_cognitive_compiler.py \
+            research/pr110_acsie_snapshot/D/cognitive_core/open_ended_growth.py \
+            research/pr110_acsie_snapshot/F/cognitive_core/open_ended_growth.py \
+            lab/acsie_open_ended_self_extending_proving.py \
+            lab/pr110_gen7_primary_search_profile.py \
+            lab/pr110_gen7_primary_search_rc1.py
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess, sys
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+
+          expected = {
+              "research/pr110_acsie_snapshot/D/cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
+              "research/pr110_acsie_snapshot/D/cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
+              "research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py": "8b36ca913cd13e43691a5a64fdfb27994e25438f",
+              "research/pr110_acsie_snapshot/F/cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
+              "research/pr110_acsie_snapshot/F/cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
+              "research/pr110_acsie_snapshot/F/cognitive_core/behavioral_search.py": "ac4c108d1bf572614f536505f34965dd0c18951e",
+          }
+          identities = {}
+          for rel, want in expected.items():
+              path = Path(rel).resolve()
+              actual = subprocess.check_output(["git", "hash-object", str(path)], text=True).strip()
+              assert actual == want, (rel, actual, want)
+              identities[rel] = {
+                  "git_blob_sha1": actual,
+                  "file_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+              }
+          checkpoint = Path("evidence/working-checkpoint.json")
+          input_sha = "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4"
+          assert hashlib.sha256(checkpoint.read_bytes()).hexdigest() == input_sha
+          envelope = load_checkpoint(
+              checkpoint,
+              expected_seed=2026100305,
+              expected_metadata={
+                  "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+                  "acsie_ref": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+              },
+          )
+          assert envelope["state_digest"] == "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b"
+          assert envelope["generation_next"] == 7
+          report = {
+              "schema": "ACSIE.PR110.Gen7DecisionTraceParityPreflight.v1",
+              "status": "PREFLIGHT_PASS",
+              "checkpoint_raw_sha256": input_sha,
+              "checkpoint_state_digest": envelope["state_digest"],
+              "generation_next": envelope["generation_next"],
+              "source_identities": identities,
+              "python_version": sys.version,
+              "pythonhashseed_environment": os.environ.get("PYTHONHASHSEED"),
+              "hash_randomization_flag": sys.flags.hash_randomization,
+              "frozen_5x12_budget": "UNTOUCHED",
+              "promotion_status": "DO_NOT_PROMOTE",
+          }
+          Path("evidence/preflight.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
+      - name: Run reference D from the immutable state with a 150k-comparison cutoff
+        continue-on-error: true
+        env:
+          PYTHONHASHSEED: "0"
+          ACSIE_SEARCH_PROFILE: "1"
+          ACSIE_SEARCH_PROFILE_PHASE: "primary_process_synthesis"
+          ACSIE_SEARCH_TRACE_DIGEST: "1"
+          ACSIE_SEARCH_PROGRESS_INTERVAL: "25000"
+          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "150000"
+          ACSIE_SEARCH_MAX_REGISTER_CALLS: "50000"
+        run: |
+          set -u
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          set +e
+          timeout --signal=TERM --kill-after=30s 12m env \
+            PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/D:$GITHUB_WORKSPACE" \
+            python3 -u lab/pr110_gen7_primary_search_profile.py > evidence/D-raw.txt 2>&1
+          rc=$?
+          set -e
+          printf "%s\n" "$rc" > evidence/D-exit-code.txt
+          sha256sum evidence/working-checkpoint.json > evidence/D-final-checkpoint.sha256
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          echo "REFERENCE_D_EXIT_CODE=$rc"
+      - name: Run RC1 F from identical immutable state and work cutoff
+        continue-on-error: true
+        env:
+          PYTHONHASHSEED: "0"
+          ACSIE_SEARCH_PROFILE: "1"
+          ACSIE_SEARCH_PROFILE_PHASE: "primary_process_synthesis"
+          ACSIE_SEARCH_TRACE_DIGEST: "1"
+          ACSIE_SEARCH_PROGRESS_INTERVAL: "25000"
+          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "150000"
+          ACSIE_SEARCH_MAX_REGISTER_CALLS: "50000"
+        run: |
+          set -u
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          set +e
+          timeout --signal=TERM --kill-after=30s 12m env \
+            PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/E:$GITHUB_WORKSPACE" \
+            python3 -u lab/pr110_gen7_primary_search_rc1.py > evidence/F-raw.txt 2>&1
+          rc=$?
+          set -e
+          printf "%s\n" "$rc" > evidence/F-exit-code.txt
+          sha256sum evidence/working-checkpoint.json > evidence/F-final-checkpoint.sha256
+          echo "RC1_F_EXIT_CODE=$rc"
+      - name: Compare trace digests and logical counters
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+
+          TRACE_KEYS = (
+              "register_calls",
+              "generated_expressions",
+              "unique_states",
+              "duplicate_states",
+              "dominance_comparisons",
+              "dominance_pruned_states",
+              "dominance_frontier_max",
+              "max_states_in_depth",
+              "primitive_count",
+              "rows",
+              "max_depth",
+              "require_macro",
+          )
+
+          def read_events(label):
+              p = Path(f"evidence/{label}-raw.txt")
+              raw = p.read_text(errors="replace") if p.exists() else ""
+              out = []
+              for line in raw.splitlines():
+                  try: item = json.loads(line)
+                  except Exception: continue
+                  if str(item.get("event", "")).startswith("SEARCH_PROFILE_"):
+                      out.append(item)
+              rc_path = Path(f"evidence/{label}-exit-code.txt")
+              rc = int(rc_path.read_text()) if rc_path.exists() else None
+              return raw, out, rc
+
+          d_raw, d_events, d_rc = read_events("D")
+          f_raw, f_events, f_rc = read_events("E")
+          def index(events):
+              indexed = {}
+              for ev in events:
+                  c = ev.get("dominance_comparisons")
+                  if c is not None:
+                      indexed[int(c)] = ev
+              return indexed
+          di, ei = index(d_events), index(f_events)
+          common = sorted(set(di) & set(ei))
+          comparisons = []
+          for c in common:
+              a, b = di[c], ei[c]
+              logical = {k: {"D": a.get(k), "E": b.get(k)} for k in TRACE_KEYS if a.get(k) != b.get(k)}
+              digest_equal = a.get("decision_trace_sha256") == b.get("decision_trace_sha256")
+              tracf_events_equal = a.get("decision_tracf_events") == b.get("decision_tracf_events")
+              comparisons.append({
+                  "dominance_comparisons": c,
+                  "logical_counter_mismatches": logical,
+                  "trace_digest_equal": digest_equal,
+                  "trace_event_count_equal": tracf_events_equal,
+                  "D_tracf_events": a.get("decision_tracf_events"),
+                  "E_tracf_events": b.get("decision_tracf_events"),
+                  "D_trace_sha256": a.get("decision_trace_sha256"),
+                  "F_trace_sha256": b.get("decision_trace_sha256"),
+                  "D_elapsed_seconds": a.get("elapsed_seconds"),
+                  "F_elapsed_seconds": b.get("elapsed_seconds"),
+              })
+          parity = bool(common) and all(
+              not x["logical_counter_mismatches"] and x["trace_digest_equal"] and x["trace_event_count_equal"]
+              for x in comparisons
+          )
+          d_start = next((e for e in d_events if e.get("event") == "SEARCH_PROFILE_PROGRESS"), None)
+          e_start = next((e for e in f_events if e.get("event") == "SEARCH_PROFILE_PROGRESS"), None)
+          summary = {
+              "schema": "ACSIE.PR110.Gen7DecisionTraceParity.v1",
+              "classification": "DECISION_TRACE_PARITY_ON_BOUNDED_PREFIX" if parity else "DIVERGENCE_OR_INCOMPLETE_PARITY_EVIDENCE",
+              "D_exit_code": d_rc,
+              "F_exit_code": f_rc,
+              "D_event_count": len(d_events),
+              "F_event_count": len(f_events),
+              "common_comparison_checkpoints": common,
+              "checkpoint_comparisons": comparisons,
+              "D_raw_log_sha256": hashlib.sha256(d_raw.encode()).hexdigest(),
+              "E_raw_log_sha256": hashlib.sha256(f_raw.encode()).hexdigest(),
+              "D_input_checkpoint_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
+              "F_input_checkpoint_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
+              "fixed_work_limit": {"dominance_comparisons": 150000, "register_calls": 50000},
+              "frozen_5x12_budget": "UNTOUCHED",
+              "promotion_status": "DO_NOT_PROMOTE",
+          }
+          Path("evidence/parity-summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+      - name: Upload decision trace parity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-gen7-decision-trace-parity
+          path: evidence/
+          retention-days: 90
