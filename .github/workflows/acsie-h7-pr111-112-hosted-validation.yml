@@ -1,18 +1,13 @@
 name: ACSIE H7 PR111-112 exact-source hosted validation
 
 on:
+  # Temporary snapshot-build trigger: source-data commits do not relaunch tests.
+  # The pull_request trigger is restored after the complete snapshot set is pinned.
   push:
     branches:
       - research/acsie-pr112-hosted-validation-20261013
     paths:
       - ".github/workflows/acsie-h7-pr111-112-hosted-validation.yml"
-      - "research/acsie-h7-pr112-validation/**"
-  pull_request:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/acsie-h7-pr111-112-hosted-validation.yml"
-      - "research/acsie-h7-pr112-validation/**"
   workflow_dispatch:
 
 concurrency:
