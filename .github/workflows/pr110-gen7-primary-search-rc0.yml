@@ -48,7 +48,7 @@ jobs:
           expected_files = {
               "cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
               "cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
-              "cognitive_core/behavioral_search.py": "61375625cfd906f3ff78f19a584b6fe997883007",
+              "cognitive_core/behavioral_search.py": "97c771efbbde76602bad29a06276c11aead90881",
           }
           root = Path("research/pr110_acsie_snapshot/E").resolve()
           imported = {}
