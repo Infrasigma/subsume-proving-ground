@@ -4,7 +4,20 @@ on:
   push:
     branches:
       - research/acsie-pr112-hosted-validation-20261013
+    paths:
+      - ".github/workflows/acsie-h7-pr111-112-hosted-validation.yml"
+      - "research/acsie-h7-pr112-validation/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/acsie-h7-pr111-112-hosted-validation.yml"
+      - "research/acsie-h7-pr112-validation/**"
   workflow_dispatch:
+
+concurrency:
+  group: acsie-pr112-exact-source-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
