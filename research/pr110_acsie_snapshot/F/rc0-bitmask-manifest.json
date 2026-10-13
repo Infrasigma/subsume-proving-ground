@@ -1,0 +1,45 @@
+{
+  "schema": "ACSIE.PR110.RC0b.BitmaskDominanceAttributes.v1",
+  "purpose": "Separate exact-acceleration candidate replacing repeated set construction/subset checks with integer bitmask subset checks over a frozen macro-atom universe.",
+  "parent_snapshot": "research/pr110_acsie_snapshot/E",
+  "parent_B_runtime_blob_sha1": "ab658a2e49adf479bf9ea4892dfef930624c6e7b",
+  "source_files": {
+    "cognitive_core/open_ended_growth.py": {
+      "git_blob_sha1": "ec94fc545badde972510f2db9cbf008cc214e705",
+      "file_sha256": "computed_from_imported_bytes_in_preflight.json"
+    },
+    "cognitive_core/recursive_cognitive_compiler.py": {
+      "git_blob_sha1": "284d4abd5ab467d465be21973090bc24cee26e69",
+      "file_sha256": "computed_from_imported_bytes_in_preflight.json"
+    },
+    "cognitive_core/behavioral_search.py": {
+      "parent_E_git_blob_sha1": "7f95ee634a4bd836cb6412cdc7d2f88b0995dbbd",
+      "bitmask_F_git_blob_sha1": "996266e06d0235faabdf6b3bf8d9ef6bc6342324",
+      "file_sha256": "computed_from_imported_bytes_in_preflight.json"
+    }
+  },
+  "exactness_contract": [
+    "Macro-atom universe is frozen before search by collecting compiler primitive IDs and their executable lineages.",
+    "Set inclusion A subseteq B is represented by (mask(A) & mask(B)) == mask(A).",
+    "Decision trace decodes masks back to the sorted string identifiers, so an equality comparison against the E trace compares actual lineage attributes as well as decisions.",
+    "No candidate generation, expression canonicalization, rank, dominance ordering, retained frontier, or scientific gate is intentionally changed.",
+    "An atom outside the frozen universe raises an explicit error; no silent truncation or dynamically renumbered IDs are permitted."
+  ],
+  "bounded_protocol": {
+    "checkpoint_run": 38033213264,
+    "checkpoint_raw_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
+    "checkpoint_state_digest": "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b",
+    "generation_next": 7,
+    "max_dominance_comparisons": 150000,
+    "max_register_calls": 50000,
+    "progress_interval": 25000
+  },
+  "validation_required": [
+    "E-versus-F decision_trace_sha256 equality at all shared completed-comparison checkpoints.",
+    "All logical counters and checkpoint identities match; implementation-specific work counters are reported separately.",
+    "Then run a larger deterministic fixed-work prefix and report throughput and peak memory."
+  ],
+  "scientific_status": "NOT_RUN",
+  "frozen_5x12_budget": "UNTOUCHED",
+  "promotion_status": "DO_NOT_PROMOTE"
+}
