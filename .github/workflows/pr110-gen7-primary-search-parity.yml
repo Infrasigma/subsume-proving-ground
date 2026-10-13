@@ -6,6 +6,10 @@ on:
       - research/pr110-gen7-primary-search-profile-20261013
     paths:
       - ".github/workflows/pr110-gen7-primary-search-parity.yml"
+      - "lab/pr110_gen7_primary_search_profile.py"
+      - "lab/pr110_gen7_primary_search_rc0.py"
+      - "research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py"
+      - "research/pr110_acsie_snapshot/E/cognitive_core/behavioral_search.py"
   workflow_dispatch:
 
 permissions:
