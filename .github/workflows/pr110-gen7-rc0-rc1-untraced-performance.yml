@@ -1,0 +1,285 @@
+name: PR110 Gen7 D RC0 RC1 untraced fixed-work performance comparison
+
+on:
+  push:
+    branches:
+      - research/pr110-gen7-perf-fairness-20261013
+    paths:
+      - ".github/workflows/pr110-gen7-rc0-rc1-untraced-performance.yml"
+      - "lab/pr110_gen7_primary_search_profile.py"
+      - "lab/pr110_gen7_primary_search_rc0.py"
+      - "lab/pr110_gen7_primary_search_rc1.py"
+      - "lab/acsie_open_ended_self_extending_proving.py"
+      - "research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py"
+      - "research/pr110_acsie_snapshot/E/cognitive_core/behavioral_search.py"
+      - "research/pr110_acsie_snapshot/F/cognitive_core/behavioral_search.py"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  compare-untraced-performance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Retrieve immutable Gen6-produced checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: pr110-exact-b-gen6-memoized-continuation
+          run-id: 38033213264
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: prior
+      - name: Verify identical checkpoint and D E F source blobs
+        env:
+          PYTHONHASHSEED: "0"
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/D:${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          python3 -m py_compile \
+            research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py \
+            research/pr110_acsie_snapshot/E/cognitive_core/behavioral_search.py \
+            research/pr110_acsie_snapshot/F/cognitive_core/behavioral_search.py \
+            research/pr110_acsie_snapshot/D/cognitive_core/recursive_cognitive_compiler.py \
+            research/pr110_acsie_snapshot/E/cognitive_core/recursive_cognitive_compiler.py \
+            research/pr110_acsie_snapshot/F/cognitive_core/recursive_cognitive_compiler.py \
+            research/pr110_acsie_snapshot/D/cognitive_core/open_ended_growth.py \
+            research/pr110_acsie_snapshot/E/cognitive_core/open_ended_growth.py \
+            research/pr110_acsie_snapshot/F/cognitive_core/open_ended_growth.py \
+            lab/acsie_open_ended_self_extending_proving.py \
+            lab/pr110_gen7_primary_search_profile.py \
+            lab/pr110_gen7_primary_search_rc0.py \
+            lab/pr110_gen7_primary_search_rc1.py
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess, sys
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+
+          expected = {
+              "research/pr110_acsie_snapshot/D/cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
+              "research/pr110_acsie_snapshot/D/cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
+              "research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py": "778447a631a4c016d75dfc408dce5b0a446a9bf4",
+              "research/pr110_acsie_snapshot/E/cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
+              "research/pr110_acsie_snapshot/E/cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
+              "research/pr110_acsie_snapshot/E/cognitive_core/behavioral_search.py": "899c27ec90dbf281feb1e1e62a0e859acabb6e02",
+              "research/pr110_acsie_snapshot/F/cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
+              "research/pr110_acsie_snapshot/F/cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
+              "research/pr110_acsie_snapshot/F/cognitive_core/behavioral_search.py": "ac4c108d1bf572614f536505f34965dd0c18951e",
+          }
+          source = {}
+          for rel, want in expected.items():
+              p = Path(rel)
+              actual = subprocess.check_output(["git", "hash-object", str(p)], text=True).strip()
+              assert actual == want, f"{rel}: {actual} != {want}"
+              source[rel] = {
+                  "git_blob_sha1": actual,
+                  "file_sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+              }
+
+          checkpoint = Path("evidence/working-checkpoint.json")
+          raw_sha = "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4"
+          assert hashlib.sha256(checkpoint.read_bytes()).hexdigest() == raw_sha
+          envelope = load_checkpoint(
+              checkpoint,
+              expected_seed=2026100305,
+              expected_metadata={
+                  "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+                  "acsie_ref": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+              },
+          )
+          assert envelope["state_digest"] == "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b"
+          assert envelope["generation_next"] == 7
+          out = {
+              "schema": "ACSIE.PR110.UntracedPerformancePreflight.v1",
+              "status": "PREFLIGHT_PASS",
+              "checkpoint_raw_sha256": raw_sha,
+              "checkpoint_state_digest": envelope["state_digest"],
+              "generation_next": envelope["generation_next"],
+              "sources": source,
+              "python_version": sys.version,
+              "pythonhashseed_environment": os.environ.get("PYTHONHASHSEED"),
+              "hash_randomization_flag": sys.flags.hash_randomization,
+              "trace_digest_enabled": False,
+              "work_limit": {"dominance_comparisons": 150000, "register_calls": 50000},
+              "frozen_5x12_budget": "UNTOUCHED",
+              "promotion_status": "DO_NOT_PROMOTE",
+          }
+          Path("evidence/preflight.json").write_text(json.dumps(out, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(out, indent=2, sort_keys=True))
+          PY
+      - name: Run reference D with tracing disabled
+        continue-on-error: true
+        env:
+          PYTHONHASHSEED: "0"
+          ACSIE_SEARCH_PROFILE: "1"
+          ACSIE_SEARCH_PROFILE_PHASE: "primary_process_synthesis"
+          ACSIE_SEARCH_PROGRESS_INTERVAL: "25000"
+          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "150000"
+          ACSIE_SEARCH_MAX_REGISTER_CALLS: "50000"
+        run: |
+          set -u
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          set +e
+          timeout --signal=TERM --kill-after=30s 12m env \
+            PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/D:$GITHUB_WORKSPACE" \
+            python3 -u lab/pr110_gen7_primary_search_profile.py > evidence/D-raw.txt 2>&1
+          rc=$?
+          set -e
+          printf "%s\n" "$rc" > evidence/D-exit-code.txt
+          sha256sum evidence/working-checkpoint.json > evidence/D-final-checkpoint.sha256
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          echo "UNTRACED_REFERENCE_D_EXIT_CODE=$rc"
+      - name: Run RC0 E with tracing disabled
+        continue-on-error: true
+        env:
+          PYTHONHASHSEED: "0"
+          ACSIE_SEARCH_PROFILE: "1"
+          ACSIE_SEARCH_PROFILE_PHASE: "primary_process_synthesis"
+          ACSIE_SEARCH_PROGRESS_INTERVAL: "25000"
+          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "150000"
+          ACSIE_SEARCH_MAX_REGISTER_CALLS: "50000"
+        run: |
+          set -u
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          set +e
+          timeout --signal=TERM --kill-after=30s 12m env \
+            PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/E:$GITHUB_WORKSPACE" \
+            python3 -u lab/pr110_gen7_primary_search_rc0.py > evidence/E-raw.txt 2>&1
+          rc=$?
+          set -e
+          printf "%s\n" "$rc" > evidence/E-exit-code.txt
+          sha256sum evidence/working-checkpoint.json > evidence/E-final-checkpoint.sha256
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          echo "UNTRACED_RC0_E_EXIT_CODE=$rc"
+      - name: Run RC1 F with tracing disabled
+        continue-on-error: true
+        env:
+          PYTHONHASHSEED: "0"
+          ACSIE_SEARCH_PROFILE: "1"
+          ACSIE_SEARCH_PROFILE_PHASE: "primary_process_synthesis"
+          ACSIE_SEARCH_PROGRESS_INTERVAL: "25000"
+          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "150000"
+          ACSIE_SEARCH_MAX_REGISTER_CALLS: "50000"
+        run: |
+          set -u
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          set +e
+          timeout --signal=TERM --kill-after=30s 12m env \
+            PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/F:$GITHUB_WORKSPACE" \
+            python3 -u lab/pr110_gen7_primary_search_rc1.py > evidence/F-raw.txt 2>&1
+          rc=$?
+          set -e
+          printf "%s\n" "$rc" > evidence/F-exit-code.txt
+          sha256sum evidence/working-checkpoint.json > evidence/F-final-checkpoint.sha256
+          echo "UNTRACED_RC1_F_EXIT_CODE=$rc"
+      - name: Compare logical work counters and measure search time
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+
+          LOGICAL = (
+              "register_calls",
+              "generated_expressions",
+              "unique_states",
+              "duplicate_states",
+              "dominance_comparisons",
+              "dominance_pruned_states",
+              "dominance_frontier_max",
+              "max_states_in_depth",
+              "primitive_count",
+              "rows",
+              "max_depth",
+              "require_macro",
+          )
+
+          def inspect(label):
+              p = Path(f"evidence/{label}-raw.txt")
+              raw = p.read_text(errors="replace") if p.exists() else ""
+              events = []
+              for line in raw.splitlines():
+                  try: x = json.loads(line)
+                  except Exception: continue
+                  if str(x.get("event", "")).startswith("SEARCH_PROFILE_"):
+                      events.append(x)
+              rc_path = Path(f"evidence/{label}-exit-code.txt")
+              rc = int(rc_path.read_text()) if rc_path.exists() else None
+              budget = any(x.get("event") == "SEARCH_PROFILE_WORK_BUDGET_REACHED" for x in events)
+              point = next((x for x in reversed(events) if x.get("dominance_comparisons") == 150000), None)
+              overall = next((x.get("elapsed_seconds") for x in reversed([json.loads(line) for line in raw.splitlines() if line.strip().startswith("{") and '"event": "FIXED_WORK_BUDGET_REACHED"' in line])), None)
+              return {
+                  "label": label,
+                  "process_exit_code": rc,
+                  "raw_log_sha256": hashlib.sha256(raw.encode()).hexdigest(),
+                  "raw_log_bytes": len(raw.encode()),
+                  "reached_work_cutoff": budget,
+                  "profile_event_count": len(events),
+                  "primary_search_at_150k": point,
+                  "whole_seed_elapsed_seconds": overall,
+                  "final_checkpoint_sha256_file": (Path(f"evidence/{label}-final-checkpoint.sha256").read_text().strip() if Path(f"evidence/{label}-final-checkpoint.sha256").exists() else None),
+              }
+
+          reports = [inspect(x) for x in ("D","E","F")]
+          points = [x["primary_search_at_150k"] for x in reports]
+          counters_match = all(p is not None for p in points) and all(
+              all(points[0].get(k) == p.get(k) for k in LOGICAL)
+              for p in points[1:]
+          )
+          reached_all = all(x["reached_work_cutoff"] for x in reports)
+          checkpoints_unchanged = all(
+              x["final_checkpoint_sha256_file"] is not None
+              and x["final_checkpoint_sha256_file"].startswith("666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4")
+              for x in reports
+          )
+          time_at_point = {x["label"]: x["primary_search_at_150k"].get("elapsed_seconds") if x["primary_search_at_150k"] else None for x in reports}
+          overall_time = {x["label"]: x["whole_seed_elapsed_seconds"] for x in reports}
+          speedups = {}
+          for name in ("E","F"):
+              d_t, n_t = time_at_point.get("D"), time_at_point.get(name)
+              d_w, n_w = overall_time.get("D"), overall_time.get(name)
+              speedups[name] = {
+                  "primary_search_speedup_vs_D": d_t/n_t if d_t and n_t else None,
+                  "whole_seed_speedup_vs_D": d_w/n_w if d_w and n_w else None
+              }
+          if counters_match and reached_all and checkpoints_unchanged:
+              classification = "THREE_ARM_COUNTER_PARITY_AT_150K_UNTRACED"
+          elif any(x["primary_search_at_150k"] for x in reports):
+              classification = "INCOMPLETE_OR_DIVERGENT_COUNTER_EVIDENCE"
+          else:
+              classification = "CRASHED_OR_INVALID_BENCHMARK"
+          summary = {
+              "schema": "ACSIE.PR110.DRC0RC1.UntracedPerformance.v1",
+              "classification": classification,
+              "arms": reports,
+              "logical_counter_parity_at_150k": counters_match,
+              "all_arms_reached_work_cutoff": reached_all,
+              "all_checkpoints_unchanged": checkpoints_unchanged,
+              "primary_search_times_at_150k_seconds": time_at_point,
+              "whole_seed_times_seconds": overall_time,
+              "descriptive_speedups": speedups,
+              "trace_digest_enabled": False,
+              "frozen_5x12_budget": "UNTOUCHED",
+              "promotion_status": "DO_NOT_PROMOTE",
+              "note": "This is a single-seed bounded performance comparison. It does not replace traced decision parity, multi-seed qualification, or the 12-generation continuation."
+          }
+          Path("evidence/performance-summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+      - name: Upload untraced performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-gen7-rc0-rc1-untraced-performance
+          path: evidence/
+          retention-days: 90
