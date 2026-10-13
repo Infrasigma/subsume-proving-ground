@@ -1,0 +1,66 @@
+{
+  "schema": "ACSIE.PR110.Gen7ClosureFrontierProfileEvidence.v1",
+  "classification": "FIXED_WORK_BUDGET_CAPTURED",
+  "workflow": {
+    "run_id": 38373972383,
+    "commit_sha": "0f116c60d61732c352c25070ba7ac109b2672216",
+    "artifact_id": 11800327402,
+    "artifact_sha256": "2e956e6d74b66ac63f0fcbc74778490c892de254b3af19c1480f320163b4ba57",
+    "artifact_zip": "pr110-gen7-closure-search-profile.zip"
+  },
+  "checkpoint": {
+    "raw_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
+    "state_digest": "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b",
+    "generation_next": 7,
+    "seed": 2026100305,
+    "python_version": "3.12.15",
+    "pythonhashseed": "0"
+  },
+  "sources": {
+    "evaluator_git_blob": "1dc1fd5f115948eff14dd5ba357ef7a1e2b75c6e",
+    "G_recursive_compiler_git_blob": "8e7f6bcc6efdf432bcaa75cc008008ffc462a232",
+    "G_recursive_compiler_file_sha256": "749960344583125fe1725a364264c6051c1f2b26b5603064809f63addd598cbd",
+    "G_open_ended_growth_git_blob": "ec94fc545badde972510f2db9cbf008cc214e705",
+    "G_behavioral_search_git_blob": "8b36ca913cd13e43691a5a64fdfb27994e25438f"
+  },
+  "actual_closure_enumerator": {
+    "method": "RecursiveCognitiveCompiler.synthesize_process_frontier",
+    "profiling_scope": "first closure_synthesis call of Gen7",
+    "expected_parent_primitive_ids": [
+      "prim:69e680889385259c198f",
+      "prim:ca1cc7ea4217a64a7f5d"
+    ],
+    "input_rows": 14,
+    "free_input_keys": [
+      "x",
+      "y",
+      "z"
+    ],
+    "primitive_count": 23,
+    "policy_index": 1,
+    "policy_max_depth": 10,
+    "candidate_list_size": 3000,
+    "max_candidates_requested": 32,
+    "max_expression_attempts": 2500,
+    "progress_interval": 500,
+    "expression_attempts_at_cutoff": 2500,
+    "discovery_qualified_candidates_at_cutoff": 105,
+    "expression_errors_at_cutoff": 0,
+    "elapsed_seconds_at_500_attempts": 11.740972,
+    "elapsed_seconds_at_1000_attempts": 11.931745,
+    "elapsed_seconds_at_1500_attempts": 12.266323,
+    "elapsed_seconds_at_2000_attempts": 12.56613,
+    "elapsed_seconds_at_2500_attempts": 12.934223,
+    "driver_wall_seconds_until_cutoff": 22.988496,
+    "checkpoint_unchanged": true
+  },
+  "interpretation": [
+    "The prior approach of profiling ACSIE_SEARCH_PROFILE inside behavioral_search was the wrong observer for this closure phase: the live frontier method enumerates with RecursiveCognitiveCompiler._exprs and scalar eval_expr.",
+    "The first 500 completed expression evaluations account for 11.74 seconds from method entry, while the next 2000 take about 1.19 seconds. That interval includes the first policy's _exprs candidate-list materialization, so candidate-list construction appears to be a substantial cold-path cost.",
+    "The next step is not to assume the full 28-call cost is dominated by this one cold call; inspect per-policy depth keys and exact expression-list equivalence before changing search semantics.",
+    "This cutoff proves no science outcome. It is a diagnostic-only prefix from a single checkpoint and seed."
+  ],
+  "frozen_5x12_budget": "UNTOUCHED",
+  "scientific_gate": "NOT_RUN",
+  "promotion_status": "DO_NOT_PROMOTE"
+}
