@@ -76,9 +76,8 @@ def main() -> int:
         ).hexdigest(),
         pythonhashseed=os.environ.get("PYTHONHASHSEED"),
         hash_randomization_flag=sys.flags.hash_randomization,
-        max_dominance_comparisons=int(os.environ.get("ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS", "0")),
-        max_register_calls=int(os.environ.get("ACSIE_SEARCH_MAX_REGISTER_CALLS", "0")),
-        progress_interval=int(os.environ.get("ACSIE_SEARCH_PROGRESS_INTERVAL", "0")),
+        max_closure_frontier_expression_attempts=int(os.environ.get("ACSIE_CLOSURE_FRONTIER_MAX_EXPRESSIONS", "0")),
+        closure_frontier_progress_interval=int(os.environ.get("ACSIE_CLOSURE_FRONTIER_PROGRESS_INTERVAL", "0")),
         frozen_5x12_budget="UNTOUCHED",
         promotion_status="DO_NOT_PROMOTE",
     )
