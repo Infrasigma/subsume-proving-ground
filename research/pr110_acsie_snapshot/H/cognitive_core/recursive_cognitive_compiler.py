@@ -352,6 +352,36 @@ class RecursiveCognitiveCompiler:
         })
         return prim
 
+    @staticmethod
+    def _quotient_process_policies_by_effective_depth(
+        policies: Sequence[Mapping[str, Any]],
+    ) -> list[tuple[int, Mapping[str, Any], int, int]]:
+        """Keep the first policy per effective expression-depth cap.
+
+        _exprs() caps depth at 3. The process frontier's selection_key and
+        candidate ID use the expression and the first selected policy; later
+        policies with the same effective depth produce the exact same ordered
+        expression list, and equal candidate keys never replace the earlier
+        policy. Multiplicity is returned so the legacy discovery-qualified
+        count can still report the count that repeated-policy execution would
+        have reported.
+        """
+        multiplicity: dict[int, int] = {}
+        effective_by_index: list[int] = []
+        for policy in policies:
+            effective_depth = min(3, int(policy["max_depth"]))
+            effective_by_index.append(effective_depth)
+            multiplicity[effective_depth] = multiplicity.get(effective_depth, 0) + 1
+
+        seen: set[int] = set()
+        quotient: list[tuple[int, Mapping[str, Any], int, int]] = []
+        for index, (policy, effective_depth) in enumerate(zip(policies, effective_by_index), start=1):
+            if effective_depth in seen:
+                continue
+            seen.add(effective_depth)
+            quotient.append((index, policy, effective_depth, multiplicity[effective_depth]))
+        return quotient
+
     def synthesize_process_frontier(
         self,
         rows:Sequence[Trace],
@@ -386,6 +416,8 @@ class RecursiveCognitiveCompiler:
             expression_errors = 0
             current_policy_index = 0
             current_policy: Mapping[str, Any] = {}
+            current_policy_multiplicity = 1
+            unique_discovery_qualified_candidates = 0
 
             def emit_closure_profile(event: str, *, force: bool = False) -> None:
                 if not force and expression_attempts % profile_interval != 0:
@@ -398,6 +430,7 @@ class RecursiveCognitiveCompiler:
                     "generation": int(self.generation),
                     "policy_index": current_policy_index,
                     "policy": dict(current_policy),
+                    "policy_multiplicity": current_policy_multiplicity,
                     "rows": len(rows),
                     "primitive_count": len(pids),
                     "available_expressions_in_policy": len(self._expr_cache.get(
@@ -407,6 +440,7 @@ class RecursiveCognitiveCompiler:
                     "max_candidates": int(max_candidates),
                     "expression_attempts": expression_attempts,
                     "discovery_qualified_candidates": int(self.last_process_candidate_selection_summary["discovery_qualified"]),
+                    "unique_discovery_qualified_candidates": unique_discovery_qualified_candidates,
                     "expression_errors": expression_errors,
                     "elapsed_seconds": round(time.perf_counter() - profile_started, 6),
                     "free_input_keys": list(keys),
@@ -424,10 +458,23 @@ class RecursiveCognitiveCompiler:
                 "progress_interval": profile_interval,
             }, sort_keys=True), flush=True)
 
-            for policy_index, pol in enumerate(self.propose_search_policies(), start=1):
+            policies = tuple(self.propose_search_policies())
+            quotient_policies = self._quotient_process_policies_by_effective_depth(policies)
+            print(json.dumps({
+                "event": "CLOSURE_FRONTIER_POLICY_QUOTIENT",
+                "phase": "closure_synthesis",
+                "call_index": profile_call_index,
+                "generation": int(self.generation),
+                "original_policy_count": len(policies),
+                "quotient_policy_count": len(quotient_policies),
+                "effective_depths": [item[2] for item in quotient_policies],
+                "policy_multiplicities": [item[3] for item in quotient_policies],
+            }, sort_keys=True), flush=True)
+            for policy_index, pol, effective_depth, policy_multiplicity in quotient_policies:
                 current_policy_index = policy_index
                 current_policy = dict(pol)
-                expression_list = self._exprs(keys, pids, min(3, int(pol["max_depth"])))
+                current_policy_multiplicity = policy_multiplicity
+                expression_list = self._exprs(keys, pids, effective_depth)
                 print(json.dumps({
                     "event": "CLOSURE_FRONTIER_PROFILE_POLICY_START",
                     "phase": "closure_synthesis",
@@ -435,6 +482,8 @@ class RecursiveCognitiveCompiler:
                     "generation": int(self.generation),
                     "policy_index": policy_index,
                     "policy": dict(pol),
+                    "effective_depth": effective_depth,
+                    "policy_multiplicity": policy_multiplicity,
                     "available_expressions_in_policy": len(expression_list),
                     "expression_attempts_so_far": expression_attempts,
                 }, sort_keys=True), flush=True)
@@ -456,7 +505,8 @@ class RecursiveCognitiveCompiler:
                             len(json.dumps(expr,sort_keys=True)),
                             json.dumps(expr,sort_keys=True),
                         )
-                        self.last_process_candidate_selection_summary["discovery_qualified"] += 1
+                        self.last_process_candidate_selection_summary["discovery_qualified"] += policy_multiplicity
+                        unique_discovery_qualified_candidates += 1
                         candidates.append((selection_key,expr,used,pol))
                     except Exception:
                         expression_errors += 1
@@ -465,8 +515,10 @@ class RecursiveCognitiveCompiler:
 
             emit_closure_profile("CLOSURE_FRONTIER_PROFILE_SEARCH_RETURNED", force=True)
         else:
-            for pol in self.propose_search_policies():
-                for expr in self._exprs(keys,pids,min(3,int(pol["max_depth"]))):
+            policies = tuple(self.propose_search_policies())
+            quotient_policies = self._quotient_process_policies_by_effective_depth(policies)
+            for _policy_index, pol, effective_depth, policy_multiplicity in quotient_policies:
+                for expr in self._exprs(keys, pids, effective_depth):
                     try:
                         tr=sum(abs(eval_expr(expr,t.inputs,self._pmap())-t.target) for t in rows)/len(rows)
                         if tr>1e-9: continue
@@ -477,7 +529,7 @@ class RecursiveCognitiveCompiler:
                             len(json.dumps(expr,sort_keys=True)),
                             json.dumps(expr,sort_keys=True),
                         )
-                        self.last_process_candidate_selection_summary["discovery_qualified"] += 1
+                        self.last_process_candidate_selection_summary["discovery_qualified"] += policy_multiplicity
                         candidates.append((selection_key,expr,used,pol))
                     except Exception:
                         continue
