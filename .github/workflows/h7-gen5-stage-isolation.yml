@@ -1,0 +1,146 @@
+name: H7 Gen5 stage isolation before slow probe
+
+on:
+  push:
+    branches:
+      - research/h7-gen5-stage-isolation-20261013
+    paths:
+      - ".github/workflows/h7-gen5-stage-isolation.yml"
+      - "lab/h7_gen5_stage_isolation.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: h7-gen5-stage-isolation
+  cancel-in-progress: false
+
+env:
+  PYTHONHASHSEED: "0"
+
+jobs:
+  hosted-runner-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Report runner capacity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "H7_STAGE_ISOLATION_PREFLIGHT=START"
+          echo "RUNNER_OS=${RUNNER_OS:-unknown}"
+          echo "RUNNER_ARCH=${RUNNER_ARCH:-unknown}"
+          echo "KERNEL=$(uname -srm)"
+          echo "PYTHON=$(python3 --version 2>&1 || true)"
+          echo "LOGICAL_CPUS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc || echo unknown)"
+          awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/ {print}' /proc/meminfo || true
+          df -h .
+          echo "H7_STAGE_ISOLATION_PREFLIGHT=PASS"
+          echo "PHONE_COMPUTE=no"
+
+  isolate-slow-interval:
+    needs: hosted-runner-preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - name: Checkout diagnostic branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download pinned Phase6 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 37738748858
+          artifact-ids: 11536026911
+          github-token: ${{ github.token }}
+          path: evidence
+
+      - name: Verify source and checkpoint identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          manifest=json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
+          assert manifest["B"]["runtime_sha"]=="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
+          assert manifest["proving_harness_sha"]=="33259fc5c69d87b99c604f0050508c433a279daf"
+          ck=Path("evidence/pr110-phase6-scalability-forensics/B-checkpoint.json")
+          assert ck.exists()
+          data=json.loads(ck.read_text())
+          assert data["seed"]==2026100305 and data["generation_next"]==5
+          identity=data["learner_state"]["runtime_identity"]
+          assert identity["proving_sha"]=="33259fc5c69d87b99c604f0050508c433a279daf"
+          assert identity["acsie_ref"]=="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
+          print(json.dumps({
+              "status":"PINNED_INPUTS_PASS",
+              "checkpoint_sha256":hashlib.sha256(ck.read_bytes()).hexdigest(),
+              "seed":data["seed"],"generation_next":data["generation_next"],
+              "runtime_sha":identity["acsie_ref"],"proving_sha":identity["proving_sha"],
+          },sort_keys=True))
+          PY
+          python3 -m py_compile lab/h7_gen5_stage_isolation.py
+
+      - name: Record stage durations up to probe-1 call boundary
+        shell: bash
+        timeout-minutes: 45
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/h7-stage-isolation
+          checkpoint="evidence/pr110-phase6-scalability-forensics/B-checkpoint.json"
+          set +e
+          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
+            python3 -u lab/h7_gen5_stage_isolation.py \
+              --checkpoint "$checkpoint" \
+              --output evidence/h7-stage-isolation/stage-isolation.json \
+              > evidence/h7-stage-isolation/stage-isolation.stdout.log \
+              2> evidence/h7-stage-isolation/stage-isolation.stderr.log
+          rc=$?
+          set -e
+          cat evidence/h7-stage-isolation/stage-isolation.stdout.log
+          cat evidence/h7-stage-isolation/stage-isolation.stderr.log >&2
+          echo "STAGE_ISOLATION_EXIT=$rc"
+          exit "$rc"
+
+      - name: Summarize stage events even on timeout
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="evidence/h7-stage-isolation/stage-isolation.jsonl"
+          if [ ! -s "$log" ]; then
+            echo "STAGE_ISOLATION=BLOCKED_NO_EVENT_LOG"
+            exit 1
+          fi
+          python3 - "$log" <<'PY'
+          import json, sys
+          from pathlib import Path
+          rows=[json.loads(line) for line in Path(sys.argv[1]).read_text().splitlines() if line.strip()]
+          ended=[r for r in rows if r.get("event")=="STAGE_END"]
+          long=sorted(ended,key=lambda r:float(r.get("duration_seconds",0)),reverse=True)[:20]
+          active={}
+          for r in rows:
+              if r.get("event")=="STAGE_START":
+                  active[(r.get("stage"),json.dumps(r.get("context",{}),sort_keys=True))]=r
+              elif r.get("event") in {"STAGE_END","STAGE_EXCEPTION"}:
+                  active.pop((r.get("stage"),json.dumps(r.get("context",{}),sort_keys=True)),None)
+          print(json.dumps({
+              "events":len(rows),
+              "stages_completed":len(ended),
+              "target_boundary_reached":any(r.get("event")=="TARGET_BOUNDARY_BEFORE_CALL" for r in rows),
+              "longest_completed_stages":[{k:r.get(k) for k in ("stage","duration_seconds","context","result","exception_type")} for r in long],
+              "still_active_at_stop":[{"stage":k[0],"context":json.loads(k[1]),"started_at":v.get("elapsed_seconds")} for k,v in active.items()],
+              "last_event":rows[-1] if rows else None,
+          },sort_keys=True))
+          PY
+
+      - name: Upload complete stage isolation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h7-gen5-stage-isolation
+          path: evidence/h7-stage-isolation/
+          if-no-files-found: warn
+          retention-days: 90
