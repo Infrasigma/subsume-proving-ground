@@ -1,0 +1,51 @@
+name: H7 cached baseline evaluator exact-unit tests
+
+on:
+  push:
+    branches:
+      - research/h7-gen5-stage-isolation-20261013
+    paths:
+      - ".github/workflows/h7-cached-baseline-eval-tests.yml"
+      - "lab/h7_cached_baseline_eval.py"
+      - "lab/test_h7_cached_baseline_eval.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PYTHONHASHSEED: "0"
+    steps:
+      - name: Checkout lab snapshot
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Verify pinned runtime files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+          expected={
+            "cognitive_core/behavioral_search.py":"c126aa723b5c5f6013ac7ee53b5c5f6013ac7ee53b5c5f6013ac7ee53b5c5f6013ac7ee53",
+          }
+          # Verify the exact baseline manifest rather than relying on handwritten hashes.
+          import json
+          from pathlib import Path
+          m=json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
+          for rel,blob in m["B"]["files"].items():
+              actual=subprocess.check_output(["git","hash-object",str(Path("research/pr110_acsie_snapshot/B")/rel)],text=True).strip()
+              assert actual==blob,(rel,actual,blob)
+          print("H7_BASELINE_SNAPSHOT=PASS")
+          PY
+          python3 -m py_compile lab/h7_cached_baseline_eval.py lab/test_h7_cached_baseline_eval.py
+      - name: Run exact semantics and selector parity tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE"
+          python3 -m unittest -v lab.test_h7_cached_baseline_eval
