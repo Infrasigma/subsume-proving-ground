@@ -1,7 +1,12 @@
-name: PR110 Gen7 D-versus-RC1 bitmask decision trace parity
+name: PR110 Gen7 D-versus-RC1 bitmask decision trace parity at 500k
 
 on:
-  # Manual-only after the first reproducible run; avoid duplicate costly parity jobs on every research commit.
+  # Path-filter to the driver only. The workflow definition is pinned by the run's head SHA and does not self-trigger.
+  push:
+    branches:
+      - research/pr110-gen7-rc1-bitmask-dominance-20261013
+    paths:
+      - "lab/pr110_gen7_primary_search_rc1.py"
   workflow_dispatch:
 
 permissions:
@@ -79,13 +84,23 @@ jobs:
           )
           assert envelope["state_digest"] == "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b"
           assert envelope["generation_next"] == 7
+          evaluator_path = Path("lab/acsie_open_ended_self_extending_proving.py")
+          expected_evaluator_blob = "1dc1fd5f115948eff14dd5ba357ef7a1e2b75c6e"
+          actual_evaluator_blob = subprocess.check_output(["git", "hash-object", str(evaluator_path)], text=True).strip()
+          assert actual_evaluator_blob == expected_evaluator_blob, (actual_evaluator_blob, expected_evaluator_blob)
+          driver_path = Path("lab/pr110_gen7_primary_search_rc1.py")
+          reference_driver_path = Path("lab/pr110_gen7_primary_search_profile.py")
           report = {
-              "schema": "ACSIE.PR110.Gen7DecisionTraceParityPreflight.v1",
+              "schema": "ACSIE.PR110.Gen7RC1DecisionTraceParityPreflight.v1",
               "status": "PREFLIGHT_PASS",
               "checkpoint_raw_sha256": input_sha,
               "checkpoint_state_digest": envelope["state_digest"],
               "generation_next": envelope["generation_next"],
               "source_identities": identities,
+              "evaluator_git_blob_sha1": actual_evaluator_blob,
+              "candidate_driver_git_blob_sha1": subprocess.check_output(["git", "hash-object", str(driver_path)], text=True).strip(),
+              "reference_driver_git_blob_sha1": subprocess.check_output(["git", "hash-object", str(reference_driver_path)], text=True).strip(),
+              "workflow_head_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
               "python_version": sys.version,
               "pythonhashseed_environment": os.environ.get("PYTHONHASHSEED"),
               "hash_randomization_flag": sys.flags.hash_randomization,
@@ -95,15 +110,15 @@ jobs:
           Path("evidence/preflight.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
           print(json.dumps(report, indent=2, sort_keys=True))
           PY
-      - name: Run reference D from the immutable state with a 150k-comparison cutoff
+      - name: Run reference D from the immutable state with a 500k-comparison cutoff
         continue-on-error: true
         env:
           PYTHONHASHSEED: "0"
           ACSIE_SEARCH_PROFILE: "1"
           ACSIE_SEARCH_PROFILE_PHASE: "primary_process_synthesis"
           ACSIE_SEARCH_TRACE_DIGEST: "1"
-          ACSIE_SEARCH_PROGRESS_INTERVAL: "25000"
-          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "150000"
+          ACSIE_SEARCH_PROGRESS_INTERVAL: "100000"
+          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "500000"
           ACSIE_SEARCH_MAX_REGISTER_CALLS: "50000"
         run: |
           set -u
@@ -125,8 +140,8 @@ jobs:
           ACSIE_SEARCH_PROFILE: "1"
           ACSIE_SEARCH_PROFILE_PHASE: "primary_process_synthesis"
           ACSIE_SEARCH_TRACE_DIGEST: "1"
-          ACSIE_SEARCH_PROGRESS_INTERVAL: "25000"
-          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "150000"
+          ACSIE_SEARCH_PROGRESS_INTERVAL: "100000"
+          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "500000"
           ACSIE_SEARCH_MAX_REGISTER_CALLS: "50000"
         run: |
           set -u
@@ -215,7 +230,7 @@ jobs:
           summary = {
               "schema": "ACSIE.PR110.Gen7RC1DecisionTraceParity.v1",
               "classification": (
-                  "DECISION_TRACE_PARITY_THROUGH_150K_COMPARISON_CUTOFF"
+                  "DECISION_TRACE_PARITY_THROUGH_500K_COMPARISON_CUTOFF"
                   if full_cutoff_parity
                   else "DECISION_TRACE_PARITY_ON_COMMON_PREFIX_ONLY"
                   if parity
@@ -233,7 +248,7 @@ jobs:
               "F_raw_log_sha256": hashlib.sha256(f_raw.encode()).hexdigest(),
               "D_input_checkpoint_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
               "F_input_checkpoint_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
-              "fixed_work_limit": {"dominance_comparisons": 150000, "register_calls": 50000},
+              "fixed_work_limit": {"dominance_comparisons": 500000, "register_calls": 50000},
               "frozen_5x12_budget": "UNTOUCHED",
               "promotion_status": "DO_NOT_PROMOTE",
           }
