@@ -1,0 +1,172 @@
+name: PR110 bounded Gen7 RC0 exact-acceleration profile
+
+on:
+  push:
+    branches:
+      - research/pr110-gen7-primary-search-profile-20261013
+    paths:
+      - ".github/workflows/pr110-gen7-primary-search-rc0.yml"
+      - "research/pr110_acsie_snapshot/E/**"
+      - "lab/acsie_open_ended_self_extending_proving.py"
+      - "lab/pr110_gen7_primary_search_rc0.py"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  profile-rc0:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Retrieve immutable optimized Gen6 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: pr110-exact-b-gen6-memoized-continuation
+          run-id: 38033213264
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: prior
+      - name: Verify checkpoint, source snapshot and actual imported E modules
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/E:${{ github.workspace }}
+          PYTHONHASHSEED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp prior/working-checkpoint.json evidence/working-checkpoint.json
+          python3 -m py_compile \
+            research/pr110_acsie_snapshot/E/cognitive_core/behavioral_search.py \
+            research/pr110_acsie_snapshot/E/cognitive_core/recursive_cognitive_compiler.py \
+            research/pr110_acsie_snapshot/E/cognitive_core/open_ended_growth.py \
+            lab/acsie_open_ended_self_extending_proving.py \
+            lab/pr110_gen7_primary_search_rc0.py
+          python3 - <<'PY'
+          import hashlib, importlib, json, os, subprocess, sys
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+
+          expected_files = {
+              "cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
+              "cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
+              "cognitive_core/behavioral_search.py": "61375625cfd906f3ff78f19a584b6fe997883007",
+          }
+          root = Path("research/pr110_acsie_snapshot/E").resolve()
+          imported = {}
+          for rel, expected_blob in expected_files.items():
+              path = root / rel
+              actual_blob = subprocess.check_output(["git", "hash-object", str(path)], text=True).strip()
+              assert actual_blob == expected_blob, (rel, actual_blob, expected_blob)
+              module_name = rel[:-3].replace("/", ".")
+              module = importlib.import_module(module_name)
+              imported_path = Path(module.__file__).resolve()
+              assert imported_path == path, (module_name, str(imported_path), str(path))
+              imported[rel] = {
+                  "git_blob_sha1": actual_blob,
+                  "file_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                  "imported_module_file": str(imported_path),
+              }
+
+          checkpoint = Path("evidence/working-checkpoint.json")
+          expected_checkpoint_sha = "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4"
+          assert hashlib.sha256(checkpoint.read_bytes()).hexdigest() == expected_checkpoint_sha
+          envelope = load_checkpoint(
+              checkpoint,
+              expected_seed=2026100305,
+              expected_metadata={
+                  "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+                  "acsie_ref": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+              },
+          )
+          assert envelope["state_digest"] == "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b"
+          assert envelope["generation_next"] == 7
+          record = {
+              "schema": "ACSIE.PR110.Gen7RC0ProfilePreflight.v1",
+              "status": "PREFLIGHT_PASS",
+              "checkpoint_raw_sha256": expected_checkpoint_sha,
+              "checkpoint_state_digest": envelope["state_digest"],
+              "generation_next": envelope["generation_next"],
+              "runtime_snapshot_E": imported,
+              "python_version": sys.version,
+              "python_executable": sys.executable,
+              "pythonhashseed_environment": os.environ.get("PYTHONHASHSEED"),
+              "hash_randomization_flag": sys.flags.hash_randomization,
+              "sys_path": sys.path,
+              "evaluator_file_sha256": hashlib.sha256(Path("lab/acsie_open_ended_self_extending_proving.py").read_bytes()).hexdigest(),
+              "driver_file_sha256": hashlib.sha256(Path("lab/pr110_gen7_primary_search_rc0.py").read_bytes()).hexdigest(),
+              "source_parent_snapshot": "D instrumented reference variant",
+              "frozen_5x12_budget": "UNTOUCHED",
+              "promotion_status": "DO_NOT_PROMOTE",
+          }
+          Path("evidence/preflight.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(record, indent=2, sort_keys=True))
+          PY
+      - name: Run RC0 under the same deterministic work budget
+        continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/E:${{ github.workspace }}
+          PYTHONHASHSEED: "0"
+          ACSIE_SEARCH_PROFILE: "1"
+          ACSIE_SEARCH_PROFILE_PHASE: "primary_process_synthesis"
+          ACSIE_SEARCH_PROGRESS_INTERVAL: "5000"
+          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "150000"
+          ACSIE_SEARCH_MAX_REGISTER_CALLS: "50000"
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=30s 15m python3 -u lab/pr110_gen7_primary_search_rc0.py > evidence/primary-search-rc0-raw.txt 2>&1
+          rc=$?
+          set -e
+          printf "%s\n" "$rc" > evidence/profile-process-exit-code.txt
+          echo "PRIMARY_SEARCH_RC0_PROCESS_EXIT_CODE=$rc"
+      - name: Summarize RC0 fixed-work profile
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          raw_path = Path("evidence/primary-search-rc0-raw.txt")
+          raw = raw_path.read_text(errors="replace") if raw_path.exists() else ""
+          rc_path = Path("evidence/profile-process-exit-code.txt")
+          rc = int(rc_path.read_text()) if rc_path.exists() else None
+          events = []
+          for line in raw.splitlines():
+              try: event = json.loads(line)
+              except Exception: continue
+              if str(event.get("event", "")).startswith("SEARCH_PROFILE_"):
+                  events.append(event)
+          summary = {
+              "schema": "ACSIE.PR110.Gen7RC0Profile.v1",
+              "process_exit_code": rc,
+              "profile_event_count": len(events),
+              "profile_events": events[-100:],
+              "raw_log_bytes": len(raw.encode()),
+              "raw_log_sha256": hashlib.sha256(raw.encode()).hexdigest(),
+              "input_checkpoint_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
+              "frozen_5x12_budget": "UNTOUCHED",
+              "promotion_status": "DO_NOT_PROMOTE",
+          }
+          if "FIXED_WORK_BUDGET_REACHED" in raw or "SEARCH_PROFILE_DOMINANCE_BUDGET_REACHED" in raw or "SEARCH_PROFILE_REGISTER_BUDGET_REACHED" in raw:
+              summary["classification"] = "FIXED_WORK_BUDGET_REACHED"
+          elif rc == 124:
+              summary["classification"] = "INCONCLUSIVE_WALL_TIMEOUT"
+          elif "PROFILE_RETURNED_WITHOUT_WORK_CUTOFF" in raw and rc == 0:
+              summary["classification"] = "PROFILE_RETURNED_BEFORE_CUTOFF"
+          else:
+              summary["classification"] = "CRASHED_OR_INVALID_PROFILE"
+          Path("evidence/profile-summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+      - name: Upload RC0 profile and provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-gen7-primary-search-rc0
+          path: evidence/
+          retention-days: 90
