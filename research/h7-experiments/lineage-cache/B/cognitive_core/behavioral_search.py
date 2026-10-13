@@ -163,9 +163,20 @@ def find_exact_expression(
         vector_cache[ident] = values
         return values
 
+    # H7 hypothesis: dominance/ranking repeatedly recomputes identical lineage
+    # closure for the same direct macro tuple. Memoize only within this search
+    # invocation; the compiler archive is fixed during find_exact_expression.
+    # These caches must remain observationally transparent: no ranking, set,
+    # ordering, threshold, or candidate-generation semantics change.
+    provenance_lineage_cache: dict[tuple[str, ...], tuple[str, ...]] = {}
+    executable_lineage_cache: dict[tuple[str, ...], tuple[str, ...]] = {}
+
     def provenance_lineage_ids(used_primitives: tuple[str, ...]) -> tuple[str, ...]:
         if not used_primitives:
             return ()
+        cached = provenance_lineage_cache.get(used_primitives)
+        if cached is not None:
+            return cached
         lineage: set[str] = set()
         primitive_lineage = getattr(compiler, "primitive_lineage", None)
         if primitive_lineage is None:
@@ -173,11 +184,16 @@ def find_exact_expression(
         else:
             for pid in used_primitives:
                 lineage.update(str(x) for x in primitive_lineage(pid))
-        return tuple(sorted(lineage))
+        result = tuple(sorted(lineage))
+        provenance_lineage_cache[used_primitives] = result
+        return result
 
     def executable_lineage_ids(used_primitives: tuple[str, ...]) -> tuple[str, ...]:
         if not used_primitives:
             return ()
+        cached = executable_lineage_cache.get(used_primitives)
+        if cached is not None:
+            return cached
         lineage: set[str] = set()
         executable_lineage = getattr(compiler, "executable_lineage", None)
         if executable_lineage is None:
@@ -185,7 +201,9 @@ def find_exact_expression(
         else:
             for pid in used_primitives:
                 lineage.update(str(x) for x in executable_lineage(pid))
-        return tuple(sorted(lineage))
+        result = tuple(sorted(lineage))
+        executable_lineage_cache[used_primitives] = result
+        return result
 
 
     structural_lineage_by_key: dict[str, set[str]] = {}
