@@ -37,6 +37,7 @@ jobs:
       - name: Verify checkpoint and D/E source provenance
         env:
           PYTHONHASHSEED: "0"
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/D:${{ github.workspace }}
         run: |
           set -euo pipefail
           mkdir -p evidence
