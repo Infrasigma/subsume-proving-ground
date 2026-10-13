@@ -1003,7 +1003,15 @@ def run_seed(
                 probe_index=int(probe_idx),
             )
             primary_synthesis_started = perf_counter()
-            proc = learner.synthesize_process(tuple(ptrain) + tuple(pselection), ptransfer, pood)
+            previous_phase = os.environ.get("ACSIE_ACTIVE_SYNTHESIS_PHASE")
+            os.environ["ACSIE_ACTIVE_SYNTHESIS_PHASE"] = "primary_process_synthesis"
+            try:
+                proc = learner.synthesize_process(tuple(ptrain) + tuple(pselection), ptransfer, pood)
+            finally:
+                if previous_phase is None:
+                    os.environ.pop("ACSIE_ACTIVE_SYNTHESIS_PHASE", None)
+                else:
+                    os.environ["ACSIE_ACTIVE_SYNTHESIS_PHASE"] = previous_phase
             print(
                 json.dumps(
                     {
