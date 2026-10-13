@@ -284,9 +284,15 @@ class Capture:
 
         def bounded_wrapper(*args, **kwargs):
             result = None
+            completed_normally = False
+            caught_error = None
             try:
                 result = selected_function(*args, **kwargs)
+                completed_normally = True
                 return result
+            except BaseException as exc:
+                caught_error = exc
+                raise
             finally:
                 # Stop immediately after the selected call returns if the search
                 # terminated before depth 4. This avoids running the remaining
@@ -299,10 +305,16 @@ class Capture:
                     and not self.done
                 ):
                     self.done = True
-                    self.status = (
-                        "CAPTURE_PARTIAL_SEARCH_RETURNED"
-                        if self.captured else "NO_TARGET_DEPTH_CAPTURE"
-                    )
+                    if completed_normally:
+                        self.status = (
+                            "CAPTURE_PARTIAL_SEARCH_RETURNED"
+                            if self.captured else "NO_TARGET_DEPTH_CAPTURE"
+                        )
+                    else:
+                        self.status = (
+                            "CAPTURE_PARTIAL_SEARCH_CRASHED"
+                            if self.captured else "SELECTED_SEARCH_CRASHED"
+                        )
                     source_path = Path(behavioral_search.__file__).resolve()
                     payload = {
                         "schema": "ACSIE.PR110.H7.offline-frontier-capture.v4",
@@ -324,14 +336,17 @@ class Capture:
                         },
                         "captures": self.captured,
                         "selected_search_completion": {
-                            "returned_normally": result is not None or result is None,
+                            "returned_normally": completed_normally,
                             "result_is_none": result is None,
+                            "exception_type": type(caught_error).__name__ if caught_error is not None else None,
+                            "exception": str(caught_error)[:1000] if caught_error is not None else None,
                             "result_stats": dict(getattr(result, "stats", {})) if result is not None else {},
                             "hook_elapsed_seconds_from_run_seed_start": time.perf_counter() - self.started,
                         },
                     }
                     self.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
-                    raise SystemExit(0 if self.captured else 86)
+                    if completed_normally:
+                        raise SystemExit(0 if self.captured else 86)
 
         growth.find_exact_expression = bounded_wrapper
         return original
