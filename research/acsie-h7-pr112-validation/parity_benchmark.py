@@ -33,7 +33,7 @@ def run_variant(variant, n, task):
         "--n", str(n), "--task", task, "--trials", "3",
     ]
     completed = subprocess.run(
-        command, cwd=ROOT.parents[2], env=env,
+        command, cwd=ROOT.parents[1], env=env,
         text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         timeout=120, check=False,
     )
