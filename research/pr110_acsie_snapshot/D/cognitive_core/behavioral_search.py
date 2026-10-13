@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from time import perf_counter
@@ -46,6 +47,9 @@ def find_exact_expression(
     profile_interval = max(1, int(os.environ.get("ACSIE_SEARCH_PROGRESS_INTERVAL", "5000")))
     comparison_budget = max(0, int(os.environ.get("ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS", "0")))
     register_budget = max(0, int(os.environ.get("ACSIE_SEARCH_MAX_REGISTER_CALLS", "0")))
+    trace_enabled = profile_enabled and os.environ.get("ACSIE_SEARCH_TRACE_DIGEST") == "1"
+    trace_hasher = hashlib.sha256()
+    trace_event_count = 0
     target = tuple(float(row.target) for row in discovery_rows)
     primitive_ids = tuple(sorted(compiler.primitives))
     pmap = compiler._pmap()
@@ -393,6 +397,15 @@ def find_exact_expression(
     first_exact_target_depth: int | None = None
     target_continuation_budget = 2
 
+    def record_decision(event: str, **payload: Any) -> None:
+        nonlocal trace_event_count
+        if not trace_enabled:
+            return
+        encoded = json.dumps({"event": event, **payload}, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        trace_hasher.update(len(encoded).to_bytes(8, "big"))
+        trace_hasher.update(encoded)
+        trace_event_count += 1
+
     def emit_profile(event: str, *, force: bool = False) -> None:
         if not profile_enabled:
             return
@@ -417,6 +430,9 @@ def find_exact_expression(
             "dominance_frontier_max": int(stats.get("dominance_frontier_max", 0)),
             "max_states_in_depth": int(stats.get("max_states_in_depth", 0)),
             "lineage_cache_counters": dict(lineage_cache_counters),
+            "decision_trace_enabled": trace_enabled,
+            "decision_trace_events": trace_event_count if trace_enabled else None,
+            "decision_trace_sha256": trace_hasher.hexdigest() if trace_enabled else None,
         }, sort_keys=True), flush=True)
 
     def expr_key(expr: Mapping[str, Any]) -> str:
@@ -426,31 +442,23 @@ def find_exact_expression(
         return state[5] in dominated_state_tokens
 
     def dominates(left: tuple, right: tuple) -> bool:
-        stats["dominance_comparisons"] = int(stats.get("dominance_comparisons", 0)) + 1
-        comparisons = int(stats["dominance_comparisons"])
-        if profile_enabled and comparisons % profile_interval == 0:
-            emit_profile("SEARCH_PROFILE_PROGRESS", force=True)
+        comparisons = int(stats.get("dominance_comparisons", 0))
         if profile_enabled and comparison_budget > 0 and comparisons >= comparison_budget:
             emit_profile("SEARCH_PROFILE_WORK_BUDGET_REACHED", force=True)
             raise SystemExit(76)
-        # A composite alias may have a larger transitive lineage while
-        # directly reusing fewer executable primitives. It must not dominate
-        # an explicit multi-parent composition whose direct macro vocabulary
-        # is richer. Transitive lineage remains necessary, but direct reuse is
-        # also part of executable dominance.
+        stats["dominance_comparisons"] = comparisons + 1
+        comparisons += 1
         left_direct = set(left[2])
         right_direct = set(right[2])
         left_lineage = set(executable_lineage_ids(left[2]))
         right_lineage = set(executable_lineage_ids(right[2]))
         left_depth, left_nodes = executable_cost(left[0])
         right_depth, right_nodes = executable_cost(right[0])
-        return (
-            right_direct.issubset(left_direct)
-            and right_lineage.issubset(left_lineage)
-            and left_depth <= right_depth
-            and left_nodes <= right_nodes
-        )
-
+        decision = (right_direct.issubset(left_direct) and right_lineage.issubset(left_lineage) and left_depth <= right_depth and left_nodes <= right_nodes)
+        record_decision("DOM", left_token=int(left[5]), right_token=int(right[5]), result=bool(decision))
+        if profile_enabled and comparisons % profile_interval == 0:
+            emit_profile("SEARCH_PROFILE_PROGRESS", force=True)
+        return bool(decision)
 
     def discard_pruned_state(state: tuple) -> None:
         """Release storage that is already logically removed by dominance.
@@ -473,25 +481,29 @@ def find_exact_expression(
 
     def register(expr: Mapping[str, Any]):
         nonlocal next_state_token, target_candidate_found
-        stats["register_calls"] = int(stats.get("register_calls", 0)) + 1
-        if profile_enabled and int(stats["register_calls"]) % profile_interval == 0:
-            emit_profile("SEARCH_PROFILE_PROGRESS", force=True)
+        current_register_calls = int(stats.get("register_calls", 0))
         if profile_enabled and comparison_budget > 0 and int(stats.get("dominance_comparisons", 0)) >= comparison_budget:
             emit_profile("SEARCH_PROFILE_DOMINANCE_BUDGET_REACHED", force=True)
             raise SystemExit(76)
-        if profile_enabled and register_budget > 0 and int(stats["register_calls"]) >= register_budget:
+        if profile_enabled and register_budget > 0 and current_register_calls >= register_budget:
             emit_profile("SEARCH_PROFILE_REGISTER_BUDGET_REACHED", force=True)
             raise SystemExit(76)
+        stats["register_calls"] = current_register_calls + 1
+        if profile_enabled and int(stats["register_calls"]) % profile_interval == 0:
+            emit_profile("SEARCH_PROFILE_PROGRESS", force=True)
         expr = canonical(expr)
         expression_ident = expr_key(expr)
+        record_decision("REGISTER", expression=expression_ident)
         if expression_ident in seen_expression_keys:
             stats["duplicate_states"] += 1
             stats["exact_expression_duplicates_skipped"] += 1
+            record_decision("REGISTER_DUPLICATE_EXPRESSION", expression=expression_ident)
             return None
         seen_expression_keys.add(expression_ident)
         try:
             outputs = eval_vector(expr)
-        except Exception:
+        except Exception as exc:
+            record_decision("REGISTER_EVALUATION_ERROR", expression=expression_ident, error_type=type(exc).__name__)
             return None
 
         if outputs == target and (not require_macro or used(expr)):
@@ -520,6 +532,7 @@ def find_exact_expression(
             skey,
             next_state_token,
         )
+        record_decision("REGISTER_STATE", expression=expression_ident, token=int(next_state_token), outputs=list(outputs), direct_macros=list(state_used), free_keys=list(state_keys), structural_key=skey)
 
         # Diagnostic-only telemetry: record target-matching executable lineage
         # before dominance/frontier pruning. This is never consumed by search
@@ -540,7 +553,9 @@ def find_exact_expression(
         stats["generated_expressions"] += 1
         if old is not None:
             stats["duplicate_states"] += 1
-            if rank(state) < rank(old):
+            replace_old = rank(state) < rank(old)
+            record_decision("BUCKET_DUPLICATE", old_token=int(old[5]), new_token=int(state[5]), replace=bool(replace_old))
+            if replace_old:
                 bucket[state_key] = state
                 if best_any.get(outputs) == old:
                     best_any[outputs] = state
@@ -561,6 +576,7 @@ def find_exact_expression(
                 continue
             if dominates(existing, state):
                 stats["dominance_pruned_states"] += 1
+                record_decision("FRONTIER_REJECT", existing_token=int(existing[5]), candidate_token=int(state[5]))
                 vector_cache.pop(expression_ident, None)
                 free_cache.pop(expression_ident, None)
                 return existing
@@ -572,11 +588,13 @@ def find_exact_expression(
             if dominates(state, existing):
                 dominated_state_tokens.add(existing[5])
                 stats["dominance_pruned_states"] += 1
+                record_decision("FRONTIER_EVICT", existing_token=int(existing[5]), candidate_token=int(state[5]))
                 discard_pruned_state(existing)
                 continue
             retained_frontier.append(existing)
 
         retained_frontier.append(state)
+        record_decision("FRONTIER_ADMIT", candidate_token=int(state[5]), behavior_outputs=list(outputs), free_keys=list(state_keys), frontier_size_after=int(len(retained_frontier)))
         dominance_frontier[behavior_key] = retained_frontier
         stats["dominance_frontier_max"] = max(
             int(stats["dominance_frontier_max"]),
@@ -1007,6 +1025,7 @@ def find_exact_expression(
         target_frontier = target_frontier[: max(1, int(max_alternatives))]
         alternatives = tuple((state[0], state[2]) for state in target_frontier)
         stats["alternative_candidate_count"] = len(alternatives)
+        record_decision("SEARCH_RESULT", selected_expression=expr_key(best_target[0]), selected_used=list(best_target[2]), alternatives=[{"expression": expr_key(expr), "used": list(used)} for expr, used in alternatives], stats={key: stats.get(key) for key in ("status", "best_target_depth", "depths_completed", "generated_expressions", "unique_states", "duplicate_states", "dominance_comparisons", "dominance_pruned_states", "dominance_frontier_max", "alternative_candidate_count")})
         return BehavioralSearchResult(
             best_target[0],
             best_target[2],
