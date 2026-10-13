@@ -329,6 +329,8 @@ def selected_process_lineage_audit(
     selected_process: Any,
     expected_parent_ids: set[str],
     lineage_resolver: Any,
+    *,
+    competent: bool,
 ) -> dict[str, Any]:
     """Build one self-consistent audit for the actually selected process.
 
@@ -347,11 +349,13 @@ def selected_process_lineage_audit(
         process_id = selected_process.process_id
         expression = selected_process.expression
 
+    contains_expected = expected_parent_ids.issubset(lineage)
     return {
         "selected_process_id": process_id,
         "used_primitives": list(used_primitives),
         "candidate_lineage": sorted(lineage),
-        "selected_candidate_contains_expected_parents": expected_parent_ids.issubset(lineage),
+        "selected_candidate_contains_expected_parents": contains_expected,
+        "selected_candidate_reuse_ok": bool(competent and contains_expected),
         "expression": expression,
     }
 
@@ -833,6 +837,7 @@ def run_seed(
                     cproc,
                     expected,
                     lambda used: executable_lineage_ids(learner, used),
+                    competent=competence,
                 )
                 selected_candidate_lineage = set(selected_lineage_audit["candidate_lineage"])
                 selected_candidate_contains_expected = bool(
@@ -840,7 +845,7 @@ def run_seed(
                 )
                 # The metric must describe cproc, the selected process, rather
                 # than any other competent member of the frontier.
-                reuse_ok = bool(competence and selected_candidate_contains_expected)
+                reuse_ok = bool(selected_lineage_audit["selected_candidate_reuse_ok"])
                 print(
                     json.dumps(
                         {
