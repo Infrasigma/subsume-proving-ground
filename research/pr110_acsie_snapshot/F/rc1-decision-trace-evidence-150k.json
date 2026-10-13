@@ -112,12 +112,92 @@
     "The function did not return a BehavioralSearchResult: both arms intentionally stopped at the fixed 150,000 dominance-comparison cutoff.",
     "This demonstrates exact decision-trace parity for the bounded prefix only; it does not prove unbounded behavioral_search function-output parity.",
     "This is one seed and one checkpoint, not the frozen 5-seed by 12-generation scientific qualification.",
-    "The starting checkpoint is a verified state continuation created by the memoized B lab experiment, not a byte-identical replay of the original producing process."
+    "The starting checkpoint is a verified state continuation created by the memoized B lab experiment, not a byte-identical replay of the original producing process.",
+    "Three repeated timings are all one seed/checkpoint and exact-trace instrumentation was enabled; report medians descriptively, never as qualification or production performance."
   ],
   "promotion_status": "DO_NOT_PROMOTE",
   "frozen_5x12_budget": "UNTOUCHED",
   "open_ended_self_extension": "NOT_DEMONSTRATED",
   "general_capability": "NOT_DEMONSTRATED",
   "agi": "NOT_DEMONSTRATED",
-  "asi": "NOT_DEMONSTRATED"
+  "asi": "NOT_DEMONSTRATED",
+  "repeated_pairs": [
+    {
+      "workflow_run_id": 38371412736,
+      "commit_sha": "4125934f62e20989a84ecde6b44e2216883464b8",
+      "artifact_id": 11798988937,
+      "D_primary_seconds": 8.787912,
+      "F_primary_seconds": 7.651584,
+      "D_total_seconds": 161.391105,
+      "F_total_seconds": 159.345458,
+      "parity": "PASS"
+    },
+    {
+      "workflow_run_id": 38371463232,
+      "commit_sha": "0f46e441362a54d682d786ee4350a99ef75d14d7",
+      "artifact_id": 11799044370,
+      "D_primary_seconds": 11.966117,
+      "F_primary_seconds": 10.30029,
+      "D_total_seconds": 217.595211,
+      "F_total_seconds": 212.164312,
+      "parity": "PASS"
+    },
+    {
+      "workflow_run_id": 38371486498,
+      "commit_sha": "d69fd30912b2239fcfdf727d51d27f0af0e9ab19",
+      "artifact_id": 11800155912,
+      "D_primary_seconds": 12.013953,
+      "F_primary_seconds": 10.435219,
+      "D_total_seconds": 215.340058,
+      "F_total_seconds": 206.863852,
+      "parity": "PASS"
+    }
+  ],
+  "performance_repeat_summary": {
+    "comparison": "all three repeated jobs use the same seed/checkpoint and 150k dominance-comparison work cutoff",
+    "primary_search_seconds": {
+      "D": [
+        8.787912,
+        11.966117,
+        12.013953
+      ],
+      "F": [
+        7.651584,
+        10.30029,
+        10.435219
+      ]
+    },
+    "per_pair_primary_speedup_D_over_F": [
+      1.1485088578,
+      1.1617262232,
+      1.1512890146
+    ],
+    "per_pair_primary_time_reduction_percent": [
+      12.9305801,
+      13.9211993,
+      13.1408372
+    ],
+    "median_primary_speedup_D_over_F": 1.1512890146,
+    "median_primary_time_reduction_percent": 13.1408372,
+    "whole_run_seconds": {
+      "D": [
+        161.391105,
+        217.595211,
+        215.340058
+      ],
+      "F": [
+        159.345458,
+        212.164312,
+        206.863852
+      ]
+    },
+    "per_pair_whole_run_speedup_D_over_F": [
+      1.0128378118,
+      1.0255976085,
+      1.040974805
+    ],
+    "median_whole_run_speedup_D_over_F": 1.0255976085,
+    "median_whole_run_time_reduction_percent": 2.4958725,
+    "interpretation": "Repeated within this single frozen seed/checkpoint, the RC1 primary-search time advantage persists under trace-enabled bounded work; total run_seed reduction is much smaller because closure-synthesis phases dominate wall time. Runner variability is substantial, so use paired ratios and do not treat this as a multi-seed/general performance guarantee."
+  }
 }
