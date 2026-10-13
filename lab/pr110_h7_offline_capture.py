@@ -72,13 +72,25 @@ def canonical(expr):
 
 
 class Capture:
-    def __init__(self, output: Path, capture_role: str, stop_at_depth: int = 4, probe_index: int | None = None):
+    def __init__(self, output: Path, capture_role: str, stop_at_depth: int = 4, probe_index: int | None = None, probe_indices: tuple[int, ...] | None = None):
         self.output = output
         self.capture_role = capture_role
         if stop_at_depth not in TARGET_DEPTHS:
             raise ValueError(f"stop_at_depth must be one of {sorted(TARGET_DEPTHS)}")
         self.stop_at_depth = int(stop_at_depth)
+        if probe_index is not None and probe_indices is not None:
+            raise ValueError("use either probe_index or probe_indices, not both")
+        if probe_indices is not None:
+            normalized = tuple(dict.fromkeys(int(x) for x in probe_indices))
+            if not normalized or any(x not in (0, 1, 2, 3) for x in normalized):
+                raise ValueError("probe_indices must be a non-empty subset of 0,1,2,3")
+            self.probe_indices = normalized
+        else:
+            self.probe_indices = None
         self.probe_index = probe_index
+        self.current_probe_index = probe_index
+        self.captured_probe_indices = set()
+        self.probe_summaries = {}
         self.started = time.perf_counter()
         self.captured = []
         self.done = False
@@ -119,14 +131,34 @@ class Capture:
             return
         if self.selected_call_id is not None:
             return
-        if self.probe_index is not None and role == "secondary_process_synthesis":
-            run_seed_frame = caller.f_back
-            actual_probe_index = (
-                run_seed_frame.f_locals.get("probe_idx")
-                if run_seed_frame is not None else None
-            )
-            if actual_probe_index != self.probe_index:
+
+        actual_probe_index = None
+        frame = caller
+        while frame is not None:
+            if frame.f_code.co_name == "run_seed":
+                actual_probe_index = frame.f_locals.get("probe_idx")
+                break
+            frame = frame.f_back
+
+        if role == "secondary_process_synthesis":
+            if self.probe_indices is not None:
+                if actual_probe_index not in self.probe_indices:
+                    return
+                if actual_probe_index in self.captured_probe_indices:
+                    return
+                # Each requested probe writes a standalone artifact with its own
+                # holdout/transfer/OOD bundle. Reset capture-local state only
+                # after the preceding probe's file has been written.
+                self.current_probe_index = int(actual_probe_index)
+                self.captured = []
+                self.postselection_validation_bundle = None
+                self.current_invocation = {}
+                self.status = "CAPTURE_PENDING"
+                self.done = False
+            elif self.probe_index is not None and actual_probe_index != self.probe_index:
                 return
+            elif self.probe_index is None:
+                self.current_probe_index = actual_probe_index
         self.selected_call_id = self.current_call_id
         self.selected_call_index = self.search_call_counter
         self.current_invocation = {
@@ -139,7 +171,7 @@ class Capture:
             "discovery_row_count": len(local_values.get("discovery_rows", local_values.get("rows", ()))),
             "require_macro": bool(local_values.get("require_macro", False)),
             "search_call_index": self.selected_call_index,
-            "requested_probe_index": self.probe_index,
+            "requested_probe_index": self.current_probe_index,
             "caller_stack": self._caller_stack(caller),
             "hook_elapsed_seconds_from_run_seed_start": time.perf_counter() - self.started,
         }
@@ -291,12 +323,18 @@ class Capture:
             "capture_semantics": "post_choose_target_in_depth; existing live frontier only",
             "invocation": dict(self.current_invocation),
         }
-        if depth == self.stop_at_depth:
-            self.done = True
+        is_probe_boundary = depth == self.stop_at_depth
+        if is_probe_boundary:
             self.status = f"CAPTURE_COMPLETE_DEPTH{depth}"
         self.captured.append(payload)
         source_path = Path(behavioral_search.__file__).resolve()
-        self.output.write_text(json.dumps({
+        output_path = (
+            self.output.parent / f"probe-{self.current_probe_index}-frontier.json"
+            if self.probe_indices is not None
+            else self.output
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps({
             "schema": "ACSIE.PR110.H7.offline-frontier-capture.v4",
             "status": self.status,
             "runtime_sha": RUNTIME_SHA,
@@ -305,7 +343,8 @@ class Capture:
             "generation": GENERATION,
             "requested_depths": sorted(TARGET_DEPTHS),
             "requested_capture_role": self.capture_role,
-            "requested_probe_index": self.probe_index,
+            "requested_probe_index": self.current_probe_index,
+            "requested_probe_indices": list(self.probe_indices) if self.probe_indices is not None else None,
             "stop_at_depth": self.stop_at_depth,
             "selected_search_call_index": self.selected_call_index,
             "observer": {
@@ -319,8 +358,34 @@ class Capture:
             "captures": self.captured,
             "postselection_validation_bundle": self.postselection_validation_bundle,
         }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        if depth == self.stop_at_depth:
-            raise SystemExit(0)
+
+        if is_probe_boundary:
+            if self.probe_indices is None:
+                self.done = True
+                raise SystemExit(0)
+            self.captured_probe_indices.add(int(self.current_probe_index))
+            self.probe_summaries[str(self.current_probe_index)] = {
+                "output_path": str(output_path),
+                "depths": sorted({int(x["depth"]) for x in self.captured}),
+                "class_counts": {str(x["depth"]): int(x["class_count"]) for x in self.captured},
+                "representative_counts": {str(x["depth"]): int(x["representative_count"]) for x in self.captured},
+                "selected_search_call_index": self.selected_call_index,
+            }
+            if set(self.probe_indices).issubset(self.captured_probe_indices):
+                self.done = True
+                raise SystemExit(0)
+            # De-select this completed search. Subsequent calls for this same
+            # probe are ignored; the first secondary search in the next requested
+            # probe will be selected.
+            self.selected_call_id = None
+            self.current_call_id = None
+            self.current_call_role = None
+            self.selected_call_index = None
+            self.current_invocation = {}
+            self.captured = []
+            self.postselection_validation_bundle = None
+            self.status = "CAPTURE_PENDING"
+            self.current_probe_index = None
 
     def install(self):
         """Compile an in-memory observer-only variant; never edit checked-in code."""
@@ -428,7 +493,14 @@ def main():
     ap.add_argument("--capture-role", choices=("primary_primitive_invention", "secondary_process_synthesis"), default="primary_primitive_invention")
     ap.add_argument("--stop-at-depth", type=int, choices=(2, 3, 4), default=4)
     ap.add_argument("--probe-index", type=int, choices=(0, 1, 2, 3), default=None)
+    ap.add_argument("--probe-indices", default=None, help="comma-separated subset of probe indices; captures each in one run_seed replay")
     args = ap.parse_args()
+    probe_indices = None
+    if args.probe_indices is not None:
+        try:
+            probe_indices = tuple(int(part.strip()) for part in args.probe_indices.split(",") if part.strip())
+        except ValueError as exc:
+            raise SystemExit(f"invalid --probe-indices: {args.probe_indices}") from exc
 
     envelope = load_checkpoint(
         args.checkpoint,
@@ -439,7 +511,7 @@ def main():
     restored = restore_checkpoint(envelope, expected_metadata={"proving_sha": PROVING_SHA, "acsie_ref": RUNTIME_SHA})
     assert restored["learner"].generation is not None
 
-    capture = Capture(Path(args.output), args.capture_role, args.stop_at_depth, args.probe_index)
+    capture = Capture(Path(args.output), args.capture_role, args.stop_at_depth, args.probe_index, probe_indices)
     original_search = capture.install()
     exit_code = 0
     try:
@@ -458,7 +530,8 @@ def main():
         behavioral_search.__dict__.pop("_H7_CAPTURE_ENTER", None)
 
     if not capture.done:
-        raise RuntimeError("capture did not reach Gen5 depth4")
+        requested = list(capture.probe_indices) if capture.probe_indices is not None else [capture.probe_index]
+        raise RuntimeError(f"capture did not reach all requested boundaries: requested={requested} captured={sorted(capture.captured_probe_indices)}")
     if exit_code != 0:
         raise RuntimeError(f"instrumented resume exited unexpectedly: {exit_code}")
     # Bind provenance to the actual loaded files, not just the requested Git refs.
@@ -474,6 +547,9 @@ def main():
         "depths": sorted({item["depth"] for item in capture.captured}),
         "stop_at_depth": capture.stop_at_depth,
         "requested_probe_index": capture.probe_index,
+        "requested_probe_indices": list(capture.probe_indices) if capture.probe_indices is not None else None,
+        "captured_probe_indices": sorted(capture.captured_probe_indices),
+        "probe_summaries": capture.probe_summaries,
         "capture_status": capture.status,
         "selected_search_call_index": capture.selected_call_index,
         "exit_code": exit_code,
