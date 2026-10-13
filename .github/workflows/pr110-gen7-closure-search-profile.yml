@@ -32,16 +32,16 @@ jobs:
           path: prior
       - name: Verify checkpoint, runtime imports, evaluator and driver
         env:
-          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/D:${{ github.workspace }}
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/G:${{ github.workspace }}
           PYTHONHASHSEED: "0"
         run: |
           set -euo pipefail
           mkdir -p evidence
           cp prior/working-checkpoint.json evidence/working-checkpoint.json
           python3 -m py_compile \
-            research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py \
-            research/pr110_acsie_snapshot/D/cognitive_core/recursive_cognitive_compiler.py \
-            research/pr110_acsie_snapshot/D/cognitive_core/open_ended_growth.py \
+            research/pr110_acsie_snapshot/G/cognitive_core/behavioral_search.py \
+            research/pr110_acsie_snapshot/G/cognitive_core/recursive_cognitive_compiler.py \
+            research/pr110_acsie_snapshot/G/cognitive_core/open_ended_growth.py \
             lab/acsie_open_ended_self_extending_proving.py \
             lab/pr110_gen7_closure_search_profile.py
           python3 - <<'PY'
@@ -50,9 +50,9 @@ jobs:
           from lab.exact_checkpoint import load_checkpoint
 
           expected_blobs = {
-              "research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py": "8b36ca913cd13e43691a5a64fdfb27994e25438f",
-              "research/pr110_acsie_snapshot/D/cognitive_core/recursive_cognitive_compiler.py": "284d4abd5ab467d465be21973090bc24cee26e69",
-              "research/pr110_acsie_snapshot/D/cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
+              "research/pr110_acsie_snapshot/G/cognitive_core/behavioral_search.py": "8b36ca913cd13e43691a5a64fdfb27994e25438f",
+              "research/pr110_acsie_snapshot/G/cognitive_core/recursive_cognitive_compiler.py": "8e7f6bcc6efdf432bcaa75cc008008ffc462a232",
+              "research/pr110_acsie_snapshot/G/cognitive_core/open_ended_growth.py": "ec94fc545badde972510f2db9cbf008cc214e705",
               "lab/acsie_open_ended_self_extending_proving.py": "1dc1fd5f115948eff14dd5ba357ef7a1e2b75c6e",
           }
           identities = {}
@@ -65,9 +65,12 @@ jobs:
                   "file_sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
               }
 
-          imported = importlib.import_module("cognitive_core.behavioral_search")
-          expected_runtime = Path("research/pr110_acsie_snapshot/D/cognitive_core/behavioral_search.py").resolve()
+          imported = importlib.import_module("cognitive_core.recursive_cognitive_compiler")
+          expected_runtime = Path("research/pr110_acsie_snapshot/G/cognitive_core/recursive_cognitive_compiler.py").resolve()
           assert Path(imported.__file__).resolve() == expected_runtime
+          imported_search = importlib.import_module("cognitive_core.behavioral_search")
+          expected_search = Path("research/pr110_acsie_snapshot/G/cognitive_core/behavioral_search.py").resolve()
+          assert Path(imported_search.__file__).resolve() == expected_search
           checkpoint = Path("evidence/working-checkpoint.json")
           expected_checkpoint_sha = "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4"
           assert hashlib.sha256(checkpoint.read_bytes()).hexdigest() == expected_checkpoint_sha
@@ -90,7 +93,8 @@ jobs:
               "generation_next": env["generation_next"],
               "seed": 2026100305,
               "runtime_sources": identities,
-              "imported_behavioral_search_module": str(Path(imported.__file__).resolve()),
+              "imported_closure_enumerator_module": str(Path(imported.__file__).resolve()),
+              "imported_behavioral_search_module": str(Path(imported_search.__file__).resolve()),
               "driver_git_blob_sha1": subprocess.check_output(["git", "hash-object", str(driver)], text=True).strip(),
               "driver_file_sha256": hashlib.sha256(driver.read_bytes()).hexdigest(),
               "python_version": sys.version,
@@ -106,13 +110,17 @@ jobs:
       - name: Stop within a fixed closure-search work budget
         continue-on-error: true
         env:
-          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/D:${{ github.workspace }}
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/G:${{ github.workspace }}
           PYTHONHASHSEED: "0"
           ACSIE_SEARCH_PROFILE: "1"
           ACSIE_SEARCH_PROFILE_PHASE: "closure_synthesis"
           ACSIE_SEARCH_PROGRESS_INTERVAL: "1000"
           ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "200000"
+          ACSIE_CLOSURE_FRONTIER_CALL_INDEX: "0"
           ACSIE_SEARCH_MAX_REGISTER_CALLS: "5000"
+          ACSIE_CLOSURE_FRONTIER_PROFILE: "1"
+          ACSIE_CLOSURE_FRONTIER_MAX_EXPRESSIONS: "2500"
+          ACSIE_CLOSURE_FRONTIER_PROGRESS_INTERVAL: "500"
         run: |
           set -u
           cp prior/working-checkpoint.json evidence/working-checkpoint.json
@@ -142,7 +150,7 @@ jobs:
               except Exception: continue
               if item.get("event") == "PROCESS_PHASE_START" and item.get("phase") == "closure_synthesis":
                   structured.append({"kind": "closure_phase_start", **item})
-              elif str(item.get("event", "")).startswith("SEARCH_PROFILE_"):
+              elif str(item.get("event", "")).startswith(("SEARCH_PROFILE_", "CLOSURE_FRONTIER_PROFILE_")):
                   profile_events.append(item)
               elif item.get("event") in {
                   "CLOSURE_SEARCH_PROFILE_START",
@@ -172,6 +180,7 @@ jobs:
               "raw_log_sha256": hashlib.sha256(raw.encode()).hexdigest(),
               "raw_log_bytes": len(raw.encode()),
               "bounded_profile_event_count": len(profile_events),
+              "closure_frontier_profile_event_count": sum(1 for x in profile_events if str(x.get("event", "")).startswith("CLOSURE_FRONTIER_PROFILE_")),
               "profile_events": profile_events[-60:],
               "phase_and_driver_events": structured[-30:],
               "input_checkpoint_sha256": initial_sha,
