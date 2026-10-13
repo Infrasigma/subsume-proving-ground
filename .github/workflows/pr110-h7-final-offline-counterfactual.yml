@@ -4,13 +4,43 @@ on:
   push:
     branches:
       - research/pr110-h7-redundant-representative-compression-20261008
+  pull_request:
+    branches:
+      - research/direct-reuse-dominance-proving-20261006-v2
+    paths:
+      - ".github/workflows/pr110-h7-final-offline-counterfactual.yml"
+      - "lab/pr110_h7_offline_capture.py"
+      - "lab/pr110_h7_offline_counterfactual.py"
+      - "lab/test_pr110_h7_offline_counterfactual.py"
 
 permissions:
   contents: read
   actions: read
 
 jobs:
+  hosted-runner-preflight:
+    # Separate minimal job verifies GitHub-hosted allocation before any evidence run.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Report runner capacity (no repository code execution)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "H7_HOSTED_PREFLIGHT=START"
+          echo "RUNNER_OS=${RUNNER_OS:-unknown}"
+          echo "RUNNER_ARCH=${RUNNER_ARCH:-unknown}"
+          echo "KERNEL=$(uname -srm)"
+          echo "PYTHON=$(python3 --version 2>&1 || true)"
+          echo "GIT=$(git --version 2>&1 || true)"
+          echo "LOGICAL_CPUS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc || echo unknown)"
+          awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/ {print}' /proc/meminfo || true
+          df -h .
+          echo "H7_HOSTED_PREFLIGHT=PASS"
+          echo "ACSIE_COMPUTATION_STARTED=no"
+
   h7-offline:
+    needs: hosted-runner-preflight
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     env:
@@ -54,21 +84,62 @@ jobs:
       - name: Syntax smoke
         run: |
           set -euo pipefail
-          python3 -m py_compile             lab/pr110_h7_offline_capture.py             lab/pr110_h7_offline_counterfactual.py             lab/exact_checkpoint.py             lab/acsie_open_ended_self_extending_proving.py             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py
+          python3 -m py_compile \
+            lab/pr110_h7_offline_capture.py \
+            lab/pr110_h7_offline_counterfactual.py \
+            lab/test_pr110_h7_offline_counterfactual.py \
+            lab/exact_checkpoint.py \
+            lab/acsie_open_ended_self_extending_proving.py \
+            research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py \
+            research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py \
+            research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py
 
-      - name: Capture current-state Gen5 lineage representatives
+      - name: Counterfactual unit tests
         run: |
           set -euo pipefail
-          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE"             RUNTIME_SHA="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"             PROVING_SHA="33259fc5c69d87b99c604f0050508c433a279daf"             python3 -u lab/pr110_h7_offline_capture.py               --checkpoint evidence/pr110-phase6-scalability-forensics/B-checkpoint.json               --output evidence/h7-offline-frontiers.json
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
+            python3 -m unittest -v lab.test_pr110_h7_offline_counterfactual
 
-      - name: Compute K counterfactuals
+      - name: Capture current-state Gen5 frontier
+        shell: bash
         run: |
           set -euo pipefail
-          python3 -u lab/pr110_h7_offline_counterfactual.py             --input evidence/h7-offline-frontiers.json             --output evidence/h7-offline-counterfactual.json
+          set +e
+          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
+            RUNTIME_SHA="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be" \
+            PROVING_SHA="33259fc5c69d87b99c604f0050508c433a279daf" \
+            python3 -u lab/pr110_h7_offline_capture.py \
+              --checkpoint evidence/pr110-phase6-scalability-forensics/B-checkpoint.json \
+              --output evidence/h7-offline-frontiers.json \
+              > evidence/h7-offline-capture.stdout.log \
+              2> evidence/h7-offline-capture.stderr.log
+          rc=$?
+          set -e
+          cat evidence/h7-offline-capture.stdout.log
+          cat evidence/h7-offline-capture.stderr.log >&2
+          exit "$rc"
+
+      - name: Compute separate direct-vocabulary and lineage counterfactuals
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          python3 -u lab/pr110_h7_offline_counterfactual.py \
+            --input evidence/h7-offline-frontiers.json \
+            --output evidence/h7-offline-counterfactual.json \
+            > evidence/h7-offline-counterfactual.stdout.log \
+            2> evidence/h7-offline-counterfactual.stderr.log
+          rc=$?
+          set -e
+          cat evidence/h7-offline-counterfactual.stdout.log
+          cat evidence/h7-offline-counterfactual.stderr.log >&2
+          exit "$rc"
 
       - name: Upload H7 offline evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pr110-h7-final-offline-counterfactual
-          path: evidence/h7-offline-*.json
+          path: evidence/h7-offline-*
+          if-no-files-found: warn
           retention-days: 90
