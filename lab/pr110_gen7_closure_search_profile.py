@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
-"""Bounded closure-synthesis profiler for the saved PR110 Gen7 state.
+"""Profile one bounded PR110 Gen7 closure-synthesis search.
 
-Bounded primary-process synthesis profiler for the saved PR110 Gen7 state.
-
-Only the separate laboratory snapshot D is imported; profiling is restricted to closure_synthesis. The driver stops after a
-fixed number of deterministic search operations, preserving the generation-7
-checkpoint and leaving the frozen scientific gate untouched.
+Only lab snapshot D is imported. A deterministic register/comparison cutoff
+stops the diagnostic before closure synthesis can alter the frozen checkpoint.
 """
 from __future__ import annotations
 
