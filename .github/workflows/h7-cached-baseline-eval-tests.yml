@@ -30,10 +30,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import subprocess
-          expected={
-            "cognitive_core/behavioral_search.py":"c126aa723b5c5f6013ac7ee53b5c5f6013ac7ee53b5c5f6013ac7ee53b5c5f6013ac7ee53",
-          }
-          # Verify the exact baseline manifest rather than relying on handwritten hashes.
+          # Verify the exact baseline manifest and actual Git blob hashes.
           import json
           from pathlib import Path
           m=json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
