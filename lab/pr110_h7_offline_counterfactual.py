@@ -107,7 +107,7 @@ def summarize_capture(
     for capture in data.get("captures", []):
         depth = int(capture["depth"])
         depth_rows = {
-            "behavioral_class_count": 0,
+            "behavioral_classes": 0,
             "original_representatives": 0,
             "compressed_representatives": 0,
             "classes_with_direct_vocabulary_loss": 0,
