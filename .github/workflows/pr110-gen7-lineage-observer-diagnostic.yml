@@ -1,0 +1,153 @@
+name: PR110 Gen7 corrected lineage observer diagnostic
+
+on:
+  push:
+    branches:
+      - research/pr110-lineage-mismatch-observer-fix-20261013
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  gen7-lineage-observer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Retrieve the pinned Gen6 memoized checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: pr110-exact-b-gen6-memoized-continuation
+          run-id: 38033213264
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: prior
+      - name: Verify checkpoint and actual Python runtime import
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/B:${{ github.workspace }}
+          PYTHONHASHSEED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp prior/working-checkpoint.json evidence/input-gen7-checkpoint.json
+          cp evidence/input-gen7-checkpoint.json evidence/working-checkpoint.json
+          python3 - <<'PY'
+          import hashlib, importlib, json, os, sys
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+
+          checkpoint = Path("evidence/input-gen7-checkpoint.json")
+          expected_raw = "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4"
+          expected_state = "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b"
+          assert hashlib.sha256(checkpoint.read_bytes()).hexdigest() == expected_raw
+          envelope = load_checkpoint(
+              checkpoint,
+              expected_seed=2026100305,
+              expected_metadata={
+                  "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+                  "acsie_ref": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+              },
+          )
+          assert envelope["generation_next"] == 7
+          assert envelope["state_digest"] == expected_state
+
+          expected_path = (Path("research/pr110_acsie_snapshot/B") / "cognitive_core/behavioral_search.py").resolve()
+          module = importlib.import_module("cognitive_core.behavioral_search")
+          imported_path = Path(module.__file__).resolve()
+          assert imported_path == expected_path, (str(imported_path), str(expected_path))
+          record = {
+              "status": "PREFLIGHT_PASS",
+              "checkpoint_raw_sha256": expected_raw,
+              "checkpoint_state_digest": expected_state,
+              "generation_next": envelope["generation_next"],
+              "runtime_git_blob_sha1": "ab658a2e49adf479bf9ea4892dfef930624c6e7b",
+              "runtime_file_sha256": hashlib.sha256(imported_path.read_bytes()).hexdigest(),
+              "imported_module_file": str(imported_path),
+              "evaluator_file_sha256": hashlib.sha256(Path("lab/acsie_open_ended_self_extending_proving.py").read_bytes()).hexdigest(),
+              "pythonhashseed_environment": os.environ.get("PYTHONHASHSEED"),
+              "hash_randomization_flag": sys.flags.hash_randomization,
+              "sys_path": sys.path,
+              "frozen_5x12_budget": "UNTOUCHED",
+              "promotion_status": "DO_NOT_PROMOTE",
+          }
+          Path("evidence/preflight.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(record, indent=2, sort_keys=True))
+          PY
+      - name: Stop after the first corrected Gen7 lineage mismatch
+        continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/B:${{ github.workspace }}
+          PYTHONHASHSEED: "0"
+          ACSIE_DIAGNOSTIC_STOP_AFTER_LINEAGE_MISMATCH: "1"
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=30s 15m python3 -u lab/pr110_gen7_lineage_mismatch_observer.py > evidence/gen7-observer-raw.txt 2>&1
+          rc=$?
+          set -e
+          printf "%s\n" "$rc" > evidence/process-exit-code.txt
+          echo "GEN7_OBSERVER_DIAGNOSTIC_EXIT_CODE=$rc"
+      - name: Classify diagnostic without promotion
+        if: always()
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/B:${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+
+          raw_path = Path("evidence/gen7-observer-raw.txt")
+          raw_text = raw_path.read_text(errors="replace") if raw_path.exists() else ""
+          rc_path = Path("evidence/process-exit-code.txt")
+          rc = int(rc_path.read_text()) if rc_path.exists() else None
+          checkpoint = Path("evidence/working-checkpoint.json")
+          summary = {
+              "schema": "ACSIE.PR110.Gen7LineageObserverDiagnostic.v1",
+              "process_exit_code": rc,
+              "raw_log_sha256": hashlib.sha256(raw_text.encode()).hexdigest(),
+              "raw_log_bytes": len(raw_text.encode()),
+              "input_checkpoint_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
+              "input_state_digest": "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b",
+              "frozen_5x12_budget": "UNTOUCHED",
+              "promotion_status": "DO_NOT_PROMOTE",
+          }
+          if "OBSERVER_DIAGNOSTIC_STOP_CAUGHT" in raw_text and rc == 0:
+              summary["classification"] = "OBSERVER_DIAGNOSTIC_CAPTURED"
+          elif "DIAGNOSTIC_RETURNED_WITHOUT_MISMATCH_STOP" in raw_text and rc == 0:
+              summary["classification"] = "DIAGNOSTIC_COMPLETED_WITHOUT_MISMATCH"
+          elif rc in (124, 137):
+              summary["classification"] = "INCONCLUSIVE_DIAGNOSTIC_TIMEOUT"
+          else:
+              summary["classification"] = "CRASHED_OR_INVALID_DIAGNOSTIC"
+          if checkpoint.exists():
+              envelope = load_checkpoint(
+                  checkpoint,
+                  expected_seed=2026100305,
+                  expected_metadata={
+                      "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+                      "acsie_ref": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+                  },
+              )
+              summary["checkpoint_validation"] = "PASS"
+              summary["checkpoint_raw_sha256"] = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+              summary["checkpoint_state_digest"] = envelope["state_digest"]
+              summary["generation_next"] = envelope["generation_next"]
+          else:
+              summary["checkpoint_validation"] = "MISSING"
+              summary["classification"] = "INVALID_NO_DURABLE_CHECKPOINT"
+          Path("evidence/diagnostic-summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+      - name: Upload bounded observer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-gen7-lineage-observer-diagnostic
+          path: evidence/
+          retention-days: 90
