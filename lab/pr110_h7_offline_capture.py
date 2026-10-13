@@ -98,7 +98,9 @@ class Capture:
 
     def enter(self, local_values):
         """Called once per viable search call; no sys.settrace or per-line file I/O."""
-        caller = sys._getframe(2)
+        # The instrumented finder is called through bounded_wrapper; frame 3
+        # is the real caller (e.g. invent_primitive or synthesize_process).
+        caller = sys._getframe(3)
         compiler = local_values.get("compiler")
         if getattr(compiler, "generation", -1) != GENERATION:
             self.current_call_id = None
