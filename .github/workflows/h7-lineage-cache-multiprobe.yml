@@ -1,0 +1,186 @@
+name: H7 four-probe lineage-cache validation
+
+on:
+  push:
+    branches:
+      - research/h7-multiprobe-lineage-cache-20261013
+    paths:
+      - ".github/workflows/h7-lineage-cache-multiprobe.yml"
+      - "lab/pr110_h7_offline_capture.py"
+      - "lab/pr110_h7_offline_counterfactual.py"
+      - "lab/pr110_h7_postselection_validation.py"
+      - "lab/h7_compare_multiprobe_lineage_cache.py"
+      - "research/h7-experiments/lineage-cache/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: h7-lineage-cache-multiprobe
+  cancel-in-progress: false
+
+env:
+  PYTHONHASHSEED: "0"
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - run: |
+          set -euo pipefail
+          echo "PREFLIGHT=PASS"
+          uname -srm
+          python3 --version
+          getconf _NPROCESSORS_ONLN || true
+          awk '/^(MemTotal|MemAvailable):/ {print}' /proc/meminfo
+
+  capture:
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline, lineage-cache]
+    name: capture-${{ matrix.variant }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 37738748858
+          artifact-ids: 11536026911
+          github-token: ${{ github.token }}
+          path: evidence/checkpoint-artifact
+      - name: Verify exact inputs and syntax
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          m=json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
+          assert m["B"]["runtime_sha"]=="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
+          assert m["proving_harness_sha"]=="33259fc5c69d87b99c604f0050508c433a279daf"
+          for rel,expected in m["B"]["files"].items():
+              p=Path("research/pr110_acsie_snapshot/B")/rel
+              assert subprocess.check_output(["git","hash-object",str(p)],text=True).strip()==expected
+          variant=os.environ["VARIANT"]
+          p=(Path("research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py") if variant=="baseline"
+             else Path("research/h7-experiments/lineage-cache/B/cognitive_core/behavioral_search.py"))
+          expected=("c126aa723b5c5f6013ac7ee53a9401875c2395ee" if variant=="baseline"
+                    else "de7c20f453afc9ca0cdb90dfc9625abe960fd957")
+          actual=subprocess.check_output(["git","hash-object",str(p)],text=True).strip()
+          assert actual==expected,(actual,expected)
+          ck=Path("evidence/checkpoint-artifact/pr110-phase6-scalability-forensics/B-checkpoint.json")
+          d=json.loads(ck.read_text())
+          assert d["seed"]==2026100305 and d["generation_next"]==5
+          assert d["learner_state"]["runtime_identity"]["proving_sha"]==m["proving_harness_sha"]
+          assert d["learner_state"]["runtime_identity"]["acsie_ref"]==m["B"]["runtime_sha"]
+          out=Path("evidence")/variant
+          out.mkdir(parents=True,exist_ok=True)
+          out.joinpath("pinned-inputs.json").write_text(json.dumps({
+            "variant":variant,"runtime_sha":m["B"]["runtime_sha"],"proving_sha":m["proving_harness_sha"],
+            "module_git_blob_sha1":actual,"module_sha256":hashlib.sha256(p.read_bytes()).hexdigest(),
+            "checkpoint_sha256":hashlib.sha256(ck.read_bytes()).hexdigest(),
+          },indent=2,sort_keys=True)+"\n")
+          print("PINNED_INPUTS=PASS")
+          PY
+          python3 -m py_compile lab/pr110_h7_offline_capture.py lab/pr110_h7_offline_counterfactual.py lab/pr110_h7_postselection_validation.py lab/h7_compare_multiprobe_lineage_cache.py
+
+      - name: Capture probes 0-3 in one replay
+        env:
+          VARIANT: ${{ matrix.variant }}
+        timeout-minutes: 100
+        run: |
+          set -euo pipefail
+          overlay="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B"
+          if [ "$VARIANT" = "lineage-cache" ]; then overlay="$GITHUB_WORKSPACE/research/h7-experiments/lineage-cache/B"; fi
+          checkpoint="evidence/checkpoint-artifact/pr110-phase6-scalability-forensics/B-checkpoint.json"
+          mkdir -p "evidence/$VARIANT"
+          set +e
+          env PYTHONPATH="$overlay:$GITHUB_WORKSPACE" \
+            RUNTIME_SHA="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be" \
+            PROVING_SHA="33259fc5c69d87b99c604f0050508c433a279daf" \
+            python3 -u lab/pr110_h7_offline_capture.py \
+              --capture-role secondary_process_synthesis --stop-at-depth 3 \
+              --probe-indices 0,1,2,3 --checkpoint "$checkpoint" \
+              --output "evidence/$VARIANT/capture.json" \
+              > "evidence/$VARIANT/capture.stdout.log" 2> "evidence/$VARIANT/capture.stderr.log"
+          rc=$?
+          set -e
+          cat "evidence/$VARIANT/capture.stdout.log"
+          cat "evidence/$VARIANT/capture.stderr.log" >&2
+          echo "MULTIPROBE_EXIT=$rc"
+          exit "$rc"
+
+      - name: Compute independent per-probe reports
+        if: always()
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          overlay="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B"
+          if [ "$VARIANT" = "lineage-cache" ]; then overlay="$GITHUB_WORKSPACE/research/h7-experiments/lineage-cache/B"; fi
+          for probe in 0 1 2 3; do
+            dir="evidence/$VARIANT"
+            input="$dir/probe-$probe-frontier.json"
+            if [ ! -s "$input" ]; then echo "PROBE_$probe=BLOCKED_NO_CAPTURE"; continue; fi
+            env PYTHONPATH="$overlay:$GITHUB_WORKSPACE" python3 -u lab/pr110_h7_offline_counterfactual.py \
+              --input "$input" --output "$dir/probe-$probe-counterfactual.json" \
+              > "$dir/probe-$probe-counterfactual.log" 2>&1
+            env PYTHONPATH="$overlay:$GITHUB_WORKSPACE" python3 -u lab/pr110_h7_postselection_validation.py \
+              --input "$input" --output "$dir/probe-$probe-postselection.json" \
+              > "$dir/probe-$probe-postselection.log" 2>&1
+            tail -n 1 "$dir/probe-$probe-postselection.log"
+          done
+
+      - name: Upload captures and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h7-lineage-cache-multiprobe-${{ matrix.variant }}
+          path: evidence/${{ matrix.variant }}/
+          if-no-files-found: warn
+          retention-days: 90
+
+  compare:
+    needs: capture
+    if: needs.capture.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: h7-lineage-cache-multiprobe-baseline
+          path: evidence/baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: h7-lineage-cache-multiprobe-lineage-cache
+          path: evidence/lineage-cache
+      - name: Exact four-probe frontier parity
+        run: |
+          set -euo pipefail
+          python3 lab/h7_compare_multiprobe_lineage_cache.py \
+            --baseline-dir evidence/baseline --candidate-dir evidence/lineage-cache \
+            --baseline-module research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py \
+            --candidate-module research/h7-experiments/lineage-cache/B/cognitive_core/behavioral_search.py \
+            --output evidence/multiprobe-exact-parity.json \
+            > evidence/multiprobe-exact-parity.stdout.log 2> evidence/multiprobe-exact-parity.stderr.log
+          cat evidence/multiprobe-exact-parity.stdout.log
+          cat evidence/multiprobe-exact-parity.stderr.log >&2
+      - name: Upload parity report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h7-lineage-cache-multiprobe-comparison
+          path: evidence/multiprobe-exact-parity*
+          if-no-files-found: warn
+          retention-days: 90
