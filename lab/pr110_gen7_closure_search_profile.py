@@ -33,6 +33,10 @@ def main() -> int:
         raise RuntimeError("ACSIE_SEARCH_PROFILE=1 is required.")
     if os.environ.get("ACSIE_SEARCH_PROFILE_PHASE") != "closure_synthesis":
         raise RuntimeError("profile phase must be closure_synthesis.")
+    if os.environ.get("ACSIE_CLOSURE_FRONTIER_PROFILE") != "1":
+        raise RuntimeError("ACSIE_CLOSURE_FRONTIER_PROFILE=1 is required; refusing an unbounded closure run.")
+    if int(os.environ.get("ACSIE_CLOSURE_FRONTIER_MAX_EXPRESSIONS", "0")) <= 0:
+        raise RuntimeError("A positive ACSIE_CLOSURE_FRONTIER_MAX_EXPRESSIONS cutoff is required.")
     if os.environ.get("ACSIE_ACTIVE_SYNTHESIS_PHASE"):
         raise RuntimeError("active synthesis phase must be unset before run_seed.")
 
