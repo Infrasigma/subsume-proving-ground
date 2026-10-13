@@ -392,12 +392,34 @@ def find_exact_expression(
         ],
     ] = {}
     dominated_state_tokens: set[int] = set()
-    # RC-0 exact acceleration: compute the exact dominance attributes once per
-    # candidate state, then read them by the state's immutable token.
-    state_feature_cache: dict[
-        int,
-        tuple[frozenset[str], frozenset[str], tuple[int, int]],
-    ] = {}
+    # RC-1 exact acceleration: encode set-valued dominance attributes as
+    # arbitrary-precision integer bitsets. Identifier -> bit assignments are
+    # monotonic and stable for this one immutable search invocation.
+    lineage_bit_ids: dict[str, int] = {}
+    lineage_ids_by_bit: list[str] = []
+    state_feature_cache: dict[int, tuple[int, int, tuple[int, int]]] = {}
+
+    def ids_to_mask(values: Sequence[str] | set[str] | frozenset[str]) -> int:
+        mask = 0
+        for raw_id in values:
+            ident = str(raw_id)
+            bit = lineage_bit_ids.get(ident)
+            if bit is None:
+                bit = len(lineage_ids_by_bit)
+                lineage_bit_ids[ident] = bit
+                lineage_ids_by_bit.append(ident)
+            mask |= 1 << bit
+        return mask
+
+    def mask_to_ids(mask: int) -> list[str]:
+        identifiers: list[str] = []
+        remaining = mask
+        while remaining:
+            lowest_bit = remaining & -remaining
+            index = lowest_bit.bit_length() - 1
+            identifiers.append(lineage_ids_by_bit[index])
+            remaining ^= lowest_bit
+        return sorted(identifiers)
     seen_expression_keys: set[str] = set()
     next_state_token = 0
     target_candidate_found = False
@@ -434,6 +456,7 @@ def find_exact_expression(
             "duplicate_states": int(stats.get("duplicate_states", 0)),
             "dominance_comparisons": comparisons,
             "state_feature_computations": int(stats.get("state_feature_computations", 0)),
+            "bitset_identifier_universe_size": len(lineage_ids_by_bit),
             "dominance_pruned_states": int(stats.get("dominance_pruned_states", 0)),
             "dominance_frontier_max": int(stats.get("dominance_frontier_max", 0)),
             "max_states_in_depth": int(stats.get("max_states_in_depth", 0)),
@@ -456,23 +479,38 @@ def find_exact_expression(
             raise SystemExit(76)
         stats["dominance_comparisons"] = comparisons + 1
         comparisons += 1
-        left_direct, left_lineage, left_cost = state_feature_cache[left[5]]
-        right_direct, right_lineage, right_cost = state_feature_cache[right[5]]
+        left_direct_mask, left_lineage_mask, left_cost = state_feature_cache[left[5]]
+        right_direct_mask, right_lineage_mask, right_cost = state_feature_cache[right[5]]
         left_depth, left_nodes = left_cost
         right_depth, right_nodes = right_cost
-        decision = (right_direct.issubset(left_direct) and right_lineage.issubset(left_lineage) and left_depth <= right_depth and left_nodes <= right_nodes)
-        record_decision(
-            "DOM",
-            left_token=int(left[5]),
-            right_token=int(right[5]),
-            left_direct=sorted(left_direct),
-            right_direct=sorted(right_direct),
-            left_lineage=sorted(left_lineage),
-            right_lineage=sorted(right_lineage),
-            left_cost=[left_depth, left_nodes],
-            right_cost=[right_depth, right_nodes],
-            result=bool(decision),
+        decision = (
+            (right_direct_mask & ~left_direct_mask) == 0
+            and (right_lineage_mask & ~left_lineage_mask) == 0
+            and left_depth <= right_depth
+            and left_nodes <= right_nodes
         )
+        if trace_enabled:
+            # Preserve D/E's exact canonical trace schema; this decode is
+            # used only in the forensic parity run, not the performance run.
+            record_decision(
+                "DOM",
+                left_token=int(left[5]),
+                right_token=int(right[5]),
+                left_direct=mask_to_ids(left_direct_mask),
+                right_direct=mask_to_ids(right_direct_mask),
+                left_lineage=mask_to_ids(left_lineage_mask),
+                right_lineage=mask_to_ids(right_lineage_mask),
+                left_cost=[left_depth, left_nodes],
+                right_cost=[right_depth, right_nodes],
+                result=bool(decision),
+            )
+        else:
+            record_decision(
+                "DOM",
+                left_token=int(left[5]),
+                right_token=int(right[5]),
+                result=bool(decision),
+            )
         if profile_enabled and comparisons % profile_interval == 0:
             emit_profile("SEARCH_PROFILE_PROGRESS", force=True)
         return bool(decision)
@@ -579,8 +617,8 @@ def find_exact_expression(
                 # may still be inspected by target-frontier extraction later,
                 # so its exact dominance features must be available too.
                 state_feature_cache[state[5]] = (
-                    frozenset(state_used),
-                    frozenset(direct_lineage),
+                    ids_to_mask(state_used),
+                    ids_to_mask(direct_lineage),
                     executable_cost(expr),
                 )
                 stats["state_feature_computations"] = int(stats.get("state_feature_computations", 0)) + 1
@@ -595,8 +633,8 @@ def find_exact_expression(
         # dominance pair. Frozen sets retain the same subset semantics and costs
         # use the same executable_cost function as the reference implementation.
         state_feature_cache[state[5]] = (
-            frozenset(state_used),
-            frozenset(direct_lineage),
+            ids_to_mask(state_used),
+            ids_to_mask(direct_lineage),
             executable_cost(expr),
         )
         stats["state_feature_computations"] = int(stats.get("state_feature_computations", 0)) + 1
