@@ -1,0 +1,85 @@
+{
+  "schema": "ACSIE.PR110.DRC0RC1.UntracedPerformanceEvidence.v1",
+  "classification": "THREE_ARM_COUNTER_PARITY_AT_150K_UNTRACED",
+  "experiment": {
+    "workflow_run_id": 38372251761,
+    "workflow_head_sha": "47a0f85ca60eb3bee277090091d976b894ccdb83",
+    "artifact_id": 11799877823,
+    "artifact_sha256": "952f355aa25cc60b4f85aea050ab1492546c5f56382e9e4c9f604ecb52ae5048",
+    "artifact_zip": "pr110-gen7-rc0-rc1-untraced-performance.zip",
+    "runner": "ubuntu-24.04",
+    "python_version": "3.12.15",
+    "pythonhashseed": "0",
+    "trace_digest_enabled": false,
+    "seed": 2026100305
+  },
+  "provenance": {
+    "checkpoint_producer_run": 38033213264,
+    "checkpoint_raw_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
+    "checkpoint_state_digest": "cfe3391d48284e41416ef3241050b43f4be6df9fc6bfc04dc35f2c0726d3a37b",
+    "generation_next": 7,
+    "evaluator_file_sha256": "recorded in workflow artifacts",
+    "work_limit": {
+      "dominance_comparisons": 150000,
+      "register_calls": 50000
+    }
+  },
+  "runtime_blob_ids": {
+    "D_reference": "778447a631a4c016d75dfc408dce5b0a446a9bf4",
+    "E_RC0": "899c27ec90dbf281feb1e1e62a0e859acabb6e02",
+    "F_RC1": "ac4c108d1bf572614f536505f34965dd0c18951e",
+    "open_ended_growth": "ec94fc545badde972510f2db9cbf008cc214e705",
+    "recursive_cognitive_compiler": "284d4abd5ab467d465be21973090bc24cee26e69"
+  },
+  "exact_logical_counter_parity": {
+    "all_arms_reached_150000_dominance_comparisons": true,
+    "all_checkpoints_unchanged": true,
+    "register_calls": 6063,
+    "generated_expressions": 6063,
+    "unique_states": 4358,
+    "duplicate_states": 421,
+    "dominance_pruned_states": 1292,
+    "dominance_frontier_max": 126,
+    "max_states_in_depth": 2610,
+    "rows": 14,
+    "primitive_count": 23,
+    "max_depth": 10,
+    "require_macro": true
+  },
+  "untraced_timings_seconds": {
+    "primary_process_synthesis": {
+      "D": 9.781043,
+      "E_RC0": 7.776621,
+      "F_RC1": 7.665024
+    },
+    "whole_run_seed_to_cutoff": {
+      "D": 219.205608,
+      "E_RC0": 207.935447,
+      "F_RC1": 206.709368
+    },
+    "ratios_vs_D": {
+      "RC0_primary_speedup": 1.2577497347,
+      "RC0_primary_time_reduction_percent": 20.492927,
+      "RC1_primary_speedup": 1.2760616275,
+      "RC1_primary_time_reduction_percent": 21.633879,
+      "RC0_whole_run_speedup": 1.0542002875,
+      "RC0_whole_run_time_reduction_percent": 5.141365,
+      "RC1_whole_run_speedup": 1.0604531866,
+      "RC1_whole_run_time_reduction_percent": 5.700694
+    }
+  },
+  "interpretation": [
+    "Within this one fixed-seed bounded primary synthesis, RC0 and RC1 were faster than D while preserving all reported logical work counters and reaching the same deterministic dominance-comparison cutoff.",
+    "RC1 was 1.276x as fast as reference D for the bounded primary-search section (21.6% less elapsed time); whole-run time was only 5.7% lower because closure-synthesis work dominates total elapsed time.",
+    "This was one checkpoint/run per arm without trace digest hashing; exact decision trace parity is independently demonstrated in D-vs-RC0 through 500k comparisons and D-vs-RC1 through 150k comparisons.",
+    "The test intentionally did not return a full BehavioralSearchResult. It is neither the Gen7-Gen12 trajectory qualification nor the frozen 5-seed by 12-generation gate.",
+    "The total-run ratios remain subject to runner contention; treat only as a bounded descriptive measurement, not a multi-seed performance guarantee."
+  ],
+  "frozen_5x12_budget": "UNTOUCHED",
+  "qualification_status": "NOT_RUN",
+  "promotion_status": "DO_NOT_PROMOTE",
+  "open_ended_self_extension": "NOT_DEMONSTRATED",
+  "general_capability": "NOT_DEMONSTRATED",
+  "agi": "NOT_DEMONSTRATED",
+  "asi": "NOT_DEMONSTRATED"
+}
