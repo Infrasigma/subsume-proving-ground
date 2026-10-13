@@ -12,6 +12,7 @@ on:
       - "lab/pr110_h7_offline_capture.py"
       - "lab/pr110_h7_process_frontier_profiler.py"
       - "lab/pr110_h7_offline_counterfactual.py"
+      - "lab/pr110_h7_postselection_validation.py"
       - "lab/test_pr110_h7_offline_counterfactual.py"
 
 permissions:
@@ -89,6 +90,7 @@ jobs:
             lab/pr110_h7_offline_capture.py \
             lab/pr110_h7_process_frontier_profiler.py \
             lab/pr110_h7_offline_counterfactual.py \
+            lab/pr110_h7_postselection_validation.py \
             lab/test_pr110_h7_offline_counterfactual.py \
             lab/exact_checkpoint.py \
             lab/acsie_open_ended_self_extending_proving.py \
@@ -198,6 +200,25 @@ jobs:
             > evidence/h7-offline-behavioral-search/counterfactual.stdout.log \
             2> evidence/h7-offline-behavioral-search/counterfactual.stderr.log
           cat evidence/h7-offline-behavioral-search/counterfactual.stdout.log
+
+      - name: Validate captured representatives on independent post-selection splits
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          input="evidence/h7-offline-behavioral-search/secondary-gen5-frontier.json"
+          if [ ! -s "$input" ]; then
+            echo "POSTSELECTION_VALIDATION=BLOCKED_NO_CAPTURE_INPUT"
+            exit 1
+          fi
+          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
+            python3 -u lab/pr110_h7_postselection_validation.py \
+              --input "$input" \
+              --output evidence/h7-offline-behavioral-search/secondary-postselection-validation.json \
+              > evidence/h7-offline-behavioral-search/postselection-validation.stdout.log \
+              2> evidence/h7-offline-behavioral-search/postselection-validation.stderr.log
+          cat evidence/h7-offline-behavioral-search/postselection-validation.stdout.log
+          cat evidence/h7-offline-behavioral-search/postselection-validation.stderr.log >&2
 
       - name: Upload H7 offline evidence
         if: always()
