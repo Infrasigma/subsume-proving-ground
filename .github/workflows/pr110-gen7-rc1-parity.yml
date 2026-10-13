@@ -141,7 +141,7 @@ jobs:
           cp prior/working-checkpoint.json evidence/working-checkpoint.json
           set +e
           timeout --signal=TERM --kill-after=30s 12m env \
-            PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/E:$GITHUB_WORKSPACE" \
+            PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/F:$GITHUB_WORKSPACE" \
             python3 -u lab/pr110_gen7_primary_search_rc1.py > evidence/F-raw.txt 2>&1
           rc=$?
           set -e
@@ -185,7 +185,7 @@ jobs:
               return raw, out, rc
 
           d_raw, d_events, d_rc = read_events("D")
-          f_raw, f_events, f_rc = read_events("E")
+          f_raw, f_events, f_rc = read_events("F")
           def index(events):
               indexed = {}
               for ev in events:
@@ -193,21 +193,21 @@ jobs:
                   if c is not None:
                       indexed[int(c)] = ev
               return indexed
-          di, ei = index(d_events), index(f_events)
-          common = sorted(set(di) & set(ei))
+          di, fi = index(d_events), index(f_events)
+          common = sorted(set(di) & set(fi))
           comparisons = []
           for c in common:
-              a, b = di[c], ei[c]
-              logical = {k: {"D": a.get(k), "E": b.get(k)} for k in TRACE_KEYS if a.get(k) != b.get(k)}
+              a, b = di[c], fi[c]
+              logical = {k: {"D": a.get(k), "F": b.get(k)} for k in TRACE_KEYS if a.get(k) != b.get(k)}
               digest_equal = a.get("decision_trace_sha256") == b.get("decision_trace_sha256")
-              tracf_events_equal = a.get("decision_tracf_events") == b.get("decision_tracf_events")
+              trace_events_equal = a.get("decision_trace_events") == b.get("decision_trace_events")
               comparisons.append({
                   "dominance_comparisons": c,
                   "logical_counter_mismatches": logical,
                   "trace_digest_equal": digest_equal,
-                  "trace_event_count_equal": tracf_events_equal,
-                  "D_tracf_events": a.get("decision_tracf_events"),
-                  "E_tracf_events": b.get("decision_tracf_events"),
+                  "trace_event_count_equal": trace_events_equal,
+                  "D_trace_events": a.get("decision_trace_events"),
+                  "F_trace_events": b.get("decision_trace_events"),
                   "D_trace_sha256": a.get("decision_trace_sha256"),
                   "F_trace_sha256": b.get("decision_trace_sha256"),
                   "D_elapsed_seconds": a.get("elapsed_seconds"),
@@ -218,9 +218,9 @@ jobs:
               for x in comparisons
           )
           d_start = next((e for e in d_events if e.get("event") == "SEARCH_PROFILE_PROGRESS"), None)
-          e_start = next((e for e in f_events if e.get("event") == "SEARCH_PROFILE_PROGRESS"), None)
+          f_start = next((e for e in f_events if e.get("event") == "SEARCH_PROFILE_PROGRESS"), None)
           summary = {
-              "schema": "ACSIE.PR110.Gen7DecisionTraceParity.v1",
+              "schema": "ACSIE.PR110.Gen7RC1DecisionTraceParity.v1",
               "classification": "DECISION_TRACE_PARITY_ON_BOUNDED_PREFIX" if parity else "DIVERGENCE_OR_INCOMPLETE_PARITY_EVIDENCE",
               "D_exit_code": d_rc,
               "F_exit_code": f_rc,
@@ -229,7 +229,7 @@ jobs:
               "common_comparison_checkpoints": common,
               "checkpoint_comparisons": comparisons,
               "D_raw_log_sha256": hashlib.sha256(d_raw.encode()).hexdigest(),
-              "E_raw_log_sha256": hashlib.sha256(f_raw.encode()).hexdigest(),
+              "F_raw_log_sha256": hashlib.sha256(f_raw.encode()).hexdigest(),
               "D_input_checkpoint_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
               "F_input_checkpoint_sha256": "666cc42ee22a92d51f8d55ca77b82b55b831a58f77ee23935be3c42d22a05fc4",
               "fixed_work_limit": {"dominance_comparisons": 150000, "register_calls": 50000},
@@ -243,6 +243,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pr110-gen7-decision-trace-parity
+          name: pr110-gen7-rc1-decision-trace-parity
           path: evidence/
           retention-days: 90
