@@ -1,0 +1,184 @@
+name: H7 invocation-local lineage-cache exact parity
+
+on:
+  push:
+    branches:
+      - research/h7-executable-lineage-cache-20261013
+    paths:
+      - ".github/workflows/h7-lineage-cache-exact-parity.yml"
+      - "research/h7-experiments/lineage-cache/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: h7-lineage-cache-exact-parity
+  cancel-in-progress: false
+
+env:
+  PYTHONHASHSEED: "0"
+
+jobs:
+  hosted-runner-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Report runner capacity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "H7_LINEAGE_CACHE_PREFLIGHT=START"
+          echo "RUNNER_OS=${RUNNER_OS:-unknown}"
+          echo "RUNNER_ARCH=${RUNNER_ARCH:-unknown}"
+          echo "KERNEL=$(uname -srm)"
+          echo "PYTHON=$(python3 --version 2>&1 || true)"
+          echo "LOGICAL_CPUS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc || echo unknown)"
+          awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/ {print}' /proc/meminfo || true
+          df -h .
+          echo "H7_LINEAGE_CACHE_PREFLIGHT=PASS"
+          echo "PHONE_COMPUTE=no"
+
+  exact-parity:
+    needs: hosted-runner-preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout experiment source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download pinned Phase6 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 37738748858
+          artifact-ids: 11536026911
+          github-token: ${{ github.token }}
+          path: evidence
+
+      - name: Download exact baseline capture from run 44
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 38402536001
+          artifact-ids: 11818992278
+          github-token: ${{ github.token }}
+          path: baseline-artifact
+
+      - name: Verify source snapshots, baseline capture, and patch scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, subprocess
+          from pathlib import Path
+          root=Path(".")
+          manifest=json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
+          assert manifest["B"]["runtime_sha"]=="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
+          assert manifest["proving_harness_sha"]=="33259fc5c69d87b99c604f0050508c433a279daf"
+          for rel,expected in manifest["B"]["files"].items():
+              source=Path("research/pr110_acsie_snapshot/B")/rel
+              assert subprocess.check_output(["git","hash-object",str(source)],text=True).strip()==expected
+          baseline=Path("baseline-artifact/h7-offline-behavioral-search/probe-1/frontier.json")
+          assert baseline.exists(), str(baseline)
+          b=json.loads(baseline.read_text())
+          assert hashlib.sha256(baseline.read_bytes()).hexdigest()=="676fe88653c88332cb0265085104fa3d9d185e4a6e8e997e91a6e686bc2cb061"
+          assert b["seed"]==2026100305 and b["generation"]==5
+          assert b["requested_probe_index"]==1 and b["status"]=="CAPTURE_COMPLETE_DEPTH3"
+          candidate=Path("research/h7-experiments/lineage-cache/B/cognitive_core/behavioral_search.py")
+          candidate_blob=subprocess.check_output(["git","hash-object",str(candidate)],text=True).strip()
+          assert candidate_blob=="de7c20f453afc9ca0cdb90dfc9625abe960fd957", candidate_blob
+          unchanged={
+            "open_ended_growth.py":"ec94fc545badde972510f2db9cbf008cc214e705",
+            "recursive_cognitive_compiler.py":"284d4abd5ab467d465be21973090bc24cee26e69",
+          }
+          for name,expected in unchanged.items():
+              path=Path("research/h7-experiments/lineage-cache/B/cognitive_core")/name
+              assert subprocess.check_output(["git","hash-object",str(path)],text=True).strip()==expected
+          print(json.dumps({
+            "status":"PINNED_SOURCE_AND_BASELINE_PASS",
+            "runtime_sha":manifest["B"]["runtime_sha"],
+            "proving_sha":manifest["proving_harness_sha"],
+            "baseline_capture_sha256":hashlib.sha256(baseline.read_bytes()).hexdigest(),
+            "candidate_behavioral_search_blob_sha1":candidate_blob,
+            "candidate_behavioral_search_sha256":hashlib.sha256(candidate.read_bytes()).hexdigest(),
+            "unmodified_support_modules":unchanged,
+          },sort_keys=True))
+          PY
+          python3 -m py_compile \
+            research/h7-experiments/lineage-cache/B/cognitive_core/behavioral_search.py \
+            research/h7-experiments/lineage-cache/B/cognitive_core/open_ended_growth.py \
+            research/h7-experiments/lineage-cache/B/cognitive_core/recursive_cognitive_compiler.py \
+            lab/pr110_h7_offline_capture.py \
+            lab/pr110_h7_offline_counterfactual.py \
+            lab/pr110_h7_postselection_validation.py \
+            research/h7-experiments/lineage-cache/compare_exact_capture.py
+
+      - name: Run the same Gen5 probe against the invocation-local cache candidate
+        shell: bash
+        timeout-minutes: 110
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/h7-lineage-cache
+          checkpoint="evidence/pr110-phase6-scalability-forensics/B-checkpoint.json"
+          test -s "$checkpoint"
+          set +e
+          env PYTHONPATH="$GITHUB_WORKSPACE/research/h7-experiments/lineage-cache/B:$GITHUB_WORKSPACE" \
+            RUNTIME_SHA="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be" \
+            PROVING_SHA="33259fc5c69d87b99c604f0050508c433a279daf" \
+            python3 -u lab/pr110_h7_offline_capture.py \
+              --capture-role secondary_process_synthesis \
+              --stop-at-depth 3 \
+              --probe-index 1 \
+              --checkpoint "$checkpoint" \
+              --output evidence/h7-lineage-cache/candidate-frontier.json \
+              > evidence/h7-lineage-cache/candidate-capture.stdout.log \
+              2> evidence/h7-lineage-cache/candidate-capture.stderr.log
+          rc=$?
+          set -e
+          cat evidence/h7-lineage-cache/candidate-capture.stdout.log
+          cat evidence/h7-lineage-cache/candidate-capture.stderr.log >&2
+          echo "CANDIDATE_CAPTURE_EXIT=$rc"
+          exit "$rc"
+
+      - name: Compare complete frontier and original statistics with baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 research/h7-experiments/lineage-cache/compare_exact_capture.py \
+            --baseline baseline-artifact/h7-offline-behavioral-search/probe-1/frontier.json \
+            --candidate evidence/h7-lineage-cache/candidate-frontier.json \
+            --candidate-module research/h7-experiments/lineage-cache/B/cognitive_core/behavioral_search.py \
+            --output evidence/h7-lineage-cache/exact-parity-report.json \
+            > evidence/h7-lineage-cache/exact-parity.stdout.log \
+            2> evidence/h7-lineage-cache/exact-parity.stderr.log
+          cat evidence/h7-lineage-cache/exact-parity.stdout.log
+          cat evidence/h7-lineage-cache/exact-parity.stderr.log >&2
+
+      - name: Post-selection validation of the candidate frontier
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          input="evidence/h7-lineage-cache/candidate-frontier.json"
+          if [ ! -s "$input" ]; then
+            echo "POSTSELECTION_VALIDATION=BLOCKED_NO_CANDIDATE_CAPTURE"
+            exit 1
+          fi
+          env PYTHONPATH="$GITHUB_WORKSPACE/research/h7-experiments/lineage-cache/B:$GITHUB_WORKSPACE" \
+            python3 -u lab/pr110_h7_postselection_validation.py \
+              --input "$input" \
+              --output evidence/h7-lineage-cache/candidate-postselection-validation.json \
+              > evidence/h7-lineage-cache/postselection-validation.stdout.log \
+              2> evidence/h7-lineage-cache/postselection-validation.stderr.log
+          cat evidence/h7-lineage-cache/postselection-validation.stdout.log
+          cat evidence/h7-lineage-cache/postselection-validation.stderr.log >&2
+
+      - name: Upload parity, timing, and post-selection evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h7-lineage-cache-exact-parity
+          path: evidence/h7-lineage-cache/
+          if-no-files-found: warn
+          retention-days: 90
