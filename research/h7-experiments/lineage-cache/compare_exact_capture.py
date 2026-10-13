@@ -88,12 +88,14 @@ def main() -> None:
           expected=BASELINE_MODULE_SHA256, actual=base["observer"]["original_behavioral_search_sha256"])
     check("candidate_module_blob_sha1", module_blob_sha == CANDIDATE_MODULE_BLOB_SHA1,
           expected=CANDIDATE_MODULE_BLOB_SHA1, actual=module_blob_sha)
+    candidate_loaded_sha = cand.get("observer", {}).get("original_behavioral_search_sha256")
+    candidate_loaded_path = cand.get("observer", {}).get("original_behavioral_search_file")
     check("candidate_module_sha_matches_loaded_provenance",
-          cand["modules"]["behavioral_search"]["sha256"] == module_sha,
-          loaded=cand["modules"]["behavioral_search"]["sha256"], disk=module_sha)
+          candidate_loaded_sha == module_sha,
+          loaded=candidate_loaded_sha, disk=module_sha)
     check("candidate_loaded_from_experiment_snapshot",
-          "/research/h7-experiments/lineage-cache/B/cognitive_core/behavioral_search.py" in cand["modules"]["behavioral_search"]["path"],
-          path=cand["modules"]["behavioral_search"]["path"])
+          "/research/h7-experiments/lineage-cache/B/cognitive_core/behavioral_search.py" in str(candidate_loaded_path),
+          path=candidate_loaded_path)
 
     for key in ("runtime_sha", "proving_sha", "seed", "generation", "requested_capture_role",
                 "requested_probe_index", "stop_at_depth", "selected_search_call_index"):
