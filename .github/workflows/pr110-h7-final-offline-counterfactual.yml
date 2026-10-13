@@ -1,0 +1,274 @@
+name: PR110 H7 final offline counterfactual
+
+on:
+  push:
+    branches:
+      - research/pr110-h7-redundant-representative-compression-20261008
+  pull_request:
+    branches:
+      - research/direct-reuse-dominance-proving-20261006-v2
+    paths:
+      - ".github/workflows/pr110-h7-final-offline-counterfactual.yml"
+      - "lab/pr110_h7_offline_capture.py"
+      - "lab/pr110_h7_process_frontier_profiler.py"
+      - "lab/pr110_h7_offline_counterfactual.py"
+      - "lab/pr110_h7_postselection_validation.py"
+      - "lab/test_pr110_h7_offline_counterfactual.py"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  hosted-runner-preflight:
+    # Separate minimal job verifies GitHub-hosted allocation before any evidence run.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Report runner capacity (no repository code execution)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "H7_HOSTED_PREFLIGHT=START"
+          echo "RUNNER_OS=${RUNNER_OS:-unknown}"
+          echo "RUNNER_ARCH=${RUNNER_ARCH:-unknown}"
+          echo "KERNEL=$(uname -srm)"
+          echo "PYTHON=$(python3 --version 2>&1 || true)"
+          echo "GIT=$(git --version 2>&1 || true)"
+          echo "LOGICAL_CPUS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc || echo unknown)"
+          awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/ {print}' /proc/meminfo || true
+          df -h .
+          echo "H7_HOSTED_PREFLIGHT=PASS"
+          echo "ACSIE_COMPUTATION_STARTED=no"
+
+  h7-offline:
+    needs: hosted-runner-preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      PYTHONHASHSEED: "0"
+    steps:
+      - name: Checkout pinned proving harness branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download existing Phase6 artifact
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 37738748858
+          artifact-ids: 11536026911
+          github-token: ${{ github.token }}
+          path: evidence
+
+      - name: Verify fixed scientific inputs
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          m=json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
+          b=json.loads(Path("evidence/pr110-phase6-scalability-forensics/B-forensics.json").read_text())
+          ck=json.loads(Path("evidence/pr110-phase6-scalability-forensics/B-checkpoint.json").read_text())
+          assert m["B"]["runtime_sha"] == "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
+          assert m["proving_harness_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
+          assert b["runtime_sha"] == m["B"]["runtime_sha"]
+          assert b["proving_sha"] == m["proving_harness_sha"]
+          assert b["seed"] == 2026100305 and ck["seed"] == 2026100305
+          assert ck["generation_next"] == 5
+          for rel, expected in m["B"]["files"].items():
+              data=Path("research/pr110_acsie_snapshot/B", rel).read_bytes()
+              actual=hashlib.sha1(b"blob "+str(len(data)).encode()+b"\0"+data).hexdigest()
+              assert actual == expected, (rel, actual, expected)
+          print("H7_INPUTS=PASS")
+          PY
+
+      - name: Syntax smoke
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            lab/pr110_h7_offline_capture.py \
+            lab/pr110_h7_process_frontier_profiler.py \
+            lab/pr110_h7_offline_counterfactual.py \
+            lab/pr110_h7_postselection_validation.py \
+            lab/test_pr110_h7_offline_counterfactual.py \
+            lab/exact_checkpoint.py \
+            lab/acsie_open_ended_self_extending_proving.py \
+            research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py \
+            research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py \
+            research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py
+
+      - name: Counterfactual unit tests
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
+            python3 -m unittest -v lab.test_pr110_h7_offline_counterfactual
+
+      - name: Profile first real Gen5 process frontier without tracer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/h7-offline-process-frontier
+          checkpoint="evidence/pr110-phase6-scalability-forensics/B-checkpoint.json"
+          test -s "$checkpoint"
+          set +e
+          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
+            RUNTIME_SHA="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be" \
+            PROVING_SHA="33259fc5c69d87b99c604f0050508c433a279daf" \
+            python3 -u lab/pr110_h7_process_frontier_profiler.py \
+              --checkpoint "$checkpoint" \
+              --output evidence/h7-offline-process-frontier/process-frontier-profile.json \
+              > evidence/h7-offline-process-frontier/capture.stdout.log \
+              2> evidence/h7-offline-process-frontier/capture.stderr.log
+          rc=$?
+          set -e
+          cat evidence/h7-offline-process-frontier/capture.stdout.log
+          cat evidence/h7-offline-process-frontier/capture.stderr.log >&2
+          echo "PROCESS_FRONTIER_PROFILE_EXIT=$rc"
+          exit "$rc"
+
+      - name: Validate selected process-frontier profile
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          input="evidence/h7-offline-process-frontier/process-frontier-profile.json"
+          if [ ! -s "$input" ]; then
+            echo "PROCESS_FRONTIER_PROFILE=BLOCKED_NO_CAPTURE_INPUT"
+            exit 1
+          fi
+          python3 - "$input" <<'PY'
+          import json, sys
+          from pathlib import Path
+          payload=json.loads(Path(sys.argv[1]).read_text())
+          assert payload["schema"] == "ACSIE.PR110.H7.process-frontier-profile.v1"
+          assert payload["seed"] == 2026100305 and payload["generation"] == 5
+          assert payload["status"] in {
+              "CAPTURED_FIRST_PROCESS_FRONTIER",
+              "PROCESS_FRONTIER_CAPTURED_ERROR",
+          }
+          call=payload.get("frontier_call", {})
+          print(json.dumps({
+              "profile_status":payload["status"],
+              "generation":payload["generation"],
+              "frontier_elapsed_seconds":call.get("elapsed_seconds"),
+              "exprs_invocations":len(payload.get("exprs_invocations", [])),
+              "exprs_seconds_total":sum(float(x.get("elapsed_seconds",0.0)) for x in payload.get("exprs_invocations", [])),
+              "retained_frontier_count":call.get("retained_frontier_count"),
+              "candidate_selection_summary":call.get("candidate_selection_summary_after"),
+          },sort_keys=True))
+          PY
+
+      - name: Capture secondary behavioral-search frontier through depth 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/h7-offline-behavioral-search
+          checkpoint="evidence/pr110-phase6-scalability-forensics/B-checkpoint.json"
+          test -s "$checkpoint"
+          set +e
+          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
+            RUNTIME_SHA="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be" \
+            PROVING_SHA="33259fc5c69d87b99c604f0050508c433a279daf" \
+            python3 -u lab/pr110_h7_offline_capture.py \
+              --capture-role secondary_process_synthesis \
+              --stop-at-depth 3 \
+              --checkpoint "$checkpoint" \
+              --output evidence/h7-offline-behavioral-search/secondary-gen5-frontier.json \
+              > evidence/h7-offline-behavioral-search/capture.stdout.log \
+              2> evidence/h7-offline-behavioral-search/capture.stderr.log
+          rc=$?
+          set -e
+          cat evidence/h7-offline-behavioral-search/capture.stdout.log
+          cat evidence/h7-offline-behavioral-search/capture.stderr.log >&2
+          echo "SECONDARY_BEHAVIORAL_CAPTURE_EXIT=$rc"
+          exit "$rc"
+
+      - name: Compute direct-vocabulary and lineage counterfactuals for captured frontier
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          input="evidence/h7-offline-behavioral-search/secondary-gen5-frontier.json"
+          if [ ! -s "$input" ]; then
+            echo "BEHAVIORAL_COUNTERFACTUAL=BLOCKED_NO_CAPTURE_INPUT"
+            exit 1
+          fi
+          python3 -u lab/pr110_h7_offline_counterfactual.py \
+            --input "$input" \
+            --output evidence/h7-offline-behavioral-search/secondary-counterfactual.json \
+            > evidence/h7-offline-behavioral-search/counterfactual.stdout.log \
+            2> evidence/h7-offline-behavioral-search/counterfactual.stderr.log
+          cat evidence/h7-offline-behavioral-search/counterfactual.stdout.log
+
+      - name: Validate captured representatives on independent post-selection splits
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          input="evidence/h7-offline-behavioral-search/secondary-gen5-frontier.json"
+          if [ ! -s "$input" ]; then
+            echo "POSTSELECTION_VALIDATION=BLOCKED_NO_CAPTURE_INPUT"
+            exit 1
+          fi
+          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
+            python3 -u lab/pr110_h7_postselection_validation.py \
+              --input "$input" \
+              --output evidence/h7-offline-behavioral-search/secondary-postselection-validation.json \
+              > evidence/h7-offline-behavioral-search/postselection-validation.stdout.log \
+              2> evidence/h7-offline-behavioral-search/postselection-validation.stderr.log
+          cat evidence/h7-offline-behavioral-search/postselection-validation.stdout.log
+          cat evidence/h7-offline-behavioral-search/postselection-validation.stderr.log >&2
+
+      - name: Capture remaining Gen5 probes as independent post-selection cases
+        if: always()
+        shell: bash
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          checkpoint="evidence/pr110-phase6-scalability-forensics/B-checkpoint.json"
+          test -s "$checkpoint"
+          for probe in 1 2 3; do
+            dir="evidence/h7-offline-behavioral-search/probe-$probe"
+            mkdir -p "$dir"
+            set +e
+            env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
+              RUNTIME_SHA="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be" \
+              PROVING_SHA="33259fc5c69d87b99c604f0050508c433a279daf" \
+              python3 -u lab/pr110_h7_offline_capture.py \
+                --capture-role secondary_process_synthesis \
+                --stop-at-depth 3 \
+                --probe-index "$probe" \
+                --checkpoint "$checkpoint" \
+                --output "$dir/frontier.json" \
+                > "$dir/capture.stdout.log" 2> "$dir/capture.stderr.log"
+            rc=$?
+            set -e
+            cat "$dir/capture.stdout.log"
+            cat "$dir/capture.stderr.log" >&2
+            echo "PROBE_${probe}_CAPTURE_EXIT=$rc"
+            if [ "$rc" -ne 0 ]; then
+              echo "PROBE_${probe}_CAPTURE=FAILED"
+              exit "$rc"
+            fi
+            python3 -u lab/pr110_h7_offline_counterfactual.py \
+              --input "$dir/frontier.json" \
+              --output "$dir/counterfactual.json" \
+              > "$dir/counterfactual.stdout.log" 2> "$dir/counterfactual.stderr.log"
+            env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
+              python3 -u lab/pr110_h7_postselection_validation.py \
+                --input "$dir/frontier.json" \
+                --output "$dir/postselection-validation.json" \
+                > "$dir/postselection-validation.stdout.log" \
+                2> "$dir/postselection-validation.stderr.log"
+            cat "$dir/postselection-validation.stdout.log"
+          done
+
+      - name: Upload H7 offline evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-h7-secondary-frontier-counterfactual
+          path: evidence/h7-offline-*
+          if-no-files-found: warn
+          retention-days: 90
