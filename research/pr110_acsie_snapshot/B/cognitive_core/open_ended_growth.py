@@ -183,8 +183,39 @@ class OpenEndedRecursiveCognitiveCompiler(RecursiveCognitiveCompiler):
             return sum(vals) / len(vals)
 
         specs = list(result.alternatives) or [(result.expression, result.used_primitives)]
-        frontier: list[CognitivePrimitive] = []
+        lineage_cache: dict[tuple[str, ...], frozenset[str]] = {}
+        ranked_specs = []
         for expression, used in specs[:8]:
+            used_ids = tuple(sorted(set(str(pid) for pid in used)))
+            try:
+                expanded_depth, expanded_nodes = self._executable_cost(expression)
+            except Exception:
+                # An expression whose executable expansion is invalid/cyclic is
+                # not admitted as a candidate; don't silently rank it by its
+                # shallow syntax tree.
+                continue
+            lineage = lineage_cache.get(used_ids)
+            if lineage is None:
+                joined: set[str] = set()
+                for primitive_id in used_ids:
+                    joined.update(str(x) for x in self.executable_lineage(primitive_id))
+                lineage = frozenset(joined)
+                lineage_cache[used_ids] = lineage
+            canonical = json.dumps(expression, sort_keys=True, separators=(",", ":"))
+            selection_key = (
+                expanded_depth,
+                expanded_nodes,
+                len(used_ids),
+                -len(lineage),
+                ast_nodes(expression),
+                len(canonical),
+                canonical,
+            )
+            ranked_specs.append((selection_key, expression, used_ids, expanded_depth, expanded_nodes, len(lineage)))
+        ranked_specs.sort(key=lambda item: item[0])
+
+        frontier: list[CognitivePrimitive] = []
+        for _, expression, used, expanded_depth, expanded_nodes, lineage_count in ranked_specs:
             pid = "prim:" + digest((expression, semantics))[:20]
             if pid in self.primitives:
                 continue
@@ -199,16 +230,21 @@ class OpenEndedRecursiveCognitiveCompiler(RecursiveCognitiveCompiler):
                 error(train, expression),
                 error(holdout, expression),
                 error(transfer, expression),
-                ast_nodes(expression),
+                expanded_nodes,
                 {
                     "origin": "open_ended_behavioral_dp_search",
                     "schema_given": False,
                     "external_model": False,
                     "selection_source": "discovery_and_selection_only",
+                    "selection_objective": "minimize_expanded_cost",
+                    "expanded_execution_depth": expanded_depth,
+                    "expanded_execution_nodes": expanded_nodes,
+                    "direct_macro_count": len(used),
+                    "executable_lineage_count": lineage_count,
                     "ood_used_for_selection": False,
                     "validation_evaluated_after_selection": True,
                     "validation_role": "admission_only",
-                    "candidate_frontier_size": min(8, len(specs)),
+                    "candidate_frontier_size": len(ranked_specs),
                     "direct_parent_ids": list(used),
                     "search_stats": dict(result.stats),
                 },
@@ -219,6 +255,15 @@ class OpenEndedRecursiveCognitiveCompiler(RecursiveCognitiveCompiler):
 
         self.last_search_stats = dict(result.stats)
         self.last_primitive_candidate_frontier = tuple(frontier)
+        if frontier:
+            self.last_primitive_candidate_selection_summary = {
+                "selection_objective": "minimize_expanded_cost",
+                "candidate_count": len(frontier),
+                "selected_candidate_id": frontier[0].primitive_id,
+                "selected_expanded_execution_depth": frontier[0].provenance.get("expanded_execution_depth"),
+                "selected_expanded_execution_nodes": frontier[0].provenance.get("expanded_execution_nodes"),
+                "validation_split_used_for_selection": False,
+            }
         return frontier[0] if frontier else None
 
     def accept_primitive_frontier(
@@ -370,13 +415,27 @@ class OpenEndedRecursiveCognitiveCompiler(RecursiveCognitiveCompiler):
     ) -> ProcessCandidate | None:
         if not rows or not transfer:
             self.last_process_candidate_frontier = ()
+            self.process_frontier = []
             return None
 
         discovery_rows = tuple(rows)
         primitive_ids = tuple(self.primitives)
+        policies = self.propose_search_policies()
+        lineage_by_used: dict[tuple[str, ...], frozenset[str]] = {}
         frontier: list[ProcessCandidate] = []
         seen: set[str] = set()
-        policies = self.propose_search_policies()
+        selected_stats: dict[str, object] = {}
+
+        def executable_lineage_size(used: tuple[str, ...]) -> int:
+            cached = lineage_by_used.get(used)
+            if cached is not None:
+                return len(cached)
+            lineage: set[str] = set()
+            for primitive_id in used:
+                lineage.update(str(x) for x in self.executable_lineage(str(primitive_id)))
+            frozen = frozenset(lineage)
+            lineage_by_used[used] = frozen
+            return len(frozen)
 
         for policy in policies:
             result = find_exact_expression(
@@ -388,27 +447,65 @@ class OpenEndedRecursiveCognitiveCompiler(RecursiveCognitiveCompiler):
             )
             if result is None:
                 continue
-            self.last_search_stats = dict(result.stats)
+
+            selected_stats = dict(result.stats)
             specs = list(result.alternatives) or [(result.expression, result.used_primitives)]
+            ranked_specs = []
             for expression, used in specs[:8]:
+                used_ids = tuple(sorted(set(str(pid) for pid in used)))
+                try:
+                    expanded_depth, expanded_nodes = self._executable_cost(expression)
+                except Exception:
+                    continue
+                lineage_count = executable_lineage_size(used_ids)
+                canonical = json.dumps(expression, sort_keys=True, separators=(",", ":"))
+                selection_key = (
+                    expanded_depth,
+                    expanded_nodes,
+                    len(used_ids),
+                    -lineage_count,
+                    ast_nodes(expression),
+                    len(canonical),
+                    canonical,
+                )
+                ranked_specs.append((
+                    selection_key,
+                    expression,
+                    used_ids,
+                    expanded_depth,
+                    expanded_nodes,
+                    lineage_count,
+                ))
+            ranked_specs.sort(key=lambda item: item[0])
+
+            for selection_key, expression, used, expanded_depth, expanded_nodes, lineage_count in ranked_specs:
                 pid = "proc:" + digest((expression, policy, self.generation))[:20]
                 if pid in seen:
                     continue
                 seen.add(pid)
                 process = ProcessCandidate(
-                    pid, copy.deepcopy(expression), tuple(used), self.generation,
-                    tuple(used), dict(policy),
-                    tuple(sorted({t.family for t in discovery_rows})),
-                    ast_nodes(expression),
+                    pid,
+                    copy.deepcopy(expression),
+                    used,
+                    self.generation,
+                    tuple(used),
+                    dict(policy),
+                    tuple(sorted({trace.family for trace in discovery_rows})),
+                    expanded_nodes,
                     {
                         "origin": "open_ended_behavioral_dp_search",
                         "external_model": False,
+                        "selection_source": "discovery_and_selection_only",
+                        "selection_objective": "minimize_expanded_cost",
+                        "expanded_execution_depth": expanded_depth,
+                        "expanded_execution_nodes": expanded_nodes,
+                        "direct_macro_count": len(used),
+                        "executable_lineage_count": lineage_count,
                         "retained_macro_count": len(used),
                         "search_depth": int(policy["max_depth"]),
                         "ood_used_for_selection": False,
-                        "selection_source": "discovery_and_selection_only",
                         "post_selection_validation_role": "admission_only",
-                        "candidate_frontier_size": min(8, len(specs)),
+                        "candidate_frontier_size": len(ranked_specs),
                         "search_stats": dict(result.stats),
                     },
                 )
@@ -420,26 +517,38 @@ class OpenEndedRecursiveCognitiveCompiler(RecursiveCognitiveCompiler):
         if not frontier:
             self.last_process_candidate_frontier = ()
             self.process_frontier = []
+            self.last_process_candidate_selection_summary = {
+                "selection_objective": "minimize_expanded_cost",
+                "discovery_qualified": 0,
+                "validation_split_used_for_selection": False,
+            }
             return None
 
-        def executable_lineage_size(process: ProcessCandidate) -> int:
-            lineage: set[str] = set()
-            for primitive_id in process.used_primitives:
-                lineage.update(str(x) for x in self.executable_lineage(str(primitive_id)))
-            return len(lineage)
-
-        # Preserve the existing primary priorities; executable ancestry is a
-        # generic tie-break after direct macro count and local AST cost. No
-        # hidden expected-parent IDs or validation-split observations are used.
-        frontier.sort(key=lambda p: (
-            -len(p.used_primitives),
-            p.complexity,
-            -executable_lineage_size(p),
-            json.dumps(p.expression, sort_keys=True),
-            p.process_id,
+        # Keep the ranked frontier and the returned candidate in the same order.
+        # The public validator uses this stored frontier to freeze candidate
+        # identity before it sees validation data.
+        frontier.sort(key=lambda process: (
+            int(process.provenance.get("expanded_execution_depth", self._executable_cost(process.expression)[0])),
+            int(process.provenance.get("expanded_execution_nodes", self._executable_cost(process.expression)[1])),
+            len(set(process.used_primitives)),
+            -executable_lineage_size(tuple(sorted(set(process.used_primitives)))),
+            ast_nodes(process.expression),
+            len(json.dumps(process.expression, sort_keys=True, separators=(",", ":"))),
+            json.dumps(process.expression, sort_keys=True, separators=(",", ":")),
+            process.process_id,
         ))
+        self.last_search_stats = selected_stats
         self.last_process_candidate_frontier = tuple(frontier)
-        self.process_frontier = [p.process_id for p in frontier]
+        self.process_frontier = [process.process_id for process in frontier]
+        self.last_process_candidate_selection_summary = {
+            "selection_objective": "minimize_expanded_cost",
+            "discovery_qualified": int(selected_stats.get("target_candidate_count", len(frontier))),
+            "candidate_frontier_size": len(frontier),
+            "selected_process_id": frontier[0].process_id,
+            "selected_expanded_execution_depth": frontier[0].provenance.get("expanded_execution_depth"),
+            "selected_expanded_execution_nodes": frontier[0].provenance.get("expanded_execution_nodes"),
+            "validation_split_used_for_selection": False,
+        }
         return frontier[0]
 
     def validate_process_frontier(
