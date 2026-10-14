@@ -24,6 +24,8 @@ class FixedProcessCandidateCompiler(RecursiveCognitiveCompiler):
             "left": {"op": "macro", "id": "p-c"},
             "right": {"op": "macro", "id": "p-d"},
         }
+        self.single_lineage_heavy = {"op": "macro", "id": "p-e"}
+        self.candidate_set = [self.shallow, self.deep]
 
     def propose_search_policies(self):
         return ({"max_depth": 2},)
@@ -31,7 +33,7 @@ class FixedProcessCandidateCompiler(RecursiveCognitiveCompiler):
     def _exprs(self, keys, primitive_ids, depth_limit):
         # Both expressions are equally competent, have two direct macros, and
         # have the same local AST cost. The shallow option sorts first lexically.
-        return [self.shallow, self.deep]
+        return list(self.candidate_set)
 
 
 def primitive(pid: str, expression: dict, *, fake_provenance: tuple[str, ...] = ()):
@@ -90,7 +92,7 @@ class ProcessFrontierExecutableLineageTieBreakTests(unittest.TestCase):
             2,
         )
 
-    def test_lineage_tie_break_does_not_override_primary_direct_macro_count(self) -> None:
+    def test_direct_macro_count_remains_primary_over_lineage_cardinality(self) -> None:
         compiler = FixedProcessCandidateCompiler()
         compiler.primitives = {
             "p-a": primitive("p-a", {"op": "const", "value": 2}),
@@ -103,17 +105,23 @@ class ProcessFrontierExecutableLineageTieBreakTests(unittest.TestCase):
                 "p-d",
                 {"op": "add", "left": {"op": "macro", "id": "p-b"}, "right": {"op": "const", "value": 0}},
             ),
+            # One direct macro with five ancestors is still ranked below
+            # candidates that preserve two direct macro references.
+            "p-e": primitive(
+                "p-e",
+                {"op": "add", "left": {"op": "macro", "id": "p-c"}, "right": {"op": "macro", "id": "p-d"}},
+            ),
         }
-        # The same fixture establishes that the new key is only a tie-break
-        # after direct macro count and local AST cost; it is not a target lookup.
-        self.assertEqual(
-            compiler.synthesize_process_frontier(
-                (Trace(inputs={}, target=5.0, family="opaque", context={}, task_id="lineage-tie"),),
-                (),
-                (),
-            )[0].used_primitives,
-            ("p-c", "p-d"),
+        compiler.candidate_set = [compiler.shallow, compiler.deep, compiler.single_lineage_heavy]
+        frontier = compiler.synthesize_process_frontier(
+            (Trace(inputs={}, target=5.0, family="opaque", context={}, task_id="lineage-tie"),),
+            (),
+            (),
         )
+        self.assertEqual(frontier[0].used_primitives, ("p-c", "p-d"))
+        self.assertEqual(frontier[1].used_primitives, ("p-a", "p-b"))
+        self.assertEqual(frontier[-1].used_primitives, ("p-e",))
+
 
 
 if __name__ == "__main__":
