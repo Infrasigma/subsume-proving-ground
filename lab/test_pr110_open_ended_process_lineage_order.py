@@ -89,6 +89,10 @@ class OpenEndedProcessExecutableLineageOrderTests(unittest.TestCase):
             compiler.last_process_candidate_frontier[0].used_primitives,
             ("p-c", "p-d"),
         )
+        self.assertEqual(
+            compiler.last_process_candidate_frontier[0].process_id,
+            chosen.process_id,
+        )
         executable = set()
         for pid in chosen.used_primitives:
             executable.update(compiler.executable_lineage(pid))
