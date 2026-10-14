@@ -3,7 +3,10 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 
-from lab.acsie_open_ended_self_extending_proving import selected_process_lineage_audit
+from lab.acsie_open_ended_self_extending_proving import (
+    select_discovery_ranked_frontier_head,
+    selected_process_lineage_audit,
+)
 
 
 # This regression models selection of an earlier competent process while a later frontier item has different lineage.
@@ -48,6 +51,19 @@ class SelectedProcessLineageAuditTests(unittest.TestCase):
         self.assertFalse(selected_audit["selected_candidate_contains_expected_parents"])
         self.assertFalse(selected_audit["selected_candidate_reuse_ok"])
         self.assertEqual(resolved, [("prim:later",), ("prim:selected",)])
+
+    def test_validation_results_cannot_select_a_later_frontier_candidate(self) -> None:
+        first = SimpleNamespace(process_id="first-ranked", validation_passes=False)
+        later = SimpleNamespace(process_id="later-valid", validation_passes=True)
+
+        # Selection takes only the precomputed discovery-ranked frontier; there
+        # is no holdout/transfer/OOD argument that could trigger a fallback.
+        selected = select_discovery_ranked_frontier_head((first, later))
+        self.assertIs(selected, first)
+        self.assertEqual(selected.process_id, "first-ranked")
+
+        self.assertIsNone(select_discovery_ranked_frontier_head(()))
+
 
     def test_incompetent_candidate_cannot_count_as_successful_reuse(self) -> None:
         candidate = SimpleNamespace(
