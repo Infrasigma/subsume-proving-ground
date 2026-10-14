@@ -5,12 +5,28 @@ on:
     branches:
       - research/pr110-gen6-lineage-priority-20261014
     paths:
-      - "research/temporary-diagnostic-trigger-disabled.until-final-rerun"
+      - "research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py"
+      - "research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py"
+      - "research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py"
+      - "lab/acsie_open_ended_self_extending_proving.py"
+      - "lab/test_pr110_selected_lineage_audit.py"
+      - "lab/test_pr110_process_frontier_lineage_tiebreak.py"
+      - "lab/test_pr110_primitive_frontier_validation_separation.py"
+      - "lab/test_pr110_process_validation_separation.py"
+      - "lab/test_pr110_open_ended_process_lineage_order.py"
   pull_request:
     branches:
       - main
     paths:
-      - "research/temporary-diagnostic-trigger-disabled.until-final-rerun"
+      - "research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py"
+      - "research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py"
+      - "research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py"
+      - "lab/acsie_open_ended_self_extending_proving.py"
+      - "lab/test_pr110_selected_lineage_audit.py"
+      - "lab/test_pr110_process_frontier_lineage_tiebreak.py"
+      - "lab/test_pr110_primitive_frontier_validation_separation.py"
+      - "lab/test_pr110_process_validation_separation.py"
+      - "lab/test_pr110_open_ended_process_lineage_order.py"
   workflow_dispatch:
 
 permissions:
@@ -31,7 +47,7 @@ jobs:
       INPUT_STATE_DIGEST: "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a"
       EXPECTED_SEARCH_BLOB: "7d7edbf1031a2e6ab4610efbeab389c7ad588507"
       EXPECTED_COMPILER_BLOB: "9300bcc31251817175f463f9fad8025c3fc64e9f"
-      EXPECTED_GROWTH_BLOB: "5b02708aa5528eb5f2c13c4d0c4ab2eb021ab505"
+      EXPECTED_GROWTH_BLOB: "930a2fc1635f398c0663e0ad69ed3151809a6a33"
       PROVING_SHA: "33259fc5c69d87b99c604f0050508c433a279daf"
       RUNTIME_SHA: "af0c7ef503c51a5bc7872717b263a01f495c855f"
 
@@ -68,8 +84,8 @@ jobs:
           test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py)" = "$EXPECTED_SEARCH_BLOB"
           test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py)" = "$EXPECTED_COMPILER_BLOB"
           test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py)" = "$EXPECTED_GROWTH_BLOB"
-          python3 -m py_compile             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             lab/acsie_open_ended_self_extending_proving.py             lab/pr110_gen6_dominance_bitmask_profile.py             lab/test_pr110_selected_lineage_audit.py             lab/test_pr110_process_frontier_lineage_tiebreak.py lab/test_pr110_primitive_frontier_validation_separation.py lab/test_pr110_process_validation_separation.py
-          python3 -m unittest -v             lab.test_pr110_gen6_dominance_bitmask             lab.test_pr110_selected_lineage_audit             lab.test_pr110_process_frontier_lineage_tiebreak lab.test_pr110_primitive_frontier_validation_separation lab.test_pr110_process_validation_separation > evidence/preflight-tests.txt 2>&1
+          python3 -m py_compile             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             lab/acsie_open_ended_self_extending_proving.py             lab/pr110_gen6_dominance_bitmask_profile.py             lab/test_pr110_selected_lineage_audit.py             lab/test_pr110_process_frontier_lineage_tiebreak.py lab/test_pr110_primitive_frontier_validation_separation.py lab/test_pr110_process_validation_separation.py lab/test_pr110_open_ended_process_lineage_order.py
+          python3 -m unittest -v             lab.test_pr110_gen6_dominance_bitmask             lab.test_pr110_selected_lineage_audit             lab.test_pr110_process_frontier_lineage_tiebreak lab.test_pr110_primitive_frontier_validation_separation lab.test_pr110_process_validation_separation lab.test_pr110_open_ended_process_lineage_order > evidence/preflight-tests.txt 2>&1
           python3 - <<'PY'
           import hashlib, json, os
           from pathlib import Path
@@ -146,7 +162,7 @@ jobs:
               "input_state_digest": "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a",
               "patched_compiler_blob": "9300bcc31251817175f463f9fad8025c3fc64e9f",
               "patched_search_blob": "7d7edbf1031a2e6ab4610efbeab389c7ad588507",
-              "patched_growth_blob": "5b02708aa5528eb5f2c13c4d0c4ab2eb021ab505",
+              "patched_growth_blob": "930a2fc1635f398c0663e0ad69ed3151809a6a33",
               "choice_policy": "first discovery-ranked frontier candidate; no fallback based on holdout/transfer/OOD",
               "frozen_5x12_budget": "UNTOUCHED",
               "promotion_status": "DO_NOT_PROMOTE",
