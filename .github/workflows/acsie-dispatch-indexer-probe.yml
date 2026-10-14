@@ -1,0 +1,21 @@
+name: ACSIE Dispatch Indexer Probe
+
+on:
+  push:
+    paths:
+      - ".github/workflows/acsie-dispatch-indexer-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Confirm runner and workflow registration
+        run: |
+          echo "INDEXER_PROBE=RUNNER_EXECUTED"
+          echo "WORKFLOW_NAME=ACSIE Dispatch Indexer Probe"
+          echo "WORKFLOW_REF=$GITHUB_REF"
