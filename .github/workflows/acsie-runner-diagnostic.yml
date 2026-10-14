@@ -1,0 +1,34 @@
+name: isolated hosted runner smoke
+
+on:
+  push:
+    branches:
+      - diagnostic/hosted-runner-smoke-20261014
+    paths:
+      - .github/workflows/acsie-runner-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runner-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Prove a hosted runner starts and executes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_OS" = "Linux"
+          printf '%s\n' "runner_smoke_status=RUNNER_STARTED"
+          printf '%s\n' "run_id=$GITHUB_RUN_ID"
+          printf '%s\n' "run_attempt=$GITHUB_RUN_ATTEMPT"
+          printf '%s\n' "source_commit=$GITHUB_SHA"
+          printf '%s\n' "ref=$GITHUB_REF"
+          printf '%s\n' "runner_os=$RUNNER_OS"
+          printf '%s\n' "runner_arch=$RUNNER_ARCH"
+          date -u '+utc_time=%Y-%m-%dT%H:%M:%SZ'
+          uname -srm
+          python3 --version
+          echo "::notice title=Hosted runner smoke::Runner was allocated and executed the diagnostic step."
