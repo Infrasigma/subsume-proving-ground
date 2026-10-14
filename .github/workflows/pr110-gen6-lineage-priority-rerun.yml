@@ -49,7 +49,7 @@ jobs:
       INPUT_STATE_DIGEST: "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a"
       EXPECTED_SEARCH_BLOB: "7d7edbf1031a2e6ab4610efbeab389c7ad588507"
       EXPECTED_COMPILER_BLOB: "9300bcc31251817175f463f9fad8025c3fc64e9f"
-      EXPECTED_GROWTH_BLOB: "6a789c021168eafef2132ad4719a885cbe2fb49a"
+      EXPECTED_GROWTH_BLOB: "5b02708aa5528eb5f2c13c4d0c4ab2eb021ab505"
       PROVING_SHA: "33259fc5c69d87b99c604f0050508c433a279daf"
       RUNTIME_SHA: "af0c7ef503c51a5bc7872717b263a01f495c855f"
 
@@ -164,7 +164,7 @@ jobs:
               "input_state_digest": "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a",
               "patched_compiler_blob": "9300bcc31251817175f463f9fad8025c3fc64e9f",
               "patched_search_blob": "7d7edbf1031a2e6ab4610efbeab389c7ad588507",
-              "patched_growth_blob": "6a789c021168eafef2132ad4719a885cbe2fb49a",
+              "patched_growth_blob": "5b02708aa5528eb5f2c13c4d0c4ab2eb021ab505",
               "choice_policy": "first discovery-ranked frontier candidate; no fallback based on holdout/transfer/OOD",
               "frozen_5x12_budget": "UNTOUCHED",
               "promotion_status": "DO_NOT_PROMOTE",
