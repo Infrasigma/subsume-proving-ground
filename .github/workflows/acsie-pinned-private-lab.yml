@@ -27,10 +27,12 @@ jobs:
 
       - name: Select and validate ACSIE pin
         shell: bash
+        env:
+          DISPATCH_ACSIE_REF: ${{ inputs.acsie_ref }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            ref="${{ inputs.acsie_ref }}"
+            ref="$DISPATCH_ACSIE_REF"
           else
             ref="$(cat lab/acsie-pinned-private-lab-ref.txt)"
           fi
