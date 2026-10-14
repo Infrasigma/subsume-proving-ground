@@ -57,10 +57,11 @@ class PrimitiveFrontierValidationSeparationTests(unittest.TestCase):
         self.assertIsNone(result["primary_primitive"])
         self.assertEqual(result["selected_candidate_id"], "prim:selected")
         self.assertEqual(result["candidate_count"], 2)
-        self.assertEqual(result["validated_candidate_count"], 0)
+        self.assertEqual(result["validated_candidate_count"], 1)
         self.assertFalse(result["validation_fallback_used"])
-        self.assertEqual([x["primitive_id"] for x in result["validation"]], ["prim:selected"])
+        self.assertEqual([x["primitive_id"] for x in result["validation"]], ["prim:selected", "prim:later-passing"])
         self.assertFalse(result["validation"][0]["passed"])
+        self.assertTrue(result["validation"][1]["passed"])
         self.assertEqual(self.compiler.primitives, {})
         self.assertEqual(self.compiler.archive, {})
         self.assertEqual(self.compiler.last_primitive_candidate_frontier, ())
@@ -79,14 +80,14 @@ class PrimitiveFrontierValidationSeparationTests(unittest.TestCase):
 
         self.assertTrue(result["accepted"])
         self.assertEqual(result["primary_primitive"].primitive_id, "prim:selected")
-        self.assertEqual(result["accepted_candidate_ids"], ["prim:selected"])
+        self.assertEqual(result["accepted_candidate_ids"], ["prim:selected", "prim:later"])
         self.assertEqual(result["candidate_count"], 2)
         self.assertEqual(result["validated_candidate_count"], 1)
         self.assertFalse(result["validation_fallback_used"])
-        self.assertEqual([x["primitive_id"] for x in result["validation"]], ["prim:selected"])
-        self.assertEqual(set(self.compiler.primitives), {"prim:selected"})
-        self.assertEqual(set(self.compiler.archive), {"prim:selected"})
-        self.assertEqual(self.compiler.last_primitive_candidate_frontier, (selected,))
+        self.assertEqual([x["primitive_id"] for x in result["validation"]], ["prim:selected", "prim:later"])
+        self.assertEqual(set(self.compiler.primitives), {"prim:selected", "prim:later"})
+        self.assertEqual(set(self.compiler.archive), {"prim:selected", "prim:later"})
+        self.assertEqual(self.compiler.last_primitive_candidate_frontier, (selected, later))
 
 
 if __name__ == "__main__":
