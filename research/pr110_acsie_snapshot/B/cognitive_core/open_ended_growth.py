@@ -422,7 +422,22 @@ class OpenEndedRecursiveCognitiveCompiler(RecursiveCognitiveCompiler):
             self.process_frontier = []
             return None
 
-        frontier.sort(key=lambda p: (-len(p.used_primitives), p.complexity, json.dumps(p.expression, sort_keys=True), p.process_id))
+        def executable_lineage_size(process: ProcessCandidate) -> int:
+            lineage: set[str] = set()
+            for primitive_id in process.used_primitives:
+                lineage.update(str(x) for x in self.executable_lineage(str(primitive_id)))
+            return len(lineage)
+
+        # Preserve the existing primary priorities; executable ancestry is a
+        # generic tie-break after direct macro count and local AST cost. No
+        # hidden expected-parent IDs or validation-split observations are used.
+        frontier.sort(key=lambda p: (
+            -len(p.used_primitives),
+            p.complexity,
+            -executable_lineage_size(p),
+            json.dumps(p.expression, sort_keys=True),
+            p.process_id,
+        ))
         self.process_frontier = [p.process_id for p in frontier]
         return frontier[0]
 
