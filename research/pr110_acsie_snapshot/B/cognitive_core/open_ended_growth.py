@@ -418,20 +418,33 @@ class OpenEndedRecursiveCognitiveCompiler(RecursiveCognitiveCompiler):
         conflict: Sequence = (),
     ) -> tuple[ProcessCandidate | None, Evaluation | None, dict[str, object]]:
         frontier = tuple(self.last_process_candidate_frontier)
+        # Candidate identity and order are fixed by discovery before validation.
+        # A failed candidate is rejected; later candidates cannot be promoted
+        # because their holdout/transfer/OOD measurements happen to pass.
+        selected = frontier[0] if frontier else None
         evaluations: list[dict[str, object]] = []
-        passing: list[tuple[ProcessCandidate, Evaluation]] = []
-        for proc in frontier:
-            ev = self.evaluate(proc, train, holdout, transfer, ood, conflict)
+        chosen: tuple[ProcessCandidate | None, Evaluation | None] = (None, None)
+        if selected is not None:
+            ev = self.evaluate(selected, train, holdout, transfer, ood, conflict)
             ok = bool(ev.accepted and ev.ood_error <= 1e-9)
-            evaluations.append({"process_id": proc.process_id, "transfer_error": ev.transfer_error, "ood_error": ev.ood_error, "accepted": ok})
+            evaluations.append({
+                "process_id": selected.process_id,
+                "transfer_error": ev.transfer_error,
+                "ood_error": ev.ood_error,
+                "accepted": ok,
+                "selected_before_validation": True,
+            })
             if ok:
-                passing.append((proc, ev))
-        chosen = passing[0] if passing else (None, None)
+                chosen = (selected, ev)
+
         summary = {
             "candidate_count": len(frontier),
-            "validated_candidate_count": len(passing),
+            "validated_candidate_count": int(chosen[0] is not None),
+            "validation_attempted_count": int(selected is not None),
+            "selected_candidate_id": selected.process_id if selected is not None else None,
             "selection_source": "discovery_and_selection_only",
             "validation_role": "admission_only",
+            "validation_fallback_used": False,
             "validation": evaluations,
         }
         self.last_process_validation_summary = dict(summary)
