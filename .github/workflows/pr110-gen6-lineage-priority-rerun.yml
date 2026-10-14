@@ -11,6 +11,16 @@ on:
       - "lab/test_pr110_selected_lineage_audit.py"
       - "lab/test_pr110_process_frontier_lineage_tiebreak.py"
       - ".github/workflows/pr110-gen6-lineage-priority-rerun.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py"
+      - "research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py"
+      - "lab/acsie_open_ended_self_extending_proving.py"
+      - "lab/test_pr110_selected_lineage_audit.py"
+      - "lab/test_pr110_process_frontier_lineage_tiebreak.py"
+      - ".github/workflows/pr110-gen6-lineage-priority-rerun.yml"
   workflow_dispatch:
 
 permissions:
