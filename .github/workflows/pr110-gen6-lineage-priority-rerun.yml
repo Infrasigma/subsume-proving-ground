@@ -10,7 +10,8 @@ on:
       - "research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py"
       - "lab/acsie_open_ended_self_extending_proving.py"
       - "lab/test_pr110_selected_lineage_audit.py"
-      - "lab/test_pr110_process_frontier_lineage_tiebreak.py lab/test_pr110_primitive_frontier_validation_separation.py"
+      - "lab/test_pr110_process_frontier_lineage_tiebreak.py"
+      - "lab/test_pr110_primitive_frontier_validation_separation.py"
       - "lab/test_pr110_primitive_frontier_validation_separation.py"
       - ".github/workflows/pr110-gen6-lineage-priority-rerun.yml"
   pull_request:
@@ -82,7 +83,7 @@ jobs:
           test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py)" = "$EXPECTED_SEARCH_BLOB"
           test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py)" = "$EXPECTED_COMPILER_BLOB"
           test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py)" = "$EXPECTED_GROWTH_BLOB"
-          python3 -m py_compile             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             lab/acsie_open_ended_self_extending_proving.py             lab/pr110_gen6_dominance_bitmask_profile.py             lab/test_pr110_selected_lineage_audit.py             lab/test_pr110_process_frontier_lineage_tiebreak.py
+          python3 -m py_compile             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             lab/acsie_open_ended_self_extending_proving.py             lab/pr110_gen6_dominance_bitmask_profile.py             lab/test_pr110_selected_lineage_audit.py             lab/test_pr110_process_frontier_lineage_tiebreak.py lab/test_pr110_primitive_frontier_validation_separation.py
           python3 -m unittest -v             lab.test_pr110_gen6_dominance_bitmask             lab.test_pr110_selected_lineage_audit             lab.test_pr110_process_frontier_lineage_tiebreak lab.test_pr110_primitive_frontier_validation_separation > evidence/preflight-tests.txt 2>&1
           python3 - <<'PY'
           import hashlib, json, os
