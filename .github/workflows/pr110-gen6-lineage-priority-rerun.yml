@@ -5,28 +5,12 @@ on:
     branches:
       - research/pr110-gen6-lineage-priority-20261014
     paths:
-      - "research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py"
-      - "research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py"
-      - "research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py"
-      - "lab/acsie_open_ended_self_extending_proving.py"
-      - "lab/test_pr110_selected_lineage_audit.py"
-      - "lab/test_pr110_process_frontier_lineage_tiebreak.py"
-      - "lab/test_pr110_primitive_frontier_validation_separation.py"
-      - "lab/test_pr110_process_validation_separation.py"
-      - ".github/workflows/pr110-gen6-lineage-priority-rerun.yml"
+      - "research/temporary-diagnostic-trigger-disabled.until-final-rerun"
   pull_request:
     branches:
       - main
     paths:
-      - "research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py"
-      - "research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py"
-      - "research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py"
-      - "lab/acsie_open_ended_self_extending_proving.py"
-      - "lab/test_pr110_selected_lineage_audit.py"
-      - "lab/test_pr110_process_frontier_lineage_tiebreak.py"
-      - "lab/test_pr110_primitive_frontier_validation_separation.py"
-      - "lab/test_pr110_process_validation_separation.py"
-      - ".github/workflows/pr110-gen6-lineage-priority-rerun.yml"
+      - "research/temporary-diagnostic-trigger-disabled.until-final-rerun"
   workflow_dispatch:
 
 permissions:
@@ -34,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pr110-gen6-lineage-priority-rerun
+  group: pr110-gen6-lineage-priority-rerun-v2
   cancel-in-progress: false
 
 jobs:
