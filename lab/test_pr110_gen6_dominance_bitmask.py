@@ -80,7 +80,14 @@ class DominanceBitmaskParityTests(unittest.TestCase):
         self.assertEqual(reference.expression, candidate.expression)
         self.assertEqual(reference.used_primitives, candidate.used_primitives)
         self.assertEqual(reference.alternatives, candidate.alternatives)
-        self.assertEqual(dict(reference.stats), dict(candidate.stats))
+        reference_stats = dict(reference.stats)
+        candidate_stats = dict(candidate.stats)
+        # The exact feature cache intentionally removes repeated lineage-union
+        # cache hits from telemetry; those counters measure implementation work,
+        # not search decisions. All semantic/search-state statistics must match.
+        reference_stats.pop("lineage_cache_counters", None)
+        candidate_stats.pop("lineage_cache_counters", None)
+        self.assertEqual(reference_stats, candidate_stats)
 
         pmap = compiler._pmap()
         for result in (reference, candidate):
