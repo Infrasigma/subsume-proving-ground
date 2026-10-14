@@ -4,8 +4,13 @@ import unittest
 from types import SimpleNamespace
 
 from lab.acsie_open_ended_self_extending_proving import (
+    audit_lineage_identifiability,
     select_discovery_ranked_frontier_head,
     selected_process_lineage_audit,
+)
+from cognitive_core.recursive_cognitive_compiler import (
+    CognitivePrimitive,
+    RecursiveCognitiveCompiler,
 )
 
 
@@ -64,6 +69,87 @@ class SelectedProcessLineageAuditTests(unittest.TestCase):
 
         self.assertIsNone(select_discovery_ranked_frontier_head(()))
 
+
+
+    def test_fresh_input_audit_flags_competent_wrong_lineage_alias_without_selecting_it(self) -> None:
+        learner = RecursiveCognitiveCompiler(max_depth=2, population=8, seed=19)
+
+        def primitive(pid: str, expression: dict) -> CognitivePrimitive:
+            return CognitivePrimitive(
+                primitive_id=pid,
+                expression=expression,
+                input_roles=("x", "y"),
+                output_semantics="delta",
+                generation=0,
+                parent_ids=(),
+                source_families=("test",),
+                train_error=0.0,
+                holdout_error=0.0,
+                transfer_error=0.0,
+                complexity=1,
+                provenance={"lineage_ids": ["provenance-must-not-count"]},
+            )
+
+        learner.primitives = {
+            "prim:x": primitive("prim:x", {"op": "get", "key": "x"}),
+            "prim:y": primitive("prim:y", {"op": "get", "key": "y"}),
+            # A structurally different alias computes the same function but
+            # does not reference the expected executable parents.
+            "prim:alias": primitive(
+                "prim:alias",
+                {
+                    "op": "add",
+                    "left": {"op": "get", "key": "x"},
+                    "right": {"op": "get", "key": "y"},
+                },
+            ),
+        }
+        expected = {"prim:x", "prim:y"}
+        target = {
+            "op": "add",
+            "left": {"op": "macro", "id": "hidden:x"},
+            "right": {"op": "macro", "id": "hidden:y"},
+        }
+        hidden = {
+            "hidden:x": {"op": "get", "key": "x"},
+            "hidden:y": {"op": "get", "key": "y"},
+        }
+        audits = [
+            {
+                "process_id": "correct-lineage",
+                "expression": {
+                    "op": "add",
+                    "left": {"op": "macro", "id": "prim:x"},
+                    "right": {"op": "macro", "id": "prim:y"},
+                },
+                "closure_competent": True,
+                "contains_expected_parents": True,
+            },
+            {
+                "process_id": "wrong-lineage-alias",
+                "expression": {"op": "macro", "id": "prim:alias"},
+                "closure_competent": True,
+                "contains_expected_parents": False,
+            },
+        ]
+        before_order = [row["process_id"] for row in audits]
+        first = audit_lineage_identifiability(
+            learner, target, hidden, audits, expected,
+            seed=23, generation=6, pair_index=4, sample_count=64,
+        )
+        second = audit_lineage_identifiability(
+            learner, target, hidden, audits, expected,
+            seed=23, generation=6, pair_index=4, sample_count=64,
+        )
+
+        self.assertEqual(first["status"], "EMPIRICALLY_AMBIGUOUS")
+        self.assertEqual(first["input_design_sha256"], second["input_design_sha256"])
+        self.assertEqual(first["target_output_sha256"], second["target_output_sha256"])
+        self.assertEqual(first["competent_wrong_lineage_exact_candidate_count"], 1)
+        self.assertEqual(first["exact_expected_lineage_candidate_count"], 1)
+        self.assertFalse(first["used_for_selection_or_admission"])
+        self.assertFalse(first["runtime_selection_changed"])
+        self.assertEqual([row["process_id"] for row in audits], before_order)
 
     def test_incompetent_candidate_cannot_count_as_successful_reuse(self) -> None:
         candidate = SimpleNamespace(

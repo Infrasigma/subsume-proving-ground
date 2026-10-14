@@ -378,6 +378,136 @@ def compact_search_stats(search_stats: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def audit_lineage_identifiability(
+    learner: Any,
+    target_expression: dict[str, Any],
+    target_macros: dict[str, dict[str, Any]],
+    candidate_audits: list[dict[str, Any]],
+    expected_parent_ids: set[str],
+    *,
+    seed: int,
+    generation: int,
+    pair_index: int,
+    sample_count: int = 2000,
+) -> dict[str, Any]:
+    """Post-selection audit for empirically indistinguishable lineage candidates.
+
+    This diagnostic uses evaluator-only target expressions on a separately seeded
+    fresh-input design. Its result MUST NOT affect ranking, selection, admission,
+    or any scientific gate. Finite random probes are evidence of empirical
+    ambiguity, never a formal proof of semantic equivalence.
+    """
+    if sample_count <= 0:
+        raise ValueError("sample_count must be positive")
+
+    design_seed = (
+        int(seed) * 1000003
+        + int(generation) * 9176
+        + stable_int(f"acsie-lineage-identifiability-v1-{pair_index}")
+    )
+    rng = random.Random(design_seed)
+    inputs = tuple(
+        {key: rng.uniform(-10.0, 10.0) for key in KEYS}
+        for _ in range(int(sample_count))
+    )
+    encoded_inputs = json.dumps(inputs, sort_keys=True, separators=(",", ":"))
+    input_design_sha256 = sha256(encoded_inputs.encode("utf-8")).hexdigest()
+
+    target_values: list[float] = []
+    try:
+        for row in inputs:
+            target_values.append(float(eval_hidden(target_expression, row, target_macros)))
+    except Exception as exc:
+        return {
+            "schema": "ACSIE.lineage-identifiability-audit.v1",
+            "status": "AUDIT_ERROR",
+            "error_type": type(exc).__name__,
+            "sample_count": len(inputs),
+            "input_design_sha256": input_design_sha256,
+            "used_for_selection_or_admission": False,
+            "runtime_selection_changed": False,
+        }
+    target_output_sha256 = sha256(
+        json.dumps(target_values, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+
+    pmap = learner._pmap()
+    candidate_results: list[dict[str, Any]] = []
+    for record in candidate_audits:
+        errors: list[float] = []
+        evaluation_error: str | None = None
+        try:
+            expression = record["expression"]
+            for row, target_value in zip(inputs, target_values):
+                value = float(eval_expr(expression, row, pmap))
+                errors.append(abs(value - target_value))
+        except Exception as exc:
+            evaluation_error = type(exc).__name__
+
+        complete = len(errors) == len(inputs)
+        max_error = max(errors) if complete and errors else None
+        mean_error = statistics.fmean(errors) if complete and errors else None
+        exact_on_fresh_inputs = bool(
+            complete and max_error is not None and max_error <= 1e-9
+        )
+        contains_expected = bool(record.get("contains_expected_parents", False))
+        competent = bool(record.get("closure_competent", False))
+        candidate_results.append({
+            "process_id": record.get("process_id"),
+            "closure_competent_on_declared_validation": competent,
+            "contains_expected_executable_parents": contains_expected,
+            "exact_target_match_on_fresh_inputs": exact_on_fresh_inputs,
+            "max_absolute_error": max_error,
+            "mean_absolute_error": mean_error,
+            "evaluation_error_type": evaluation_error,
+        })
+
+    ambiguous_wrong_lineage = [
+        result for result in candidate_results
+        if result["closure_competent_on_declared_validation"]
+        and not result["contains_expected_executable_parents"]
+        and result["exact_target_match_on_fresh_inputs"]
+    ]
+    exact_expected_lineage = [
+        result for result in candidate_results
+        if result["contains_expected_executable_parents"]
+        and result["exact_target_match_on_fresh_inputs"]
+    ]
+    status = (
+        "EMPIRICALLY_AMBIGUOUS"
+        if ambiguous_wrong_lineage
+        else "NO_WRONG_LINEAGE_EXACT_MATCH_ON_FRESH_INPUTS"
+    )
+    return {
+        "schema": "ACSIE.lineage-identifiability-audit.v1",
+        "status": status,
+        "sample_count": len(inputs),
+        "input_domain": {key: [-10.0, 10.0] for key in KEYS},
+        "design_seed": design_seed,
+        "input_design_sha256": input_design_sha256,
+        "target_output_sha256": target_output_sha256,
+        "expected_parent_count": len(expected_parent_ids),
+        "candidate_count": len(candidate_results),
+        "competent_candidate_count": sum(
+            result["closure_competent_on_declared_validation"]
+            for result in candidate_results
+        ),
+        "exact_expected_lineage_candidate_count": len(exact_expected_lineage),
+        "competent_wrong_lineage_exact_candidate_count": len(ambiguous_wrong_lineage),
+        "candidate_results": candidate_results,
+        "used_for_selection_or_admission": False,
+        "runtime_selection_changed": False,
+        "interpretation": (
+            "At least one validation-competent wrong-lineage candidate matches the "
+            "hidden target on every fresh diagnostic input; this is empirical "
+            "non-identifiability evidence, not a formal equivalence proof."
+            if ambiguous_wrong_lineage
+            else "No validation-competent wrong-lineage candidate matched every fresh "
+            "diagnostic input; this finite probe does not prove identifiability."
+        ),
+    }
+
+
 def emit_phase_start(
     phase: str,
     seed: int,
@@ -952,6 +1082,20 @@ def run_seed(
                     statistics.fmean(parent_fidelities.values())
                 )
                 if competence and not reuse_ok:
+                    # Evaluator-only fresh-input audit: characterize whether the
+                    # exact-ID gate is empirically identifiable from behavior.
+                    # This report is strictly post-selection and cannot alter any
+                    # candidate ordering, acceptance decision, or scientific gate.
+                    identifiability_audit = audit_lineage_identifiability(
+                        learner,
+                        closure_expr,
+                        closure_macros,
+                        frontier_candidate_audit,
+                        expected,
+                        seed=seed,
+                        generation=generation,
+                        pair_index=pair_idx,
+                    )
                     print(
                         json.dumps(
                             {
@@ -959,6 +1103,7 @@ def run_seed(
                                 "seed": seed,
                                 "generation": generation,
                                 "expected_parent_ids": sorted(expected),
+                                "lineage_identifiability_audit": identifiability_audit,
                                 **selected_lineage_audit,
                                 "frontier_candidate_audit": frontier_candidate_audit,
                                 "frontier_search_method": frontier_search_method,
