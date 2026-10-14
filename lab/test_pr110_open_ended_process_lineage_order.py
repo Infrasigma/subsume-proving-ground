@@ -32,22 +32,10 @@ class OpenEndedProcessExecutableLineageOrderTests(unittest.TestCase):
         compiler.primitives = {
             "p-a": primitive("p-a", {"op": "const", "value": 2.0}),
             "p-b": primitive("p-b", {"op": "const", "value": 3.0}),
-            "p-c": primitive(
-                "p-c",
-                {
-                    "op": "add",
-                    "left": {"op": "macro", "id": "p-a"},
-                    "right": {"op": "const", "value": 0.0},
-                },
-            ),
-            "p-d": primitive(
-                "p-d",
-                {
-                    "op": "add",
-                    "left": {"op": "macro", "id": "p-b"},
-                    "right": {"op": "const", "value": 0.0},
-                },
-            ),
+            # Executable aliases tie the expanded depth/node cost while
+            # preserving a larger generic executable ancestry signature.
+            "p-c": primitive("p-c", {"op": "macro", "id": "p-a"}),
+            "p-d": primitive("p-d", {"op": "macro", "id": "p-b"}),
         }
 
         direct_expr = {
