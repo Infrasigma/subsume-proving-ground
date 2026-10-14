@@ -82,7 +82,7 @@ class PrimitiveFrontierValidationSeparationTests(unittest.TestCase):
         self.assertEqual(result["primary_primitive"].primitive_id, "prim:selected")
         self.assertEqual(result["accepted_candidate_ids"], ["prim:selected", "prim:later"])
         self.assertEqual(result["candidate_count"], 2)
-        self.assertEqual(result["validated_candidate_count"], 1)
+        self.assertEqual(result["validated_candidate_count"], 2)
         self.assertFalse(result["validation_fallback_used"])
         self.assertEqual([x["primitive_id"] for x in result["validation"]], ["prim:selected", "prim:later"])
         self.assertEqual(set(self.compiler.primitives), {"prim:selected", "prim:later"})
