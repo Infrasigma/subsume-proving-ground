@@ -360,6 +360,15 @@ def selected_process_lineage_audit(
     }
 
 
+def select_discovery_ranked_frontier_head(frontier: Any) -> Any:
+    """Freeze candidate choice from discovery-only ordering before validation.
+
+    Holdout, transfer, and OOD values may validate or reject that choice, but
+    must never be used to fall through to a different candidate.
+    """
+    return frontier[0] if frontier else None
+
+
 def compact_search_stats(search_stats: dict[str, Any]) -> dict[str, Any]:
     """Keep evidence useful without serializing tens of thousands of lineage strings."""
     out = dict(search_stats)
@@ -799,12 +808,17 @@ def run_seed(
                             "generation": generation,
                             "expected_parent_ids": sorted(expected),
                             "audit": {
+                                # Search-signature telemetry is not the executable
+                                # process frontier. A later candidate-level audit is
+                                # authoritative for frontier availability.
                                 "expected_lineage_candidate_count": int(expected_signature_count),
+                                "expected_lineage_count_authoritative_for_frontier": False,
+                                "count_scope": "behavioral_search_target_signatures_not_process_frontier",
                                 "perfect_candidate_count": int(search_stats.get("target_candidate_count", 0)),
                                 "selection_qualified_candidate_count": int(search_stats.get("target_candidate_count", 0)),
                                 "expected_lineage_expressions": [],
                                 "preselection_validation_used": False,
-                                "source": "post_search_telemetry",
+                                "source": "search_telemetry_only_not_frontier_truth",
                             },
                         },
                         sort_keys=True,
@@ -812,15 +826,20 @@ def run_seed(
                     flush=True,
                 )
 
-                competence = False
                 reuse_ok = False
                 expected = {left_parent.primitive_id, right_parent.primitive_id}
-                selected_proc = None
+                # Freeze the winner using only the search method's precomputed
+                # discovery-only order. Post-selection holdout/transfer/OOD
+                # evidence must not select a fallback candidate.
+                selected_proc = select_discovery_ranked_frontier_head(cprocs)
+                selected_candidate_competence = False
                 frontier_candidate_audit: list[dict[str, Any]] = []
                 frontier_lineage_matches = 0
                 emit_phase_start(
                     "closure_candidate_evaluation", seed, generation,
                     expected_parent_ids=sorted(expected), candidate_count=len(cprocs),
+                    selected_process_id=selected_proc.process_id if selected_proc is not None else None,
+                    candidate_choice_policy="first_discovery_ranked_candidate_before_validation",
                 )
                 candidate_evaluation_started = perf_counter()
                 candidate_evaluations = 0
@@ -834,6 +853,8 @@ def run_seed(
                     )
                     if candidate_competence:
                         candidate_accepted += 1
+                    if candidate_proc is selected_proc:
+                        selected_candidate_competence = candidate_competence
                     lineage_started = perf_counter()
                     candidate_lineage = executable_lineage_ids(
                         learner,
@@ -850,12 +871,10 @@ def run_seed(
                             "ood_error": float(ceval.ood_error),
                             "candidate_lineage": sorted(candidate_lineage),
                             "contains_expected_parents": contains_expected_parents,
+                            "is_preselected_candidate": candidate_proc is selected_proc,
                         }
                     )
-                    if candidate_competence:
-                        competence = True
-                        if selected_proc is None:
-                            selected_proc = candidate_proc
+                    # This aggregate is diagnostic only. It cannot alter selected_proc.
                     if candidate_competence and contains_expected_parents:
                         frontier_lineage_matches += 1
                 emit_phase_timing(
@@ -870,6 +889,7 @@ def run_seed(
                 )
 
                 cproc = selected_proc
+                competence = selected_candidate_competence
                 # Recompute for the selected process. Do not reuse the loop's
                 # final candidate_lineage: that belongs to the last frontier item,
                 # not necessarily to cproc (the first competent candidate).
@@ -890,6 +910,10 @@ def run_seed(
                             "generation": generation,
                             "expected_parent_ids": sorted(expected),
                             "frontier_size": len(cprocs),
+                            "selected_process_id": cproc.process_id if cproc is not None else None,
+                            "selected_candidate_competent": bool(competence),
+                            "candidate_choice_policy": "first_discovery_ranked_candidate_before_validation",
+                            "validation_metrics_used_for_candidate_choice": False,
                             "frontier_lineage_matches": frontier_lineage_matches,
                         },
                         sort_keys=True,
