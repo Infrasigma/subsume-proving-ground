@@ -13,8 +13,6 @@ on:
       - "lab/test_pr110_process_frontier_lineage_tiebreak.py"
       - "lab/test_pr110_primitive_frontier_validation_separation.py"
       - "lab/test_pr110_process_validation_separation.py"
-      - "lab/test_pr110_primitive_frontier_validation_separation.py"
-      - "lab/test_pr110_process_validation_separation.py"
       - ".github/workflows/pr110-gen6-lineage-priority-rerun.yml"
   pull_request:
     branches:
