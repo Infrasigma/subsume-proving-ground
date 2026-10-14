@@ -32,3 +32,13 @@ The current run for the cost-first aligned patch is still the authoritative test
 5. Keep production unchanged. Promotion requires the frozen 5-seed × 12-generation qualification with every seed/generation gate satisfied; a one-seed Gen6 diagnostic cannot substitute for it.
 
 Current statuses remain: `H7=UNRESOLVED`; `OPEN_ENDED_SELF_EXTENSION=NOT_DEMONSTRATED`; `GENERAL_CAPABILITY=NOT_DEMONSTRATED`; `AGI=NOT_DEMONSTRATED`; `ASI=NOT_DEMONSTRATED`; `PROMOTION=DO_NOT_PROMOTE`.
+
+## Fresh-input identifiability audit
+
+A second evaluator-only audit used the saved hidden-capability expressions from the checkpoint (not the learned primitive expressions as target surrogates) and compared every old closure-frontier candidate with the actual hidden closure target on **2,000 fresh deterministic random inputs** over `x,y,z ∈ [-10,10]`. It did not participate in ranking or admission.
+
+- Each of the 16 mismatch frontiers contained at least one wrong-lineage candidate with **exact zero error on all 2,000 inputs**.
+- In 15/16 frontiers, every candidate in the recorded frontier had exact zero error on all 2,000 inputs; the remaining frontier had 20/32 candidates with exact zero error.
+- In the saved Gen6 primitive archive, 22 primitive pairs (out of 105 pairs) also had exact zero error on the same 2,000-point sample, despite distinct primitive IDs and different stored expressions.
+
+These are strong finite-sample behavioral-equivalence observations, not formal equivalence proofs. They show that exact hidden parent-ID membership is frequently not identifiable from task input/output behavior in this fixture. Therefore a candidate-selection patch alone cannot be assumed to solve the exact-lineage gate: it may only choose among observationally indistinguishable alternatives. The next scientific issue is the test construction / representation-identity contract. Do not weaken the existing lineage gate silently; instead create a predeclared challenge set that separates parent functions behaviorally (or otherwise provides an explicit, permitted structural requirement), while still denying runtime access to hidden target identities. The evaluator should report ambiguity separately from ordinary search failure, but must not use the diagnostic to change runtime selection.
