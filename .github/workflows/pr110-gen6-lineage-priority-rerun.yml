@@ -1,0 +1,225 @@
+name: PR110 Gen6 lineage-priority diagnosis and rerun
+
+on:
+  push:
+    branches:
+      - research/pr110-gen6-lineage-priority-20261014
+    paths:
+      - "research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py"
+      - "research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py"
+      - "lab/acsie_open_ended_self_extending_proving.py"
+      - "lab/test_pr110_selected_lineage_audit.py"
+      - "lab/test_pr110_process_frontier_lineage_tiebreak.py"
+      - ".github/workflows/pr110-gen6-lineage-priority-rerun.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: pr110-gen6-lineage-priority-rerun
+  cancel-in-progress: false
+
+jobs:
+  diagnosis-patch-rerun:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 225
+    env:
+      SEED: "2026100305"
+      INPUT_CHECKPOINT_SHA256: "f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced"
+      INPUT_STATE_DIGEST: "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a"
+      EXPECTED_SEARCH_BLOB: "7d7edbf1031a2e6ab4610efbeab389c7ad588507"
+      EXPECTED_COMPILER_BLOB: "9300bcc31251817175f463f9fad8025c3fc64e9f"
+      PROVING_SHA: "33259fc5c69d87b99c604f0050508c433a279daf"
+      RUNTIME_SHA: "af0c7ef503c51a5bc7872717b263a01f495c855f"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Retrieve immutable Gen5 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: pr110-snapshot-causal-replay
+          run-id: 37570567635
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: prior
+
+      - name: Verify provenance and run focused regression tests
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/B:${{ github.workspace }}
+          PYTHONHASHSEED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp prior/B-checkpoint-current.json evidence/input-gen5-checkpoint.json
+          cp prior/B-checkpoint-manifest.json evidence/original-producer-checkpoint-manifest.json
+          actual=$(sha256sum evidence/input-gen5-checkpoint.json | awk '{print $1}')
+          test "$actual" = "$INPUT_CHECKPOINT_SHA256"
+          test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py)" = "$EXPECTED_SEARCH_BLOB"
+          test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py)" = "$EXPECTED_COMPILER_BLOB"
+          python3 -m py_compile             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             lab/acsie_open_ended_self_extending_proving.py             lab/pr110_gen6_dominance_bitmask_profile.py             lab/test_pr110_selected_lineage_audit.py             lab/test_pr110_process_frontier_lineage_tiebreak.py
+          python3 -m unittest -v             lab.test_pr110_gen6_dominance_bitmask             lab.test_pr110_selected_lineage_audit             lab.test_pr110_process_frontier_lineage_tiebreak             > evidence/preflight-tests.txt 2>&1
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+          p = Path("evidence/input-gen5-checkpoint.json")
+          env = load_checkpoint(p, expected_seed=2026100305, expected_metadata={
+              "proving_sha": os.environ["PROVING_SHA"],
+              "acsie_ref": os.environ["RUNTIME_SHA"],
+          })
+          assert env["generation_next"] == 6
+          assert env["state_digest"] == os.environ["INPUT_STATE_DIGEST"]
+          report = {
+              "schema": "ACSIE.PR110.Gen6LineagePriorityPreflight.v1",
+              "checkpoint_sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+              "checkpoint_state_digest": env["state_digest"],
+              "generation_next": env["generation_next"],
+              "search_blob": os.environ["EXPECTED_SEARCH_BLOB"],
+              "compiler_blob": os.environ["EXPECTED_COMPILER_BLOB"],
+              "validation_split_fallback_disabled": True,
+              "candidate_choice_policy": "first discovery-ranked candidate before validation",
+              "lineage_source": "actual executable macro references; provenance aliases excluded",
+              "scientific_status": "DIAGNOSTIC_ONLY",
+              "promotion_status": "DO_NOT_PROMOTE",
+          }
+          Path("evidence/preflight.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
+          cat evidence/preflight-tests.txt
+
+      - name: Rerun Gen6 from the same immutable checkpoint
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/B:${{ github.workspace }}
+          PYTHONHASHSEED: "0"
+          ACSIE_DOMINANCE_BITSETS: "1"
+          ACSIE_SEARCH_PROFILE: "0"
+        run: |
+          set -uo pipefail
+          checkpoint="$GITHUB_WORKSPACE/evidence/lineage-priority-gen6-working-checkpoint.json"
+          cp evidence/input-gen5-checkpoint.json "$checkpoint"
+          echo "LINEAGE_PRIORITY_GEN6_START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          set +e
+          timeout --signal=TERM --kill-after=60s 100m env             ARM_LABEL="lineage-priority-gen6"             ARM_ROOT="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B"             CHECKPOINT_PATH="$checkpoint"             EXPECTED_SEARCH_BLOB="$EXPECTED_SEARCH_BLOB"             ACSIE_DOMINANCE_BITSETS="1"             ACSIE_SEARCH_PROFILE="0"             python3 -u lab/pr110_gen6_dominance_bitmask_profile.py > evidence/lineage-priority-gen6-raw.txt 2>&1
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" > evidence/lineage-priority-gen6-exit-code.txt
+          echo "LINEAGE_PRIORITY_GEN6_EXIT_CODE=$rc"
+          echo "LINEAGE_PRIORITY_GEN6_END_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          tail -n 45 evidence/lineage-priority-gen6-raw.txt || true
+
+      - name: Validate checkpoint and classify scientific outcome
+        if: always()
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/B:${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+          root = Path("evidence")
+          rawp = root / "lineage-priority-gen6-raw.txt"
+          raw = rawp.read_text(errors="replace") if rawp.exists() else ""
+          rcp = root / "lineage-priority-gen6-exit-code.txt"
+          rc = int(rcp.read_text()) if rcp.exists() else None
+          cp = root / "lineage-priority-gen6-working-checkpoint.json"
+          report = {
+              "schema": "ACSIE.PR110.Gen6LineagePriorityRerun.v1",
+              "process_exit_code": rc,
+              "raw_log_sha256": hashlib.sha256(raw.encode()).hexdigest(),
+              "raw_log_bytes": len(raw.encode()),
+              "input_checkpoint_sha256": "f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced",
+              "input_state_digest": "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a",
+              "patched_compiler_blob": "9300bcc31251817175f463f9fad8025c3fc64e9f",
+              "patched_search_blob": "7d7edbf1031a2e6ab4610efbeab389c7ad588507",
+              "choice_policy": "first discovery-ranked frontier candidate; no fallback based on holdout/transfer/OOD",
+              "frozen_5x12_budget": "UNTOUCHED",
+              "promotion_status": "DO_NOT_PROMOTE",
+              "open_ended_self_extension": "NOT_DEMONSTRATED",
+              "agi": "NOT_DEMONSTRATED",
+              "asi": "NOT_DEMONSTRATED",
+          }
+          valid = False
+          if cp.exists():
+              try:
+                  env = load_checkpoint(cp, expected_seed=2026100305, expected_metadata={
+                      "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+                      "acsie_ref": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+                  })
+                  gen6 = next((x for x in env.get("generations_out", []) if int(x.get("generation", -1)) == 6), None)
+                  report.update({
+                      "checkpoint_validation": "PASS",
+                      "checkpoint_sha256_after": hashlib.sha256(cp.read_bytes()).hexdigest(),
+                      "checkpoint_state_digest_after": env.get("state_digest"),
+                      "generation_next": env.get("generation_next"),
+                      "gen6_metrics": ({
+                          k: gen6.get(k) for k in (
+                              "accepted", "closure_pair_count", "closure_success_count",
+                              "closure_success_rate", "closure_reuse_success_count",
+                              "closure_reuse_rate", "closure_trap_count",
+                              "closure_parent_fidelity", "probe_success_rate",
+                              "probe_reuse_rate", "probe_parent_fidelity",
+                              "probe_trap_count", "transfer_error", "ood_error",
+                              "target_depth", "runtime_max_depth", "retained_count",
+                          )
+                      } if gen6 else None),
+                  })
+                  valid = bool(env.get("generation_next") == 7 and gen6 is not None)
+              except Exception as exc:
+                  report["checkpoint_validation"] = "FAIL"
+                  report["checkpoint_error"] = repr(exc)
+          else:
+              report["checkpoint_validation"] = "MISSING"
+          try:
+              events = [json.loads(line) for line in raw.splitlines()]
+              events = [x for x in events if isinstance(x, dict)]
+          except Exception:
+              events = []
+          counts = {}
+          for e in events:
+              name = e.get("event")
+              if name in ("CLOSURE_LINEAGE_MISMATCH", "PROBE_LINEAGE_MISMATCH",
+                          "PROCESS_FRONTIER_CLOSURE_AUDIT", "CLOSURE_CANDIDATE_AUDIT"):
+                  counts[name] = counts.get(name, 0) + 1
+          report["lineage_event_counts"] = counts
+          metrics = report.get("gen6_metrics") or {}
+          scientific = bool(
+              metrics.get("accepted")
+              and metrics.get("closure_trap_count") == 0
+              and metrics.get("probe_trap_count") == 0
+              and metrics.get("closure_parent_fidelity") == 1.0
+              and metrics.get("probe_parent_fidelity") == 1.0
+          )
+          report["scientific_result"] = "ONE_SEED_DIAGNOSTIC_PASS" if scientific else (
+              "ONE_SEED_DIAGNOSTIC_FAIL" if valid else "INCONCLUSIVE_OR_INVALID"
+          )
+          report["status_classification"] = (
+              "COMPLETED_REQUIRES_SCIENTIFIC_REVIEW" if valid else "INCOMPLETE_OR_INVALID"
+          )
+          Path("evidence/gen6-lineage-priority-summary.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n"
+          )
+          print(json.dumps(report, indent=2, sort_keys=True))
+          if not valid:
+              raise SystemExit(2)
+          PY
+
+      - name: Upload patch and rerun evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-gen6-lineage-priority-rerun
+          path: evidence/
+          retention-days: 90
