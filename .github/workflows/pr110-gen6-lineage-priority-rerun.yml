@@ -6,20 +6,24 @@ on:
       - research/pr110-gen6-lineage-priority-20261014
     paths:
       - "research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py"
+      - "research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py"
       - "research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py"
       - "lab/acsie_open_ended_self_extending_proving.py"
       - "lab/test_pr110_selected_lineage_audit.py"
-      - "lab/test_pr110_process_frontier_lineage_tiebreak.py"
+      - "lab/test_pr110_process_frontier_lineage_tiebreak.py lab/test_pr110_primitive_frontier_validation_separation.py"
+      - "lab/test_pr110_primitive_frontier_validation_separation.py"
       - ".github/workflows/pr110-gen6-lineage-priority-rerun.yml"
   pull_request:
     branches:
       - main
     paths:
       - "research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py"
+      - "research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py"
       - "research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py"
       - "lab/acsie_open_ended_self_extending_proving.py"
       - "lab/test_pr110_selected_lineage_audit.py"
       - "lab/test_pr110_process_frontier_lineage_tiebreak.py"
+      - "lab/test_pr110_primitive_frontier_validation_separation.py"
       - ".github/workflows/pr110-gen6-lineage-priority-rerun.yml"
   workflow_dispatch:
 
@@ -41,6 +45,7 @@ jobs:
       INPUT_STATE_DIGEST: "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a"
       EXPECTED_SEARCH_BLOB: "7d7edbf1031a2e6ab4610efbeab389c7ad588507"
       EXPECTED_COMPILER_BLOB: "9300bcc31251817175f463f9fad8025c3fc64e9f"
+      EXPECTED_GROWTH_BLOB: "87e2fed61b666082fa9e8113c067ca6545d4aa5b"
       PROVING_SHA: "33259fc5c69d87b99c604f0050508c433a279daf"
       RUNTIME_SHA: "af0c7ef503c51a5bc7872717b263a01f495c855f"
 
@@ -76,8 +81,9 @@ jobs:
           test "$actual" = "$INPUT_CHECKPOINT_SHA256"
           test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py)" = "$EXPECTED_SEARCH_BLOB"
           test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py)" = "$EXPECTED_COMPILER_BLOB"
+          test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py)" = "$EXPECTED_GROWTH_BLOB"
           python3 -m py_compile             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             lab/acsie_open_ended_self_extending_proving.py             lab/pr110_gen6_dominance_bitmask_profile.py             lab/test_pr110_selected_lineage_audit.py             lab/test_pr110_process_frontier_lineage_tiebreak.py
-          python3 -m unittest -v             lab.test_pr110_gen6_dominance_bitmask             lab.test_pr110_selected_lineage_audit             lab.test_pr110_process_frontier_lineage_tiebreak             > evidence/preflight-tests.txt 2>&1
+          python3 -m unittest -v             lab.test_pr110_gen6_dominance_bitmask             lab.test_pr110_selected_lineage_audit             lab.test_pr110_process_frontier_lineage_tiebreak lab.test_pr110_primitive_frontier_validation_separation > evidence/preflight-tests.txt 2>&1
           python3 - <<'PY'
           import hashlib, json, os
           from pathlib import Path
@@ -154,6 +160,7 @@ jobs:
               "input_state_digest": "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a",
               "patched_compiler_blob": "9300bcc31251817175f463f9fad8025c3fc64e9f",
               "patched_search_blob": "7d7edbf1031a2e6ab4610efbeab389c7ad588507",
+              "patched_growth_blob": "87e2fed61b666082fa9e8113c067ca6545d4aa5b",
               "choice_policy": "first discovery-ranked frontier candidate; no fallback based on holdout/transfer/OOD",
               "frozen_5x12_budget": "UNTOUCHED",
               "promotion_status": "DO_NOT_PROMOTE",
@@ -205,13 +212,25 @@ jobs:
                   counts[name] = counts.get(name, 0) + 1
           report["lineage_event_counts"] = counts
           metrics = report.get("gen6_metrics") or {}
+          # Legacy *_parent_fidelity fields actually store mean absolute
+          # representation error: 0.0 means exact representation.
+          # Executable lineage reuse is measured by reuse rates and trap counts.
           scientific = bool(
               metrics.get("accepted")
               and metrics.get("closure_trap_count") == 0
               and metrics.get("probe_trap_count") == 0
-              and metrics.get("closure_parent_fidelity") == 1.0
-              and metrics.get("probe_parent_fidelity") == 1.0
+              and metrics.get("closure_reuse_rate") == 1.0
+              and metrics.get("probe_reuse_rate") == 1.0
           )
+          raw_gen6 = gen6 if valid else None
+          report["representation_error_semantics"] = {
+              "legacy_closure_parent_fidelity": "mean absolute representation error; 0.0 means exact",
+              "legacy_probe_parent_fidelity": "mean absolute representation error; 0.0 means exact",
+          }
+          report["representation_error_values"] = ({
+              "closure_parent_representation_mae": raw_gen6.get("closure_parent_fidelity"),
+              "probe_parent_representation_mae": raw_gen6.get("probe_parent_fidelity"),
+          } if raw_gen6 else None)
           report["scientific_result"] = "ONE_SEED_DIAGNOSTIC_PASS" if scientific else (
               "ONE_SEED_DIAGNOSTIC_FAIL" if valid else "INCONCLUSIVE_OR_INVALID"
           )
