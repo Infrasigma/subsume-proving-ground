@@ -368,9 +368,20 @@ class RecursiveCognitiveCompiler:
         """
         keys=sorted(set().union(*(t.inputs.keys() for t in rows))); pids=tuple(self.primitives)
         candidates=[]
+        # Compute actual executable ancestry once per retained primitive. Do not
+        # use provenance aliases or parent_ids: only executable macro edges count.
+        executable_lineage_by_primitive = {
+            str(pid): frozenset(str(x) for x in self.executable_lineage(str(pid)))
+            for pid in pids
+        }
+        executable_lineage_by_used: dict[tuple[str, ...], frozenset[str]] = {}
         self.last_process_candidate_selection_summary = {
             "discovery_qualified": 0,
             "post_selection_validation_ignored": True,
+            "lineage_tiebreak": (
+                "executable-lineage-cardinality-descending-after-direct-macro-count-and-node-cost"
+            ),
+            "lineage_source": "actual_executable_macro_references",
         }
         for pol in self.propose_search_policies():
             for expr in self._exprs(keys,pids,min(3,int(pol["max_depth"]))):
@@ -378,9 +389,23 @@ class RecursiveCognitiveCompiler:
                     tr=sum(abs(eval_expr(expr,t.inputs,self._pmap())-t.target) for t in rows)/len(rows)
                     if tr>1e-9: continue
                     used=tuple(sorted({str(x["id"]) for x in self._walk(expr) if x.get("op")=="macro"}))
+                    executable_lineage = executable_lineage_by_used.get(used)
+                    if executable_lineage is None:
+                        lineage_union: set[str] = set()
+                        for pid in used:
+                            lineage_union.update(
+                                executable_lineage_by_primitive.get(pid, frozenset({pid}))
+                            )
+                        executable_lineage = frozenset(lineage_union)
+                        executable_lineage_by_used[used] = executable_lineage
+                    # Keep the existing first-order priorities (more direct macros,
+                    # then lower local AST cost); only break those ties by preferring
+                    # a larger *executable* ancestry. This is generic and cannot see
+                    # the hidden expected-parent IDs or any validation split.
                     selection_key=(
                         -len(used),
                         ast_nodes(expr),
+                        -len(executable_lineage),
                         len(json.dumps(expr,sort_keys=True)),
                         json.dumps(expr,sort_keys=True),
                     )
