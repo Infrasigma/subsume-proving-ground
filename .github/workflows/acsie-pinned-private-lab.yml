@@ -1,0 +1,57 @@
+name: ACSIE Pinned Private Lab
+
+on:
+  workflow_dispatch:
+    inputs:
+      acsie_ref:
+        description: "Exact ACSIE commit SHA to validate"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  private-lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout public lab harness
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+
+      - name: Validate requested ACSIE pin
+        shell: bash
+        env:
+          ACSIE_REF: ${{ inputs.acsie_ref }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$ACSIE_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "ERROR: acsie_ref must be a full 40-character commit SHA." >&2
+            exit 2
+          fi
+          echo "REQUESTED_ACSIE_COMMIT=$ACSIE_REF"
+
+      - name: Run exact pinned private-source lab
+        shell: bash
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: ${{ inputs.acsie_ref }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set +e
+          bash lab/acsie_private_lab.sh 2>&1 | tee acsie-private-lab.log
+          rc=${PIPESTATUS[0]}
+          printf '\nACSIE_PRIVATE_LAB_EXIT=%s\n' "$rc" | tee -a acsie-private-lab.log
+          exit "$rc"
+
+      - name: Upload private-lab execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-private-lab-log-${{ github.run_id }}
+          path: acsie-private-lab.log
+          if-no-files-found: warn
+          retention-days: 90
