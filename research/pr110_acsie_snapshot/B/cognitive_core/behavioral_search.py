@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+from time import perf_counter
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
@@ -33,6 +36,60 @@ def find_exact_expression(
     discovery_rows = tuple(rows)
     if not discovery_rows:
         return None
+
+    search_started = perf_counter()
+    profile_enabled = os.environ.get("ACSIE_SEARCH_PROFILE") == "1"
+    trace_enabled = profile_enabled and os.environ.get("ACSIE_SEARCH_TRACE") == "1"
+    use_bitsets = os.environ.get("ACSIE_DOMINANCE_BITSETS", "1") == "1"
+    comparison_budget = int(os.environ.get("ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS", "0"))
+    register_budget = int(os.environ.get("ACSIE_SEARCH_MAX_REGISTER_CALLS", "0"))
+    profile_interval = max(1, int(os.environ.get("ACSIE_SEARCH_PROGRESS_INTERVAL", "15000")))
+    active_phase = os.environ.get("ACSIE_ACTIVE_SYNTHESIS_PHASE", "primary_process_synthesis")
+    dominance_comparisons = 0
+    register_calls = 0
+    trace_event_count = 0
+    trace_hasher = hashlib.sha256()
+
+    def record_decision(left_token: int, right_token: int, result: bool) -> None:
+        nonlocal trace_event_count
+        if not trace_enabled:
+            return
+        encoded = json.dumps(
+            [int(left_token), int(right_token), bool(result)],
+            separators=(",", ":"),
+        ).encode("utf-8")
+        trace_hasher.update(len(encoded).to_bytes(4, "big"))
+        trace_hasher.update(encoded)
+        trace_event_count += 1
+
+    def emit_profile(event: str, *, force: bool = False) -> None:
+        if not profile_enabled:
+            return
+        if not force and dominance_comparisons % profile_interval != 0 and register_calls % profile_interval != 0:
+            return
+        print(json.dumps({
+            "event": event,
+            "phase": active_phase,
+            "elapsed_seconds": round(perf_counter() - search_started, 6),
+            "rows": len(discovery_rows),
+            "primitive_count": len(primitive_ids),
+            "max_depth": int(max_depth),
+            "require_macro": bool(require_macro),
+            "generated_expressions": int(stats.get("generated_expressions", 0)),
+            "register_calls": register_calls,
+            "unique_states": int(stats.get("unique_states", 0)),
+            "duplicate_states": int(stats.get("duplicate_states", 0)),
+            "dominance_comparisons": dominance_comparisons,
+            "dominance_pruned_states": int(stats.get("dominance_pruned_states", 0)),
+            "dominance_frontier_max": int(stats.get("dominance_frontier_max", 0)),
+            "max_states_in_depth": int(stats.get("max_states_in_depth", 0)),
+            "state_feature_computations": state_feature_computations,
+            "bitset_identifier_universe_size": len(lineage_bit_ids),
+            "lineage_cache_counters": dict(lineage_cache_counters),
+            "decision_trace_enabled": trace_enabled,
+            "decision_trace_events": trace_event_count if trace_enabled else None,
+            "decision_trace_sha256": trace_hasher.hexdigest() if trace_enabled else None,
+        }, sort_keys=True), flush=True)
 
     target = tuple(float(row.target) for row in discovery_rows)
     primitive_ids = tuple(sorted(compiler.primitives))
@@ -379,6 +436,7 @@ def find_exact_expression(
     lineage_bit_ids: dict[str, int] = {}
     lineage_ids_by_bit: list[str] = []
     state_feature_cache: dict[int, tuple[int, int, tuple[int, int]]] = {}
+    state_feature_computations = 0
 
     def ids_to_mask(values: Sequence[str] | set[str] | frozenset[str]) -> int:
         mask = 0
@@ -405,21 +463,46 @@ def find_exact_expression(
         return state[5] in dominated_state_tokens
 
     def dominates(left: tuple, right: tuple) -> bool:
-        # Semantically identical to the set-based reference predicate:
-        # left dominates right iff its direct vocabulary and executable
-        # lineage are supersets and its structural costs are no worse.
-        # Encode subset checks as integer bit operations and compute each
-        # state's features once, not for every frontier pair.
-        left_direct_mask, left_lineage_mask, left_cost = state_feature_cache[left[5]]
-        right_direct_mask, right_lineage_mask, right_cost = state_feature_cache[right[5]]
-        left_depth, left_nodes = left_cost
-        right_depth, right_nodes = right_cost
-        return (
-            (right_direct_mask & ~left_direct_mask) == 0
-            and (right_lineage_mask & ~left_lineage_mask) == 0
-            and left_depth <= right_depth
-            and left_nodes <= right_nodes
-        )
+        nonlocal dominance_comparisons
+        if profile_enabled and comparison_budget > 0 and dominance_comparisons >= comparison_budget:
+            emit_profile("SEARCH_PROFILE_DOMINANCE_BUDGET_REACHED", force=True)
+            raise SystemExit(76)
+        dominance_comparisons += 1
+        if use_bitsets:
+            # Semantically identical to the set-based reference predicate:
+            # left dominates right iff its direct vocabulary and executable
+            # lineage are supersets and its structural costs are no worse.
+            left_direct_mask, left_lineage_mask, left_cost = state_feature_cache[left[5]]
+            right_direct_mask, right_lineage_mask, right_cost = state_feature_cache[right[5]]
+            left_depth, left_nodes = left_cost
+            right_depth, right_nodes = right_cost
+            decision = (
+                (right_direct_mask & ~left_direct_mask) == 0
+                and (right_lineage_mask & ~left_lineage_mask) == 0
+                and left_depth <= right_depth
+                and left_nodes <= right_nodes
+            )
+        else:
+            # Instrumented control: retain the original set-based predicate.
+            left_direct = set(left[2])
+            right_direct = set(right[2])
+            left_lineage = set(executable_lineage_ids(left[2]))
+            right_lineage = set(executable_lineage_ids(right[2]))
+            left_depth, left_nodes = executable_cost(left[0])
+            right_depth, right_nodes = executable_cost(right[0])
+            decision = (
+                right_direct.issubset(left_direct)
+                and right_lineage.issubset(left_lineage)
+                and left_depth <= right_depth
+                and left_nodes <= right_nodes
+            )
+        record_decision(left[5], right[5], bool(decision))
+        if profile_enabled and dominance_comparisons % profile_interval == 0:
+            emit_profile("SEARCH_PROFILE_PROGRESS", force=True)
+        if profile_enabled and comparison_budget > 0 and dominance_comparisons >= comparison_budget:
+            emit_profile("SEARCH_PROFILE_DOMINANCE_BUDGET_REACHED", force=True)
+            raise SystemExit(76)
+        return bool(decision)
 
 
     def discard_pruned_state(state: tuple) -> None:
@@ -443,7 +526,14 @@ def find_exact_expression(
         state_feature_cache.pop(state[5], None)
 
     def register(expr: Mapping[str, Any]):
-        nonlocal next_state_token, target_candidate_found
+        nonlocal next_state_token, target_candidate_found, register_calls, state_feature_computations
+        if profile_enabled and register_budget > 0 and register_calls >= register_budget:
+            emit_profile("SEARCH_PROFILE_REGISTER_BUDGET_REACHED", force=True)
+            raise SystemExit(76)
+        if profile_enabled:
+            register_calls += 1
+            if register_calls % profile_interval == 0:
+                emit_profile("SEARCH_PROFILE_PROGRESS", force=True)
         expr = canonical(expr)
         expression_ident = expr_key(expr)
         if expression_ident in seen_expression_keys:
@@ -506,11 +596,13 @@ def find_exact_expression(
                 # A better-ranked bucket representative may later participate
                 # in target extraction. Keep its exact dominance features ready
                 # in case it is compared by a subsequent search operation.
-                state_feature_cache[state[5]] = (
-                    ids_to_mask(state_used),
-                    ids_to_mask(direct_lineage),
-                    executable_cost(expr),
-                )
+                if use_bitsets:
+                    state_feature_cache[state[5]] = (
+                        ids_to_mask(state_used),
+                        ids_to_mask(direct_lineage),
+                        executable_cost(expr),
+                    )
+                    state_feature_computations += 1
                 bucket[state_key] = state
                 if best_any.get(outputs) == old:
                     best_any[outputs] = state
@@ -520,11 +612,13 @@ def find_exact_expression(
 
         # One-time feature computation replaces repeated set construction and
         # AST-cost lookups inside every pairwise dominance comparison.
-        state_feature_cache[state[5]] = (
-            ids_to_mask(state_used),
-            ids_to_mask(direct_lineage),
-            executable_cost(expr),
-        )
+        if use_bitsets:
+            state_feature_cache[state[5]] = (
+                ids_to_mask(state_used),
+                ids_to_mask(direct_lineage),
+                executable_cost(expr),
+            )
+            state_feature_computations += 1
 
         behavior_key = (outputs, state_keys)
         frontier = dominance_frontier.setdefault(behavior_key, [])
