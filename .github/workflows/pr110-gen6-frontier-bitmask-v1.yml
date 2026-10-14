@@ -1,5 +1,7 @@
 name: PR110 Gen6 exact bitset dominance patch and rerun
 
+# Telemetry counters are diagnostic; parity excludes implementation-only cache-hit counts.
+
 on:
   push:
     branches:
