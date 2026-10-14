@@ -5,12 +5,30 @@ on:
     branches:
       - research/pr110-gen6-lineage-priority-20261014
     paths:
-      - "research/temporary-diagnostic-trigger-disabled.until-final-rerun"
+      - "research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py"
+      - "research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py"
+      - "research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py"
+      - "lab/acsie_open_ended_self_extending_proving.py"
+      - "lab/test_pr110_selected_lineage_audit.py"
+      - "lab/test_pr110_process_frontier_lineage_tiebreak.py"
+      - "lab/test_pr110_primitive_frontier_validation_separation.py"
+      - "lab/test_pr110_process_validation_separation.py"
+      - "lab/test_pr110_open_ended_process_lineage_order.py"
+      - "lab/test_pr110_open_ended_candidate_ranking.py"
   pull_request:
     branches:
       - main
     paths:
-      - "research/temporary-diagnostic-trigger-disabled.until-final-rerun"
+      - "research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py"
+      - "research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py"
+      - "research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py"
+      - "lab/acsie_open_ended_self_extending_proving.py"
+      - "lab/test_pr110_selected_lineage_audit.py"
+      - "lab/test_pr110_process_frontier_lineage_tiebreak.py"
+      - "lab/test_pr110_primitive_frontier_validation_separation.py"
+      - "lab/test_pr110_process_validation_separation.py"
+      - "lab/test_pr110_open_ended_process_lineage_order.py"
+      - "lab/test_pr110_open_ended_candidate_ranking.py"
   workflow_dispatch:
 
 permissions:
@@ -18,7 +36,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pr110-gen6-lineage-priority-rerun-v2
+  group: pr110-gen6-lineage-priority-rerun-v3
   cancel-in-progress: false
 
 jobs:
@@ -30,8 +48,8 @@ jobs:
       INPUT_CHECKPOINT_SHA256: "f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced"
       INPUT_STATE_DIGEST: "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a"
       EXPECTED_SEARCH_BLOB: "7d7edbf1031a2e6ab4610efbeab389c7ad588507"
-      EXPECTED_COMPILER_BLOB: "9300bcc31251817175f463f9fad8025c3fc64e9f"
-      EXPECTED_GROWTH_BLOB: "5d733016c8464317981307d4a3a52ae494ac05a3"
+      EXPECTED_COMPILER_BLOB: "ab3d14b877eae3afaf1259437c179380df35e3e7"
+      EXPECTED_GROWTH_BLOB: "27fb63532fed3ce14d2bb5d61874901d28d2646c"
       PROVING_SHA: "33259fc5c69d87b99c604f0050508c433a279daf"
       RUNTIME_SHA: "af0c7ef503c51a5bc7872717b263a01f495c855f"
 
@@ -68,8 +86,8 @@ jobs:
           test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py)" = "$EXPECTED_SEARCH_BLOB"
           test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py)" = "$EXPECTED_COMPILER_BLOB"
           test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py)" = "$EXPECTED_GROWTH_BLOB"
-          python3 -m py_compile             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             lab/acsie_open_ended_self_extending_proving.py             lab/pr110_gen6_dominance_bitmask_profile.py             lab/test_pr110_selected_lineage_audit.py             lab/test_pr110_process_frontier_lineage_tiebreak.py lab/test_pr110_primitive_frontier_validation_separation.py lab/test_pr110_process_validation_separation.py lab/test_pr110_open_ended_process_lineage_order.py
-          python3 -m unittest -v             lab.test_pr110_gen6_dominance_bitmask             lab.test_pr110_selected_lineage_audit             lab.test_pr110_process_frontier_lineage_tiebreak lab.test_pr110_primitive_frontier_validation_separation lab.test_pr110_process_validation_separation lab.test_pr110_open_ended_process_lineage_order > evidence/preflight-tests.txt 2>&1
+          python3 -m py_compile             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             lab/acsie_open_ended_self_extending_proving.py             lab/pr110_gen6_dominance_bitmask_profile.py             lab/test_pr110_selected_lineage_audit.py             lab/test_pr110_process_frontier_lineage_tiebreak.py lab/test_pr110_primitive_frontier_validation_separation.py lab/test_pr110_process_validation_separation.py lab/test_pr110_open_ended_process_lineage_order.py lab/test_pr110_open_ended_candidate_ranking.py
+          python3 -m unittest -v             lab.test_pr110_gen6_dominance_bitmask             lab.test_pr110_selected_lineage_audit             lab.test_pr110_process_frontier_lineage_tiebreak lab.test_pr110_primitive_frontier_validation_separation lab.test_pr110_process_validation_separation lab.test_pr110_open_ended_process_lineage_order lab.test_pr110_open_ended_candidate_ranking > evidence/preflight-tests.txt 2>&1
           python3 - <<'PY'
           import hashlib, json, os
           from pathlib import Path
@@ -88,6 +106,7 @@ jobs:
               "generation_next": env["generation_next"],
               "search_blob": os.environ["EXPECTED_SEARCH_BLOB"],
               "compiler_blob": os.environ["EXPECTED_COMPILER_BLOB"],
+              "growth_blob": os.environ["EXPECTED_GROWTH_BLOB"],
               "validation_split_fallback_disabled": True,
               "candidate_choice_policy": "first discovery-ranked candidate before validation",
               "lineage_source": "actual executable macro references; provenance aliases excluded",
@@ -144,9 +163,9 @@ jobs:
               "raw_log_bytes": len(raw.encode()),
               "input_checkpoint_sha256": "f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced",
               "input_state_digest": "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a",
-              "patched_compiler_blob": "9300bcc31251817175f463f9fad8025c3fc64e9f",
+              "patched_compiler_blob": "ab3d14b877eae3afaf1259437c179380df35e3e7",
               "patched_search_blob": "7d7edbf1031a2e6ab4610efbeab389c7ad588507",
-              "patched_growth_blob": "5d733016c8464317981307d4a3a52ae494ac05a3",
+              "patched_growth_blob": "27fb63532fed3ce14d2bb5d61874901d28d2646c",
               "choice_policy": "first discovery-ranked frontier candidate; no fallback based on holdout/transfer/OOD",
               "frozen_5x12_budget": "UNTOUCHED",
               "promotion_status": "DO_NOT_PROMOTE",
@@ -207,6 +226,10 @@ jobs:
               and metrics.get("probe_trap_count") == 0
               and metrics.get("closure_reuse_rate") == 1.0
               and metrics.get("probe_reuse_rate") == 1.0
+              and metrics.get("closure_parent_fidelity") is not None
+              and float(metrics.get("closure_parent_fidelity")) <= 1e-9
+              and metrics.get("probe_parent_fidelity") is not None
+              and float(metrics.get("probe_parent_fidelity")) <= 1e-9
           )
           raw_gen6 = gen6 if valid else None
           report["representation_error_semantics"] = {
