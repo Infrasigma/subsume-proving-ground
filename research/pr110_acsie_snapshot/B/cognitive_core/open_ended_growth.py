@@ -417,8 +417,8 @@ class OpenEndedRecursiveCognitiveCompiler(RecursiveCognitiveCompiler):
             if frontier:
                 break
 
-        self.last_process_candidate_frontier = tuple(frontier)
         if not frontier:
+            self.last_process_candidate_frontier = ()
             self.process_frontier = []
             return None
 
@@ -438,6 +438,7 @@ class OpenEndedRecursiveCognitiveCompiler(RecursiveCognitiveCompiler):
             json.dumps(p.expression, sort_keys=True),
             p.process_id,
         ))
+        self.last_process_candidate_frontier = tuple(frontier)
         self.process_frontier = [p.process_id for p in frontier]
         return frontier[0]
 
