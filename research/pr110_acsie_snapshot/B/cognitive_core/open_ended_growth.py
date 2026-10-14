@@ -238,13 +238,13 @@ class OpenEndedRecursiveCognitiveCompiler(RecursiveCognitiveCompiler):
                 "validated_candidate_count": 0,
                 "validation": [],
                 "selection_source": "discovery_and_selection_only",
-                "validation_role": "selected_candidate_admission_only",
+                "validation_role": "admission_only",
                 "validation_fallback_used": False,
             }
 
-        # Freeze the candidate before looking at transfer/OOD validation.
-        # A failed selected candidate is a failed admission: later alternatives
-        # must not become the winner merely because their validation metrics pass.
+        # Freeze primary identity before observing transfer/OOD outcomes.
+        # Validation may admit/reject alternatives, but it cannot promote a
+        # later passing candidate to primary if the discovery-ranked primary fails.
         primary = frontier[0]
 
         def error(rows: Sequence, expression: Mapping[str, object]) -> float:
@@ -259,70 +259,88 @@ class OpenEndedRecursiveCognitiveCompiler(RecursiveCognitiveCompiler):
                     return float("inf")
             return sum(vals) / len(vals)
 
-        oo = error(ood_rows, primary.expression)
-        ok = bool(primary.transfer_error <= 1e-9 and oo <= 1e-9)
-        validation = [{
-            "primitive_id": primary.primitive_id,
-            "transfer_error": float(primary.transfer_error),
-            "ood_error": float(oo),
-            "passed": ok,
-            "selected_before_validation": True,
-        }]
-
-        # Remove every non-selected synthesis alternative. They must not remain
-        # as hidden archive state if the selected candidate fails admission.
+        passing: list[CognitivePrimitive] = []
+        validation: list[dict[str, object]] = []
         for primitive in frontier:
-            if primitive.primitive_id != primary.primitive_id or not ok:
+            oo = error(ood_rows, primitive.expression)
+            ok = bool(primitive.transfer_error <= 1e-9 and oo <= 1e-9)
+            validation.append({
+                "primitive_id": primitive.primitive_id,
+                "transfer_error": float(primitive.transfer_error),
+                "ood_error": float(oo),
+                "passed": ok,
+                "selected_before_validation": primitive.primitive_id == primary.primitive_id,
+            })
+            if ok:
+                passing.append(primitive)
+            else:
                 self.primitives.pop(primitive.primitive_id, None)
                 self.archive.pop(primitive.primitive_id, None)
 
-        self.events.append({
-            "event": "PRIMITIVE_POST_SELECTION_VALIDATION",
-            "candidate_count": len(frontier),
-            "validated_candidate_count": int(ok),
-            "selected_candidate_id": primary.primitive_id,
-            "selection_source": "discovery_and_selection_only",
-            "validation_role": "selected_candidate_admission_only",
-            "validation_fallback_used": False,
-            "validation": validation,
-        })
-
-        if not ok:
+        selected_passed = any(p.primitive_id == primary.primitive_id for p in passing)
+        if not selected_passed:
+            # A later passing alternative is not allowed to become the winner.
+            # Quarantine all alternatives from a rejected primary generation.
+            for primitive in passing:
+                self.primitives.pop(primitive.primitive_id, None)
+                self.archive.pop(primitive.primitive_id, None)
             self.last_primitive_candidate_frontier = ()
+            self.events.append({
+                "event": "PRIMITIVE_POST_SELECTION_VALIDATION",
+                "candidate_count": len(frontier),
+                "validated_candidate_count": len(passing),
+                "selected_candidate_id": primary.primitive_id,
+                "selected_candidate_passed": False,
+                "selection_source": "discovery_and_selection_only",
+                "validation_role": "admission_only",
+                "validation_fallback_used": False,
+                "validation": validation,
+            })
             return {
                 "accepted": False,
                 "primary_primitive": None,
                 "candidate_count": len(frontier),
-                "validated_candidate_count": 0,
+                "validated_candidate_count": len(passing),
                 "selected_candidate_id": primary.primitive_id,
+                "selected_candidate_passed": False,
+                "accepted_candidate_ids": [],
                 "validation": validation,
                 "selection_source": "discovery_and_selection_only",
-                "validation_role": "selected_candidate_admission_only",
+                "validation_role": "admission_only",
                 "validation_fallback_used": False,
             }
 
+        oo = next(x["ood_error"] for x in validation if x["primitive_id"] == primary.primitive_id)
         evaluation = Evaluation(
-            float(primary.train_error),
-            float(primary.holdout_error),
-            float(primary.transfer_error),
-            float(oo),
-            1.0,
-            max(1.0, float(resource_cost)),
-            max(0.0, float(novelty)),
-            True,
+            float(primary.train_error), float(primary.holdout_error), float(primary.transfer_error), float(oo),
+            1.0, max(1.0, float(resource_cost)), max(0.0, float(novelty)), True,
         )
         self.observe_growth_evidence(evaluation, novelty=novelty, resource_cost=resource_cost)
-        self.last_primitive_candidate_frontier = (primary,)
+        # Keep all independently passing alternatives for bounded frontier use,
+        # but ensure the preselected primary remains the first candidate.
+        self.last_primitive_candidate_frontier = tuple(passing)
+        self.events.append({
+            "event": "PRIMITIVE_POST_SELECTION_VALIDATION",
+            "candidate_count": len(frontier),
+            "validated_candidate_count": len(passing),
+            "selected_candidate_id": primary.primitive_id,
+            "selected_candidate_passed": True,
+            "selection_source": "discovery_and_selection_only",
+            "validation_role": "admission_only",
+            "validation_fallback_used": False,
+            "validation": validation,
+        })
         return {
             "accepted": True,
             "primary_primitive": primary,
             "candidate_count": len(frontier),
-            "validated_candidate_count": 1,
+            "validated_candidate_count": len(passing),
             "selected_candidate_id": primary.primitive_id,
-            "accepted_candidate_ids": [primary.primitive_id],
+            "selected_candidate_passed": True,
+            "accepted_candidate_ids": [p.primitive_id for p in passing],
             "validation": validation,
             "selection_source": "discovery_and_selection_only",
-            "validation_role": "selected_candidate_admission_only",
+            "validation_role": "admission_only",
             "validation_fallback_used": False,
         }
 
