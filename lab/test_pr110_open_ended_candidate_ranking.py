@@ -94,6 +94,10 @@ class OpenEndedCandidateRankingTests(unittest.TestCase):
         self.assertEqual(primary.provenance["expanded_execution_depth"], 2)
         self.assertEqual(primary.provenance["expanded_execution_nodes"], 3)
         self.assertEqual(self.compiler.last_primitive_candidate_frontier[0].primitive_id, primary.primitive_id)
+        self.assertGreater(
+            self.compiler.last_primitive_candidate_frontier[-1].provenance["expanded_execution_nodes"],
+            primary.provenance["expanded_execution_nodes"],
+        )
         self.assertEqual(self.compiler.last_primitive_candidate_selection_summary["selected_candidate_id"], primary.primitive_id)
         self.assertFalse(self.compiler.last_primitive_candidate_selection_summary["validation_split_used_for_selection"])
 
@@ -110,6 +114,10 @@ class OpenEndedCandidateRankingTests(unittest.TestCase):
         self.assertEqual(primary.provenance["expanded_execution_depth"], 2)
         self.assertEqual(primary.provenance["expanded_execution_nodes"], 3)
         self.assertEqual(self.compiler.last_process_candidate_frontier[0].process_id, primary.process_id)
+        self.assertGreater(
+            self.compiler.last_process_candidate_frontier[-1].provenance["expanded_execution_nodes"],
+            primary.provenance["expanded_execution_nodes"],
+        )
         self.assertEqual(self.compiler.last_process_candidate_selection_summary["selected_process_id"], primary.process_id)
         self.assertFalse(self.compiler.last_process_candidate_selection_summary["validation_split_used_for_selection"])
 
