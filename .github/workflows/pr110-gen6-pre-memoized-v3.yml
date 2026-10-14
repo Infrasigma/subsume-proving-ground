@@ -1,0 +1,376 @@
+name: PR110 Gen6 pre-memoization versus memoized B continuation (retry 3)
+
+on:
+  push:
+    branches:
+      - research/pr110-gen6-pre-memoized-v3-20261014
+    paths:
+      - ".github/workflows/pr110-gen6-pre-memoized-v3.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: pr110-gen6-pre-memoized-v3-20261014
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  paired-gen6:
+    name: Compare both B search implementations from the identical original Gen5 checkpoint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 225
+    env:
+      SEED: "2026100305"
+      GENERATIONS: "12"
+      STOP_AFTER: "7"
+      PROVING_SHA: "33259fc5c69d87b99c604f0050508c433a279daf"
+      RUNTIME_SHA: "af0c7ef503c51a5bc7872717b263a01f495c855f"
+      INPUT_CHECKPOINT_SHA256: "f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced"
+      INPUT_STATE_DIGEST: "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a"
+      ORIGINAL_PRODUCER_COMMIT: "a5286eb2d54f200db0fb3104c0ac085d8e9cb4e6"
+      PREMEMOIZED_BEHAVIORAL_SEARCH_GIT_BLOB_SHA1: "90616f062298b52eb72b95cffeeb754c626ec4ed"
+      MEMOIZED_BEHAVIORAL_SEARCH_GIT_BLOB_SHA1: "ab658a2e49adf479bf9ea4892dfef930624c6e7b"
+      RECURSIVE_COMPILER_GIT_BLOB_SHA1: "284d4abd5ab467d465be21973090bc24cee26e69"
+      OPEN_ENDED_GROWTH_GIT_BLOB_SHA1: "ec94fc545badde972510f2db9cbf008cc214e705"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Retrieve the original immutable B Gen5 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: pr110-snapshot-causal-replay
+          run-id: 37570567635
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: prior
+
+      - name: Verify original checkpoint, source identities, hash types, and loaded-module plan
+        shell: bash
+        env:
+          PYTHONHASHSEED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp prior/B-checkpoint-current.json evidence/input-gen5-checkpoint.json
+          cp prior/B-checkpoint-manifest.json evidence/original-producer-checkpoint-manifest.json
+
+          test "$(sha256sum evidence/input-gen5-checkpoint.json | awk '{print $1}')" = "$INPUT_CHECKPOINT_SHA256"
+          test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py)" = "$MEMOIZED_BEHAVIORAL_SEARCH_GIT_BLOB_SHA1"
+          test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py)" = "$RECURSIVE_COMPILER_GIT_BLOB_SHA1"
+          test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py)" = "$OPEN_ENDED_GROWTH_GIT_BLOB_SHA1"
+
+          mkdir -p /tmp/pr110-pre-memoized/cognitive_core /tmp/pr110-memoized/cognitive_core
+          git show "$ORIGINAL_PRODUCER_COMMIT:research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py" > /tmp/pr110-pre-memoized/cognitive_core/behavioral_search.py
+          git show "$ORIGINAL_PRODUCER_COMMIT:research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py" > /tmp/pr110-pre-memoized/cognitive_core/recursive_cognitive_compiler.py
+          git show "$ORIGINAL_PRODUCER_COMMIT:research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py" > /tmp/pr110-pre-memoized/cognitive_core/open_ended_growth.py
+          cp -a research/pr110_acsie_snapshot/B/cognitive_core/. /tmp/pr110-memoized/cognitive_core/
+
+          test "$(git hash-object /tmp/pr110-pre-memoized/cognitive_core/behavioral_search.py)" = "$PREMEMOIZED_BEHAVIORAL_SEARCH_GIT_BLOB_SHA1"
+          test "$(git hash-object /tmp/pr110-memoized/cognitive_core/behavioral_search.py)" = "$MEMOIZED_BEHAVIORAL_SEARCH_GIT_BLOB_SHA1"
+          for root in /tmp/pr110-pre-memoized /tmp/pr110-memoized; do
+            test "$(git hash-object "$root/cognitive_core/recursive_cognitive_compiler.py")" = "$RECURSIVE_COMPILER_GIT_BLOB_SHA1"
+            test "$(git hash-object "$root/cognitive_core/open_ended_growth.py")" = "$OPEN_ENDED_GROWTH_GIT_BLOB_SHA1"
+          done
+
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+
+          p = Path("evidence/input-gen5-checkpoint.json")
+          assert hashlib.sha256(p.read_bytes()).hexdigest() == os.environ["INPUT_CHECKPOINT_SHA256"]
+          env = load_checkpoint(
+              p,
+              expected_seed=int(os.environ["SEED"]),
+              expected_metadata={
+                  "proving_sha": os.environ["PROVING_SHA"],
+                  "acsie_ref": os.environ["RUNTIME_SHA"],
+              },
+          )
+          assert env["generation_next"] == 6
+          assert env["state_digest"] == os.environ["INPUT_STATE_DIGEST"]
+          assert len(env.get("generations_out", [])) == 6
+
+          # This is a corrected explicit hash-type manifest: Git object IDs are SHA-1;
+          # checkpoint file identity is SHA-256; state_digest is an application digest.
+          record = {
+              "schema": "ACSIE.PR110.Gen6PreMemoizedVsMemoized.Preflight.v1",
+              "classification": "PREFLIGHT_PASS",
+              "producer_run_id": 37570567635,
+              "producer_head_sha": os.environ["ORIGINAL_PRODUCER_COMMIT"],
+              "checkpoint_file_sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+              "checkpoint_state_digest": env["state_digest"],
+              "generation_next": env["generation_next"],
+              "completed_generation_rows": len(env["generations_out"]),
+              "seed": int(os.environ["SEED"]),
+              "resume_pythonhashseed": os.environ.get("PYTHONHASHSEED"),
+              "resume_hash_randomization_flag": __import__("sys").flags.hash_randomization,
+              "original_producer_hash_seed": "UNKNOWN_NOT_RECORDED",
+              "original_producer_behavioral_search_git_blob_sha1": os.environ["PREMEMOIZED_BEHAVIORAL_SEARCH_GIT_BLOB_SHA1"],
+              "memoized_behavioral_search_git_blob_sha1": os.environ["MEMOIZED_BEHAVIORAL_SEARCH_GIT_BLOB_SHA1"],
+              "recursive_compiler_git_blob_sha1": os.environ["RECURSIVE_COMPILER_GIT_BLOB_SHA1"],
+              "open_ended_growth_git_blob_sha1": os.environ["OPEN_ENDED_GROWTH_GIT_BLOB_SHA1"],
+              "work_protocol": {
+                  "start_generation_next": 6,
+                  "stop_after": int(os.environ["STOP_AFTER"]),
+                  "max_wall_minutes_each_arm": 100,
+                  "same_checkpoint_bytes": True,
+                  "same_python_version": True,
+                  "same_pythonhashseed_on_resume": True
+              },
+              "frozen_5x12_budget": "UNTOUCHED",
+              "promotion_status": "DO_NOT_PROMOTE"
+          }
+          Path("evidence/preflight.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(record, indent=2, sort_keys=True))
+          PY
+
+      - name: Run paired Gen6 continuations with loaded-module proof
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          run_arm() {
+            label="$1"
+            root="$2"
+            expected_search_sha="$3"
+            checkpoint="evidence/$label-working-checkpoint.json"
+            raw="evidence/$label-raw.txt"
+            rcfile="evidence/$label-exit-code.txt"
+            cp evidence/input-gen5-checkpoint.json "$checkpoint"
+
+            echo "ARM_START=$label UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            set +e
+            timeout --signal=TERM --kill-after=60s 100m env \
+              PYTHONHASHSEED=0 \
+              PYTHONPATH="$root:$GITHUB_WORKSPACE" \
+              ARM_LABEL="$label" \
+              ARM_ROOT="$root" \
+              CHECKPOINT_PATH="$checkpoint" \
+              EXPECTED_SEARCH_SHA="$expected_search_sha" \
+              SEED="$SEED" \
+              GENERATIONS="$GENERATIONS" \
+              STOP_AFTER="$STOP_AFTER" \
+              PROVING_SHA="$PROVING_SHA" \
+              RUNTIME_SHA="$RUNTIME_SHA" \
+              INPUT_CHECKPOINT_SHA256="$INPUT_CHECKPOINT_SHA256" \
+              RECURSIVE_COMPILER_GIT_BLOB_SHA1="$RECURSIVE_COMPILER_GIT_BLOB_SHA1" \
+              OPEN_ENDED_GROWTH_GIT_BLOB_SHA1="$OPEN_ENDED_GROWTH_GIT_BLOB_SHA1" \
+              python3 -u - <<'PY' > "$raw" 2>&1
+          import hashlib, importlib, json, os, subprocess, sys, time
+          from pathlib import Path
+
+          label = os.environ["ARM_LABEL"]
+          root = Path(os.environ["ARM_ROOT"]).resolve()
+          checkpoint = Path(os.environ["CHECKPOINT_PATH"]).resolve()
+          expected = {
+              "cognitive_core.behavioral_search": ("cognitive_core/behavioral_search.py", os.environ["EXPECTED_SEARCH_SHA"]),
+              "cognitive_core.recursive_cognitive_compiler": ("cognitive_core/recursive_cognitive_compiler.py", os.environ["RECURSIVE_COMPILER_GIT_BLOB_SHA1"]),
+              "cognitive_core.open_ended_growth": ("cognitive_core/open_ended_growth.py", os.environ["OPEN_ENDED_GROWTH_GIT_BLOB_SHA1"]),
+          }
+          identities = {}
+          for module_name, (relative, expected_blob) in expected.items():
+              module = importlib.import_module(module_name)
+              actual_path = Path(module.__file__).resolve()
+              expected_path = (root / relative).resolve()
+              assert actual_path == expected_path, (module_name, str(actual_path), str(expected_path))
+              actual_blob = subprocess.check_output(["git", "hash-object", str(actual_path)], text=True).strip()
+              assert actual_blob == expected_blob, (module_name, actual_blob, expected_blob)
+              identities[module_name] = {
+                  "imported_module_file": str(actual_path),
+                  "git_blob_sha1": actual_blob,
+                  "file_sha256": hashlib.sha256(actual_path.read_bytes()).hexdigest(),
+              }
+
+          from lab.exact_checkpoint import load_checkpoint
+          input_hash = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+          assert input_hash == os.environ["INPUT_CHECKPOINT_SHA256"], (input_hash, os.environ["INPUT_CHECKPOINT_SHA256"])
+          loaded = load_checkpoint(
+              checkpoint,
+              expected_seed=int(os.environ["SEED"]),
+              expected_metadata={
+                  "proving_sha": os.environ["PROVING_SHA"],
+                  "acsie_ref": os.environ["RUNTIME_SHA"],
+              },
+          )
+          assert loaded["generation_next"] == 6
+          assert loaded["state_digest"] == "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a"
+
+          from lab.acsie_open_ended_self_extending_proving import run_seed
+          preflight = {
+              "schema": "ACSIE.PR110.Gen6LoadedModuleProof.v1",
+              "arm": label,
+              "status": "LOADED_MODULES_AND_INPUT_CHECKPOINT_VERIFIED",
+              "input_checkpoint_sha256": input_hash,
+              "input_state_digest": loaded["state_digest"],
+              "generation_next_at_start": loaded["generation_next"],
+              "python_version": sys.version,
+              "pythonhashseed_environment": os.environ.get("PYTHONHASHSEED"),
+              "hash_randomization_flag": sys.flags.hash_randomization,
+              "sys_path": sys.path,
+              "imported_sources": identities,
+              "evaluator_git_blob_sha1": subprocess.check_output(["git", "hash-object", "lab/acsie_open_ended_self_extending_proving.py"], text=True).strip(),
+          }
+          Path(f"evidence/{label}-loaded-module-proof.json").write_text(json.dumps(preflight, indent=2, sort_keys=True) + "\n")
+          print("LOADED_MODULE_PROOF=PASS")
+          print(json.dumps(preflight, sort_keys=True), flush=True)
+
+          wall_start = time.perf_counter()
+          cpu_start = time.process_time()
+          result = run_seed(
+              int(os.environ["SEED"]),
+              int(os.environ["GENERATIONS"]),
+              checkpoint_path=str(checkpoint),
+              resume_from=str(checkpoint),
+              stop_after=int(os.environ["STOP_AFTER"]),
+              checkpoint_metadata={
+                  "proving_sha": os.environ["PROVING_SHA"],
+                  "acsie_ref": os.environ["RUNTIME_SHA"],
+              },
+          )
+          payload = {
+              "schema": "ACSIE.PR110.Gen6ContinuationArm.v1",
+              "arm": label,
+              "process_returned": True,
+              "input_checkpoint_sha256": input_hash,
+              "runtime_commit_sha": os.environ["RUNTIME_SHA"],
+              "proving_commit_sha": os.environ["PROVING_SHA"],
+              "seed": int(os.environ["SEED"]),
+              "stop_after": int(os.environ["STOP_AFTER"]),
+              "wall_seconds": time.perf_counter() - wall_start,
+              "cpu_seconds": time.process_time() - cpu_start,
+              "result": result,
+              "loaded_module_proof": preflight,
+          }
+          Path(f"evidence/{label}-completed-result.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+          print("GEN6_ARM_RETURNED=PASS", flush=True)
+          print(json.dumps({
+              "arm": label,
+              "completed_generations": result.get("completed_generations"),
+              "finite_open_ended_growth_gate": result.get("finite_open_ended_growth_gate"),
+              "wall_seconds": payload["wall_seconds"],
+              "cpu_seconds": payload["cpu_seconds"],
+          }, sort_keys=True), flush=True)
+          PY
+            rc=$?
+            set -e
+            printf "%s\n" "$rc" > "$rcfile"
+            cp "$checkpoint" "evidence/$label-final-checkpoint.json"
+            echo "ARM_END=$label exit_code=$rc UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+
+          run_arm "pre-memoized" "/tmp/pr110-pre-memoized" "$PREMEMOIZED_BEHAVIORAL_SEARCH_GIT_BLOB_SHA1"
+          run_arm "memoized" "/tmp/pr110-memoized" "$MEMOIZED_BEHAVIORAL_SEARCH_GIT_BLOB_SHA1"
+
+      - name: Compare Gen6 completion, selected semantics, and checkpoint identity
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+
+          expected_metadata = {
+              "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+              "acsie_ref": "af0c7ef503c51a5bc7872717b263a01f495c855f"
+          }
+          reports = {}
+          for label in ("pre-memoized", "memoized"):
+              checkpoint = Path(f"evidence/{label}-final-checkpoint.json")
+              rc_path = Path(f"evidence/{label}-exit-code.txt")
+              rc = int(rc_path.read_text().strip()) if rc_path.exists() else None
+              info = {
+                  "arm": label,
+                  "process_exit_code": rc,
+                  "checkpoint_present": checkpoint.exists(),
+                  "loaded_module_proof_present": Path(f"evidence/{label}-loaded-module-proof.json").exists(),
+                  "completed_result_present": Path(f"evidence/{label}-completed-result.json").exists(),
+              }
+              if checkpoint.exists():
+                  try:
+                      raw = checkpoint.read_bytes()
+                      env = load_checkpoint(
+                          checkpoint,
+                          expected_seed=2026100305,
+                          expected_metadata=expected_metadata,
+                      )
+                      rows = env.get("generations_out", [])
+                      gen6 = next((row for row in rows if int(row.get("generation", -1)) == 6), None)
+                      info.update({
+                          "checkpoint_validation": "PASS",
+                          "checkpoint_raw_sha256": hashlib.sha256(raw).hexdigest(),
+                          "state_digest": env.get("state_digest"),
+                          "generation_next": int(env.get("generation_next")),
+                          "completed_generation_rows": len(rows),
+                          "gen6_row_present": gen6 is not None,
+                          "gen6_target_digest": gen6.get("target_digest") if gen6 else None,
+                          "gen6_selected_candidate": gen6.get("selected_candidate") if gen6 else None,
+                          "gen6_selected_parent_ids": gen6.get("expected_parent_ids") if gen6 else None,
+                          "gen6_resource_cost": gen6.get("resource_cost") if gen6 else None,
+                          "gen6_recursive_reuse_ok": gen6.get("recursive_reuse_ok") if gen6 else None,
+                      })
+                      info["gen6_complete"] = bool(gen6 is not None and int(env.get("generation_next", 0)) >= 7)
+                  except Exception as exc:
+                      info.update({"checkpoint_validation": "INVALID", "checkpoint_error": repr(exc), "gen6_complete": False})
+              else:
+                  info.update({"checkpoint_validation": "MISSING", "gen6_complete": False})
+              reports[label] = info
+
+          a, b = reports["pre-memoized"], reports["memoized"]
+          both_complete = bool(a.get("gen6_complete") and b.get("gen6_complete"))
+          if both_complete:
+              same_target = a.get("gen6_target_digest") == b.get("gen6_target_digest")
+              classification = "BOTH_GEN6_COMPLETED_SAME_TARGET" if same_target else "BOTH_GEN6_COMPLETED_DIVERGENT_TARGET"
+          elif not a.get("gen6_complete") and b.get("gen6_complete"):
+              classification = "MEMOIZED_COMPLETED_PREMEMOIZED_DID_NOT"
+          elif a.get("gen6_complete") and not b.get("gen6_complete"):
+              classification = "PREMEMOIZED_COMPLETED_MEMOIZED_DID_NOT"
+          else:
+              classification = "NEITHER_GEN6_COMPLETED"
+          summary = {
+              "schema": "ACSIE.PR110.Gen6PreMemoizedVsMemoized.v1",
+              "classification": classification,
+              "scientific_status": "DIAGNOSTIC_ONLY_NOT_FULL_QUALIFICATION",
+              "same_input_checkpoint": a.get("loaded_module_proof_present") and b.get("loaded_module_proof_present"),
+              "input_checkpoint_sha256": "f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced",
+              "input_state_digest": "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a",
+              "resume_pythonhashseed": "0",
+              "original_producer_hash_seed": "UNKNOWN_NOT_RECORDED",
+              "arms": reports,
+              "same_gen6_target_digest": (a.get("gen6_target_digest") == b.get("gen6_target_digest")) if both_complete else None,
+              "different_source_blobs_are_isolated": True,
+              "known_limitations": [
+                  "The original checkpoint producer did not pin or record PYTHONHASHSEED.",
+                  "This is a same-state continuation with controlled resume settings, not byte-identical producer process replay.",
+                  "A completed one-generation continuation is not open-ended self-extension or AGI/ASI evidence."
+              ],
+              "frozen_5x12_budget": "UNTOUCHED",
+              "promotion_status": "DO_NOT_PROMOTE",
+              "open_ended_self_extension": "NOT_DEMONSTRATED",
+              "general_capability": "NOT_DEMONSTRATED",
+              "agi": "NOT_DEMONSTRATED",
+              "asi": "NOT_DEMONSTRATED"
+          }
+          Path("evidence/gen6-pre-memoized-vs-memoized-summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload pair and provenance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-gen6-pre-memoized-vs-memoized-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 90
