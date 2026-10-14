@@ -38,13 +38,17 @@ def find_exact_expression(
         return None
 
     search_started = perf_counter()
-    profile_enabled = os.environ.get("ACSIE_SEARCH_PROFILE") == "1"
+    active_phase = os.environ.get("ACSIE_ACTIVE_SYNTHESIS_PHASE", "unknown")
+    requested_profile_phase = os.environ.get("ACSIE_SEARCH_PROFILE_PHASE", "primary_process_synthesis")
+    profile_enabled = (
+        os.environ.get("ACSIE_SEARCH_PROFILE") == "1"
+        and active_phase == requested_profile_phase
+    )
     trace_enabled = profile_enabled and os.environ.get("ACSIE_SEARCH_TRACE") == "1"
     use_bitsets = os.environ.get("ACSIE_DOMINANCE_BITSETS", "1") == "1"
     comparison_budget = int(os.environ.get("ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS", "0"))
     register_budget = int(os.environ.get("ACSIE_SEARCH_MAX_REGISTER_CALLS", "0"))
     profile_interval = max(1, int(os.environ.get("ACSIE_SEARCH_PROGRESS_INTERVAL", "15000")))
-    active_phase = os.environ.get("ACSIE_ACTIVE_SYNTHESIS_PHASE", "primary_process_synthesis")
     dominance_comparisons = 0
     register_calls = 0
     trace_event_count = 0
