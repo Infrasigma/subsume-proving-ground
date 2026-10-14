@@ -31,7 +31,7 @@ jobs:
       INPUT_STATE_DIGEST: "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a"
       EXPECTED_SEARCH_BLOB: "7d7edbf1031a2e6ab4610efbeab389c7ad588507"
       EXPECTED_COMPILER_BLOB: "9300bcc31251817175f463f9fad8025c3fc64e9f"
-      EXPECTED_GROWTH_BLOB: "930a2fc1635f398c0663e0ad69ed3151809a6a33"
+      EXPECTED_GROWTH_BLOB: "5d733016c8464317981307d4a3a52ae494ac05a3"
       PROVING_SHA: "33259fc5c69d87b99c604f0050508c433a279daf"
       RUNTIME_SHA: "af0c7ef503c51a5bc7872717b263a01f495c855f"
 
@@ -146,7 +146,7 @@ jobs:
               "input_state_digest": "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a",
               "patched_compiler_blob": "9300bcc31251817175f463f9fad8025c3fc64e9f",
               "patched_search_blob": "7d7edbf1031a2e6ab4610efbeab389c7ad588507",
-              "patched_growth_blob": "930a2fc1635f398c0663e0ad69ed3151809a6a33",
+              "patched_growth_blob": "5d733016c8464317981307d4a3a52ae494ac05a3",
               "choice_policy": "first discovery-ranked frontier candidate; no fallback based on holdout/transfer/OOD",
               "frozen_5x12_budget": "UNTOUCHED",
               "promotion_status": "DO_NOT_PROMOTE",
