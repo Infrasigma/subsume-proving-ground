@@ -1,0 +1,273 @@
+name: PR110 Gen6 exact bitset dominance patch and rerun
+
+on:
+  push:
+    branches:
+      - research/pr110-gen6-dominance-bitmask-20261014
+    paths:
+      - ".github/workflows/pr110-gen6-frontier-bitmask-v1.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: pr110-gen6-frontier-bitmask-v1
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  diagnose-patch-rerun:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 225
+    env:
+      SEED: "2026100305"
+      INPUT_CHECKPOINT_SHA256: "f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced"
+      INPUT_STATE_DIGEST: "e284699d06649788b58071783651f087c57e0511ee10f93948b878d68f49e28a"
+      EXPECTED_SEARCH_BLOB: "7d7edbf1031a2e6ab4610efbeab389c7ad588507"
+      COMPARE_LIMIT: "150000"
+      PROGRESS_INTERVAL: "15000"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Retrieve original immutable Gen5 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: pr110-snapshot-causal-replay
+          run-id: 37570567635
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: prior
+
+      - name: Preflight source, checkpoint, and bitset parity regression
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/B:${{ github.workspace }}
+          PYTHONHASHSEED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp prior/B-checkpoint-current.json evidence/input-gen5-checkpoint.json
+          cp prior/B-checkpoint-manifest.json evidence/original-producer-checkpoint-manifest.json
+          actual=$(sha256sum evidence/input-gen5-checkpoint.json | awk '{print $1}')
+          test "$actual" = "$INPUT_CHECKPOINT_SHA256"
+          test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py)" = "$EXPECTED_SEARCH_BLOB"
+          test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py)" = "284d4abd5ab467d465be21973090bc24cee26e69"
+          test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py)" = "ec94fc545badde972510f2db9cbf008cc214e705"
+          python3 -m py_compile             research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py             research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py             research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py             lab/acsie_open_ended_self_extending_proving.py             lab/pr110_gen6_dominance_bitmask_profile.py             lab/test_pr110_gen6_dominance_bitmask.py
+          python3 -m unittest -v             lab.test_pr110_gen6_dominance_bitmask             lab.test_pr110_selected_lineage_audit             > evidence/preflight-tests.txt 2>&1
+          python3 - <<'PY'
+          import hashlib, importlib, json, os, subprocess, sys
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+          checkpoint=Path("evidence/input-gen5-checkpoint.json")
+          env=load_checkpoint(checkpoint, expected_seed=2026100305, expected_metadata={
+              "proving_sha":"33259fc5c69d87b99c604f0050508c433a279daf",
+              "acsie_ref":"af0c7ef503c51a5bc7872717b263a01f495c855f",
+          })
+          assert env["generation_next"] == 6
+          assert env["state_digest"] == os.environ["INPUT_STATE_DIGEST"]
+          module=importlib.import_module("cognitive_core.behavioral_search")
+          expected=Path("research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py").resolve()
+          actual=Path(module.__file__).resolve()
+          assert actual == expected, (actual, expected)
+          record={
+              "schema":"ACSIE.PR110.Gen6DominanceBitmaskPreflight.v1",
+              "checkpoint_raw_sha256":hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
+              "checkpoint_state_digest":env["state_digest"],
+              "generation_next":env["generation_next"],
+              "seed":2026100305,
+              "search_git_blob_sha1":subprocess.check_output(["git","hash-object",str(actual)],text=True).strip(),
+              "search_file_sha256":hashlib.sha256(actual.read_bytes()).hexdigest(),
+              "loaded_module_path":str(actual),
+              "python_version":sys.version,
+              "pythonhashseed":os.environ.get("PYTHONHASHSEED"),
+              "mode":"exact set-based predicate retained as diagnostic control; bitset-cache mode is candidate",
+              "scientific_status":"DIAGNOSTIC_ONLY",
+              "promotion_status":"DO_NOT_PROMOTE",
+          }
+          Path("evidence/preflight.json").write_text(json.dumps(record,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(record,indent=2,sort_keys=True))
+          PY
+          cat evidence/preflight-tests.txt
+
+      - name: Run paired fixed-work dominance decision-trace check
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/B:${{ github.workspace }}
+          PYTHONHASHSEED: "0"
+          ACSIE_SEARCH_PROFILE: "1"
+          ACSIE_SEARCH_PROFILE_PHASE: "primary_process_synthesis"
+          ACSIE_SEARCH_TRACE: "1"
+          ACSIE_SEARCH_MAX_DOMINANCE_COMPARISONS: "150000"
+          ACSIE_SEARCH_PROGRESS_INTERVAL: "15000"
+        run: |
+          set -uo pipefail
+          run_arm() {
+            label="$1"
+            mode="$2"
+            checkpoint="$GITHUB_WORKSPACE/evidence/$label-working-checkpoint.json"
+            raw="$GITHUB_WORKSPACE/evidence/$label-trace-profile-raw.txt"
+            cp evidence/input-gen5-checkpoint.json "$checkpoint"
+            echo "PAIR_ARM_START=$label mode=$mode utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            set +e
+            timeout --signal=TERM --kill-after=30s 35m env               ARM_LABEL="$label"               ARM_ROOT="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B"               CHECKPOINT_PATH="$checkpoint"               EXPECTED_SEARCH_BLOB="$EXPECTED_SEARCH_BLOB"               ACSIE_DOMINANCE_BITSETS="$mode"               python3 -u lab/pr110_gen6_dominance_bitmask_profile.py > "$raw" 2>&1
+            rc=$?
+            set -e
+            printf '%s\n' "$rc" > "evidence/$label-trace-profile-exit-code.txt"
+            echo "PAIR_ARM_END=$label exit_code=$rc utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            tail -n 8 "$raw" || true
+          }
+          run_arm set-reference 0
+          run_arm bitset-cache 1
+
+      - name: Compare bounded traces and summarize frontier performance
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, re
+          from pathlib import Path
+          root=Path("evidence")
+          arms={}
+          for label in ("set-reference","bitset-cache"):
+              rawp=root/f"{label}-trace-profile-raw.txt"
+              raw=rawp.read_text(errors="replace") if rawp.exists() else ""
+              parsed=[]
+              for line in raw.splitlines():
+                  try: parsed.append(json.loads(line))
+                  except Exception: pass
+              progress=[x for x in parsed if x.get("event","").startswith("SEARCH_PROFILE_")]
+              end=[x for x in parsed if x.get("event")=="FIXED_WORK_BUDGET_REACHED"]
+              codes=(root/f"{label}-trace-profile-exit-code.txt")
+              rc=int(codes.read_text()) if codes.exists() else None
+              last=progress[-1] if progress else {}
+              arms[label]={
+                  "process_exit_code":rc,
+                  "fixed_work_cutoff_seen":bool(end),
+                  "elapsed_seconds":last.get("elapsed_seconds"),
+                  "dominance_comparisons":last.get("dominance_comparisons"),
+                  "register_calls":last.get("register_calls"),
+                  "generated_expressions":last.get("generated_expressions"),
+                  "unique_states":last.get("unique_states"),
+                  "dominance_frontier_max":last.get("dominance_frontier_max"),
+                  "state_feature_computations":last.get("state_feature_computations"),
+                  "decision_trace_events":last.get("decision_trace_events"),
+                  "decision_trace_sha256":last.get("decision_trace_sha256"),
+                  "raw_sha256":hashlib.sha256(raw.encode()).hexdigest(),
+              }
+          l=arms["set-reference"]; r=arms["bitset-cache"]
+          parity=(
+              l.get("decision_trace_events")==r.get("decision_trace_events")==150000
+              and l.get("decision_trace_sha256")==r.get("decision_trace_sha256")
+              and bool(l.get("decision_trace_sha256"))
+          )
+          perf=None
+          if l.get("elapsed_seconds") and r.get("elapsed_seconds"):
+              perf=round(float(l["elapsed_seconds"])/float(r["elapsed_seconds"]),4)
+          summary={
+              "schema":"ACSIE.PR110.Gen6DominanceBitmaskPairedCheck.v1",
+              "classification":"FIXED_WORK_TRACE_PARITY_PASS" if parity else "TRACE_PARITY_NOT_ESTABLISHED",
+              "same_checkpoint_bytes":True,
+              "same_source_blob_mode_switch":True,
+              "work_unit":"dominance comparisons",
+              "comparison_budget":150000,
+              "arms":arms,
+              "decision_trace_exact_parity":parity,
+              "reference_over_candidate_speed_ratio":perf,
+              "promotion_status":"DO_NOT_PROMOTE",
+              "agi":"NOT_DEMONSTRATED",
+              "asi":"NOT_DEMONSTRATED",
+          }
+          Path("evidence/paired-trace-summary.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(summary,indent=2,sort_keys=True))
+          PY
+
+      - name: Rerun Gen6 with exact bitset dominance patch
+        id: full-gen6
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/B:${{ github.workspace }}
+          PYTHONHASHSEED: "0"
+          ACSIE_DOMINANCE_BITSETS: "1"
+        run: |
+          set -uo pipefail
+          checkpoint="$GITHUB_WORKSPACE/evidence/bitset-full-gen6-working-checkpoint.json"
+          cp evidence/input-gen5-checkpoint.json "$checkpoint"
+          echo "BITSET_FULL_GEN6_START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          set +e
+          timeout --signal=TERM --kill-after=60s 100m env             ARM_LABEL="bitset-full-gen6"             ARM_ROOT="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B"             CHECKPOINT_PATH="$checkpoint"             EXPECTED_SEARCH_BLOB="$EXPECTED_SEARCH_BLOB"             ACSIE_DOMINANCE_BITSETS="1"             ACSIE_SEARCH_PROFILE="0"             python3 -u lab/pr110_gen6_dominance_bitmask_profile.py > evidence/bitset-full-gen6-raw.txt 2>&1
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" > evidence/bitset-full-gen6-exit-code.txt
+          echo "BITSET_FULL_GEN6_EXIT_CODE=$rc"
+          echo "BITSET_FULL_GEN6_END_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          tail -n 40 evidence/bitset-full-gen6-raw.txt || true
+
+      - name: Summarize Gen6 completion and provenance
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, re
+          from pathlib import Path
+          root=Path("evidence")
+          rawp=root/"bitset-full-gen6-raw.txt"
+          raw=rawp.read_text(errors="replace") if rawp.exists() else ""
+          rcp=root/"bitset-full-gen6-exit-code.txt"
+          rc=int(rcp.read_text()) if rcp.exists() else None
+          phase=[]
+          for line in raw.splitlines():
+              try: x=json.loads(line)
+              except Exception: continue
+              if x.get("event")=="PROCESS_PHASE_TIMING" and x.get("generation")==6:
+                  phase.append({k:x.get(k) for k in ("phase","probe_index","elapsed_seconds","generated_expressions","unique_states","dominance_frontier_max")})
+          cp=root/"bitset-full-gen6-working-checkpoint.json"
+          checkpoint_sha=hashlib.sha256(cp.read_bytes()).hexdigest() if cp.exists() else None
+          completed=[x for x in raw.splitlines() if "GEN6_ARM_RETURNED=PASS" in x or "PROFILE_RETURNED_BEFORE_CUTOFF" in x]
+          if rc==0 and completed:
+              classification="GEN6_CONTINUATION_RETURNED_REQUIRES_RESULT_REVIEW"
+          elif rc==124:
+              classification="GEN6_BITSET_PATCH_WALL_TIMEOUT"
+          elif rc==137:
+              classification="GEN6_BITSET_PATCH_KILLED_RESOURCE_OR_TIMEOUT"
+          else:
+              classification="GEN6_BITSET_PATCH_CRASHED_OR_INCONCLUSIVE"
+          summary={
+              "schema":"ACSIE.PR110.Gen6BitsetFullRerun.v1",
+              "classification":classification,
+              "process_exit_code":rc,
+              "input_checkpoint_sha256":"f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced",
+              "checkpoint_sha256_after":checkpoint_sha,
+              "checkpoint_unchanged":checkpoint_sha=="f21654220651001f3ac63f67a983a516ff8ba236732bb58e47f611c41dd87ced",
+              "generation6_phase_timings":phase,
+              "final_raw_log_sha256":hashlib.sha256(raw.encode()).hexdigest(),
+              "final_raw_log_bytes":len(raw.encode()),
+              "original_checkpoint_hash_seed":"UNKNOWN_NOT_RECORDED",
+              "resume_pythonhashseed":"0",
+              "frozen_5x12_budget":"UNTOUCHED",
+              "promotion_status":"DO_NOT_PROMOTE",
+              "open_ended_self_extension":"NOT_DEMONSTRATED",
+              "agi":"NOT_DEMONSTRATED",
+              "asi":"NOT_DEMONSTRATED",
+          }
+          Path("evidence/full-gen6-summary.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(summary,indent=2,sort_keys=True))
+          PY
+
+      - name: Upload patch, parity and rerun evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-gen6-dominance-bitmask-rerun
+          path: evidence/
+          retention-days: 90
