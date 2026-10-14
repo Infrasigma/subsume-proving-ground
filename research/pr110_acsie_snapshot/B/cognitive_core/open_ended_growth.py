@@ -231,7 +231,21 @@ class OpenEndedRecursiveCognitiveCompiler(RecursiveCognitiveCompiler):
     ) -> dict[str, object]:
         frontier = tuple(self.last_primitive_candidate_frontier)
         if not frontier:
-            return {"accepted": False, "primary_primitive": None, "candidate_count": 0, "validated_candidate_count": 0}
+            return {
+                "accepted": False,
+                "primary_primitive": None,
+                "candidate_count": 0,
+                "validated_candidate_count": 0,
+                "validation": [],
+                "selection_source": "discovery_and_selection_only",
+                "validation_role": "selected_candidate_admission_only",
+                "validation_fallback_used": False,
+            }
+
+        # Freeze the candidate before looking at transfer/OOD validation.
+        # A failed selected candidate is a failed admission: later alternatives
+        # must not become the winner merely because their validation metrics pass.
+        primary = frontier[0]
 
         def error(rows: Sequence, expression: Mapping[str, object]) -> float:
             if not rows:
@@ -245,45 +259,71 @@ class OpenEndedRecursiveCognitiveCompiler(RecursiveCognitiveCompiler):
                     return float("inf")
             return sum(vals) / len(vals)
 
-        passing: list[CognitivePrimitive] = []
-        validation: list[dict[str, object]] = []
+        oo = error(ood_rows, primary.expression)
+        ok = bool(primary.transfer_error <= 1e-9 and oo <= 1e-9)
+        validation = [{
+            "primitive_id": primary.primitive_id,
+            "transfer_error": float(primary.transfer_error),
+            "ood_error": float(oo),
+            "passed": ok,
+            "selected_before_validation": True,
+        }]
+
+        # Remove every non-selected synthesis alternative. They must not remain
+        # as hidden archive state if the selected candidate fails admission.
         for primitive in frontier:
-            oo = error(ood_rows, primitive.expression)
-            ok = primitive.transfer_error <= 1e-9 and oo <= 1e-9
-            validation.append({"primitive_id": primitive.primitive_id, "transfer_error": primitive.transfer_error, "ood_error": oo, "passed": ok})
-            if ok:
-                passing.append(primitive)
-            else:
+            if primitive.primitive_id != primary.primitive_id or not ok:
                 self.primitives.pop(primitive.primitive_id, None)
                 self.archive.pop(primitive.primitive_id, None)
 
         self.events.append({
             "event": "PRIMITIVE_POST_SELECTION_VALIDATION",
             "candidate_count": len(frontier),
-            "validated_candidate_count": len(passing),
+            "validated_candidate_count": int(ok),
+            "selected_candidate_id": primary.primitive_id,
             "selection_source": "discovery_and_selection_only",
-            "validation_role": "admission_only",
+            "validation_role": "selected_candidate_admission_only",
+            "validation_fallback_used": False,
             "validation": validation,
         })
-        if not passing:
-            self.last_primitive_candidate_frontier = ()
-            return {"accepted": False, "primary_primitive": None, "candidate_count": len(frontier), "validated_candidate_count": 0, "validation": validation}
 
-        primary = passing[0]
-        oo = next(x["ood_error"] for x in validation if x["primitive_id"] == primary.primitive_id)
+        if not ok:
+            self.last_primitive_candidate_frontier = ()
+            return {
+                "accepted": False,
+                "primary_primitive": None,
+                "candidate_count": len(frontier),
+                "validated_candidate_count": 0,
+                "selected_candidate_id": primary.primitive_id,
+                "validation": validation,
+                "selection_source": "discovery_and_selection_only",
+                "validation_role": "selected_candidate_admission_only",
+                "validation_fallback_used": False,
+            }
+
         evaluation = Evaluation(
-            float(primary.train_error), float(primary.holdout_error), float(primary.transfer_error), float(oo),
-            1.0, max(1.0, float(resource_cost)), max(0.0, float(novelty)), True,
+            float(primary.train_error),
+            float(primary.holdout_error),
+            float(primary.transfer_error),
+            float(oo),
+            1.0,
+            max(1.0, float(resource_cost)),
+            max(0.0, float(novelty)),
+            True,
         )
         self.observe_growth_evidence(evaluation, novelty=novelty, resource_cost=resource_cost)
-        self.last_primitive_candidate_frontier = tuple(passing)
+        self.last_primitive_candidate_frontier = (primary,)
         return {
             "accepted": True,
             "primary_primitive": primary,
             "candidate_count": len(frontier),
-            "validated_candidate_count": len(passing),
-            "accepted_candidate_ids": [p.primitive_id for p in passing],
+            "validated_candidate_count": 1,
+            "selected_candidate_id": primary.primitive_id,
+            "accepted_candidate_ids": [primary.primitive_id],
             "validation": validation,
+            "selection_source": "discovery_and_selection_only",
+            "validation_role": "selected_candidate_admission_only",
+            "validation_fallback_used": False,
         }
 
     def _remember_process(self, process: ProcessCandidate) -> None:
