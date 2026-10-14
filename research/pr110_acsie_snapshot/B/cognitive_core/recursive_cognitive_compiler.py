@@ -289,6 +289,36 @@ class RecursiveCognitiveCompiler:
                     stack.append(str(node["id"]))
         return tuple(sorted(seen))
 
+    def _executable_cost(
+        self,
+        expression: Mapping[str, Any],
+        active: Tuple[str, ...] = (),
+    ) -> Tuple[int, int]:
+        """Return expanded executable depth and node count, ignoring provenance aliases."""
+        op = str(expression["op"])
+        if op in {"get", "const"}:
+            return (1, 1)
+        if op == "macro":
+            macro_id = str(expression["id"])
+            primitive = self.primitives.get(macro_id)
+            if primitive is None or macro_id in active:
+                return (1, 1)
+            return self._executable_cost(
+                primitive.expression,
+                active + (macro_id,),
+            )
+        if op in {"abs", "neg", "threshold"}:
+            child_depth, child_nodes = self._executable_cost(expression["arg"], active)
+            return (1 + child_depth, 1 + child_nodes)
+        if op in {"add", "sub", "mul", "max", "min"}:
+            left_depth, left_nodes = self._executable_cost(expression["left"], active)
+            right_depth, right_nodes = self._executable_cost(expression["right"], active)
+            return (
+                1 + max(left_depth, right_depth),
+                1 + left_nodes + right_nodes,
+            )
+        raise ValueError(f"unsupported executable operator: {op!r}")
+
     def invent_primitive(self, train:Sequence[Trace], holdout:Sequence[Trace], transfer:Sequence[Trace], semantics:str="delta") -> Optional[CognitivePrimitive]:
         if len(train)<6: return None
         # Candidate selection uses only the permitted discovery/selection observations
@@ -354,22 +384,34 @@ class RecursiveCognitiveCompiler:
 
     def synthesize_process_frontier(
         self,
-        rows:Sequence[Trace],
-        transfer:Sequence[Trace],
-        ood:Sequence[Trace],
+        rows: Sequence[Trace],
+        transfer: Sequence[Trace],
+        ood: Sequence[Trace],
         *,
-        max_candidates:int=32,
-    )->Tuple[ProcessCandidate,...]:
-        """Retain a bounded frontier using discovery/selection observations only.
+        max_candidates: int = 32,
+    ) -> Tuple[ProcessCandidate, ...]:
+        """Retain a bounded frontier under discovery-only expanded-cost ranking.
 
-        The legacy transfer and ood parameters remain only for API compatibility.
-        They are deliberately ignored during candidate generation, ordering, and
-        frontier admission and are evaluated only after a candidate is selected.
+        Transfer and OOD inputs remain API-compatible only. They do not affect
+        generation, ordering, admission, or the candidate selected for validation.
+        Distinct direct vocabularies remain separate representatives.
         """
-        keys=sorted(set().union(*(t.inputs.keys() for t in rows))); pids=tuple(self.primitives)
-        candidates=[]
-        # Compute actual executable ancestry once per retained primitive. Do not
-        # use provenance aliases or parent_ids: only executable macro edges count.
+        if not rows:
+            self.process_frontier = []
+            self.last_process_candidate_selection_summary = {
+                "discovery_qualified": 0,
+                "selection_objective": "minimize_expanded_cost",
+                "post_selection_validation_ignored": True,
+            }
+            return ()
+
+        keys = sorted(set().union(*(t.inputs.keys() for t in rows)))
+        pids = tuple(self.primitives)
+        candidates = []
+        expanded_cost_cache: dict[str, Tuple[int, int]] = {}
+
+        # Actual executable ancestry is based only on macro references in code,
+        # never provenance lineage aliases or parent_ids.
         executable_lineage_by_primitive = {
             str(pid): frozenset(str(x) for x in self.executable_lineage(str(pid)))
             for pid in pids
@@ -377,18 +419,41 @@ class RecursiveCognitiveCompiler:
         executable_lineage_by_used: dict[tuple[str, ...], frozenset[str]] = {}
         self.last_process_candidate_selection_summary = {
             "discovery_qualified": 0,
-            "post_selection_validation_ignored": True,
-            "lineage_tiebreak": (
-                "executable-lineage-cardinality-descending-after-direct-macro-count-and-node-cost"
+            "selection_objective": "minimize_expanded_cost",
+            "tie_breaks": (
+                "direct-vocabulary-count-ascending",
+                "executable-lineage-cardinality-descending",
+                "surface-ast-size",
+                "canonical-expression",
             ),
             "lineage_source": "actual_executable_macro_references",
+            "validation_split_used_for_selection": False,
         }
-        for pol in self.propose_search_policies():
-            for expr in self._exprs(keys,pids,min(3,int(pol["max_depth"]))):
+
+        def expanded_cost(expression: Mapping[str, Any]) -> Tuple[int, int]:
+            key = json.dumps(expression, sort_keys=True, separators=(",", ":"))
+            cached = expanded_cost_cache.get(key)
+            if cached is not None:
+                return cached
+            value = self._executable_cost(expression)
+            expanded_cost_cache[key] = value
+            return value
+
+        for policy in self.propose_search_policies():
+            for expression in self._exprs(keys, pids, min(3, int(policy["max_depth"]))):
                 try:
-                    tr=sum(abs(eval_expr(expr,t.inputs,self._pmap())-t.target) for t in rows)/len(rows)
-                    if tr>1e-9: continue
-                    used=tuple(sorted({str(x["id"]) for x in self._walk(expr) if x.get("op")=="macro"}))
+                    train_error = sum(
+                        abs(eval_expr(expression, trace.inputs, self._pmap()) - trace.target)
+                        for trace in rows
+                    ) / len(rows)
+                    if train_error > 1e-9:
+                        continue
+
+                    used = tuple(sorted({
+                        str(node["id"])
+                        for node in self._walk(expression)
+                        if node.get("op") == "macro"
+                    }))
                     executable_lineage = executable_lineage_by_used.get(used)
                     if executable_lineage is None:
                         lineage_union: set[str] = set()
@@ -398,65 +463,89 @@ class RecursiveCognitiveCompiler:
                             )
                         executable_lineage = frozenset(lineage_union)
                         executable_lineage_by_used[used] = executable_lineage
-                    # Keep the existing first-order priorities (more direct macros,
-                    # then lower local AST cost); only break those ties by preferring
-                    # a larger *executable* ancestry. This is generic and cannot see
-                    # the hidden expected-parent IDs or any validation split.
-                    selection_key=(
-                        -len(used),
-                        ast_nodes(expr),
+
+                    expanded_depth, expanded_nodes = expanded_cost(expression)
+                    canonical = json.dumps(expression, sort_keys=True)
+                    # Match the H7 R2 default contract: minimize expanded
+                    # execution cost first. A macro requirement is eligibility,
+                    # not an instruction to maximize macro count. Lineage only
+                    # breaks ties after execution cost and direct vocabulary.
+                    selection_key = (
+                        expanded_depth,
+                        expanded_nodes,
+                        len(used),
                         -len(executable_lineage),
-                        len(json.dumps(expr,sort_keys=True)),
-                        json.dumps(expr,sort_keys=True),
+                        ast_nodes(expression),
+                        len(canonical),
+                        canonical,
                     )
                     self.last_process_candidate_selection_summary["discovery_qualified"] += 1
-                    candidates.append((selection_key,expr,used,pol))
+                    candidates.append((selection_key, expression, used, policy))
                 except Exception:
                     continue
+
         if not candidates:
-            self.process_frontier=[]
+            self.process_frontier = []
             return ()
 
-        best_by_lineage={}
-        for selection_key,expr,used,pol in candidates:
-            old=best_by_lineage.get(used)
-            key=(selection_key,json.dumps(expr,sort_keys=True))
+        # Keep the best representative for each exact direct-macro vocabulary.
+        # Never collapse distinct vocabularies only because one has a larger
+        # transitive lineage or happens to be behaviorally equivalent here.
+        best_by_vocabulary = {}
+        for selection_key, expression, used, policy in candidates:
+            old = best_by_vocabulary.get(used)
+            key = (selection_key, json.dumps(expression, sort_keys=True))
             if old is None or key < old[0]:
-                best_by_lineage[used]=(key,expr,used,pol)
+                best_by_vocabulary[used] = (key, expression, used, policy)
 
-        variants=tuple(best_by_lineage.values())
-        # Preserve lineage-distinct hypotheses under behavioral equivalence.
-        frontier=list(variants)
-        frontier.sort(key=lambda x:(x[0][0],json.dumps(x[1],sort_keys=True)))
-        frontier=frontier[:max(1,int(max_candidates))]
+        variants = tuple(best_by_vocabulary.values())
+        frontier = list(variants)
+        frontier.sort(key=lambda item: (item[0], json.dumps(item[1], sort_keys=True)))
+        before_bound = len(frontier)
+        frontier = frontier[:max(1, int(max_candidates))]
+        self.last_process_candidate_selection_summary.update({
+            "unique_direct_vocabularies": before_bound,
+            "frontier_size_before_bound": before_bound,
+            "frontier_size_after_bound": len(frontier),
+            "frontier_bound_dropped_count": max(0, before_bound - len(frontier)),
+        })
 
-        retained=[]
-        for _,expr,used,pol in frontier:
-            proc=ProcessCandidate(
-                "proc:"+digest((expr,pol,self.generation))[:20],
-                expr,
+        retained = []
+        for combined_key, expression, used, policy in frontier:
+            selection_key = combined_key[0]
+            expanded_depth, expanded_nodes = int(selection_key[0]), int(selection_key[1])
+            process = ProcessCandidate(
+                "proc:" + digest((expression, policy, self.generation))[:20],
+                expression,
                 used,
                 self.generation,
                 tuple(used),
-                dict(pol),
-                tuple(sorted({t.family for t in rows})),
-                ast_nodes(expr),
+                dict(policy),
+                tuple(sorted({trace.family for trace in rows})),
+                expanded_nodes,
                 {
-                    "origin":"substrate_process_synthesis_frontier",
-                    "external_model":False,
-                    "selection_source":"discovery_and_selection_only",
-                    "post_selection_validation_ignored_during_selection":True,
+                    "origin": "substrate_process_synthesis_frontier",
+                    "external_model": False,
+                    "selection_source": "discovery_and_selection_only",
+                    "selection_objective": "minimize_expanded_cost",
+                    "expanded_execution_depth": expanded_depth,
+                    "expanded_execution_nodes": expanded_nodes,
+                    "direct_macro_count": len(used),
+                    "executable_lineage_count": len(executable_lineage_by_used.get(used, ())),
+                    "post_selection_validation_ignored_during_selection": True,
                 },
             )
-            self.processes[proc.process_id]=proc
-            retained.append(proc)
-        self.process_frontier=[proc.process_id for proc in retained]
+            self.processes[process.process_id] = process
+            retained.append(process)
+
+        self.process_frontier = [process.process_id for process in retained]
         self.events.append({
-            "event":"PROCESS_FRONTIER_RETAINED",
-            "generation":self.generation,
-            "count":len(retained),
-            "lineage_sets":[list(p.used_primitives) for p in retained],
-            "selection_source":"discovery_and_selection_only",
+            "event": "PROCESS_FRONTIER_RETAINED",
+            "generation": self.generation,
+            "count": len(retained),
+            "lineage_sets": [list(process.used_primitives) for process in retained],
+            "selection_source": "discovery_and_selection_only",
+            "selection_objective": "minimize_expanded_cost",
         })
         return tuple(retained)
 
