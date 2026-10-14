@@ -61,12 +61,12 @@ class ProcessFrontierExecutableLineageTieBreakTests(unittest.TestCase):
             "p-b": primitive("p-b", {"op": "const", "value": 3}, fake_provenance=("fake-b",)),
             "p-c": primitive(
                 "p-c",
-                {"op": "add", "left": {"op": "macro", "id": "p-a"}, "right": {"op": "const", "value": 0}},
+                {"op": "macro", "id": "p-a"},
                 fake_provenance=("fake-c",),
             ),
             "p-d": primitive(
                 "p-d",
-                {"op": "add", "left": {"op": "macro", "id": "p-b"}, "right": {"op": "const", "value": 0}},
+                {"op": "macro", "id": "p-b"},
                 fake_provenance=("fake-d",),
             ),
         }
@@ -92,24 +92,27 @@ class ProcessFrontierExecutableLineageTieBreakTests(unittest.TestCase):
             2,
         )
 
-    def test_direct_macro_count_remains_primary_over_lineage_cardinality(self) -> None:
+    def test_expanded_cost_precedes_direct_vocabulary_and_lineage(self) -> None:
         compiler = FixedProcessCandidateCompiler()
         compiler.primitives = {
             "p-a": primitive("p-a", {"op": "const", "value": 2}),
             "p-b": primitive("p-b", {"op": "const", "value": 3}),
-            "p-c": primitive(
-                "p-c",
-                {"op": "add", "left": {"op": "macro", "id": "p-a"}, "right": {"op": "const", "value": 0}},
-            ),
-            "p-d": primitive(
-                "p-d",
-                {"op": "add", "left": {"op": "macro", "id": "p-b"}, "right": {"op": "const", "value": 0}},
-            ),
-            # One direct macro with five ancestors is still ranked below
-            # candidates that preserve two direct macro references.
+            # These are executable aliases, not provenance-only aliases, so
+            # they have the same expanded cost as the two original constants.
+            "p-c": primitive("p-c", {"op": "macro", "id": "p-a"}),
+            "p-d": primitive("p-d", {"op": "macro", "id": "p-b"}),
+            # Fewer direct macros do not outrank a cheaper executable program.
             "p-e": primitive(
                 "p-e",
-                {"op": "add", "left": {"op": "macro", "id": "p-c"}, "right": {"op": "macro", "id": "p-d"}},
+                {
+                    "op": "add",
+                    "left": {
+                        "op": "add",
+                        "left": {"op": "macro", "id": "p-a"},
+                        "right": {"op": "const", "value": 0},
+                    },
+                    "right": {"op": "macro", "id": "p-b"},
+                },
             ),
         }
         compiler.candidate_set = [compiler.shallow, compiler.deep, compiler.single_lineage_heavy]
@@ -118,9 +121,14 @@ class ProcessFrontierExecutableLineageTieBreakTests(unittest.TestCase):
             (),
             (),
         )
+        # Among equal-cost two-macro candidates, real executable ancestry
+        # breaks the tie. The one-macro candidate has smaller vocabulary but
+        # greater expanded depth/nodes, so cost takes priority.
         self.assertEqual(frontier[0].used_primitives, ("p-c", "p-d"))
         self.assertEqual(frontier[1].used_primitives, ("p-a", "p-b"))
         self.assertEqual(frontier[-1].used_primitives, ("p-e",))
+        self.assertEqual(frontier[0].complexity, frontier[1].complexity)
+        self.assertGreater(frontier[-1].complexity, frontier[0].complexity)
 
 
 
