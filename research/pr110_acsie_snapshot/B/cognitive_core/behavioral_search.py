@@ -372,6 +372,26 @@ def find_exact_expression(
         ],
     ] = {}
     dominated_state_tokens: set[int] = set()
+
+    # RC1 exact acceleration: pre-encode the set-valued dominance attributes
+    # as arbitrary-precision integer bitsets. Bit assignments are monotonic and
+    # local to this immutable search invocation; subset checks remain exact.
+    lineage_bit_ids: dict[str, int] = {}
+    lineage_ids_by_bit: list[str] = []
+    state_feature_cache: dict[int, tuple[int, int, tuple[int, int]]] = {}
+
+    def ids_to_mask(values: Sequence[str] | set[str] | frozenset[str]) -> int:
+        mask = 0
+        for raw_id in values:
+            ident = str(raw_id)
+            bit = lineage_bit_ids.get(ident)
+            if bit is None:
+                bit = len(lineage_ids_by_bit)
+                lineage_bit_ids[ident] = bit
+                lineage_ids_by_bit.append(ident)
+            mask |= 1 << bit
+        return mask
+
     seen_expression_keys: set[str] = set()
     next_state_token = 0
     target_candidate_found = False
@@ -385,20 +405,18 @@ def find_exact_expression(
         return state[5] in dominated_state_tokens
 
     def dominates(left: tuple, right: tuple) -> bool:
-        # A composite alias may have a larger transitive lineage while
-        # directly reusing fewer executable primitives. It must not dominate
-        # an explicit multi-parent composition whose direct macro vocabulary
-        # is richer. Transitive lineage remains necessary, but direct reuse is
-        # also part of executable dominance.
-        left_direct = set(left[2])
-        right_direct = set(right[2])
-        left_lineage = set(executable_lineage_ids(left[2]))
-        right_lineage = set(executable_lineage_ids(right[2]))
-        left_depth, left_nodes = executable_cost(left[0])
-        right_depth, right_nodes = executable_cost(right[0])
+        # Semantically identical to the set-based reference predicate:
+        # left dominates right iff its direct vocabulary and executable
+        # lineage are supersets and its structural costs are no worse.
+        # Encode subset checks as integer bit operations and compute each
+        # state's features once, not for every frontier pair.
+        left_direct_mask, left_lineage_mask, left_cost = state_feature_cache[left[5]]
+        right_direct_mask, right_lineage_mask, right_cost = state_feature_cache[right[5]]
+        left_depth, left_nodes = left_cost
+        right_depth, right_nodes = right_cost
         return (
-            right_direct.issubset(left_direct)
-            and right_lineage.issubset(left_lineage)
+            (right_direct_mask & ~left_direct_mask) == 0
+            and (right_lineage_mask & ~left_lineage_mask) == 0
             and left_depth <= right_depth
             and left_nodes <= right_nodes
         )
@@ -422,6 +440,7 @@ def find_exact_expression(
                 bucket.pop(state_key, None)
         vector_cache.pop(ident, None)
         free_cache.pop(ident, None)
+        state_feature_cache.pop(state[5], None)
 
     def register(expr: Mapping[str, Any]):
         nonlocal next_state_token, target_candidate_found
@@ -484,12 +503,28 @@ def find_exact_expression(
         if old is not None:
             stats["duplicate_states"] += 1
             if rank(state) < rank(old):
+                # A better-ranked bucket representative may later participate
+                # in target extraction. Keep its exact dominance features ready
+                # in case it is compared by a subsequent search operation.
+                state_feature_cache[state[5]] = (
+                    ids_to_mask(state_used),
+                    ids_to_mask(direct_lineage),
+                    executable_cost(expr),
+                )
                 bucket[state_key] = state
                 if best_any.get(outputs) == old:
                     best_any[outputs] = state
                 if state_used and best_macro.get(outputs) == old:
                     best_macro[outputs] = state
             return bucket[state_key]
+
+        # One-time feature computation replaces repeated set construction and
+        # AST-cost lookups inside every pairwise dominance comparison.
+        state_feature_cache[state[5]] = (
+            ids_to_mask(state_used),
+            ids_to_mask(direct_lineage),
+            executable_cost(expr),
+        )
 
         behavior_key = (outputs, state_keys)
         frontier = dominance_frontier.setdefault(behavior_key, [])
@@ -506,6 +541,7 @@ def find_exact_expression(
                 stats["dominance_pruned_states"] += 1
                 vector_cache.pop(expression_ident, None)
                 free_cache.pop(expression_ident, None)
+                state_feature_cache.pop(state[5], None)
                 return existing
 
         retained_frontier = []
