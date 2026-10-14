@@ -81,7 +81,7 @@ jobs:
             test "$(git hash-object "$root/cognitive_core/open_ended_growth.py")" = "$OPEN_ENDED_GROWTH_GIT_BLOB_SHA1"
           done
 
-          PYTHONPATH="$GITHUB_WORKSPACE" python3 - <<'PY'
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" python3 - <<'PY'
           import hashlib, json, os
           from pathlib import Path
           from lab.exact_checkpoint import load_checkpoint
@@ -276,7 +276,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PYTHONPATH="$GITHUB_WORKSPACE" python3 - <<'PY'
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" python3 - <<'PY'
           import hashlib, json, os
           from pathlib import Path
           from lab.exact_checkpoint import load_checkpoint
