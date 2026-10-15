@@ -1,0 +1,206 @@
+name: PR110 Gen7 identifiability diagnostic (single generation)
+
+on:
+  push:
+    branches:
+      - research/pr110-gen6-lineage-priority-20261014
+    paths:
+      - ".github/workflows/pr110-gen7-identifiability-diagnostic.yml"
+      - "lab/acsie_open_ended_self_extending_proving.py"
+      - "lab/test_pr110_selected_lineage_audit.py"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: pr110-gen7-identifiability-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  gen7-diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 125
+    env:
+      SEED: "2026100305"
+      PROVING_SHA: "33259fc5c69d87b99c604f0050508c433a279daf"
+      RUNTIME_SHA: "af0c7ef503c51a5bc7872717b263a01f495c855f"
+      INPUT_CHECKPOINT_SHA256: "22828e4d70d7728c87e887dd8e507a4fe43240a154117edcce9f899d218838ee"
+      INPUT_STATE_DIGEST: "369cf45b1d12afdb831eb75d91e63ae38dfba118a8898f2b9fa5117ba1b6602a"
+      EXPECTED_SEARCH_BLOB: "7d7edbf1031a2e6ab4610efbeab389c7ad588507"
+      EXPECTED_COMPILER_BLOB: "ab3d14b877eae3afaf1259437c179380df35e3e7"
+      EXPECTED_GROWTH_BLOB: "27fb63532fed3ce14d2bb5d61874901d28d2646c"
+      EXPECTED_EVALUATOR_BLOB: "1d8c98ff1ca726dca3387f1658d983ce2f5cc646"
+      EXPECTED_AUDIT_TEST_BLOB: "f117dfe7390c7ba97c0a915379e8443cd9e60135"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Retrieve immutable completed Gen6 diagnostic checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: pr110-gen6-lineage-priority-rerun
+          run-id: 38646749570
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: prior
+      - name: Verify source, checkpoint identity, and focused audit regression
+        env:
+          PYTHONHASHSEED: "0"
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/B:${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp prior/lineage-priority-gen6-working-checkpoint.json evidence/input-gen6-checkpoint.json
+          test "$(sha256sum evidence/input-gen6-checkpoint.json | awk '{print $1}')" = "$INPUT_CHECKPOINT_SHA256"
+          test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py)" = "$EXPECTED_SEARCH_BLOB"
+          test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/recursive_cognitive_compiler.py)" = "$EXPECTED_COMPILER_BLOB"
+          test "$(git hash-object research/pr110_acsie_snapshot/B/cognitive_core/open_ended_growth.py)" = "$EXPECTED_GROWTH_BLOB"
+          test "$(git hash-object lab/acsie_open_ended_self_extending_proving.py)" = "$EXPECTED_EVALUATOR_BLOB"
+          test "$(git hash-object lab/test_pr110_selected_lineage_audit.py)" = "$EXPECTED_AUDIT_TEST_BLOB"
+          python3 -m py_compile lab/acsie_open_ended_self_extending_proving.py lab/test_pr110_selected_lineage_audit.py
+          python3 -m unittest -v lab.test_pr110_selected_lineage_audit > evidence/identifiability-unit-tests.txt 2>&1
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+          p = Path("evidence/input-gen6-checkpoint.json")
+          env = load_checkpoint(p, expected_seed=2026100305, expected_metadata={
+              "proving_sha": os.environ["PROVING_SHA"],
+              "acsie_ref": os.environ["RUNTIME_SHA"],
+          })
+          assert env["generation_next"] == 7, env["generation_next"]
+          assert env["state_digest"] == os.environ["INPUT_STATE_DIGEST"], env["state_digest"]
+          assert len(env.get("generations_out", [])) == 7
+          report = {
+              "schema": "ACSIE.PR110.Gen7IdentifiabilityPreflight.v1",
+              "input_checkpoint_sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+              "input_state_digest": env["state_digest"],
+              "generation_next": env["generation_next"],
+              "completed_generation_rows": len(env.get("generations_out", [])),
+              "seed": 2026100305,
+              "proving_sha": os.environ["PROVING_SHA"],
+              "runtime_identity": os.environ["RUNTIME_SHA"],
+              "audit_test": "PASS",
+              "purpose": "single Gen7 diagnostic after a rejected Gen6; not qualification",
+              "promotion_status": "DO_NOT_PROMOTE",
+              "agi": "NOT_DEMONSTRATED",
+              "asi": "NOT_DEMONSTRATED",
+          }
+          Path("evidence/preflight.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
+          cat evidence/identifiability-unit-tests.txt
+      - name: Continue exactly one generation (Gen7) from frozen Gen6 checkpoint
+        id: gen7
+        continue-on-error: true
+        env:
+          PYTHONHASHSEED: "0"
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/B:${{ github.workspace }}
+          ACSIE_DOMINANCE_BITSETS: "1"
+          ACSIE_SEARCH_PROFILE: "0"
+        shell: bash
+        run: |
+          set -uo pipefail
+          cp evidence/input-gen6-checkpoint.json evidence/gen7-working-checkpoint.json
+          set +e
+          timeout --signal=TERM --kill-after=60s 100m python3 -u - <<'PY' > evidence/gen7-raw.txt 2>&1
+          import json, time
+          from pathlib import Path
+          from lab.acsie_open_ended_self_extending_proving import run_seed
+          checkpoint = "evidence/gen7-working-checkpoint.json"
+          started = time.perf_counter()
+          result = run_seed(
+              2026100305,
+              12,
+              checkpoint_path=checkpoint,
+              resume_from=checkpoint,
+              stop_after=8,
+              checkpoint_metadata={
+                  "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+                  "acsie_ref": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+              },
+          )
+          Path("evidence/gen7-return.json").write_text(json.dumps({
+              "wall_time_seconds": round(time.perf_counter() - started, 6),
+              "completed_generations": result.get("completed_generations"),
+              "final_generation": (result.get("generations_detail") or [{}])[-1].get("generation"),
+              "finite_open_ended_growth_gate": result.get("finite_open_ended_growth_gate"),
+              "note": "one-generation diagnostic only; prior Gen6 scientific gate failed",
+          }, indent=2, sort_keys=True) + "\n")
+          print(Path("evidence/gen7-return.json").read_text())
+          PY
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" > evidence/gen7-exit-code.txt
+          echo "GEN7_PROCESS_EXIT_CODE=$rc"
+          tail -n 40 evidence/gen7-raw.txt || true
+      - name: Validate Gen7 checkpoint and classify result
+        if: always()
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/B:${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+          root = Path("evidence")
+          cp = root / "gen7-working-checkpoint.json"
+          raw = root / "gen7-raw.txt"
+          rc = int((root / "gen7-exit-code.txt").read_text()) if (root / "gen7-exit-code.txt").exists() else None
+          report = {
+              "schema": "ACSIE.PR110.Gen7IdentifiabilityDiagnostic.v1",
+              "process_exit_code": rc,
+              "raw_log_sha256": hashlib.sha256(raw.read_bytes()).hexdigest() if raw.exists() else None,
+              "input_checkpoint_sha256": "22828e4d70d7728c87e887dd8e507a4fe43240a154117edcce9f899d218838ee",
+              "promotion_status": "DO_NOT_PROMOTE",
+              "prior_gen6_scientific_status": "FAILED",
+              "agi": "NOT_DEMONSTRATED",
+              "asi": "NOT_DEMONSTRATED",
+          }
+          if cp.exists():
+              try:
+                  env = load_checkpoint(cp, expected_seed=2026100305, expected_metadata={
+                      "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+                      "acsie_ref": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+                  })
+                  gen7 = next((x for x in env.get("generations_out", []) if int(x.get("generation", -1)) == 7), None)
+                  report.update({
+                      "checkpoint_validation": "PASS",
+                      "checkpoint_sha256_after": hashlib.sha256(cp.read_bytes()).hexdigest(),
+                      "checkpoint_state_digest_after": env.get("state_digest"),
+                      "generation_next": env.get("generation_next"),
+                      "gen7_completed": gen7 is not None,
+                      "gen7_metrics": ({k: gen7.get(k) for k in (
+                          "accepted", "closure_pair_count", "closure_success_count",
+                          "closure_reuse_success_count", "closure_reuse_rate",
+                          "closure_trap_count", "probe_reuse_rate", "probe_trap_count",
+                          "transfer_error", "ood_error", "retained_count",
+                          "recursive_reuse_ok", "target_depth", "runtime_max_depth",
+                      )} if gen7 else None),
+                      "scientific_status": (
+                          "GEN7_DIAGNOSTIC_COMPLETED_REQUIRES_REVIEW"
+                          if gen7 else "GEN7_NOT_COMPLETED"
+                      ),
+                  })
+              except Exception as exc:
+                  report.update({"checkpoint_validation": "FAILED", "checkpoint_error": type(exc).__name__})
+          else:
+              report.update({"checkpoint_validation": "MISSING", "scientific_status": "GEN7_NOT_COMPLETED"})
+          (root / "gen7-summary.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
+      - name: Upload Gen7 diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr110-gen7-identifiability-diagnostic-${{ github.sha }}
+          path: evidence/
