@@ -148,8 +148,11 @@ def main() -> int:
         args.output.write_text(rendered, encoding="utf-8")
     else:
         print(rendered, end="")
-    return 0 if result["event_count"] > 0 and result["all_unique_parent_function_classes_covered"]
-        and result["audit_error_count"] == 0 else 2
+    return 0 if (
+        result["event_count"] > 0
+        and result["all_unique_parent_function_classes_covered"]
+        and result["audit_error_count"] == 0
+    ) else 2
 
 
 if __name__ == "__main__":
