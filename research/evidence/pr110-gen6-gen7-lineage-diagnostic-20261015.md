@@ -59,6 +59,27 @@ The workflow resumed exactly from the validated Gen6 checkpoint and stopped at t
 
 The return object's `finite_open_ended_growth_gate=false` is **not by itself a valid full-gate conclusion**: this segment deliberately stopped after generation 7, while `run_seed` was asked for 12 generations, so its full-run gate cannot pass. A complete frozen qualification has not been run.
 
+## Target-blind ranking counterfactuals — retrospective diagnostic
+
+To investigate whether a generic search-order/structure signal could solve the Gen6 failures without leaking expected parent IDs, a read-only replay scored each saved frontier using only candidate structure/dependency-count features and original frontier order for ties. Expected-parent match and competency labels were consulted only after each policy chose its candidate.
+
+| Target-blind policy | Exact expected-lineage selections |
+|---|---:|
+| Discovery-first (current recorded choice) | 0/13 |
+| Maximum direct primitive count | 0/13 |
+| Maximum ancestor-lineage count | 6/13 (46.2%) |
+| Minimum ancestor-lineage count | 0/13 |
+| Minimum AST nodes | 0/13 |
+| Maximum AST nodes | 0/13 |
+| Maximum macro nodes | 0/13 |
+| Minimum macro nodes | 0/13 |
+| Shallowest AST | 0/13 |
+| Deepest AST | 0/13 |
+
+These are **post-hoc results on the same 13 cases**, not an independent test or qualification. They show that simply maximizing the count of ancestors helps on some rows but does not solve the mismatch (7/13 still fail); the other tested generic features do not rescue any row. Historical bounded tie-break experiments also failed the qualification gate. Do not promote this heuristic based on this replay. A separate frozen seed/generation evaluation is required, and exact parent identities may be unobservable from behavior in the current task design.
+
+The reproducible utility `lab/pr110_gen6_blind_selection_replay.py` and tests are added alongside the audit aggregator. Both are diagnostic-only; no runtime ranker was changed.
+
 ## Gate and promotion decision
 
 - Frozen qualification: 5 seeds × 12 generations — **not run here**.
