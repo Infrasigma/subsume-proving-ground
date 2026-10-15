@@ -1,4 +1,5 @@
 name: PR110 Gen7 identifiability diagnostic (single generation)
+# Starts only from the verified Gen6 checkpoint; never changes selection or qualification gates.
 
 on:
   push:
