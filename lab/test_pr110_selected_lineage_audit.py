@@ -15,6 +15,7 @@ from cognitive_core.recursive_cognitive_compiler import (
 
 
 # This regression models selection of an earlier competent process while a later frontier item has different lineage.
+# The fresh-input identifiability audit is diagnostic-only and must never select candidates.
 class SelectedProcessLineageAuditTests(unittest.TestCase):
     def test_lineage_is_recomputed_for_selected_candidate_not_last_frontier_item(self) -> None:
         selected = SimpleNamespace(

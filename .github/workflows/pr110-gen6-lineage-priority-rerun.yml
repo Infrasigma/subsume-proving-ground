@@ -254,6 +254,116 @@ jobs:
               raise SystemExit(2)
           PY
 
+      - name: Continue one bounded Gen7 diagnostic from the validated Gen6 checkpoint
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/research/pr110_acsie_snapshot/B:${{ github.workspace }}
+          PYTHONHASHSEED: "0"
+          ACSIE_DOMINANCE_BITSETS: "1"
+          ACSIE_SEARCH_PROFILE: "0"
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+          summary = json.loads(Path("evidence/gen6-lineage-priority-summary.json").read_text())
+          cp = Path("evidence/lineage-priority-gen6-working-checkpoint.json")
+          if summary.get("checkpoint_validation") != "PASS" or summary.get("generation_next") != 7 or not cp.exists():
+              report = {
+                  "schema": "ACSIE.PR110.Gen7Continuation.v1",
+                  "status": "BLOCKED_INVALID_GEN6_CHECKPOINT",
+                  "promotion_status": "DO_NOT_PROMOTE",
+              }
+              Path("evidence/gen7-summary.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+              print(json.dumps(report, indent=2, sort_keys=True))
+              raise SystemExit(0)
+          env = load_checkpoint(cp, expected_seed=2026100305, expected_metadata={
+              "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+              "acsie_ref": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+          })
+          assert env.get("generation_next") == 7
+          assert env.get("state_digest") == summary.get("checkpoint_state_digest_after")
+          print("GEN7_INPUT_CHECKPOINT=VERIFIED")
+          PY
+          cp evidence/lineage-priority-gen6-working-checkpoint.json evidence/gen7-working-checkpoint.json
+          set +e
+          timeout --signal=TERM --kill-after=60s 100m python3 -u - <<'PY' > evidence/gen7-raw.txt 2>&1
+          import json, time
+          from pathlib import Path
+          from lab.acsie_open_ended_self_extending_proving import run_seed
+          checkpoint = "evidence/gen7-working-checkpoint.json"
+          started = time.perf_counter()
+          result = run_seed(
+              2026100305,
+              12,
+              checkpoint_path=checkpoint,
+              resume_from=checkpoint,
+              stop_after=8,
+              checkpoint_metadata={
+                  "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+                  "acsie_ref": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+              },
+          )
+          Path("evidence/gen7-return.json").write_text(json.dumps({
+              "wall_time_seconds": round(time.perf_counter() - started, 6),
+              "completed_generations": result.get("completed_generations"),
+              "finite_open_ended_growth_gate": result.get("finite_open_ended_growth_gate"),
+          }, indent=2, sort_keys=True) + "\n")
+          print(Path("evidence/gen7-return.json").read_text())
+          PY
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" > evidence/gen7-exit-code.txt
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          from lab.exact_checkpoint import load_checkpoint
+          root = Path("evidence")
+          cp = root / "gen7-working-checkpoint.json"
+          raw = root / "gen7-raw.txt"
+          rc = int((root / "gen7-exit-code.txt").read_text()) if (root / "gen7-exit-code.txt").exists() else None
+          report = {
+              "schema": "ACSIE.PR110.Gen7Continuation.v1",
+              "process_exit_code": rc,
+              "raw_log_sha256": hashlib.sha256(raw.read_bytes()).hexdigest() if raw.exists() else None,
+              "promotion_status": "DO_NOT_PROMOTE",
+              "prior_gen6_scientific_status": "ONE_SEED_DIAGNOSTIC_FAIL",
+              "agi": "NOT_DEMONSTRATED",
+              "asi": "NOT_DEMONSTRATED",
+          }
+          if cp.exists():
+              try:
+                  env = load_checkpoint(cp, expected_seed=2026100305, expected_metadata={
+                      "proving_sha": "33259fc5c69d87b99c604f0050508c433a279daf",
+                      "acsie_ref": "af0c7ef503c51a5bc7872717b263a01f495c855f",
+                  })
+                  g7 = next((row for row in env.get("generations_out", []) if int(row.get("generation", -1)) == 7), None)
+                  report.update({
+                      "checkpoint_validation": "PASS",
+                      "checkpoint_sha256_after": hashlib.sha256(cp.read_bytes()).hexdigest(),
+                      "checkpoint_state_digest_after": env.get("state_digest"),
+                      "generation_next": env.get("generation_next"),
+                      "gen7_completed": g7 is not None,
+                      "gen7_metrics": ({key: g7.get(key) for key in (
+                          "accepted", "closure_pair_count", "closure_success_count",
+                          "closure_reuse_success_count", "closure_reuse_rate",
+                          "closure_trap_count", "probe_success_rate", "probe_reuse_rate",
+                          "probe_trap_count", "transfer_error", "ood_error",
+                          "retained_count", "recursive_reuse_ok", "target_depth",
+                          "runtime_max_depth",
+                      )} if g7 else None),
+                      "scientific_status": "GEN7_DIAGNOSTIC_COMPLETED_REQUIRES_REVIEW" if g7 else "GEN7_NOT_COMPLETED",
+                  })
+              except Exception as exc:
+                  report.update({"checkpoint_validation": "FAIL", "checkpoint_error": type(exc).__name__})
+          else:
+              report.update({"checkpoint_validation": "MISSING", "scientific_status": "GEN7_NOT_COMPLETED"})
+          (root / "gen7-summary.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
       - name: Upload patch and rerun evidence
         if: always()
         uses: actions/upload-artifact@v4
