@@ -1,0 +1,150 @@
+name: ACSIE open-ended matrix scientific gate
+on:
+  push:
+    branches:
+      - research/open-ended-process-lineage-frontier-matrix-gate-20261003
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  seed:
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [2026100301, 2026100302, 2026100303, 2026100304, 2026100305]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone exact ACSIE research commit
+        env:
+          ACSIE_READ_TOKEN: ${{ secrets.ACSIE_READ_TOKEN }}
+          ACSIE_REF: "ff525043d641fc312db33843457e86adf690bca1"
+        run: |
+          set -euo pipefail
+          test -n "$ACSIE_READ_TOKEN"
+          rm -rf /tmp/acsie-open-ended-self-extending
+          git clone --no-checkout --depth 1 "https://x-access-token:$ACSIE_READ_TOKEN@github.com/Infrasigma/ACSIE.git" /tmp/acsie-open-ended-self-extending
+          git -C /tmp/acsie-open-ended-self-extending fetch --depth 1 origin "$ACSIE_REF"
+          git -C /tmp/acsie-open-ended-self-extending checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/acsie-open-ended-self-extending rev-parse HEAD)" = "$ACSIE_REF"
+      - name: Run exact unit tests
+        run: |
+          python3 -m venv /tmp/open-ended-venv
+          . /tmp/open-ended-venv/bin/activate
+          python -m pip install --upgrade pip pytest
+          PYTHONPATH=/tmp/acsie-open-ended-self-extending pytest -q /tmp/acsie-open-ended-self-extending/tests/test_open_ended_growth.py
+          PYTHONPATH=/tmp/acsie-open-ended-self-extending:. pytest -q lab/test_open_ended_bootstrap_language.py
+      - name: Run exact one-seed scientific gate
+        env:
+          PYTHONUNBUFFERED: "1"
+          PYTHONPATH: /tmp/acsie-open-ended-self-extending
+        run: |
+          set +e
+          . /tmp/open-ended-venv/bin/activate
+          set -o pipefail
+          {
+            echo "WORKFLOW_SHA=${{ github.sha }}"
+            echo "SEED=${{ matrix.seed }}"
+            echo "ACSIE_REF=ff525043d641fc312db33843457e86adf690bca1"
+            echo "START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            python3 -u - <<PY
+          import json
+          import sys
+          import lab.acsie_open_ended_self_extending_proving as proving
+          seed = int("${{ matrix.seed }}")
+          result = proving.run_seed(seed, 12)
+          print(json.dumps(result, sort_keys=True), flush=True)
+          ok = bool(
+              result["finite_open_ended_growth_gate"]
+              and not result["external_model"]
+              and not result["target_identity_available_to_runtime"]
+              and not result["task_family_route"]
+              and not result["holdout_used_for_search_selection"]
+              and not result["transfer_used_for_search_selection"]
+              and not result["ood_used_for_search_selection"]
+          )
+          print("SCIENTIFIC_SEED_GATE=" + ("PASS" if ok else "FAIL"), flush=True)
+          raise SystemExit(0 if ok else 2)
+          PY
+          } 2>&1 | tee seed-result.txt
+          rc=${PIPESTATUS[0]}
+          echo "SCIENTIFIC_SEED_GATE_RC=$rc" | tee -a seed-result.txt
+          exit "$rc"
+      - name: Upload seed evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-open-ended-seed-${{ matrix.seed }}-${{ github.sha }}
+          path: seed-result.txt
+  aggregate:
+    if: always()
+    needs: seed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download seed evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: acsie-open-ended-seed-*-${{ github.sha }}
+          path: seed-evidence
+          merge-multiple: false
+      - name: Evaluate aggregate scientific gate
+        run: |
+          python3 -u - <<PY
+          import hashlib, json, sys
+          from pathlib import Path
+          expected = {2026100301,2026100302,2026100303,2026100304,2026100305}
+          rows = {}
+          hashes = {}
+          for p in sorted(Path("seed-evidence").glob("**/seed-result.txt")):
+              hashes[str(p)] = hashlib.sha256(p.read_bytes()).hexdigest()
+              for line in p.read_text().splitlines():
+                  try: obj=json.loads(line)
+                  except Exception: continue
+                  if isinstance(obj,dict) and "seed" in obj and "finite_open_ended_growth_gate" in obj:
+                      rows[int(obj["seed"])] = obj
+          integrity_ok = (
+              set(rows) == expected
+              and all(not rows[s]["external_model"] for s in expected)
+              and all(not rows[s]["target_identity_available_to_runtime"] for s in expected)
+              and all(not rows[s]["task_family_route"] for s in expected)
+              and all(not rows[s]["holdout_used_for_search_selection"] for s in expected)
+              and all(not rows[s]["transfer_used_for_search_selection"] for s in expected)
+              and all(not rows[s]["ood_used_for_search_selection"] for s in expected)
+          )
+          scientific_ok = integrity_ok and all(bool(rows[s]["finite_open_ended_growth_gate"]) for s in expected)
+          report={
+              "scientific_gate": "PASS" if scientific_ok else "FAIL",
+              "integrity_ok": integrity_ok,
+              "acsie_ref": "ff525043d641fc312db33843457e86adf690bca1",
+              "expected_seeds": sorted(expected),
+              "observed_seeds": sorted(rows),
+              "seed_results": {str(s): {
+                  "finite_open_ended_growth_gate": rows[s]["finite_open_ended_growth_gate"],
+                  "every_generation_accepted": rows[s]["every_generation_accepted"],
+                  "every_closure_perfect": rows[s]["every_closure_perfect"],
+                  "every_probe_perfect": rows[s]["every_probe_perfect"],
+                  "lineage_closed": rows[s]["lineage_closed"],
+                  "strict_growth": rows[s]["strict_growth"],
+                  "depth_growth_contract": rows[s]["depth_growth_contract"],
+                  "closure_trap_count": rows[s]["closure_trap_count"],
+                  "probe_trap_count": rows[s]["probe_trap_count"],
+                  "final_closure_reuse_rate": rows[s]["final_closure_reuse_rate"],
+                  "final_probe_reuse_rate": rows[s]["final_probe_reuse_rate"],
+                  "final_target_depth": rows[s]["final_target_depth"],
+                  "retained_count": rows[s]["retained_count"]
+              } for s in sorted(rows)},
+              "evidence_sha256": hashes
+          }
+          print(json.dumps(report,sort_keys=True,indent=2))
+          Path("aggregate-scientific-gate.json").write_text(json.dumps(report,sort_keys=True,indent=2)+"\n")
+          raise SystemExit(0 if scientific_ok else 2)
+          PY
+      - name: Upload aggregate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-open-ended-aggregate-${{ github.sha }}
+          path: aggregate-scientific-gate.json
