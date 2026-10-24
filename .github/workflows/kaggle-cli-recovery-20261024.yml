@@ -198,3 +198,5 @@ jobs:
 
           print("Raw kernel logs and selected reports were not printed or uploaded; they remained inside this ephemeral container.")
           PY
+
+# Follow-up push to activate this branch-scoped recovery workflow.
