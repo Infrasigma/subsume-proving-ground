@@ -1,0 +1,262 @@
+name: ACSIE H7 PR111-112 exact-source hosted validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/acsie-h7-pr111-112-hosted-validation.yml"
+      - "research/acsie-h7-pr112-validation/**"
+  workflow_dispatch:
+
+concurrency:
+  group: acsie-pr112-exact-source-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHONHASHSEED: "0"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  hosted-runner-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Report hosted runner capacity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "ACSIE_H7_HOSTED_PREFLIGHT=START"
+          echo "RUNNER_OS=${RUNNER_OS:-unknown}"
+          echo "RUNNER_ARCH=${RUNNER_ARCH:-unknown}"
+          echo "KERNEL=$(uname -srm)"
+          echo "PYTHON=$(python3 --version 2>&1 || true)"
+          echo "LOGICAL_CPUS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc || echo unknown)"
+          awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/ {print}' /proc/meminfo || true
+          df -h .
+          echo "ACSIE_H7_HOSTED_PREFLIGHT=PASS"
+          echo "ACSIE_SEARCH_STARTED=no"
+
+  exact-source-validation:
+    needs: hosted-runner-preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout laboratory validation branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up isolated Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install bounded test dependency
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pytest==8.4.1
+
+      - name: Verify exact ACSIE source snapshots and compute true SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, subprocess
+          from pathlib import Path
+          base = Path("research/acsie-h7-pr112-validation")
+          manifest = json.loads((base / "manifest.json").read_text())
+          records = []
+          for item in manifest["files"]:
+              path = Path(item["path"])
+              data = path.read_bytes()
+              sha256 = hashlib.sha256(data).hexdigest()
+              entry = {
+                  "variant": item["variant"],
+                  "path": item["path"],
+                  "source_ref": item["ref"],
+                  "source_git_blob_sha1": item["git_blob_sha1"],
+                  "actual_sha256": sha256,
+                  "bytes": len(data),
+              }
+              if item["git_blob_sha1"] not in {"generated-lab-test", "not-original-file-blob"}:
+                  actual_blob = subprocess.check_output(
+                      ["git", "hash-object", str(path)], text=True
+                  ).strip()
+                  entry["actual_git_blob_sha1"] = actual_blob
+                  assert actual_blob == item["git_blob_sha1"], (path, actual_blob, item["git_blob_sha1"])
+              records.append(entry)
+          output = {
+              "schema": "ACSIE.H7.PR112.exact-source-check.v1",
+              "source_repository": manifest["source_repository"],
+              "baseline_ref": manifest["baseline"]["ref"],
+              "candidate_ref": manifest["candidate"]["ref"],
+              "files": records,
+          }
+          out = Path("research/acsie-h7-pr112-validation/evidence/source-integrity.json")
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n")
+          print(json.dumps({
+              "status": "PASS",
+              "verified_git_blob_sha1_files": sum("actual_git_blob_sha1" in f for f in records),
+              "recorded_true_sha256_files": len(records),
+              "manifest_schema": manifest["schema"],
+          }, sort_keys=True))
+          PY
+
+      - name: Materialize complete exact-source package overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$GITHUB_WORKSPACE/research/acsie-h7-pr112-validation"
+          # The three branch-specific modules remain exact files in each arm.
+          # All other ACSIE package modules are pinned once in shared_support and
+          # symlinked into each isolated package after integrity hashing.
+          for variant in baseline candidate; do
+            pkg="$base/$variant/cognitive_core"
+            cp "$base/shared_support/cognitive_core/__init__.py" "$pkg/__init__.py"
+            for source in "$base"/shared_support/cognitive_core/*.py; do
+              name="$(basename "$source")"
+              case "$name" in
+                __init__.py|behavioral_search.py|open_ended_growth.py|recursive_cognitive_compiler.py)
+                  continue
+                  ;;
+              esac
+              test ! -e "$pkg/$name"
+              ln -s "$source" "$pkg/$name"
+            done
+          done
+          echo "EXACT_SOURCE_OVERLAY=PASS"
+          for variant in baseline candidate; do
+            echo "$variant core module count=$(find "$base/$variant/cognitive_core" -maxdepth 1 -type f -o -type l | wc -l)"
+          done
+
+      - name: Verify runtime import provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, importlib, json, os
+          from pathlib import Path
+          base = Path("research/acsie-h7-pr112-validation").resolve()
+          rows = []
+          for variant in ("baseline", "candidate"):
+              variant_root = base / variant
+              env_path = str(variant_root)
+              env = os.environ.copy()
+              env["PYTHONPATH"] = env_path + os.pathsep + str(base / "shared_support")
+              # Use isolated child processes so sys.modules cannot cross-contaminate the variants.
+              import subprocess, sys
+              code = r'''
+          import hashlib, importlib, json
+          from pathlib import Path
+          base = Path(__import__("sys").argv[1]).resolve()
+          shared = base.parent / "shared_support"
+          variant_names = (
+              "cognitive_core.recursive_cognitive_compiler",
+              "cognitive_core.behavioral_search",
+              "cognitive_core.open_ended_growth",
+          )
+          shared_names = (
+              "cognitive_core.general_engine",
+              "cognitive_core.semantic_operator_discovery",
+              "cognitive_core.open_semantic_substrate",
+              "cognitive_core.native_independent_core",
+              "cognitive_core.adaptive_capability_repair",
+          )
+          modules = {}
+          for name in variant_names:
+              module = importlib.import_module(name)
+              path = Path(module.__file__).resolve()
+              assert base in path.parents, (name, path, base)
+              modules[name] = {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "source_role":"variant"}
+          for name in shared_names:
+              module = importlib.import_module(name)
+              path = Path(module.__file__).resolve()
+              assert shared in path.parents, (name, path, shared)
+              modules[name] = {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "source_role":"shared_exact_source"}
+          print(json.dumps(modules, sort_keys=True))
+          '''
+              p = subprocess.run(
+                  [sys.executable, "-c", code, str(variant_root)],
+                  cwd=Path(os.environ.get("RUNNER_TEMP", "/tmp")), env=env, text=True,
+                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
+              )
+              records = json.loads(p.stdout.splitlines()[-1])
+              rows.append({"variant": variant, "modules": records})
+          out = base / "evidence" / "runtime-import-provenance.json"
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_text(json.dumps({"schema":"ACSIE.H7.PR112.import-provenance.v1","variants":rows}, indent=2, sort_keys=True)+"\n")
+          print(json.dumps({"status":"PASS","variants":len(rows),"modules_per_variant":8}, sort_keys=True))
+          PY
+
+      - name: Run full six-file PR111 policy-baseline regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$GITHUB_WORKSPACE/research/acsie-h7-pr112-validation"
+          export PYTHONPATH="$base/baseline:$base/shared_support"
+          cd "$RUNNER_TEMP"
+          set +e
+          python -m pytest -q \
+            "$base/baseline/tests/test_open_ended_growth.py" \
+            "$base/shared_support/tests/test_core014_recursive_cognitive_compiler.py" \
+            "$base/shared_support/tests/test_core015_semantic_operator_discovery.py" \
+            "$base/shared_support/tests/test_core016_open_semantic_substrate.py" \
+            "$base/shared_support/tests/test_adaptive_capability_repair.py" \
+            "$base/shared_support/tests/test_asi_claim_gate.py" \
+            > "$base/evidence/baseline-pytest.log" 2>&1
+          rc=$?
+          set -e
+          cat "$base/evidence/baseline-pytest.log"
+          echo "BASELINE_PYTEST_EXIT=$rc"
+          exit "$rc"
+
+      - name: Run full six-file PR112 candidate suite plus restored PR111 regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$GITHUB_WORKSPACE/research/acsie-h7-pr112-validation"
+          export PYTHONPATH="$base/candidate:$base/shared_support"
+          cd "$RUNNER_TEMP"
+          set +e
+          python -m pytest -q \
+            "$base/candidate/tests/test_open_ended_growth.py" \
+            "$base/candidate/tests/test_h7_preserved_lineage_frontier_regression.py" \
+            "$base/shared_support/tests/test_core014_recursive_cognitive_compiler.py" \
+            "$base/shared_support/tests/test_core015_semantic_operator_discovery.py" \
+            "$base/shared_support/tests/test_core016_open_semantic_substrate.py" \
+            "$base/shared_support/tests/test_adaptive_capability_repair.py" \
+            "$base/shared_support/tests/test_asi_claim_gate.py" \
+            > "$base/evidence/candidate-pytest.log" 2>&1
+          rc=$?
+          set -e
+          cat "$base/evidence/candidate-pytest.log"
+          echo "CANDIDATE_PYTEST_EXIT=$rc"
+          exit "$rc"
+
+      - name: Run independent six-cell full-result and full-statistics parity benchmark
+        shell: bash
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          set +e
+          python research/acsie-h7-pr112-validation/parity_benchmark.py \
+            > research/acsie-h7-pr112-validation/evidence/parity-benchmark.stdout.log 2>&1
+          rc=$?
+          set -e
+          cat research/acsie-h7-pr112-validation/evidence/parity-benchmark.stdout.log
+          echo "PARITY_BENCHMARK_EXIT=$rc"
+          exit "$rc"
+
+      - name: Upload source, test, and benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acsie-h7-pr111-112-hosted-validation
+          path: research/acsie-h7-pr112-validation/evidence/
+          if-no-files-found: warn
+          retention-days: 90
