@@ -1,0 +1,161 @@
+name: H7 Gen5 selected-invocation frontier profiler
+
+on:
+  push:
+    branches:
+      - research/h7-gen5-stage-profiler-20261013
+    paths:
+      - ".github/workflows/h7-gen5-stage-profiler.yml"
+      - "lab/pr110_h7_offline_capture.py"
+      - "lab/pr110_h7_offline_counterfactual.py"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/h7-gen5-stage-profiler.yml"
+      - "lab/pr110_h7_offline_capture.py"
+      - "lab/pr110_h7_offline_counterfactual.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: h7-gen5-profiler-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  PYTHONHASHSEED: "0"
+
+jobs:
+  hosted-runner-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Report hosted runner capacity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "H7_GEN5_PROFILER_PREFLIGHT=START"
+          echo "RUNNER_OS=${RUNNER_OS:-unknown}"
+          echo "RUNNER_ARCH=${RUNNER_ARCH:-unknown}"
+          echo "KERNEL=$(uname -srm)"
+          echo "PYTHON=$(python3 --version 2>&1 || true)"
+          echo "LOGICAL_CPUS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc || echo unknown)"
+          awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/ {print}' /proc/meminfo || true
+          df -h .
+          echo "H7_GEN5_PROFILER_PREFLIGHT=PASS"
+          echo "ACSIE_PHONE_COMPUTE=no"
+
+  h7-selected-invocation-capture:
+    needs: hosted-runner-preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - name: Checkout lab snapshot
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download pinned Phase6 checkpoint artifact
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 37738748858
+          artifact-ids: 11536026911
+          github-token: ${{ github.token }}
+          path: evidence
+
+      - name: Verify pinned runtime, evaluator, seed, and checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          manifest = json.loads(Path("research/pr110_acsie_snapshot/manifest.json").read_text())
+          assert manifest["B"]["runtime_sha"] == "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
+          assert manifest["proving_harness_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
+          for rel, expected in manifest["B"]["files"].items():
+              data = Path("research/pr110_acsie_snapshot/B", rel).read_bytes()
+              actual = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+              assert actual == expected, (rel, actual, expected)
+          checkpoint = Path("evidence/pr110-phase6-scalability-forensics/B-checkpoint.json")
+          assert checkpoint.exists(), "pinned Phase6 checkpoint file missing"
+          ck = json.loads(checkpoint.read_text())
+          identity = ck["learner_state"]["runtime_identity"]
+          assert ck["seed"] == 2026100305 and ck["generation_next"] == 5
+          assert identity["proving_sha"] == "33259fc5c69d87b99c604f0050508c433a279daf"
+          assert identity["acsie_ref"] == "9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be"
+          print(json.dumps({
+              "status":"PASS",
+              "runtime_sha":manifest["B"]["runtime_sha"],
+              "proving_sha":manifest["proving_harness_sha"],
+              "seed":ck["seed"],
+              "generation_next":ck["generation_next"],
+              "checkpoint_sha256":hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
+          },sort_keys=True))
+          PY
+
+      - name: Syntax and counterfactual regression checks
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            lab/pr110_h7_offline_capture.py \
+            lab/pr110_h7_offline_counterfactual.py \
+            lab/test_pr110_h7_offline_counterfactual.py \
+            lab/exact_checkpoint.py \
+            lab/acsie_open_ended_self_extending_proving.py \
+            research/pr110_acsie_snapshot/B/cognitive_core/behavioral_search.py
+          PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
+            python3 -m unittest -v lab.test_pr110_h7_offline_counterfactual
+
+      - name: Capture first secondary Gen5 process-search invocation with no line tracer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/h7-selected-invocation
+          checkpoint="evidence/pr110-phase6-scalability-forensics/B-checkpoint.json"
+          test -s "$checkpoint"
+          set +e
+          env PYTHONPATH="$GITHUB_WORKSPACE/research/pr110_acsie_snapshot/B:$GITHUB_WORKSPACE" \
+            RUNTIME_SHA="9b0c42eb4394aee457f8b7adecc45a3f4ea7c4be" \
+            PROVING_SHA="33259fc5c69d87b99c604f0050508c433a279daf" \
+            python3 -u lab/pr110_h7_offline_capture.py \
+              --capture-role secondary_process_synthesis \
+              --checkpoint "$checkpoint" \
+              --output evidence/h7-selected-invocation/secondary-gen5-frontier.json \
+              > evidence/h7-selected-invocation/capture.stdout.log \
+              2> evidence/h7-selected-invocation/capture.stderr.log
+          rc=$?
+          set -e
+          cat evidence/h7-selected-invocation/capture.stdout.log
+          cat evidence/h7-selected-invocation/capture.stderr.log >&2
+          echo "SECONDARY_CAPTURE_EXIT=$rc"
+          exit "$rc"
+
+      - name: Compute descriptive counterfactuals for selected invocation
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          input="evidence/h7-selected-invocation/secondary-gen5-frontier.json"
+          if [ -s "$input" ]; then
+            python3 -u lab/pr110_h7_offline_counterfactual.py \
+              --input "$input" \
+              --output evidence/h7-selected-invocation/secondary-counterfactual.json \
+              > evidence/h7-selected-invocation/counterfactual.stdout.log \
+              2> evidence/h7-selected-invocation/counterfactual.stderr.log
+            cat evidence/h7-selected-invocation/counterfactual.stdout.log
+          else
+            echo "COUNTERFACTUAL=BLOCKED_NO_CAPTURE_INPUT"
+          fi
+
+      - name: Upload forensic evidence even if capture fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h7-gen5-selected-invocation-profiler
+          path: evidence/h7-selected-invocation/
+          if-no-files-found: warn
+          retention-days: 90

@@ -5,13 +5,15 @@ import argparse
 import json
 import random
 import statistics
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from hashlib import sha256
 from typing import Any
 
 from cognitive_core.open_ended_growth import OpenEndedRecursiveCognitiveCompiler
+from lab.exact_checkpoint import load_checkpoint, restore_checkpoint, save_checkpoint
 from cognitive_core.recursive_cognitive_compiler import (
     RecursiveCognitiveCompiler,
+    ProcessCandidate,
     Trace,
     eval_expr,
     ast_depth,
@@ -131,7 +133,13 @@ def expanded_depth(
 def make_traces(expr, seed, generation, split, count, shift, macros):
     rng = random.Random(seed * 1000003 + generation * 9176 + stable_int(split))
     base_split = split.rsplit("_", 1)[-1]
-    span = {"train": 2.0, "holdout": 3.0, "transfer": 4.0, "ood": 5.0}[base_split]
+    span = {
+        "train": 2.0,
+        "selection": 2.5,
+        "holdout": 3.0,
+        "transfer": 4.0,
+        "ood": 5.0,
+    }[base_split]
     rows = []
     for i in range(count):
         inputs = {k: rng.uniform(-span, span) + shift for k in KEYS}
@@ -159,16 +167,240 @@ def mae(expr, rows, macros):
     return statistics.fmean(vals)
 
 
-def run_seed(seed: int, generations: int) -> dict[str, Any]:
-    rng = random.Random(seed)
-    learner = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed)
-    # Fixed baseline: no recursive depth growth and no retained-capability
-    # archive. This is the actual non-self-extending control.
-    baseline = RecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed + 10091)
+def semantic_parent_match_count(
+    learner: RecursiveCognitiveCompiler,
+    expected_caps: tuple[HiddenCapability, ...],
+    used_primitive_ids: tuple[str, ...],
+    rows: tuple[Trace, ...],
+    hidden_macros: dict[str, dict[str, Any]],
+) -> int:
+    if not expected_caps or not used_primitive_ids:
+        return 0
+    pmap = learner._pmap()
+    used_vectors: dict[str, tuple[float, ...]] = {}
+    for pid in used_primitive_ids:
+        primitive = learner.primitives.get(pid)
+        if primitive is None:
+            continue
+        try:
+            used_vectors[pid] = tuple(
+                float(eval_expr(primitive.expression, row.inputs, pmap))
+                for row in rows
+            )
+        except Exception:
+            continue
 
-    retained: list[HiddenCapability] = []
-    generations_out = []
-    initial_depth = learner.meta_policy["max_depth"]
+    expected_vectors: list[tuple[float, ...]] = []
+    for cap in expected_caps:
+        try:
+            expected_vectors.append(
+                tuple(
+                    float(eval_hidden(cap.expression, row.inputs, hidden_macros))
+                    for row in rows
+                )
+            )
+        except Exception:
+            expected_vectors.append(())
+
+    matched: set[str] = set()
+    count = 0
+    for expected_vector in expected_vectors:
+        for pid, vector in used_vectors.items():
+            if pid in matched:
+                continue
+            if vector == expected_vector:
+                matched.add(pid)
+                count += 1
+                break
+    return count
+
+
+def retained_representation_error(
+    learner: RecursiveCognitiveCompiler,
+    cap: HiddenCapability,
+    rows: tuple[Trace, ...],
+    hidden_macros: dict[str, dict[str, Any]],
+) -> float:
+    primitive = learner.primitives.get(cap.primitive_id)
+    if primitive is None:
+        return float("inf")
+    pmap = learner._pmap()
+    if not rows:
+        return float("inf")
+    deltas = []
+    for row in rows:
+        try:
+            retained_value = float(eval_expr(primitive.expression, row.inputs, pmap))
+            hidden_value = float(eval_hidden(cap.expression, row.inputs, hidden_macros))
+        except Exception:
+            return float("inf")
+        deltas.append(abs(retained_value - hidden_value))
+    return statistics.fmean(deltas)
+
+
+def synthesize_discovery_only(
+    compiler: RecursiveCognitiveCompiler,
+    rows: tuple[Trace, ...],
+    transfer: tuple[Trace, ...],
+) -> Any:
+    """Baseline process selection that never observes OOD during search."""
+    keys = sorted(set().union(*(trace.inputs.keys() for trace in rows)))
+    pids = tuple(compiler.primitives)
+    candidates = []
+    pmap = compiler._pmap()
+    for policy in compiler.propose_search_policies():
+        for expr in compiler._exprs(keys, pids, min(3, int(policy['max_depth']))):
+            try:
+                train_error = sum(
+                    abs(eval_expr(expr, trace.inputs, pmap) - trace.target)
+                    for trace in rows
+                ) / len(rows)
+                if train_error > 1e-9:
+                    continue
+                # Baseline candidate generation sees discovery rows only.
+                # Transfer/OOD remain post-selection evaluation evidence.
+                used = tuple(sorted({str(node['id']) for node in compiler._walk(expr) if node.get('op') == 'macro'}))
+                novelty = 1.0 / (1 + len(json.dumps(expr, sort_keys=True)))
+                candidates.append((len(used), novelty, -len(json.dumps(expr, sort_keys=True)), json.dumps(expr, sort_keys=True), expr, used, policy))
+            except Exception:
+                continue
+    if not candidates:
+        return None
+    _, _, _, _, expr, used, policy = max(
+        candidates,
+        key=lambda c: (c[0], c[1], c[2], c[3]),
+    )
+    process_id = 'baseline-proc:' + sha256(json.dumps((expr, policy, compiler.generation), sort_keys=True).encode()).hexdigest()[:20]
+    proc = ProcessCandidate(
+        process_id, expr, used, compiler.generation, tuple(used), dict(policy),
+        tuple(sorted({trace.family for trace in list(rows) + list(transfer)})),
+        len(json.dumps(expr, sort_keys=True)),
+        {'origin': 'discovery_only_baseline', 'external_model': False, 'ood_used_for_selection': False},
+    )
+    compiler.processes[proc.process_id] = proc
+    return proc
+
+def provenance_lineage_ids(
+    learner: RecursiveCognitiveCompiler,
+    primitive_ids: tuple[str, ...],
+) -> set[str]:
+    lineage: set[str] = set()
+    method = getattr(learner, "primitive_lineage", None)
+    for pid in primitive_ids:
+        if method is None:
+            lineage.add(str(pid))
+        else:
+            lineage.update(str(x) for x in method(str(pid)))
+    return lineage
+
+
+def executable_lineage_ids(
+    learner: RecursiveCognitiveCompiler,
+    primitive_ids: tuple[str, ...],
+) -> set[str]:
+    """Runtime-independent executable lineage evaluator.
+
+    This deliberately does not call a runtime lineage helper. The evaluator
+    follows only actual executable macro references in primitive expressions,
+    so pre-PR110 and PR110 runtimes are judged by exactly the same semantics.
+    """
+    lineage: set[str] = set()
+    stack = [str(pid) for pid in primitive_ids]
+    seen: set[str] = set()
+
+    while stack:
+        pid = stack.pop()
+        if pid in seen:
+            continue
+        seen.add(pid)
+        lineage.add(pid)
+        primitive = learner.primitives.get(pid)
+        if primitive is None:
+            continue
+        for node in learner._walk(primitive.expression):
+            if node.get("op") == "macro":
+                stack.append(str(node["id"]))
+    return lineage
+
+
+def compact_search_stats(search_stats: dict[str, Any]) -> dict[str, Any]:
+    """Keep evidence useful without serializing tens of thousands of lineage strings."""
+    out = dict(search_stats)
+    signatures = tuple(str(x) for x in out.pop("target_candidate_lineage_signatures", ()))
+    out["target_candidate_lineage_signature_count"] = len(signatures)
+    out["target_candidate_lineage_signature_sample"] = list(signatures[:16])
+    return out
+
+def run_seed(
+    seed: int,
+    generations: int,
+    *,
+    checkpoint_path: str | None = None,
+    resume_from: str | None = None,
+    stop_after: int | None = None,
+    checkpoint_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if generations <= 0:
+        raise ValueError("generations must be positive")
+    if stop_after is not None and not 0 < stop_after <= generations:
+        raise ValueError("stop_after must be in the range 1..generations")
+    if resume_from and checkpoint_path and resume_from != checkpoint_path:
+        raise ValueError("resume_from and checkpoint_path must match when both are supplied")
+
+    resumed = bool(resume_from)
+    last_checkpoint_digest = None
+    if resume_from:
+        envelope = load_checkpoint(
+            resume_from,
+            expected_seed=seed,
+            expected_metadata=checkpoint_metadata,
+        )
+        restored = restore_checkpoint(
+            envelope,
+            expected_metadata=checkpoint_metadata,
+        )
+        rng = restored["local_rng"]
+        learner = restored["learner"]
+        retained = list(restored["retained"])
+        generations_out = list(restored["generations_out"])
+        initial_depth = restored["initial_depth"]
+        start_generation = restored["generation_next"]
+        last_checkpoint_digest = restored["state_digest"]
+        if start_generation > generations:
+            raise ValueError(
+                f"checkpoint resumes at generation {start_generation}, beyond requested {generations}"
+            )
+        print(
+            json.dumps(
+                {
+                    "event": "SEED_RESUME",
+                    "seed": seed,
+                    "generations": generations,
+                    "generation_next": start_generation,
+                    "checkpoint_digest": last_checkpoint_digest,
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+    else:
+        rng = random.Random(seed)
+        learner = OpenEndedRecursiveCognitiveCompiler(max_depth=2, population=24, seed=seed)
+        retained = []
+        generations_out = []
+        initial_depth = learner.meta_policy["max_depth"]
+        start_generation = 0
+        print(
+            json.dumps(
+                {
+                    "event": "SEED_START",
+                    "seed": seed,
+                    "generations": generations,
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
 
     def hidden_library() -> dict[str, dict[str, Any]]:
         return {cap.hidden_id: cap.expression for cap in retained}
@@ -176,7 +408,7 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
     def capability_macro(cap: HiddenCapability) -> dict[str, Any]:
         return {"op": "macro", "id": cap.hidden_id}
 
-    for generation in range(generations):
+    for generation in range(start_generation, generations):
         learner.generation = generation
         hidden_macros = hidden_library()
 
@@ -204,6 +436,9 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         train = make_traces(
             target, seed, generation, "train", 12, 0.0, hidden_macros
         )
+        selection = make_traces(
+            target, seed, generation, "selection", 8, 0.17, hidden_macros
+        )
         hold = make_traces(
             target, seed, generation, "holdout", 6, 0.31, hidden_macros
         )
@@ -214,48 +449,147 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
             target, seed, generation, "ood", 8, 0.93, hidden_macros
         )
 
-        primitive = learner.invent_primitive(train, hold, transfer)
+        discovery_train = tuple(train) + tuple(selection)
+
+        parent_fidelity_audit = {}
+        for parent in target_parents:
+            parent_fidelity_audit[parent.primitive_id] = retained_representation_error(
+                learner,
+                parent,
+                tuple(train),
+                hidden_macros,
+            )
+        print(
+            json.dumps(
+                {
+                    "event": "TARGET_PARENT_FIDELITY_AUDIT",
+                    "seed": seed,
+                    "generation": generation,
+                    "target_parent_ids": [p.primitive_id for p in target_parents],
+                    "errors": parent_fidelity_audit,
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+
+        primitive = learner.invent_primitive(discovery_train, hold, transfer)
         accepted = False
         transfer_error = float("inf")
         ood_error = float("inf")
         parent_used = tuple()
+        acceptance_reason = "NO_VALID_PRIMITIVE"
+        novelty = 0.0
+        resource_cost = 0
+        frontier_admission = None
+        frontier_validation = []
+        primitive_candidate_count = len(getattr(learner, "last_primitive_candidate_frontier", ()))
+        discovery_perfect_candidate_count = sum(
+            1 for candidate in getattr(learner, "last_primitive_candidate_frontier", ())
+            if float(candidate.train_error) <= 1e-9
+        )
 
+        expected_parent_ids = {p.primitive_id for p in target_parents}
+        selected_primitive = primitive
         if primitive is not None:
-            transfer_error = primitive.transfer_error
-            ood_error = mae(primitive.expression, ood, learner._pmap())
-            parent_used = primitive.parent_ids
-            accepted = learner.accept_primitive(
-                primitive.primitive_id,
-                transfer_error=transfer_error,
-                ood_error=ood_error,
-                novelty=1.0 / max(1, primitive.complexity),
-                resource_cost=max(1, primitive.complexity),
-            )
-            if accepted:
-                hidden_id = f"hidden:{generation}:{len(retained)}"
-                retained.append(
-                    HiddenCapability(
-                        hidden_id=hidden_id,
-                        primitive_id=primitive.primitive_id,
-                        expression=target,
-                        depth=target_depth,
-                        generation=generation,
-                        parent_hidden_id=target_parents[0].hidden_id if target_parents else None,
-                        parent_hidden_ids=tuple(p.hidden_id for p in target_parents),
-                    )
+            frontier = tuple(getattr(learner, "last_primitive_candidate_frontier", ()))
+            if frontier:
+                novelty = 1.0 / max(1, frontier[0].complexity)
+                resource_cost = max(1, frontier[0].complexity)
+                frontier_admission = learner.accept_primitive_frontier(
+                    transfer_rows=transfer,
+                    ood_rows=ood,
+                    novelty=novelty,
+                    resource_cost=resource_cost,
                 )
+                accepted = bool(frontier_admission.get("accepted", False))
+                frontier_validation = list(frontier_admission.get("validation", []))
+                admitted = frontier_admission.get("primary_primitive")
+                if admitted is not None:
+                    selected_primitive = admitted
+                    transfer_error = float(admitted.transfer_error)
+                    matching = next(
+                        (
+                            item for item in frontier_validation
+                            if item["primitive_id"] == admitted.primitive_id
+                        ),
+                        None,
+                    )
+                    ood_error = (
+                        float(matching["ood_error"])
+                        if matching is not None
+                        else float("inf")
+                    )
+                    novelty = 1.0 / max(1, admitted.complexity)
+                    resource_cost = max(1, admitted.complexity)
+                else:
+                    transfer_error = float(frontier[0].transfer_error)
+                    first_validation = frontier_validation[0] if frontier_validation else None
+                    ood_error = (
+                        float(first_validation["ood_error"])
+                        if first_validation is not None
+                        else float("inf")
+                    )
+                if accepted:
+                    acceptance_reason = "ACCEPTED_FRONTIER"
+                elif not frontier_validation:
+                    acceptance_reason = "NO_VALID_PRIMITIVE"
+                elif all(float(item["transfer_error"]) > 1e-9 for item in frontier_validation):
+                    acceptance_reason = "TRANSFER_FAILURE"
+                elif all(float(item["ood_error"]) > 1e-9 for item in frontier_validation):
+                    acceptance_reason = "OOD_FAILURE"
+                else:
+                    acceptance_reason = "FRONTIER_ALL_REJECTED"
+            else:
+                acceptance_reason = "EMPTY_FRONTIER"
+        parent_used = selected_primitive.parent_ids if selected_primitive is not None else tuple()
+        candidate_lineage_ids = (
+            executable_lineage_ids(learner, (selected_primitive.primitive_id,))
+            if selected_primitive is not None and selected_primitive.primitive_id in learner.primitives
+            else set()
+        )
+        recursive_reuse_ok = expected_parent_ids.issubset(candidate_lineage_ids) if selected_primitive is not None else False
+        if accepted and selected_primitive is not None:
+            hidden_id = f"hidden:{generation}:{len(retained)}"
+            retained.append(
+                HiddenCapability(
+                    hidden_id=hidden_id,
+                    primitive_id=selected_primitive.primitive_id,
+                    expression=target,
+                    depth=target_depth,
+                    generation=generation,
+                    parent_hidden_id=target_parents[0].hidden_id if target_parents else None,
+                    parent_hidden_ids=tuple(p.hidden_id for p in target_parents),
+                )
+            )
 
-        baseline.generation = 0
-        bprim = baseline.invent_primitive(train, hold, transfer)
+        # Fresh direct-task control: it gets the same observations for this
+        # generation but cannot carry prior archive state forward.
+        baseline_direct = RecursiveCognitiveCompiler(
+            max_depth=2, population=24, seed=seed + 10091 + generation
+        )
+        baseline_direct.generation = 0
+        bprim = baseline_direct.invent_primitive(discovery_train, hold, transfer)
         baseline_accepted = False
         if bprim is not None:
-            b_ood = mae(bprim.expression, ood, baseline._pmap())
+            b_ood = mae(bprim.expression, ood, baseline_direct._pmap())
             baseline_accepted = (
                 bprim.transfer_error <= 1e-9 and b_ood <= 1e-9
             )
 
+        # Fresh non-recursive control for closure/probe tests. It has no
+        # retained ACSIE capabilities and is reset independently each
+        # generation, so longitudinal gains cannot come from baseline memory.
+        baseline = RecursiveCognitiveCompiler(
+            max_depth=2, population=24, seed=seed + 21091 + generation
+        )
+
         closure_rates = []
         baseline_closure_rates = []
+        closure_reuse_rates = []
+        semantic_closure_reuse_rates = []
+        closure_parent_fidelity = []
+        closure_trap_count = 0
         if len(retained) >= 2:
             pairs = [
                 (retained[i], retained[j])
@@ -269,117 +603,404 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
                     "right": capability_macro(right_parent),
                 }
                 closure_macros = hidden_library()
-                ctr = make_traces(
-                    closure_expr, seed + 1700 + pair_idx, generation,
-                    "closure_train", 8, 0.13, closure_macros
-                )
-                cv = make_traces(
-                    closure_expr, seed + 1700 + pair_idx, generation,
-                    "closure_transfer", 5, -0.19, closure_macros
-                )
-                co = make_traces(
-                    closure_expr, seed + 1700 + pair_idx, generation,
-                    "closure_ood", 5, 0.29, closure_macros
-                )
-                cproc = learner.synthesize_process(ctr, cv, co)
-                if cproc is not None:
-                    ceval = learner.evaluate(cproc, ctr, cv, cv, co, ())
-                    closure_rates.append(
-                        float(ceval.accepted and ceval.ood_error <= 1e-9)
+                ctr = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_train', 8, 0.13, closure_macros)
+                parent_fidelities = {
+                    left_parent.primitive_id: retained_representation_error(
+                        learner, left_parent, tuple(ctr), closure_macros
+                    ),
+                    right_parent.primitive_id: retained_representation_error(
+                        learner, right_parent, tuple(ctr), closure_macros
+                    ),
+                }
+                cs = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_selection', 6, 0.07, closure_macros)
+                ch = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_holdout', 5, 0.23, closure_macros)
+                cv = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_transfer', 5, -0.19, closure_macros)
+                co = make_traces(closure_expr, seed + 1700 + pair_idx, generation, 'closure_ood', 5, 0.29, closure_macros)
+                closure_discovery_rows = tuple(ctr) + tuple(cs)
+                # Do not re-run an exhaustive generic expression enumeration here.
+                # This block is diagnostic-only; the scientific closure gate below
+                # performs the real discovery/selection search. The prior audit
+                # duplicated that work for every retained pair and dominated wall time.
+                if hasattr(learner, "synthesize_process_frontier"):
+                    cprocs = tuple(
+                        learner.synthesize_process_frontier(
+                            closure_discovery_rows,
+                            cv,
+                            co,
+                            max_candidates=32,
+                        )
                     )
                 else:
-                    closure_rates.append(0.0)
-                bproc = baseline.synthesize_process(ctr, cv, co)
+                    fallback = learner.synthesize_process(closure_discovery_rows, cv, co)
+                    cprocs = (fallback,) if fallback is not None else ()
+
+                expected = {left_parent.primitive_id, right_parent.primitive_id}
+                search_stats_full = dict(getattr(learner, "last_search_stats", {}))
+                lineage_signatures = tuple(
+                    str(sig)
+                    for sig in search_stats_full.get("target_candidate_lineage_signatures", ())
+                )
+                expected_signature_count = sum(
+                    expected.issubset(set(sig.split("|")))
+                    for sig in lineage_signatures
+                )
+                search_stats = compact_search_stats(search_stats_full)
+                print(
+                    json.dumps(
+                        {
+                            "event": "CLOSURE_CANDIDATE_AUDIT",
+                            "seed": seed,
+                            "generation": generation,
+                            "expected_parent_ids": sorted(expected),
+                            "audit": {
+                                "expected_lineage_candidate_count": int(expected_signature_count),
+                                "perfect_candidate_count": int(search_stats.get("target_candidate_count", 0)),
+                                "selection_qualified_candidate_count": int(search_stats.get("target_candidate_count", 0)),
+                                "expected_lineage_expressions": [],
+                                "preselection_validation_used": False,
+                                "source": "post_search_telemetry",
+                            },
+                        },
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
+
+                competence = False
+                reuse_ok = False
+                expected = {left_parent.primitive_id, right_parent.primitive_id}
+                selected_proc = None
+                frontier_lineage_matches = 0
+                for candidate_proc in cprocs:
+                    ceval = learner.evaluate(candidate_proc, ctr, ch, cv, co, ())
+                    candidate_competence = bool(
+                        ceval.accepted and ceval.ood_error <= 1e-9
+                    )
+                    candidate_lineage = executable_lineage_ids(
+                        learner,
+                        tuple(candidate_proc.used_primitives),
+                    )
+                    if candidate_competence:
+                        competence = True
+                        if selected_proc is None:
+                            selected_proc = candidate_proc
+                    if candidate_competence and expected.issubset(candidate_lineage):
+                        frontier_lineage_matches += 1
+                        reuse_ok = True
+
+                cproc = selected_proc
+                print(
+                    json.dumps(
+                        {
+                            "event": "PROCESS_FRONTIER_CLOSURE_AUDIT",
+                            "seed": seed,
+                            "generation": generation,
+                            "expected_parent_ids": sorted(expected),
+                            "frontier_size": len(cprocs),
+                            "frontier_lineage_matches": frontier_lineage_matches,
+                        },
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
+                closure_rates.append(float(competence))
+                closure_reuse_rates.append(float(reuse_ok))
+                semantic_matches = semantic_parent_match_count(
+                    learner,
+                    (left_parent, right_parent),
+                    tuple(cproc.used_primitives) if cproc is not None else tuple(),
+                    tuple(ctr),
+                    closure_macros,
+                )
+                semantic_closure_reuse_rates.append(
+                    float(
+                        semantic_matches == len((left_parent, right_parent))
+                        and competence
+                    )
+                )
+                closure_parent_fidelity.append(
+                    statistics.fmean(parent_fidelities.values())
+                )
+                if competence and not reuse_ok:
+                    print(
+                        json.dumps(
+                            {
+                                "event": "CLOSURE_LINEAGE_MISMATCH",
+                                "seed": seed,
+                                "generation": generation,
+                                "expected_parent_ids": sorted(expected),
+                                "used_primitives": list(cproc.used_primitives) if cproc is not None else [],
+                                "candidate_lineage": sorted(candidate_lineage),
+                                "expression": cproc.expression if cproc is not None else None,
+                                "search_stats": compact_search_stats(dict(getattr(learner, "last_search_stats", {}))),
+                                "target_candidate_frontier": list(
+                                    getattr(learner, "last_search_stats", {}).get(
+                                        "target_candidate_frontier", []
+                                    )
+                                ),
+                            },
+                            sort_keys=True,
+                        ),
+                        flush=True,
+                    )
+                    closure_trap_count += 1
+
+                bproc = synthesize_discovery_only(baseline, tuple(ctr) + tuple(cs), cv)
+                bcompetence = False
                 if bproc is not None:
-                    beval = baseline.evaluate(bproc, ctr, cv, cv, co, ())
-                    baseline_closure_rates.append(
-                        float(beval.accepted and beval.ood_error <= 1e-9)
-                    )
-                else:
-                    baseline_closure_rates.append(0.0)
+                    beval = baseline.evaluate(bproc, ctr, ch, cv, co, ())
+                    bcompetence = bool(beval.accepted and beval.ood_error <= 1e-9)
+                baseline_closure_rates.append(float(bcompetence))
 
         probe_rates = []
         baseline_probe_rates = []
+        probe_reuse_rates = []
+        semantic_probe_reuse_rates = []
+        probe_parent_fidelity = []
+        probe_trap_count = 0
         for probe_idx in range(4):
-            probe_parents = tuple(
-                rng.sample(retained, 2)
-            ) if len(retained) >= 2 else tuple(retained[:1])
+            probe_parents = tuple(rng.sample(retained, 2)) if len(retained) >= 2 else tuple(retained[:1])
             probe_macros = hidden_library()
             if probe_parents:
                 if len(probe_parents) == 1:
-                    probe = {
-                        "op": "add",
-                        "left": capability_macro(probe_parents[0]),
-                        "right": {"op": "get", "key": KEYS[probe_idx % len(KEYS)]},
-                    }
+                    probe = {'op': 'add', 'left': capability_macro(probe_parents[0]), 'right': {'op': 'get', 'key': KEYS[probe_idx % len(KEYS)]}}
                 else:
-                    probe = {
-                        "op": "add",
-                        "left": capability_macro(probe_parents[0]),
-                        "right": capability_macro(probe_parents[1]),
-                    }
+                    probe = {'op': 'add', 'left': capability_macro(probe_parents[0]), 'right': capability_macro(probe_parents[1])}
             else:
-                probe = random_base_expr(
-                    random.Random(seed * 193 + generation * 17 + probe_idx),
-                    3,
-                )
+                probe = random_base_expr(random.Random(seed * 193 + generation * 17 + probe_idx), 3)
 
-            ptrain = make_traces(
-                probe, seed + 700 + probe_idx, generation,
-                "probe_train", 8, 0.17, probe_macros
+            ptrain = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_train', 8, 0.17, probe_macros)
+            pselection = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_selection', 6, 0.05, probe_macros)
+            pholdout = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_holdout', 5, 0.27, probe_macros)
+            ptransfer = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_transfer', 5, -0.22, probe_macros)
+            pood = make_traces(probe, seed + 700 + probe_idx, generation, 'probe_ood', 5, 0.41, probe_macros)
+            proc = learner.synthesize_process(tuple(ptrain) + tuple(pselection), ptransfer, pood)
+            print(
+                json.dumps(
+                    {
+                        "event": "PRIMARY_PROCESS_OOD_CANDIDATE_AUDIT",
+                        "seed": seed,
+                        "generation": generation,
+                        "candidate_selection_summary": getattr(
+                            learner,
+                            "last_process_candidate_selection_summary",
+                            {},
+                        ),
+                        "selection_source": "discovery_and_selection_only",
+                        "selected_process_id": getattr(proc, "process_id", None),
+                        "selected_process_used_primitives": (
+                            list(getattr(proc, "used_primitives", ())) if proc is not None else []
+                        ),
+                    },
+                    sort_keys=True,
+                ),
+                flush=True,
             )
-            ptransfer = make_traces(
-                probe, seed + 700 + probe_idx, generation,
-                "probe_transfer", 5, -0.22, probe_macros
-            )
-            pood = make_traces(
-                probe, seed + 700 + probe_idx, generation,
-                "probe_ood", 5, 0.41, probe_macros
-            )
-            proc = learner.synthesize_process(ptrain, ptransfer, pood)
+            competence = False
+            reuse_ok = False
             if proc is not None:
-                peval = learner.evaluate(
-                    proc, ptrain, ptransfer, ptransfer, pood, ()
+                peval = learner.evaluate(proc, ptrain, pholdout, ptransfer, pood, ())
+                competence = bool(peval.accepted and peval.ood_error <= 1e-9)
+                expected = {p.primitive_id for p in probe_parents}
+                candidate_lineage = executable_lineage_ids(
+                    learner,
+                    tuple(proc.used_primitives),
                 )
-                probe_rates.append(
-                    float(peval.accepted and peval.ood_error <= 1e-9)
+                reuse_ok = competence and (
+                    not expected or expected.issubset(candidate_lineage)
                 )
-            else:
-                probe_rates.append(0.0)
+            probe_rates.append(float(competence))
+            probe_reuse_rates.append(float(reuse_ok))
+            semantic_probe_matches = semantic_parent_match_count(
+                learner,
+                probe_parents,
+                tuple(proc.used_primitives) if proc is not None else tuple(),
+                tuple(ptrain),
+                probe_macros,
+            )
+            semantic_probe_reuse_rates.append(
+                float(
+                    competence
+                    and (
+                        not probe_parents
+                        or semantic_probe_matches == len(probe_parents)
+                    )
+                )
+            )
+            if probe_parents:
+                probe_parent_fidelity.append(
+                    statistics.fmean(
+                        retained_representation_error(
+                            learner, p, tuple(ptrain), probe_macros
+                        )
+                        for p in probe_parents
+                    )
+                )
+            if competence and not reuse_ok and probe_parents:
+                print(
+                    json.dumps(
+                        {
+                            "event": "PROBE_LINEAGE_MISMATCH",
+                            "seed": seed,
+                            "generation": generation,
+                            "expected_parent_ids": sorted(expected),
+                            "used_primitives": list(proc.used_primitives) if proc is not None else [],
+                            "candidate_lineage": sorted(candidate_lineage),
+                            "expression": proc.expression if proc is not None else None,
+                        },
+                        sort_keys=True,
+                    ),
+                    flush=True,
+                )
+                probe_trap_count += 1
 
-            bproc = baseline.synthesize_process(ptrain, ptransfer, pood)
+            bproc = synthesize_discovery_only(baseline, ptrain, ptransfer)
+            bcompetence = False
             if bproc is not None:
-                beval = baseline.evaluate(
-                    bproc, ptrain, ptransfer, ptransfer, pood, ()
-                )
-                baseline_probe_rates.append(
-                    float(beval.accepted and beval.ood_error <= 1e-9)
-                )
-            else:
-                baseline_probe_rates.append(0.0)
-
+                beval = baseline.evaluate(bproc, ptrain, pholdout, ptransfer, pood, ())
+                bcompetence = bool(beval.accepted and beval.ood_error <= 1e-9)
+            baseline_probe_rates.append(float(bcompetence))
+        previous_runtime_depth = (
+            initial_depth
+            if not generations_out
+            else generations_out[-1]["runtime_max_depth"]
+        )
         generations_out.append(
             {
                 "generation": generation,
                 "target_depth": target_depth,
+                "target_digest": sha256(json.dumps(target, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest(),
                 "accepted": accepted,
                 "baseline_accepted": baseline_accepted,
-                "parent_used": bool(parent_used),
+                "parent_used": bool(recursive_reuse_ok),
                 "parent_ids": list(parent_used),
-                "multi_parent_used": len(target_parents) >= 2,
+                "expected_parent_ids": sorted(expected_parent_ids),
+                "recursive_reuse_ok": bool(recursive_reuse_ok),
+                "multi_parent_used": len(target_parents) >= 2 and recursive_reuse_ok,
                 "closure_success_rate": statistics.fmean(closure_rates) if closure_rates else 0.0,
                 "baseline_closure_success_rate": statistics.fmean(baseline_closure_rates) if baseline_closure_rates else 0.0,
+                "closure_reuse_rate": statistics.fmean(closure_reuse_rates) if closure_reuse_rates else 0.0,
+                "semantic_closure_reuse_rate": statistics.fmean(semantic_closure_reuse_rates) if semantic_closure_reuse_rates else 0.0,
                 "closure_pair_count": len(closure_rates),
                 "closure_success_count": int(sum(closure_rates)),
+                "closure_reuse_success_count": int(sum(closure_reuse_rates)),
+                "closure_trap_count": int(closure_trap_count),
                 "baseline_closure_success_count": int(sum(baseline_closure_rates)),
                 "retained_count": len(retained),
                 "runtime_max_depth": int(learner.meta_policy["max_depth"]),
+                "growth_delta": int(learner.meta_policy["max_depth"]) - int(previous_runtime_depth),
                 "transfer_error": transfer_error,
                 "ood_error": ood_error,
+                "acceptance_reason": acceptance_reason,
+                "primitive_found": primitive is not None,
+                "primitive_id": primitive.primitive_id if primitive is not None else None,
+                "primitive_candidate_count": primitive_candidate_count,
+                "discovery_perfect_candidate_count": discovery_perfect_candidate_count,
+                "selection_candidate_count": primitive_candidate_count,
+                "frontier_validated_candidate_count": (
+                    int(frontier_admission.get("validated_candidate_count", 0))
+                    if frontier_admission is not None
+                    else 0
+                ),
+                "selected_candidate": selected_primitive.primitive_id if selected_primitive is not None else None,
+                "novelty": novelty,
+                "resource_cost": resource_cost,
+                "lineage_ok": bool(recursive_reuse_ok),
                 "probe_success_rate": statistics.fmean(probe_rates),
                 "baseline_probe_success_rate": statistics.fmean(baseline_probe_rates),
+                "probe_reuse_rate": statistics.fmean(probe_reuse_rates),
+                "semantic_probe_reuse_rate": statistics.fmean(semantic_probe_reuse_rates) if semantic_probe_reuse_rates else 0.0,
+                "probe_parent_fidelity": (
+                    statistics.fmean(probe_parent_fidelity)
+                    if probe_parent_fidelity else 0.0
+                ),
+                "closure_parent_fidelity": (
+                    statistics.fmean(closure_parent_fidelity)
+                    if closure_parent_fidelity else 0.0
+                ),
+                "probe_trap_count": int(probe_trap_count),
+                "selection_rows": len(discovery_train),
+                "holdout_used_for_selection": False,
+                "transfer_used_for_selection": False,
+                "ood_used_for_selection": False,
+                "search_stats": compact_search_stats(dict(learner.last_search_stats)),
             }
         )
+        print(
+            json.dumps(
+                {
+                    "event": "GENERATION_PROGRESS",
+                    "seed": seed,
+                    "generation": generation,
+                    "accepted": bool(accepted),
+                    "retained_count": len(retained),
+                    "runtime_max_depth": int(learner.meta_policy["max_depth"]),
+                    "closure_success_rate": generations_out[-1]["closure_success_rate"],
+                    "closure_reuse_rate": generations_out[-1]["closure_reuse_rate"],
+                    "probe_success_rate": generations_out[-1]["probe_success_rate"],
+                    "probe_reuse_rate": generations_out[-1]["probe_reuse_rate"],
+                    "acceptance_reason": generations_out[-1]["acceptance_reason"],
+                    "primitive_found": generations_out[-1]["primitive_found"],
+                    "primitive_id": generations_out[-1]["primitive_id"],
+                    "candidate_count": generations_out[-1]["primitive_candidate_count"],
+                    "discovery_perfect_candidate_count": generations_out[-1]["discovery_perfect_candidate_count"],
+                    "selection_candidate_count": generations_out[-1]["selection_candidate_count"],
+                    "frontier_validated_candidate_count": generations_out[-1]["frontier_validated_candidate_count"],
+                    "selected_candidate": generations_out[-1]["selected_candidate"],
+                    "transfer_error": generations_out[-1]["transfer_error"],
+                    "ood_error": generations_out[-1]["ood_error"],
+                    "novelty": generations_out[-1]["novelty"],
+                    "resource_cost": generations_out[-1]["resource_cost"],
+                    "lineage_ok": generations_out[-1]["lineage_ok"],
+                    "target_depth": target_depth,
+                    "search_stats": compact_search_stats(dict(learner.last_search_stats)),
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+
+        if checkpoint_path:
+            last_checkpoint_digest = save_checkpoint(
+                checkpoint_path,
+                seed=seed,
+                generation_next=generation + 1,
+                initial_depth=initial_depth,
+                local_rng=rng,
+                learner=learner,
+                retained=[asdict(cap) for cap in retained],
+                generations_out=generations_out,
+                metadata=checkpoint_metadata,
+            )
+            print(
+                json.dumps(
+                    {
+                        "event": "CHECKPOINT_SAVED",
+                        "seed": seed,
+                        "generation_completed": generation,
+                        "generation_next": generation + 1,
+                        "checkpoint_path": checkpoint_path,
+                        "checkpoint_digest": last_checkpoint_digest,
+                    },
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
+
+        if stop_after is not None and generation + 1 >= stop_after and generation + 1 < generations:
+            print(
+                json.dumps(
+                    {
+                        "event": "SEGMENT_STOP",
+                        "seed": seed,
+                        "generation_next": generation + 1,
+                        "reason": "REQUESTED_CHECKPOINT_BOUNDARY",
+                    },
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
+            break
 
     probe_gain = statistics.fmean(
         row["probe_success_rate"] - row["baseline_probe_success_rate"]
@@ -388,44 +1009,77 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
     final = generations_out[-1]
     accepted_after_bootstrap = sum(row["accepted"] for row in generations_out[1:])
     recursive_generations = sum(
-        row["accepted"] and row["parent_used"] for row in generations_out[1:]
+        row["recursive_reuse_ok"] for row in generations_out[1:]
+    )
+    multi_parent_generations = sum(
+        row["multi_parent_used"] for row in generations_out[1:]
     )
     last_three = generations_out[-3:]
-    multi_parent_generations = sum(
-        row["accepted"] and row["multi_parent_used"]
-        for row in generations_out[1:]
-    )
     final_closure_gain = (
         final["closure_success_rate"] - final["baseline_closure_success_rate"]
     )
+    final_closure_reuse_rate = final["closure_reuse_rate"]
+    final_probe_reuse_rate = final["probe_reuse_rate"]
     early = generations_out[min(2, len(generations_out) - 1)]
     closure_growth = (
-        final["closure_success_count"] - early["closure_success_count"]
+        final["closure_reuse_success_count"] - early["closure_reuse_success_count"]
     )
     closure_capacity_ok = (
         final["closure_pair_count"] > 0
-        and final["closure_success_count"] >= max(
-            1, final["closure_pair_count"] - 1
+        and final["closure_reuse_rate"] >= 0.75
+        and final["closure_reuse_success_count"] > 0
+    )
+    trap_free_ok = (
+        all(row["closure_trap_count"] == 0 for row in generations_out)
+        and all(row["probe_trap_count"] == 0 for row in generations_out)
+    )
+
+    applicable_generations = generations_out[1:] if len(generations_out) > 1 else []
+    every_generation_accepted = bool(generations_out) and all(
+        row["accepted"] for row in generations_out
+    )
+    every_closure_perfect = all(
+        row["closure_pair_count"] == 0
+        or (
+            row["closure_success_rate"] == 1.0
+            and row["closure_reuse_rate"] == 1.0
+            and row["closure_trap_count"] == 0
         )
-        and final["closure_success_count"] > early["closure_success_count"]
+        for row in generations_out
+    )
+    every_probe_perfect = all(
+        row["probe_success_rate"] == 1.0
+        and row["probe_reuse_rate"] == 1.0
+        and row["probe_trap_count"] == 0
+        for row in generations_out
+    )
+    lineage_closed = all(row["parent_used"] for row in applicable_generations)
+    strict_growth = all(row["growth_delta"] > 0 for row in applicable_generations)
+    depth_growth_contract = (
+        final["runtime_max_depth"] >= initial_depth + generations
+        and final["runtime_max_depth"] > max(
+            row["runtime_max_depth"] for row in generations_out[:-1]
+        )
     )
 
     finite_gate = (
-        accepted_after_bootstrap >= generations - 2
-        and recursive_generations >= generations - 2
-        and multi_parent_generations >= generations - 2
-        and all(row["accepted"] for row in last_three)
-        and final["retained_count"] >= generations - 1
-        and final["runtime_max_depth"] > initial_depth
+        len(generations_out) == generations
+        and every_generation_accepted
+        and lineage_closed
+        and every_closure_perfect
+        and every_probe_perfect
+        and strict_growth
+        and depth_growth_contract
+        and final["retained_count"] >= generations
         and final["target_depth"] > generations_out[0]["target_depth"]
-        and final["probe_success_rate"] > 0.75
-        and final["probe_success_rate"] > final["baseline_probe_success_rate"]
+        and final["probe_success_rate"] == 1.0
+        and final["probe_reuse_rate"] == 1.0
         and final["closure_pair_count"] >= 6
-        and final_closure_gain >= 0.20
-        and closure_capacity_ok
+        and final["closure_success_rate"] == 1.0
+        and final["closure_reuse_rate"] == 1.0
+        and trap_free_ok
         and final["baseline_accepted"] is False
     )
-
     return {
         "seed": seed,
         "generations": generations,
@@ -443,6 +1097,12 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         "final_closure_gain": final_closure_gain,
         "closure_growth": closure_growth,
         "closure_capacity_ok": closure_capacity_ok,
+        "every_generation_accepted": every_generation_accepted,
+        "every_closure_perfect": every_closure_perfect,
+        "every_probe_perfect": every_probe_perfect,
+        "lineage_closed": lineage_closed,
+        "strict_growth": strict_growth,
+        "depth_growth_contract": depth_growth_contract,
         "mean_probe_gain": probe_gain,
         "final_probe_success_rate": final["probe_success_rate"],
         "final_baseline_probe_success_rate": final["baseline_probe_success_rate"],
@@ -450,7 +1110,36 @@ def run_seed(seed: int, generations: int) -> dict[str, Any]:
         "external_model": False,
         "target_identity_available_to_runtime": False,
         "task_family_route": False,
+        "selection_split_used": True,
+        "holdout_used_for_search_selection": False,
+        "transfer_used_for_search_selection": False,
+        "ood_used_for_search_selection": False,
+        "closure_trap_count": int(final["closure_trap_count"]),
+        "probe_trap_count": int(final["probe_trap_count"]),
+        "final_closure_reuse_rate": final_closure_reuse_rate,
+        "final_probe_reuse_rate": final_probe_reuse_rate,
+        "final_closure_parent_fidelity": final["closure_parent_fidelity"],
+        "final_probe_parent_fidelity": final["probe_parent_fidelity"],
+        "reuse_lineage_semantics": "external_executable_macro_reachability_v1",
+        "final_semantic_closure_reuse_rate": final["semantic_closure_reuse_rate"],
+        "final_semantic_probe_reuse_rate": final["semantic_probe_reuse_rate"],
+        "max_generated_expressions": max(
+            int(row["search_stats"].get("generated_expressions", 0))
+            for row in generations_out
+        ),
+        "max_unique_search_states": max(
+            int(row["search_stats"].get("unique_states", 0))
+            for row in generations_out
+        ),
+        "max_search_states_in_depth": max(
+            int(row["search_stats"].get("max_states_in_depth", 0))
+            for row in generations_out
+        ),
         "generations_detail": generations_out,
+        "completed_generations": len(generations_out),
+        "resumed_from_checkpoint": resumed,
+        "checkpoint_path": checkpoint_path,
+        "last_checkpoint_digest": last_checkpoint_digest,
     }
 
 def main():
@@ -459,7 +1148,7 @@ def main():
         "--seeds",
         default="2026100301,2026100302,2026100303,2026100304,2026100305",
     )
-    parser.add_argument("--generations", type=int, default=8)
+    parser.add_argument("--generations", type=int, default=12)
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
 
@@ -494,3 +1183,6 @@ if __name__ == "__main__":
 # execution marker: fresh exact-SHA PR sync
 
 # execution marker: fixed-baseline scientific run
+# execution marker: workflow-resilience rerun
+
+# execution marker: bootstrap-language and primitive-ID fixes
