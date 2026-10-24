@@ -1,0 +1,200 @@
+name: Kaggle CLI remote-container recovery and V22 audit
+
+on:
+  push:
+    branches:
+      - ops/kaggle-cli-recovery-20261024
+    paths:
+      - .github/workflows/kaggle-cli-recovery-20261024.yml
+
+permissions:
+  contents: read
+
+jobs:
+  recover-and-audit:
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.13-slim
+    timeout-minutes: 20
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+    defaults:
+      run:
+        shell: sh
+    steps:
+      - name: Install Kaggle CLI inside remote Docker container
+        run: |
+          set -eu
+          python -m pip install --disable-pip-version-check --no-cache-dir --upgrade kaggle
+          kaggle --version
+          python -c 'import importlib.metadata; print("Installed kaggle package:", importlib.metadata.version("kaggle"))'
+
+      - name: Verify credentials without displaying secrets
+        id: auth
+        run: |
+          set -eu
+          mkdir -p evidence
+          if [ -n "${KAGGLE_API_TOKEN:-}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "API token secret is configured; its value is not displayed."
+          elif [ -n "${KAGGLE_USERNAME:-}" ] && [ -n "${KAGGLE_KEY:-}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Legacy username/key secrets are configured; values are not displayed."
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Kaggle CLI install passed; no Kaggle API secret is configured in this repository."
+          fi
+
+      - name: Collect existing run logs and selected JSON reports
+        if: steps.auth.outputs.available == 'true'
+        run: |
+          set -u
+          mkdir -p evidence/five-seed evidence/lineage-bounds evidence/closure-replay
+
+          audit_kernel() {
+            alias="$1"
+            kernel="$2"
+            dest="evidence/$alias"
+            mkdir -p "$dest"
+
+            if kaggle kernels status "$kernel" > "$dest/status.raw.txt" 2>&1; then
+              echo "status=command-succeeded" > "$dest/status-command.txt"
+            else
+              rc=$?
+              echo "status=command-failed; exit=$rc" > "$dest/status-command.txt"
+            fi
+
+            if kaggle kernels logs "$kernel" > "$dest/kernel-logs.raw.json" 2>&1; then
+              echo "logs=downloaded" > "$dest/log-command.txt"
+            else
+              rc=$?
+              echo "logs=failed; exit=$rc" > "$dest/log-command.txt"
+            fi
+
+            pattern='.*(checkpoint-gen0-11\.json|continuation-gen9-11\.json|generation-table-gen0-11\.json|h7-v22-b1-recovery-report\.json|source-provenance\.json|provenance-sha256\.txt|checkpoint-metadata\.json|seed.*result.*\.json|qualification.*\.(json|log|txt)|combined-run\.log)$'
+            if kaggle kernels output --help 2>&1 | grep -q -- '--file-pattern'; then
+              if kaggle kernels output "$kernel" -p "$dest/output" --file-pattern "$pattern" > "$dest/output-command.txt" 2>&1; then
+                echo "outputs=downloaded" >> "$dest/output-command.txt"
+              else
+                rc=$?
+                echo "outputs=failed; exit=$rc" >> "$dest/output-command.txt"
+              fi
+            else
+              echo "outputs=skipped; CLI has no --file-pattern option" > "$dest/output-command.txt"
+            fi
+          }
+
+          audit_kernel five-seed memorican/acsie-h7-arch-v22-five-seed-qualification-20261023
+          audit_kernel lineage-bounds memorican/acsie-h7-v22-2-lineage-bounds-replay-20261023
+          audit_kernel closure-replay memorican/acsie-h7-v22-2-closure-replay-20261023
+
+      - name: Print sanitized summary only
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          root = Path("evidence")
+          print("=== REMOTE CONTAINER / KAGGLE CLI ===")
+          try:
+              from importlib.metadata import version
+              print("kaggle_package_version=" + version("kaggle"))
+          except Exception as exc:
+              print("kaggle_package_version=unavailable (" + type(exc).__name__ + ")")
+
+          if not root.exists():
+              print("evidence_directory=not-created")
+              raise SystemExit(0)
+
+          # Parse logs privately in the ephemeral job; emit only summary fields.
+          for log in sorted(root.rglob("kernel-logs.raw.json")):
+              alias = log.parent.name
+              raw = log.read_text(errors="replace")
+              try:
+                  entries = json.loads(raw)
+                  entries = entries if isinstance(entries, list) else [entries]
+                  lines = [str(e.get("data", "")) for e in entries if isinstance(e, dict)]
+              except Exception:
+                  lines = raw.splitlines()
+
+              count = 0
+              for line in lines:
+                  if "QUAL_SEED_FINISHED" in line:
+                      match = re.search(r"QUAL_SEED_FINISHED\s+(\{.*\})", line)
+                      if match:
+                          try:
+                              obj = json.loads(match.group(1))
+                              print(
+                                  f"{alias}: seed={obj.get('seed')} status={obj.get('status')} "
+                                  f"completed_generations={obj.get('completed_generations')} "
+                                  f"lineage_closed={obj.get('lineage_closed')} "
+                                  f"final_probe_reuse_rate={obj.get('final_probe_reuse_rate')} "
+                                  f"generation_failure_count={len(obj.get('generation_failures', []))}"
+                              )
+                              count += 1
+                          except Exception:
+                              pass
+                  elif "RECOVERY_FINAL" in line:
+                      match = re.search(r"RECOVERY_FINAL\s+(\{.*\})", line)
+                      if match:
+                          try:
+                              obj = json.loads(match.group(1))
+                              reasons = obj.get("gate_reasons", [])
+                              categories = {}
+                              for reason in reasons:
+                                  key = str(reason).split(":", 1)[-1].split("=", 1)[0].strip()
+                                  categories[key] = categories.get(key, 0) + 1
+                              print(
+                                  f"{alias}: status={obj.get('status')} "
+                                  f"qualification_status={obj.get('qualification_status')} "
+                                  f"generation_count={obj.get('generation_count')} "
+                                  f"promotion_authorized={obj.get('promotion_authorized')} "
+                                  f"gate_failure_count={len(reasons)}"
+                              )
+                              count += 1
+                          except Exception:
+                              pass
+                  elif "QUALIFICATION_CRASHED" in line:
+                      timed_out = "TimeoutExpired" in raw or "timed out after 7200" in raw
+                      print(f"{alias}: qualification_crashed=true subprocess_timeout={str(timed_out).lower()}")
+                      count += 1
+              if count == 0:
+                  print(f"{alias}: no recognized summary records; inspect private raw evidence locally")
+
+          keep = {
+              "status", "qualification_status", "promotion_authorized", "generation_count",
+              "generation_next", "generation_rows", "passed", "lineage_closed", "strict_growth",
+              "completed_generations", "every_generation_accepted", "every_probe_perfect",
+              "final_probe_reuse_rate", "final_probe_success_rate", "seed",
+          }
+
+          def find_values(obj, found):
+              if isinstance(obj, dict):
+                  for key, value in obj.items():
+                      if key in keep and not isinstance(value, (dict, list)):
+                          found.setdefault(key, value)
+                      if isinstance(value, dict):
+                          find_values(value, found)
+              elif isinstance(obj, list):
+                  for value in obj[:100]:
+                      if isinstance(value, dict):
+                          find_values(value, found)
+
+          for path in sorted(root.rglob("*.json")):
+              if "kernel-logs.raw.json" in path.name:
+                  continue
+              try:
+                  obj = json.loads(path.read_text(errors="replace"))
+              except Exception:
+                  continue
+              found = {}
+              find_values(obj, found)
+              if found:
+                  print(f"{path.parent.name}/{path.name}: " + json.dumps(found, sort_keys=True))
+
+          print("Raw kernel logs and selected reports were not printed or uploaded; they remained inside this ephemeral container.")
+          PY
